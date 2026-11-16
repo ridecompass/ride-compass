@@ -13,3 +13,8 @@ export function previousRunNotice(latestRunEnd: string, what?: string): string {
   const from = formatJstDateTime(parseJstLocalValue(latestRunEnd));
   return `${from}から先${what === undefined ? "" : `の${what}`}は、前の予報の値です。`;
 }
+
+/** backendが応答に載せる、前に出た予報の風を引いた素性（`wind_previous_run_from`。引いていなければnull）に添える但し書き。 */
+export function windPreviousRunNotice(windPreviousRunFrom: string | null | undefined): string | null {
+  return windPreviousRunFrom == null ? null : previousRunNotice(windPreviousRunFrom, "風");
+}

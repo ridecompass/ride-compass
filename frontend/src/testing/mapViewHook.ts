@@ -35,7 +35,6 @@ export function serve(config?: Response, costAxes: CostAxisCatalogResponse = TWO
       config ?? Response.json(clientConfigResponse({ road_classes: roadClassCatalog({ map_layers: ROAD_LAYERS }) })),
   );
   onSameOrigin("GET", "/api/jma-tile/*", () => Response.json([]));
-  onBackend("GET", "/api/weather/msm-status", () => Response.json({ latest_run_end: "2099-01-01T00:00" }));
   serveCostAxisCatalog(costAxes);
 }
 

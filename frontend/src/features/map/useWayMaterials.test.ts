@@ -51,7 +51,10 @@ function serveWayMaterials(failsAt: (x: number) => boolean = () => false) {
   return onBackend("GET", WAY_MATERIALS, ({ path, query }) => {
     const [lensId, , x] = path.split("/").slice(-4);
     if (failsAt(Number(x))) return new Response(null, { status: 500 });
-    return Response.json({ [`${lensId}@${x}@${query.at ?? "-"}@${query.speed_kmh ?? "-"}`]: { x: Number(x) } });
+    return Response.json({
+      materials: { [`${lensId}@${x}@${query.at ?? "-"}@${query.speed_kmh ?? "-"}`]: { x: Number(x) } },
+      wind_previous_run_from: null,
+    });
   });
 }
 

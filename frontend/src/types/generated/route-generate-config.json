@@ -12,37 +12,45 @@
   "cost_strength_levels": [
     {
       "value": 0.0,
-      "label": "無効"
+      "label": "無効",
+      "color": null
     },
     {
       "value": 0.5,
-      "label": "50%"
+      "label": "50%",
+      "color": "#94a3b8"
     },
     {
       "value": 1.0,
-      "label": "100%"
+      "label": "100%",
+      "color": null
     },
     {
       "value": 1.5,
-      "label": "150%"
+      "label": "150%",
+      "color": "#ea580c"
     },
     {
       "value": 2.0,
-      "label": "200%"
+      "label": "200%",
+      "color": "#ea580c"
     }
   ],
   "cost_multiplier_levels": [
     {
       "value": 0.5,
-      "label": "50%"
+      "label": "50%",
+      "color": "#16a34a"
     },
     {
       "value": 1.0,
-      "label": "100%"
+      "label": "100%",
+      "color": null
     },
     {
       "value": 2.0,
-      "label": "200%"
+      "label": "200%",
+      "color": "#ea580c"
     }
   ],
   "disabled_label": "無効",

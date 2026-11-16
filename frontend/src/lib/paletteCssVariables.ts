@@ -9,8 +9,6 @@ import palette from "@/types/generated/palette.json";
  */
 const CSS_VARIABLES: Readonly<Record<string, string>> = {
   "--color-route-splice": palette.semantic.route_splice,
-  "--color-road-avoidance-prefer": palette.semantic.road_avoidance_prefer,
-  "--color-road-avoidance-avoid": palette.semantic.road_avoidance_avoid,
 };
 
 /** `<style>`へ入れる`:root`宣言。サーバー側で描くので、切り替わりが画面に出ない。 */

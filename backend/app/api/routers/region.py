@@ -20,7 +20,7 @@ from app.api.routers._tile_http import (
 )
 from app.api.routers.cost_axis_catalog import cost_preference_query
 from app.config import settings
-from app.domain.lens_values import RoadInspection
+from app.domain.lens_values import LensMaterials, RoadInspection
 from app.domain.cost_preference import CostPreference, RequestedCostPreference
 from app.domain.geo import BearingDeg
 from app.domain.route_request import AssumedSpeedKmh
@@ -118,12 +118,12 @@ async def region_lens(
     at: datetime | None = None,
     preference: CostPreference = Depends(cost_preference_query),
     service: LensService = Depends(get_lens_service),
-) -> dict[str, dict[str, float]]:
+) -> LensMaterials:
     """ルートを出す前の地図がレンズ`lens_id`（総合`total`か費用の軸のid。`domain/lens_values.py`）で道を塗る、指定タイルの
     フィーチャーごとの道ごとの材料: 道の向きに辿った・逆向きに辿った1kmあたりの代償の秒（辿れない向きは載せない）と、
     道の向き。どちらの向きを塗るかは、`/api/cost-axes`の`map_lens.formula`が走行方位で選ぶ。値は時刻`at`（省略すると今。
     風）と想定速度`speed_kmh`と利用者の値（つまみ`strength`と、軸id→倍率のJSONの`multipliers`と、無効の軸idのJSONの
-    `disabled_axes`。ルート生成と同じ値）で決まり、探索と同じ部品で求める。
+    `disabled_axes`。ルート生成と同じ値）で決まり、探索と同じ部品で求める。前に出た風の予報を引いたなら、その素性も返す。
 
     鍵は路面タイル（`/api/region/road-surface-tiles`）の同じz/x/yのフィーチャーの鍵。知らないレンズと、無効にした軸のレンズは404。
     """

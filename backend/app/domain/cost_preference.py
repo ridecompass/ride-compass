@@ -11,6 +11,7 @@ from typing import Annotated, NamedTuple
 from pydantic import AfterValidator, Field
 
 from app.domain.cost_axes import cost_axis_ids, current_cost_axes
+from app.domain.display_palette import SEMANTIC_COLORS
 from app.domain.strict_model import StrictModel
 
 #: つまみと倍率の標準。
@@ -23,6 +24,8 @@ class CostLevel(NamedTuple):
 
     value: float
     label: str
+    #: 段の色。標準と無効の段は塗らない（None）。
+    color: str | None
 
 
 def multiplier_label(value: float) -> str:
@@ -34,14 +37,28 @@ def multiplier_label(value: float) -> str:
 DISABLED_LABEL = "無効"
 
 
-def _levels(*values: float) -> tuple[CostLevel, ...]:
-    return tuple(CostLevel(value, DISABLED_LABEL if value == 0 else f"{round(value * 100)}%") for value in values)
+#: 標準より大きい段の色の役割。負担を重く見て避けやすくするので、道路タブの「なるべく避ける」と同じ。
+_HIGHER_COLOR_ROLE = "road_avoidance_avoid"
+
+
+def _level(value: float, lower_color_role: str) -> CostLevel:
+    role = (None if value in (0, STANDARD_COST_FACTOR)
+            else lower_color_role if value < STANDARD_COST_FACTOR else _HIGHER_COLOR_ROLE)
+    return CostLevel(value, DISABLED_LABEL if value == 0 else f"{round(value * 100)}%",
+                     None if role is None else SEMANTIC_COLORS[role])
+
+
+def _levels(lower_color_role: str, *values: float) -> tuple[CostLevel, ...]:
+    """段`values`。標準より小さい段の色の役割（`domain/display_palette.py: SEMANTIC_COLORS`の鍵）は`lower_color_role`。"""
+    return tuple(_level(value, lower_color_role) for value in values)
 
 
 #: 全体のつまみの段。0は「無効」で、どの軸も数えない（全部の軸を無効にしたのと同じ。`CostPreference.counts`）。
-COST_STRENGTH_LEVELS = _levels(0.0, 0.5, STANDARD_COST_FACTOR, 1.5, 2.0)
-#: 軸ごとの倍率の段（数えない軸は倍率でなく無効で表すので、0の段は無い）。
-COST_MULTIPLIER_LEVELS = _levels(0.5, STANDARD_COST_FACTOR, 2.0)
+#: 小さい段は負担をまとめて軽く見るだけで、どの道を好むのでもないので、好む色にしない。
+COST_STRENGTH_LEVELS = _levels("neutral", 0.0, 0.5, STANDARD_COST_FACTOR, 1.5, 2.0)
+#: 軸ごとの倍率の段（数えない軸は倍率でなく無効で表すので、0の段は無い）。小さい段はその負担を軽く見て通りやすく
+#: するので、道路タブの「好む」と同じ色の役割。
+COST_MULTIPLIER_LEVELS = _levels("road_avoidance_prefer", 0.5, STANDARD_COST_FACTOR, 2.0)
 #: つまみ・倍率の上限と倍率の下限（要求は段の間の値も受け付け、段の外の値は断る）。
 MAX_COST_STRENGTH = max(level.value for level in COST_STRENGTH_LEVELS)
 MAX_COST_MULTIPLIER = max(level.value for level in COST_MULTIPLIER_LEVELS)
