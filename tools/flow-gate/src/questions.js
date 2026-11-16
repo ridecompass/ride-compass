@@ -327,8 +327,8 @@ function looseQuestion(text) {
 // 確かめる条件（conds。src/questions.js: confirmConditions）の文と、その条件を行き先にしたユーザーの言葉と、見る所と要点（書かれていない条件も
 // 隠さずにそう出す）で埋める。
 const NO_LOOK = "書かれていません";
-export const askText = (kind, forms, conds = [], text = forms[kind].text) =>
-  render(kind, text, forms[kind].header, conds.map((c) => ({ text: c.text, attrs: [...(c.words ?? []).map((w) => ["ユーザーの言葉", w]), ["見る所と要点", c.look ?? NO_LOOK]] })), forms[kind].sections);
+export const confirmRows = (conds) => conds.map((c) => ({ text: c.text, attrs: [...(c.words ?? []).map((w) => ["ユーザーの言葉", w]), ["見る所と要点", c.look ?? NO_LOOK]] }));
+export const askText = (kind, forms, conds = [], text = forms[kind].text) => render(kind, text, forms[kind].header, confirmRows(conds), forms[kind].sections);
 
 // 待つ相手（前提・子）が見送りで閉じたときの続行の問いの文。相手の番号を入れ、同じ文の問いが既にあれば二度は問わない
 // （答えで「続ける」を選んだあとも、相手は見送りのまま残るため）。

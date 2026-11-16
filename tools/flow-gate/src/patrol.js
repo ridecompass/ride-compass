@@ -1,7 +1,7 @@
 // 見回り: 振り出しを頼むだけで、実行の記録は持たない。枠が埋まっているか・動いているかは、その都度 GitHub の担当の実行の
 // 一覧（src/facts.js: recentRuns）から読む。
 import { dispatchKind } from "./decide.js";
-import { jstText, relationsOf, taskOf } from "./facts.js";
+import { jstText, quotaReset, relationsOf, taskOf } from "./facts.js";
 import { FIELDS } from "./fields.js";
 import { settle } from "./gate.js";
 import { pages } from "./github.js";
@@ -14,16 +14,18 @@ export async function openTasks(gh, config) {
   return issues.map((i) => ({ ...taskOf(config, i), number: i.number }));
 }
 // 振り出さない理由（無ければ null）。担当のワークフローを無効にしたら止める。最後に終わった担当の実行が Claude の利用の上限・認証で止まって
-// いたら（担当のワークフローの段 config.quotaStep が落ちた）、その終わりから pauseMinutes の間止める。runs は recentRuns の一覧。
+// いたら（担当のワークフローの段 config.quotaStep が落ちた）、その実行の終わりのコメントの戻る時刻まで（読めなければ、終わりから pauseMinutes の間）
+// 止める。runs は recentRuns の一覧。
+const WINDOW = 5 * 3600e3; // 利用の上限の枠（5時間）。戻る時刻はこれより先にならないので、これより前に終わった実行は読まない
 async function stopReason(gh, config, runs) {
   const wf = await gh.rest("GET", `/repos/${config.code}/actions/workflows/${config.workflow}`);
   if (wf.state !== "active") return "担当のワークフロー（Claude Task）が無効（Actions の画面の Enable workflow で戻す）";
   const last = runs.find((r) => !r.active);
-  const until = last?.updated + config.pauseMinutes * 60e3;
-  if (last?.conclusion !== "failure" || !(until > Date.now())) return null;
+  if (last?.conclusion !== "failure" || !(last.updated + WINDOW > Date.now())) return null;
   const { jobs } = await gh.rest("GET", `/repos/${config.code}/actions/runs/${last.id}/jobs`);
-  return jobs.some((j) => j.steps.some((s) => s.name === config.quotaStep && s.conclusion === "failure"))
-    ? `担当が Claude の利用の上限か認証で止まったため、${jstText(until)} まで（担当を1件手で起こせば早く戻る）` : null;
+  if (!jobs.some((j) => j.steps.some((s) => s.name === config.quotaStep && s.conclusion === "failure"))) return null;
+  const until = (await quotaReset(gh, config, last)) ?? last.updated + config.pauseMinutes * 60e3;
+  return until > Date.now() ? `担当が Claude の利用の上限か認証で止まったため、${jstText(until)} まで（担当を1件手で起こせば早く戻る）` : null;
 }
 // 枠に空きがあり、止めていなければ、振り出せるタスクを急ぎ・優先度の順に枠の数まで振り出す。settled は決め直したばかりの
 // タスク、kinds は空きを検証担当の種類（定時と、担当が終わったとき）。runs は出来事1件につき1回読んだ担当の実行の一覧、tasks は

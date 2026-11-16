@@ -21,16 +21,26 @@ const parsed = (text) => {
 const [kind, file, log, url, startFile] = process.argv.slice(2);
 const messages = parsed(read(file));
 const QUOTA = ["rate_limit", "billing_error", "authentication_failed", "oauth_org_not_allowed", "account_on_hold"];
-if (kind === "--quota") process.exit(messages.some((m) => m?.type === "assistant" && QUOTA.includes(m.error)) ? 1 : 0);
-const { endHead, readFromLine, startBlock } = await import(pathToFileURL(`${process.env.FLOW_SRC}/facts.js`).href);
+const quota = messages.some((m) => m?.type === "assistant" && QUOTA.includes(m.error));
+if (kind === "--quota") process.exit(quota ? 1 : 0);
+const { endHead, quotaLine, readFromLine, startBlock } = await import(pathToFileURL(`${process.env.FLOW_SRC}/facts.js`).href);
 
 // 公開の Actions の記録には担当の発言を出さない（コメントは非公開の置き場へ書く）。GitHub のコメントの長さの上限（65536字）に収める。
 const result = messages.findLast((m) => m?.type === "result");
 const said = messages.filter((m) => m?.type === "assistant").map((m) => (m.message?.content ?? []).filter((c) => c?.type === "text").map((c) => c.text).join("\n").trim()).findLast(Boolean);
 const words = (typeof result?.result === "string" && result.result.trim()) || said || "（無い）";
 const denied = (result?.permission_denials ?? []).map((d) => `${d.tool_name}: ${String(d.tool_input?.command ?? d.tool_input?.file_path ?? d.tool_input?.url ?? "").replace(/\s+/g, " ").slice(0, 100)}`);
+// 上限の戻る時刻（担当の最後の発言の「resets 8:50pm (UTC)」の、今より後で最初のその時刻。読めなければ null）。
+function resetOf(text) {
+  const m = /resets (\d{1,2})(?::(\d{2}))?\s*(am|pm)\s*\(UTC\)/i.exec(text);
+  if (!m) return null;
+  const d = new Date();
+  d.setUTCHours((Number(m[1]) % 12) + (m[3].toLowerCase() === "pm" ? 12 : 0), Number(m[2] ?? 0), 0, 0);
+  if (d <= Date.now()) d.setUTCDate(d.getUTCDate() + 1);
+  return d.toISOString();
+}
 const head = `${endHead(kind)}\n\n要約（担当の最後の発言）:\n\n`;
 const tail = ["", "", `手番の記録: ${log || "置けなかった（実行のファイルが無いか、置くのに失敗した）"}`,
-  ...(denied.length ? ["", "判定に断られた操作:", ...denied.map((d) => `- ${d}`)] : []), "", `実行: ${url}`,
+  ...(denied.length ? ["", "判定に断られた操作:", ...denied.map((d) => `- ${d}`)] : []), "", `実行: ${url}`, ...(quota ? [quotaLine(resetOf(words))] : []),
   ...(process.env.READ_FROM ? ["", readFromLine(process.env.READ_FROM)] : []), "", startBlock(read(startFile))].join("\n");
 console.log(head + words.split("\n").map((l) => `> ${l}`).join("\n").slice(0, 65536 - head.length - tail.length) + tail);
