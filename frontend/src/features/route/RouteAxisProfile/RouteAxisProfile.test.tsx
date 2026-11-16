@@ -2,14 +2,17 @@
  * `features/route/RouteAxisProfile/RouteAxisProfile.tsx`——候補の中身の所要・負担。
  *
  * 見るもの: 所要と負担の数（分へ丸め）と、無いときの省き方、所要時間の前提が崩れたことの注記（値の無い区間の割合を
- * 丸めて1%以上）。
+ * 丸めて1%以上）、負担の説明が費用の軸の一覧の名前と文を差し込むこと。
  *
  * ここで見ないもの: 所要の書き方 → `lib/duration.ts`。負担の種類ごとの内訳と事実 → 道のりのグラフの一覧
  * （`features/route/RouteProfile/RouteProfile.test.tsx`）。
  */
 import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import userEvent from "@testing-library/user-event";
+import { beforeEach, describe, expect, it } from "vitest";
 
+import { serveCostAxisCatalog } from "@/testing/backendServer";
+import { costAxisCatalog, costAxisEntry } from "@/testing/costAxes";
 import routeGenerateConfig from "@/types/generated/route-generate-config.json";
 import RouteAxisProfile from "./RouteAxisProfile";
 
@@ -30,6 +33,13 @@ function renderProfile(props: Partial<Props> = {}) {
     />,
   );
 }
+
+beforeEach(() => {
+  serveCostAxisCatalog({
+    ...costAxisCatalog(costAxisEntry("ascent", { label: "軸ア" }), costAxisEntry("stopping", { label: "軸イ" })),
+    turn_kickoff_wording: "漕ぎ出しの文",
+  });
+});
 
 describe("RouteAxisProfile", () => {
   it("所要と負担（内訳の和）を分で並べ、それぞれに(i)の説明を持つ", () => {
@@ -55,5 +65,11 @@ describe("RouteAxisProfile", () => {
     renderProfile({ missingTravelDataShare: share });
     if (expected === null) expect(screen.queryByText(/データの無い区間が/)).not.toBeInTheDocument();
     else expect(screen.getByText(expected)).toBeInTheDocument();
+  });
+
+  it("負担の説明に、費用の軸の一覧の名前と、曲がる所の漕ぎ出しの文を差し込む", async () => {
+    renderProfile();
+    await userEvent.click(screen.getByRole("button", { name: "負担の説明を表示" }));
+    expect(await screen.findByText(/避けたいもの\[軸ア・軸イ\]を通る分.*\[漕ぎ出しの文\]/)).toBeInTheDocument();
   });
 });

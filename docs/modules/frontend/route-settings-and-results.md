@@ -69,7 +69,8 @@
 | `features/route/ProfileChart/ProfileChart.tsx` | 道のりのグラフの枠（横軸の尺・横になぞる・押して地点を選ぶ・走行中の現在地・経由地の線と番号の印）。負担のグラフとレイヤのグラフが中身だけを差し込む。押せる図は縦のなぞりをシート・パネルのスクロールへ渡し（`touch-action: pan-y`）、縦に動き出した操作では地点を選ばない。走行中は、現在地の距離に縦の線（折れ線の青と見分ける文字の色）と地図の現在地と同じ青の丸い印（高さは中身が渡す）を出し、走り終えた所は中身の色を抜いて地図の走り終えた線と同じ濃さへ薄め、残りは元の色のまま描く。走り終えた経由地の線と番号の印も同じ濃さまで薄める。中身が渡す値の目盛り（`features/route/ProfileChart/ProfileChart.tsx: valueTicks`）を図の左の端に重ねる。高さは置き場が CSS の変数`--profile-chart-height`で決め、無ければ走行中の地図の下に出す図の高さになる |
 | `features/route/ProfileChart/profileScale.ts` | 道のりのグラフの横軸の尺（`features/route/ProfileChart/profileScale.ts: useProfileScale`。右端は渡された距離とルートの長さの長い方）と描画の座標の大きさ、図の文字の大きさ（`features/route/ProfileChart/profileScale.ts: profileTextClass`）。枠と中身の両方が読む |
 | `features/route/ProfileChart/useProfileGesture.ts` | 道のりのグラフの上で地点を選ぶ指（マウス）の操作。1本の指で横になぞるか押して離したときだけ選び、押しただけ・2本目の指が加わった操作（図の外に触れた指も、画面全体の指を窓の捕捉の段で数えて含める）・縦に動き出した操作では選ばない |
-| `features/route/ProfileChart/ProfileMarks.tsx` | 道のりのグラフの上に重ねる印と文字（経由地の番号と着く見込みの時刻・現在地の丸・値の目盛り・距離の目盛り）。図の絵は横へ伸ばして描くので、形の崩れる印と文字は図の上に重ねた要素で出す |
+| `features/route/ProfileChart/ProfileMarks.tsx` | 道のりのグラフの上に重ねる印と文字（経由地の番号と着く見込みの時刻・現在地の丸・値の目盛り・距離の目盛り）。図の絵は横へ伸ばして描くので、形の崩れる印と文字は図の上に重ねた要素で出す。経由地と現在地の印は、端の地点でも図の縁を越えないよう中心を図の内側へ半径まで寄せる。着く時刻の札は描いたあとに大きさを測り、置き方（`features/route/ProfileChart/arrivalLabels.ts: placeArrivalLabels`）で置き直す |
+| `features/route/ProfileChart/arrivalLabels.ts` | 着く時刻の札の置き方。左の札から順に、横は図の内側へ寄せ、先に置いた札・図の文字（目盛り）と重なれば札1つ分下の段へずらし、図の下の端までにどの段にも重ならずに置けなければその札は見せない（印の名前の読み上げには時刻が残る） |
 | `features/route/DifficultyProfile/DifficultyProfile.tsx`・`profileGeometry.ts` | 道のりのグラフの「負担で塗る」に出す、道のりに沿った負担のグラフ。横が始点からの距離、縦が区間ごとの1kmあたりの負担（区間の軸ごとの代償の秒を区間の長さで割ったもの。地図のレンズと同じ量で、好む道・避ける道の秒は入れない）で、区間ごとの階段を、図の下の札で選んだ費用の軸の色で下から積む。図の上端はそのルートで最も大きい区間の値で、塗った面積は軸ごとの負担の和になる。区間はbackendがEdgeを約500mのビンへ畳んだもの（`aggregate_segments_into_bins`）で、Edge 1本ずつではない。横軸の右端は**一覧の中で最も長い候補の距離**で、候補どうしで道のりを見比べられる。押したまま動かす（キーボードは矢印・Home・End）と、その距離の区間と、区間の道なりの形の上で距離の割合ぶん進んだ地点を選ぶ——選択は地図で区間を押したときと同じ`selectedRouteSegment`で、地図に地点の印と区間の縁取りと区間の小窓が出る。グラフ自体は区間を選んでいる間も残る。選ぶ受け口を渡さなければ、押せない見るだけの図になる。走行モードでは現在地の距離を受け取り、枠へ渡す（距離の決め方はpage-composition.md「走行モード」）。現在地の印はその距離の柱の上端に置く |
 | `features/route/ErrorText/ErrorText.tsx` | 操作した箇所の直下に出すエラー文言（`role=alert`）。ルート結果と区間の乗り換えの面が使う |
 | `features/route/WarningText/WarningText.tsx` | 表示中の結果について注意を促す1行（条件のずれ・目的地の補正・前に出た風の予報で作ったこと・所要時間の前提の崩れ）。ルート結果と候補の中身が使う |
@@ -157,8 +158,8 @@
   （`RouteCandidate.penalty`）。数は内訳の和（軸ごとの秒と、好む道で下げた秒・避ける道で上乗せした秒。応答の`total_seconds`）を、候補のカードは「負担」の語と分の数字（「負担 +18」。所要時間の差と読み違えさせない）、開いた内訳は「+N分」で書き、
   好む道で下げて負になった秒は「−」で書く（`lib/routePenalty.ts: formatPenalty`・`formatPenaltyMinutes`）。
   所要時間と負担の和が候補を並べた費用になる。
-- **所要時間の説明**: (i)は、区間ごとに速度を変える条件の名前を走行モデルの宣言（`domain/cycling_speed.py: SEGMENT_SPEED_CONDITIONS`。
-  生成物`route-generate-config.json`の`segment_speed_conditions`）から差し込む。想定速度の(i)（`RideConditionBar`）も同じ並びを使う。
+- **所要時間と負担の説明**: (i)の文のうち backend の宣言から決まる部分（所要時間の見積もり方・候補の並べ方は生成物
+  `route-generate-config.json`、費用の軸の名前と曲がる所の漕ぎ出しを入れる軸は`/api/cost-axes`）は、配られた文と名前を差し込み、画面で書き直さない。
 - **所要時間の前提が崩れたことの注記**: 所要時間のすぐ下に、`missing_travel_data_share`（勾配か停止要因の件数の値が無く、
   全体の平均で数えた区間の距離の割合）が丸めて1%以上なら「データの無い区間が◯%」を出す——平均で埋めた所要時間を
   黙って見せない。0%は判断の材料にならないため出さない。backendがEdge単位で数えた値をそのまま使う。

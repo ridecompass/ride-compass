@@ -22,6 +22,7 @@ from numba import njit
 from app.domain.stopwatch import add_elapsed_ms, elapsed_ms, start_timer, steps_note
 from app.domain.attributes import CategoricalColumn, MaterialColumn
 from app.domain.cycling_speed import (
+    SEGMENT_SPEED_CONDITIONS,
     RiderProfile,
     SegmentSpeedModel,
     crr_for_surface,
@@ -56,6 +57,12 @@ MAX_TIME_BINS = 4
 #: 所要時間の計算が値の無い区間をどう数えるかを、利用者に言う文（`_travel_inputs`が標高の欠けを全体の坂の割合の平均で、
 #: 停止要因の件数の欠けを取込の範囲全体の平均の密度で置き換える）。置き換え方を変えたら、ここも変える。
 MISSING_TRAVEL_DATA_WORDING = "標高や止まる所の数が無い区間は、道路網全体の平均の値で所要時間を計算しています"
+
+#: 所要時間の見積もりが何を足したものかを、利用者に言う文（区間の走行時間・止まる出来事の待ち・曲がる所の時間）。
+DURATION_ESTIMATE_WORDING = (
+    "区間ごとの走行時間に、信号などで止まる時間と、交差点を曲がるのにかかる時間を足した見積もりです。"
+    f"走行時間は、想定した巡航速度と{'・'.join(SEGMENT_SPEED_CONDITIONS)}から計算します。"
+)
 
 logger = logging.getLogger("ridecompass.graph")
 
@@ -298,7 +305,7 @@ def _bin_cost_arrays(
 
 def compile_leg_cost_kernels() -> None:
     """費用の組み立てのJIT（走行モデルとビンの仕上げ）を、本番と同じ引数の型で1回ずつ呼んでコンパイルする
-    （`domain/routing.py: compile_search_kernels`がイメージの組み立てで呼ぶ）。"""
+    （`domain/search_kernels.py: compile_search_kernels`がイメージの組み立てで呼ぶ）。"""
     flat = ElevationProfiles(np.zeros(1, dtype=np.int64), np.full(1, 2, dtype=np.int32), np.ones(1, dtype=bool),
                              np.zeros(2, dtype=np.float32), along_fractions((), 2), FLAT)
     model = SegmentSpeedModel(RiderProfile(cruise_speed_kmh=20.0), flat, np.ones(1), np.zeros(1), np.zeros(1))

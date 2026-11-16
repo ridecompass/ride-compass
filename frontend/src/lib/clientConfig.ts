@@ -23,11 +23,8 @@ type ClientTuningId = keyof (typeof import("@/types/generated/route-generate-con
 export const CLIENT_TUNING_IDS = {
   /** 区間を割る下限（km）。これ未満の共有区間では割らない。 */
   minStretchKm: "splice.min_stretch_km",
-  /** 走行モデルの標準値。想定速度の説明文に出す。 */
-  massKg: "speed.mass_kg",
-  cdaM2: "speed.cda_m2",
+  /** 下りの速度上限（km/h）。 */
   maxDescentKmh: "speed.max_descent_kmh",
-  walkingKmh: "speed.walking_kmh",
   /** 全長の目標からの許容差（目標の距離に対する割合）。全長の目標の説明文に出す。 */
   distanceToleranceRatio: "search.distance_tolerance_ratio",
   /** 土地被覆を数える帯の外の幅（m）。作り直しに使った値が届く。土地被覆の層の説明文に出す。 */

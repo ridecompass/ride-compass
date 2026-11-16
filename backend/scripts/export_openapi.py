@@ -34,6 +34,7 @@ from app.domain.route_request import (
     MIN_ROUTES,
 )
 from app.api.routers.debug_admin import LogLevelName
+from app.api.routers.derived_database import DERIVED_DATABASE_PATH
 from app.infrastructure.source_models import SOURCE_RUN_STATUS_LABELS
 from app.infrastructure.point_tile_layers import POINT_TILE_LAYERS
 from app.infrastructure.vector_tile import ROAD_FEATURE_PROPERTIES, ROAD_SURFACE_LAYER_NAME
@@ -57,7 +58,7 @@ from app.domain.weather_elements import (
     weather_element_deliveries,
     weather_element_tile,
 )
-from app.domain.cycling_speed import SEGMENT_SPEED_CONDITIONS
+from app.domain.cycling_speed import CRUISE_SPEED_LABEL
 from app.domain.road_classes import NO_DATA_VALUE
 from app.domain.map_display import (
     ALWAYS_SHOWN_ATTRIBUTIONS,
@@ -154,7 +155,8 @@ from app.domain.region import (
     ROAD_TILE_MAX_ZOOM,
     ROAD_TILE_MIN_ZOOM,
 )
-from app.domain.leg_costs import MISSING_TRAVEL_DATA_WORDING
+from app.domain.leg_costs import DURATION_ESTIMATE_WORDING, MISSING_TRAVEL_DATA_WORDING
+from app.domain.route_search import CANDIDATE_ORDER_WORDING
 from app.domain.cost_axes import LENS_QUANTITY_LABEL, LENS_UNIT
 from app.domain.lens_equivalents import LENS_EQUIVALENTS_CONDITION_WORDING
 from app.config import Settings
@@ -178,6 +180,8 @@ PALETTE_PATH = GENERATED_DIR / "palette.json"
 WEATHER_SCALES_PATH = GENERATED_DIR / "weather-scales.json"
 MAP_DISPLAY_PATH = GENERATED_DIR / "mapDisplay.ts"
 VOCABULARY_PATH = GENERATED_DIR / "vocabulary.ts"
+#: 画面が静的ファイルとして配る置き場（中のファイルは`/`からの同じパスで配られる）。
+FRONTEND_PUBLIC_DIR = Path(__file__).resolve().parents[2] / "frontend" / "public"
 
 
 def _strip_prose(node: object, *, keep: bool = False) -> object:
@@ -241,6 +245,24 @@ def _map_layer_entry(spec: MapLayerSpec) -> dict:
 def _layer_text(text: LayerText) -> list:
     """説明の文。文はそのまま、差し込み口は名前と前後の文の組にする。"""
     return [part if isinstance(part, str) else part._asdict() for part in text]
+
+
+def _public_path(*parts: str) -> str:
+    """画面が配る静的ファイルのパス。ファイルが無ければ落とす（出典のリンクが切れたまま焼かない）。"""
+    path = FRONTEND_PUBLIC_DIR.joinpath(*parts)
+    if not path.is_file():
+        raise FileNotFoundError(path)
+    return "/" + path.relative_to(FRONTEND_PUBLIC_DIR).as_posix()
+
+
+def _always_shown_attributions() -> list[str]:
+    """出典の差し込み口へ、リンク先を配る口・ファイルのパスを埋める。"""
+    links = {
+        "derived_database": DERIVED_DATABASE_PATH,
+        "apache_license": _public_path("licenses", "apache-2.0.txt"),
+        "foursquare_notice": _public_path("licenses", "foursquare-places-NOTICE.txt"),
+    }
+    return [attribution.format_map(links) for attribution in ALWAYS_SHOWN_ATTRIBUTIONS]
 
 
 def _weather_element_entry(element: WeatherElement) -> dict:
@@ -396,7 +418,7 @@ def main() -> None:
             # 数値予報モデルの計算値に添える断りの文。
             "modelValueDisclaimer": MODEL_VALUE_DISCLAIMER,
             # 地図へ常に出す出典。
-            "alwaysShownAttributions": list(ALWAYS_SHOWN_ATTRIBUTIONS),
+            "alwaysShownAttributions": _always_shown_attributions(),
             # 値が無い線の破線（道・レンズ・ルートで共有）。
             "noDataDash": list(NO_DATA_DASH),
             "road": {
@@ -600,8 +622,10 @@ def main() -> None:
             "max_assumed_speed_kmh": MAX_ASSUMED_SPEED_KMH,
             # フロントが状態を問い合わせるとき、終わるまで待たせる秒（口が受け付ける上限そのもの）。
             "job_wait_seconds": JOB_WAIT_MAX_SECONDS,
-            # 区間ごとに速度を変える条件の名前（走行モデルの並び）。所要時間の説明が差し込む。
-            "segment_speed_conditions": list(SEGMENT_SPEED_CONDITIONS),
+            # 利用者が入れる巡航速度の名前と、所要時間の見積もりが何を足したものかの文と、候補の並べ方の文。
+            "cruise_speed_label": CRUISE_SPEED_LABEL,
+            "duration_estimate_wording": DURATION_ESTIMATE_WORDING,
+            "candidate_order_wording": CANDIDATE_ORDER_WORDING,
             # 所要時間の計算が値の無い区間をどう数えるかの文。結果の「データの無い区間」の注記が差し込む。
             "missing_travel_data_wording": MISSING_TRAVEL_DATA_WORDING,
             # 地図のレンズ（総合と費用の軸ごと）の量の名前と単位と、凡例の目安の条件の文。レンズを述べる画面の文が差し込む。

@@ -2697,6 +2697,10 @@
           },
           "road_classes": {
             "$ref": "#/components/schemas/RoadClassCatalog"
+          },
+          "travel_model_wording": {
+            "type": "string",
+            "title": "Travel Model Wording"
           }
         },
         "additionalProperties": false,
@@ -2704,7 +2708,8 @@
         "required": [
           "client_tuning",
           "accident_years",
-          "road_classes"
+          "road_classes",
+          "travel_model_wording"
         ],
         "title": "ClientConfigResponse"
       },
@@ -2909,6 +2914,10 @@
           },
           "map_lens": {
             "$ref": "#/components/schemas/MapLens"
+          },
+          "turn_kickoff_wording": {
+            "type": "string",
+            "title": "Turn Kickoff Wording"
           }
         },
         "additionalProperties": false,
@@ -2916,7 +2925,8 @@
         "required": [
           "axes",
           "total_lens",
-          "map_lens"
+          "map_lens",
+          "turn_kickoff_wording"
         ],
         "title": "CostAxisCatalogResponse"
       },

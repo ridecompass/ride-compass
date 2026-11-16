@@ -108,8 +108,7 @@ description: "本番の元を取り直す・派生データを作り直す・本
 - VMを作り直したらやり直す。土地被覆のラスタ（`/home/ubuntu/ridecompass-raster`）も、新しいVMではこの初回が置く。
 - 登録（1回。VMにSSHで入って打つ。ユニットはデプロイが揃える作業コピーのものを`systemctl link`で指す）。初回を手で流し、成功で
   終わったのを見てから、timerを有効にする。1回は取得・取込・作り直しで3時間ほど（取得30分・取込1時間・作り直し1時間半ほど）かかり、
-  timerの時刻は、DBのバックアップ（毎日03:17（日本時間）から30分ほど）・VMの自動更新（毎日04:30。PostgreSQLを止める）・派生データベースの
-  書き出し（毎日04:40から10分ほど）のあとに置いてある。1回が延びて重なりそうなら、timerの`OnCalendar=`を変える:
+  timerの時刻は、DBのバックアップ（毎日03:17（日本時間）から30分ほど）・VMの自動更新（毎日04:30。PostgreSQLを止める）のあとに置いてある。1回が延びて重なりそうなら、timerの`OnCalendar=`を変える:
 
   ```
   sudo systemctl link /home/ubuntu/ridecompass-repo/backend/ops/ridecompass-source-refresh.service \

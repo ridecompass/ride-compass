@@ -30,6 +30,16 @@ from app.domain.road_network import MaterialFills
 from app.domain.tuning import checked_tuning_value, tuning_value
 
 
+#: 曲がる所の漕ぎ出しを数える体力の費目。
+_KICKOFF_ITEM: EffortItem = "inertia"
+
+
+def turn_kickoff_wording(definitions: CostAxisDefinitions) -> str:
+    """曲がる所の漕ぎ出しをどの軸の負担に入れるかを、利用者に言う文（軸の名前は定義の`label`）。"""
+    axis_id = next(axis_id for axis_id, item in EFFORT_AXES.items() if item == _KICKOFF_ITEM)
+    return f"曲がる所の漕ぎ出しは、{definitions.effort[axis_id].label}の負担に入れます"
+
+
 #: 体力の費目 → 走りの内訳のその費目の欄（`EFFORT_AXES`の費目と1対1）。
 _EFFORT_ITEM_J: dict[EffortItem, Callable[[SegmentRide], np.ndarray]] = {
     "gravity": lambda ride: ride.gravity_extra_j,
@@ -97,9 +107,11 @@ class LedgerCosts:
         #: 体力1J（重み付き）あたりの代償の秒。区間の体力と曲がる所の漕ぎ出しに同じ換算で掛ける。
         self._seconds_per_j = parameters.effective_strength * parameters.effort_alpha / flat_power_w
         #: 漕ぎ出しの費目（慣性）を持つ軸。無効ならNoneで、曲がる所の漕ぎ出しも数えない。
-        self._kickoff_axis_id = next((axis_id for axis_id, item in self._effort_axes.items() if item == "inertia"), None)
+        self._kickoff_axis_id = next(
+            (axis_id for axis_id, item in self._effort_axes.items() if item == _KICKOFF_ITEM), None)
         self._kickoff_seconds = (
-            0.0 if self._kickoff_axis_id is None else self._seconds_per_j * self._item_multipliers["inertia"] * kickoff_j)
+            0.0 if self._kickoff_axis_id is None
+            else self._seconds_per_j * self._item_multipliers[_KICKOFF_ITEM] * kickoff_j)
         #: 数える道のストレスの軸ごとの、区間ごとの代償の秒（時刻に依らない）。
         distance_km = np.asarray(distance_m, dtype=np.float64) / 1000.0
         self._burden_axis_seconds = {

@@ -93,7 +93,8 @@ describe("選んだ候補の中身", () => {
         ],
       }),
     });
-    expect(screen.getByRole("img", { name: "経由地 1（1.5km地点・09:20着）" })).toHaveTextContent("09:20着");
+    expect(screen.getByRole("img", { name: "経由地 1（1.5km地点・09:20着）" })).toBeInTheDocument();
+    expect(screen.getByText("09:20着")).toBeVisible();
   });
 
   it("候補の負担を出し、道のりのグラフの「グラフに積む負担」の一覧に軸の名前（費用の軸の一覧）の付いた内訳と事実を出す", async () => {

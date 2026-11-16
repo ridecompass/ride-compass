@@ -237,7 +237,7 @@ gh workflow run mutation.yml -R ridecompass/ride-compass --ref master -f ref=<�
   gh workflow run mutation-frontend.yml -R ridecompass/ride-compass --ref master -f ref=<測る版> -f issue=<記録する issue の番号>
   ```
 - **開発機では回さない**（mutmut 3.8.0 は Windows を断り、回せても1件あたり約9秒で、Actions の約1.1秒の8倍かかる）。
-- **測れない形**: 関数の外（モジュールの直下の表・定数・既定値）、`app/domain/routing.py`とログ・警告の行（`setup.cfg`で外している）、
+- **測れない形**: 関数の外（モジュールの直下の表・定数・既定値）、JITを持つ探索のファイル（`app/domain/routing.py`等）とログ・警告の行（`setup.cfg`で外している）、
   部分どうしのつなぎの食い違い（1つの関数の中の書き換えではないもの）。そこを確かめるテストは、変異を見つけないように
   見えても要らないとは言えない。
 

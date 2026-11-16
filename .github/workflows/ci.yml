@@ -248,7 +248,7 @@ jobs:
       # 残り、pytestのワーカーはそこから読む。しないと、ワーカーごとに最初のルート生成が同じコンパイルを約10秒ずつ払う。
       # どちらも1つのコアで走るので、並べて待ちを重ねる。
       - run: |
-          python -c "from app.domain.routing import compile_search_kernels; compile_search_kernels()" &
+          python -c "from app.domain.search_kernels import compile_search_kernels; compile_search_kernels()" &
           python -m mypy
           wait $!
       - if: github.event_name == 'push'

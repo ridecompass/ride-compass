@@ -60,7 +60,8 @@ from app.domain.route_search import (
     turnaround_separation,
 )
 from app.domain.leg_costs import LegCostArrays
-from app.domain.routing import NodeJunction, TurnExpandedTree, add_terminal_candidate, build_turn_expanded_tree
+from app.domain.routing import TurnExpandedTree, build_turn_expanded_tree
+from app.domain.tree_paths import NodeJunction, add_terminal_candidate
 from app.domain.geo import KM_PER_DEGREE_LATITUDE
 from app.domain.tuning import tuning_value
 from tests.search_graph_world import LINE_EDGES, LINE_NODES, build_all, make_graph, state_index

@@ -123,6 +123,35 @@ MAP_LAYER_CATEGORIES: tuple[LayerCategory, ...] = (
 #: 陰影は属性ではなく標高の別の描き方。源泉に属性として現れないのが正しい。
 _HILLSHADE_LAYER_ID = "hillshade"
 
+#: 派生データベースの値を作った元の出典（HTML）。地図の出典表記と、書き出しの README の両方がここから組む。
+ELEVATION_ATTRIBUTION = (
+    '<a href="https://maps.gsi.go.jp/development/ichiran.html" target="_blank" rel="noreferrer">'
+    "地理院タイル(標高タイル)</a>を加工して作成"
+)
+ACCIDENT_ATTRIBUTION = (
+    '<a href="https://www.npa.go.jp/publications/statistics/koutsuu/opendata/index_opendata.html" target="_blank" '
+    'rel="noreferrer">交通事故統計情報</a>[警察庁]を加工して作成'
+)
+#: CC BY 4.0 はライセンスへのリンクと、変えた旨を求める（3(a)(1)(B)(C)）。
+LANDCOVER_ATTRIBUTION = (
+    '土地被覆: <a href="https://livingatlas.arcgis.com/landcover/" target="_blank" rel="noreferrer">'
+    "Esri, Impact Observatory, Microsoft</a>"
+    ' (<a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noreferrer">CC BY 4.0</a>)を加工して作成'
+)
+#: JARTIC のオープンデータの利用規約の、加工した旨の記載例の形。
+TRAFFIC_REGULATION_ATTRIBUTION = (
+    '交通規制: 公益財団法人日本道路交通情報センター「<a href="https://www.jartic.or.jp/service/opendata/" '
+    'target="_blank" rel="noreferrer">交通規制情報</a>」を加工して作成'
+)
+#: 派生データベース（道ごとの値の書き出し）の値を作った元のうち、OSM 以外のもの。OSM の表示は ODbL の文と一緒に README が持つ。
+#: 材料の元を足したら、ここにも足す。
+DERIVED_DATABASE_ATTRIBUTIONS: tuple[str, ...] = (
+    ELEVATION_ATTRIBUTION,
+    ACCIDENT_ATTRIBUTION,
+    LANDCOVER_ATTRIBUTION,
+    TRAFFIC_REGULATION_ATTRIBUTION,
+)
+
 #: 地図へ常に出す出典（HTML）。路面の色・評価・ルートの計算・常設の表示（ヘッダーの天気・警戒度バッジ）へ常に使う
 #: データで、どのレイヤーを表示しているかと関係なく出典が要る（レイヤーのソースに付けると、そのレイヤーを消したとき
 #: 出典も消える）。公共データ利用規約（PDL1.0）とCC BY 4.0は出典とは別に加工した旨を求め、標高からは勾配を、事故の点から
@@ -130,15 +159,15 @@ _HILLSHADE_LAYER_ID = "hillshade"
 #: ズームから補い降水の色を塗り替えて、MSMの格子は地点・時刻へ補間して使っている。気象レイヤーの出典もここが持つ（気象庁のデータは常設の表示
 #: で常に使うため）。住所の区画は地点の検索で常に使う。地点（立ち寄り先と地点の検索の施設）は出典を1か所にまとめるためここに置く。基礎地図は配信元のTileJSONが出典を持つので
 #: 入れない（入れると2回並ぶ）。データ源を足したら、利用条件（docs/architecture/data-sources.md）と合わせてここも見る。
+#: 自分の口・静的ファイルへのリンクは`{名前}`の差し込み口で書く。パスはそれを配る口・ファイルが持ち、生成物を組むときに埋める。
 ALWAYS_SHOWN_ATTRIBUTIONS: tuple[str, ...] = (
     '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">'
     "OpenStreetMap contributors</a>",
-    # OSM の派生データベースは公に使う間、受け取った人へ渡せるようにする（ODbL 4.6）。リンクは画面と同じオリジンの相対パス。
-    '道ごとの値の<a href="/api/derived-database" target="_blank" rel="noreferrer">派生データベース</a>'
+    # OSM の派生データベースは公に使う間、受け取った人へ渡せるようにする（ODbL 4.6）。
+    '道ごとの値の<a href="{derived_database}" target="_blank" rel="noreferrer">派生データベース(ZIP)</a>'
     '(<a href="https://opendatacommons.org/licenses/odbl/1-0/" target="_blank" rel="noreferrer">ODbL 1.0</a>)',
-    '<a href="https://maps.gsi.go.jp/development/ichiran.html" target="_blank" rel="noreferrer">'
-    "地理院タイル(標高タイル)</a>を加工して作成",
-    "交通事故統計情報[警察庁]を加工して作成",
+    ELEVATION_ATTRIBUTION,
+    ACCIDENT_ATTRIBUTION,
     '<a href="https://www.jma.go.jp/" target="_blank" rel="noreferrer">気象庁ホームページ</a>'
     "(アメダス・警報・キキクル・ナウキャスト等)と気象庁"
     '「<a href="https://www.data.jma.go.jp/developer/gis.html" target="_blank" rel="noreferrer">'
@@ -147,11 +176,10 @@ ALWAYS_SHOWN_ATTRIBUTIONS: tuple[str, ...] = (
     '配布: <a href="https://open-meteo.com/" target="_blank" rel="noreferrer">Weather data by Open-Meteo.com</a>'
     ' (<a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noreferrer">CC BY 4.0</a>)',
     '暑さ指数: 出典 <a href="https://www.wbgt.env.go.jp/" target="_blank" rel="noreferrer">環境省熱中症予防情報サイト</a>',
-    '土地被覆: <a href="https://livingatlas.arcgis.com/landcover/" target="_blank" rel="noreferrer">'
-    "Esri, Impact Observatory, Microsoft</a> (CC BY 4.0)",
+    LANDCOVER_ATTRIBUTION,
     *ADDRESS_AREA_ATTRIBUTIONS,
     # Overture の地点は出どころごとに表示が要る（公式の文書 https://docs.overturemaps.org/attribution/ ）。
-    # Foursquare の行は Apache 2.0 で、ライセンスの写し・変えた旨・NOTICE の全文を渡す（frontend/public/licenses/）。
+    # Foursquare の行は Apache 2.0 で、ライセンスの写し・変えた旨・NOTICE の全文を渡す。
     '地点: <a href="https://overturemaps.org/" target="_blank" rel="noreferrer">Overture Maps Foundation</a>'
     "の名前のある地点を、種類で分け近くの同じ店をまとめて加工。"
     "Data from Meta, Microsoft, PinMeTo, DAC, Uberall, OpenTravel "
@@ -159,15 +187,13 @@ ALWAYS_SHOWN_ATTRIBUTIONS: tuple[str, ...] = (
     "AllThePlaces "
     '(<a href="https://creativecommons.org/publicdomain/zero/1.0/" target="_blank" rel="noreferrer">CC0 1.0</a>), '
     "Foursquare (Copyright 2024 Foursquare Labs, Inc. All rights reserved. Available under "
-    '<a href="/licenses/apache-2.0.txt" target="_blank" rel="noreferrer">Apache 2.0</a>. '
+    '<a href="{apache_license}" target="_blank" rel="noreferrer">Apache 2.0</a>. '
     "Foursquare data was transformed to the Overture schema. "
-    '<a href="/licenses/foursquare-places-NOTICE.txt" target="_blank" rel="noreferrer">NOTICE</a>)',
+    '<a href="{foursquare_notice}" target="_blank" rel="noreferrer">NOTICE</a>)',
     # ジャパンサーチのサイトポリシーの出典の記載例（編集・加工して使う場合）の形。
     '寺社: ジャパンサーチ「<a href="https://jpsearch.go.jp/database/bunka" target="_blank" rel="noreferrer">'
     "文化遺産オンライン[文化庁・国立情報学研究所]</a>」のメタデータを改変して利用[所有者で寺社ごとにまとめた]",
-    # JARTIC のオープンデータの利用規約の、加工した旨の記載例の形。
-    '交通規制: 公益財団法人日本道路交通情報センター「<a href="https://www.jartic.or.jp/service/opendata/" '
-    'target="_blank" rel="noreferrer">交通規制情報</a>」を加工して作成',
+    TRAFFIC_REGULATION_ATTRIBUTION,
 )
 
 
@@ -375,7 +401,7 @@ _LAYER_SPECS: dict[str, MapLayerSpec] = {
         description=(f"周囲の緑・水辺・農地を面で重ねる{f'[{_UNPAINTED_LANDCOVER}は塗らない]' if _UNPAINTED_LANDCOVER else ''}",),
         panel_hint=(
             "衛星画像から分類した10m四方ごとの土地の使われ方です。1区画に1種類だけが入るため、"
-            "ルートの結果の「緑と水」が使う「道路の周囲",
+            f"ルートの結果の「{PRIMARY_ATTRIBUTES_BY_ID['landcover'].label}」が使う「道路の周囲",
             LayerTextSlot("landcoverRingOuterM", after="m"),
             "の割合」とは違い、混ざらずそのまま見えます。"
             + (
