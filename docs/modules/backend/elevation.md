@@ -10,6 +10,7 @@
 | レイヤー | ファイル |
 |---|---|
 | domain | `attributes.py`（`attributes.py: elevation_values_sql`。区間の断面の点列から標高・勾配を出すSQLを組み立てる） |
+| infrastructure | `dem_elevation.py`（地点の標高を、取り込んだ標高タイルから製品の優先の順に引く。値の無い点だけを次の製品で引く） |
 | batch | `source_adapters/gsi_dem_tile.py`（取込と取得。取得はプロファイルが挙げた製品ごとに全タイルを置き場へ写し、取込は写したタイルを製品ごとに読んでint32へ詰める。取込は配信元を叩かない）・`dem_tile_store.py`（写したタイルの置き場と、その製品に無いことの印）・`source_adapters/raster_wkb.py`（画素の並びをPostGISの`raster`へ包む）・`derive_elevation.py`（派生） |
 
 ## 3段に分かれている
