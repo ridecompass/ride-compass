@@ -8,12 +8,13 @@ export const TURN_SHAPE_REACH_M = 30;
 /**
  * 曲がる所の絵の形。平面は交差点を原点にしたm（`y`は上が正）で、交差点へ入る向きを上へ回してある。
  * `before`は手前の端から交差点まで、`after`は交差点から先の端までのルートの線。`otherRoadsDeg`はほかの道が交差点から離れる向き
- * （上から時計回りの度）。
+ * （上から時計回りの度）。`upDeg`は上へ回した交差点へ入る向き（真北から時計回りの度）。
  */
 export interface TurnShape {
   before: PlanePoint[];
   after: PlanePoint[];
   otherRoadsDeg: number[];
+  upDeg: number;
 }
 
 /**
@@ -28,7 +29,7 @@ export function turnShape(
   const before = trackBetween(track, alongKm - reachKm, alongKm);
   const after = trackBetween(track, alongKm, alongKm + reachKm);
   const crossing = before.at(-1) ?? after[0];
-  if (crossing === undefined) return { before: [], after: [], otherRoadsDeg: [] };
+  if (crossing === undefined) return { before: [], after: [], otherRoadsDeg: [], upDeg: 0 };
   const far = before[0];
   const upDeg = far === undefined || (far[0] === crossing[0] && far[1] === crossing[1]) ? 0 : bearingDeg(far, crossing);
   const xScale = longitudeScale(crossing[1]) * METERS_PER_DEGREE;
@@ -43,5 +44,6 @@ export function turnShape(
     before: before.map(toPlane),
     after: after.map(toPlane),
     otherRoadsDeg: otherRoadBearingsDeg.map((bearing) => normalizeDeg(bearing - upDeg)),
+    upDeg,
   };
 }

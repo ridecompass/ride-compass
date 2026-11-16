@@ -27,7 +27,8 @@ function createTurnMark(): HTMLDivElement {
 
 /**
  * 走行中、次に曲がる所`turn`の地点に、曲がる所の絵（カードと同じ絵）の札を出す。無ければ出さない。
- * 絵は画面に対して立てて描き、地図の回転には合わせない（カードと同じ向きで読む）。返す中身は地図の部品が描く。
+ * 札は交差点へ入る向きの分だけ回して地図の面に合わせ、札の中の道が真下の地図の道と同じ向きに並ぶ（地図を回すとMapLibreが札を一緒に回す）。
+ * 傾けた地図でも札は画面に立てる。返す中身は地図の部品が描く。
  */
 export function useTurnMark(mapRef: RefObject<MapLibreMap | null>, turn: TurnMarkPoint | null): ReactNode {
   const markRef = useRef<Marker | null>(null);
@@ -36,6 +37,7 @@ export function useTurnMark(mapRef: RefObject<MapLibreMap | null>, turn: TurnMar
   const longitude = turn?.longitude ?? null;
   const direction = turn?.direction ?? null;
   const shape = turn?.shape ?? null;
+  const upDeg = shape?.upDeg ?? 0;
   useEffect(() => {
     const map = mapRef.current;
     if (map === null || latitude === null || longitude === null) {
@@ -46,11 +48,15 @@ export function useTurnMark(mapRef: RefObject<MapLibreMap | null>, turn: TurnMar
     }
     if (markRef.current === null) {
       const created = createTurnMark();
-      markRef.current = new maplibregl.Marker({ element: created });
+      markRef.current = new maplibregl.Marker({
+        element: created,
+        rotationAlignment: "map",
+        pitchAlignment: "viewport",
+      });
       setElement(created);
     }
-    markRef.current.setLngLat([longitude, latitude]).addTo(map);
-  }, [mapRef, latitude, longitude]);
+    markRef.current.setLngLat([longitude, latitude]).setRotation(upDeg).addTo(map);
+  }, [mapRef, latitude, longitude, upDeg]);
   useEffect(
     () => () => {
       markRef.current?.remove();
