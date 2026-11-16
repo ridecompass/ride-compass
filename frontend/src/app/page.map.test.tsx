@@ -136,6 +136,7 @@ describe("地図で扱えること", () => {
           [139.71, 35.7],
         ],
       },
+      point_distances_m: [0, 500, 1000],
     });
     const { user } = renderHome();
     jobs.respond([route("curved", { segments: [curved], geometry: curved.geometry! })], LOOP_CONDITIONS);

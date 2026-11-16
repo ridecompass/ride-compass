@@ -873,9 +873,8 @@ async def test_a_turn_lists_the_other_roads_of_its_crossing_by_the_direction_the
 
 
 async def test_a_segment_and_a_turn_sit_where_the_line_points_say(engine_over):
-    """区間の始まりの道のり（`cumulative_distance_km`）と曲がる所の道のりは、その地点の線の点の道のり（`point_distances_m`）に
-    載る——別の物差しだと、同じ地点の距離が「km地点」・道のりのグラフ・曲がる所までの残りで食い違う。格子の1辺は区間の
-    まとめる幅より長いので、区間は辺ごとに分かれ、曲がる所は線のどれかの点に来る。線の終わりの道のりは経路の全長になる。"""
+    """曲がる所の道のりは、その地点の線の点の道のり（`point_distances_m`）に載る——別の物差しだと、同じ地点の距離が
+    「km地点」・道のりのグラフ・曲がる所までの残りで食い違う。格子の1辺は区間のまとめる幅より長いので、区間は辺ごとに分かれ、曲がる所は線のどれかの点に来る。線の終わりの道のりは経路の全長になる。"""
     generator = engine_over(grid_network())
 
     candidates = (await generator.generate_via_waypoints(
@@ -885,8 +884,6 @@ async def test_a_segment_and_a_turn_sit_where_the_line_points_say(engine_over):
     for candidate in candidates:
         distances = candidate.point_distances_m
         assert len(distances) == len(candidate.geometry["coordinates"])
-        assert [segment.cumulative_distance_km for segment in candidate.segments] == pytest.approx(
-            [segment.point_distances_m[0] / 1000 for segment in candidate.segments])
         assert distances[-1] / 1000 == pytest.approx(candidate.distance_km, abs=0.02)
         point_at = {tuple(point[:2]): i for i, point in enumerate(candidate.geometry["coordinates"])}
         for turn in candidate.turns:
@@ -905,7 +902,7 @@ async def test_the_distance_along_the_route_is_the_length_of_the_roads_behind(en
 
     beyond = next(s for s in candidate.segments if (s.start_latitude, s.start_longitude) == pytest.approx(far))
     road_km = haversine_distance_km(Coordinates(latitude=start[0], longitude=start[1]), Coordinates(latitude=far[0], longitude=far[1]))
-    assert beyond.cumulative_distance_km == pytest.approx(road_km, abs=0.005)
+    assert beyond.point_distances_m[0] / 1000 == pytest.approx(road_km, abs=0.005)
 
 
 async def test_each_segment_line_carries_the_elevation_of_its_road_in_the_direction_ridden(engine_over):

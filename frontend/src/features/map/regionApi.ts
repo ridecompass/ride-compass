@@ -33,8 +33,8 @@ export const ROAD_SURFACE_TILE_MIN_ZOOM = regionTileConfig.road_surface_tile_min
 export const ROAD_TILE_MIN_ZOOM = regionTileConfig.road_tile_min_zoom;
 export const ROAD_TILE_MAX_ZOOM = regionTileConfig.road_tile_max_zoom;
 
-/** 地図が今指定している走行の条件。専用way値配信軸（風・勾配）が地図を塗るのに使うものと
- * 同じ値で、これを送らないと**1本の道が往復2方向で違う値を持つ**軸を算出できない。 */
+/** 地図が今指定している走行の条件。風・勾配のレンズが地図を塗るのに使うものと同じ値で、
+ * これを送らないと**1本の道が往復2方向で違う値を持つ**軸を算出できない。 */
 export interface RideConditions {
   bearingDeg: number;
   at: Date;

@@ -208,8 +208,7 @@ async def test_a_route_with_a_destination_or_waypoints_ends_where_it_should_with
 
     assert 1 <= len(result["routes"]) <= 2
     assert result["conditions"]["max_routes"] == 2
-    # 全長の目標が無ければ、許容も置かない
-    assert result["conditions"]["distance_km"] is None and result["conditions"]["distance_tolerance_km"] is None
+    assert result["conditions"]["distance_km"] is None
     assert all(_ends(route) == (node_key(SOUTH_WEST), node_key(end)) for route in result["routes"])
 
 
@@ -293,15 +292,13 @@ async def test_a_distance_with_placed_points_is_the_length_of_the_whole_route(cl
 
 
 async def test_the_defaults_that_were_applied_are_echoed(client):
-    """画面が見る値と探索が使った値を分けない。省略した項目も、実際に使った値で返す。許容は目標距離に割合の較正値を掛けた長さで返す。"""
+    """画面が見る値と探索が使った値を分けない。省略した項目も、実際に使った値で返す。"""
     conditions = (await _generate(client))["result"]["conditions"]
 
     assert conditions["cost_preference"] == {
         "strength": 1.0, "multipliers": dict.fromkeys(EFFORT_AXES, 1.0), "disabled_axes": []}
     assert conditions["waypoints"] is None and conditions["destination"] is None
     assert conditions["corrected_destination"] is None
-    assert conditions["distance_tolerance_km"] == pytest.approx(
-        conditions["distance_km"] * tuning_value("search.distance_tolerance_ratio"))
 
 
 async def test_the_overrides_that_were_sent_are_echoed(client, bad_axis):

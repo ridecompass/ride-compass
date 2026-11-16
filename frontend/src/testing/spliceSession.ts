@@ -68,7 +68,6 @@ const CONDITIONS = makeGenerationConditions({
   start_time: BASIS.startTime.toISOString(),
   assumed_speed_kmh: BASIS.assumedSpeedKmh,
   destination: BASIS.destination,
-  generated_at: "2026-10-04T09:00:30Z",
 });
 
 export type SpliceProps = Pick<

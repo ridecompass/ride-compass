@@ -44,7 +44,7 @@ RETRY = "距離や「道路」の設定を変えてお試しください。"
 def _segment() -> RouteSegmentDetail:
     return RouteSegmentDetail(
         start_latitude=0.0, start_longitude=0.0, end_latitude=0.0, end_longitude=0.0,
-        cumulative_distance_km=0.0, distance_km=1.0, edge_start=0, edge_end=1,
+        distance_km=1.0,
         road_classes={}, penalty=PenaltyBreakdown(axis_seconds={}, preferred_seconds=0.0, avoided_seconds=0.0),
     )
 

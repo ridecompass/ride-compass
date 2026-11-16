@@ -172,9 +172,11 @@ describe("状態を地図へ伝えた結果", () => {
   });
 
   describe("ルート", () => {
-    // 北緯35.6度の上を東へ進む、長さ1kmの区間を2つつないだルート。
+    // 北緯35.6度の上を東へ進む、長さ1kmの区間を2つつないだルート。経度0.01度を1kmの道のりと置く。
+    const alongM = (longitude: number) => Math.round((longitude - 139.7) * 100_000);
     const segment = (from: number, to: number) => ({
       distance_km: 1,
+      point_distances_m: [alongM(from), alongM(to)],
       ...penaltyFields({}, 1),
       start_longitude: from,
       start_latitude: 35.6,

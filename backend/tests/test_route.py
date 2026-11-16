@@ -22,18 +22,16 @@ WIDTH = route.SEGMENT_BIN_DISTANCE_KM
 def _segments(distances: list[float], **fields_per_segment) -> list[EdgeSegment]:
     """東へ一直線に連なる区間。`fields_per_segment`は名前 → 区間ごとの値の並び。"""
     segments = []
-    cumulative = 0.0
     for i, distance in enumerate(distances):
         segments.append(EdgeSegment(
             start_latitude=35.0, start_longitude=139.0 + i * 0.01,
             end_latitude=35.0, end_longitude=139.0 + (i + 1) * 0.01,
-            cumulative_distance_km=cumulative, distance_km=distance, edge_index=i,
+            distance_km=distance,
             **({"geometry": None, "point_distances_m": None, "sustained_gradient_percent": None,
                 "average_gradient_percent": None, "estimated_arrival_time": "2026-09-22T08:10:00+09:00",
                 "axis_seconds": {}, "preferred_seconds": 0.0, "avoided_seconds": 0.0, "road_classes": {}}
                | {name: values[i] for name, values in fields_per_segment.items()}),
         ))
-        cumulative += distance
     return segments
 
 
@@ -58,14 +56,10 @@ def test_bins_cover_the_route_without_gaps_or_overlaps(distances):
     assert sum(b.distance_km for b in bins) == pytest.approx(sum(distances), abs=0.005 * len(bins))
     # 最後のビンのほかは幅に届いている。
     assert all(b.distance_km >= WIDTH for b in bins[:-1])
-    # ビンは途切れずに連なり、最初と最後は経路の両端。区間の鍵の範囲も同じに連なる（ビンの近くの点を引く鍵になる）。
+    # ビンは途切れずに連なり、最初と最後は経路の両端。
     assert (bins[0].start_longitude, bins[-1].end_longitude) == (segments[0].start_longitude, segments[-1].end_longitude)
-    assert (bins[0].edge_start, bins[-1].edge_end) == (0, len(segments))
     for before, after in zip(bins, bins[1:]):
         assert (before.end_latitude, before.end_longitude) == (after.start_latitude, after.start_longitude)
-        assert before.edge_end == after.edge_start
-        assert after.cumulative_distance_km == pytest.approx(
-            before.cumulative_distance_km + before.distance_km, abs=0.006)
 
 
 @pytest.mark.parametrize(

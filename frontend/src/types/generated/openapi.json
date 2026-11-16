@@ -3329,17 +3329,6 @@
             ],
             "title": "Distance Km"
           },
-          "distance_tolerance_km": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Distance Tolerance Km"
-          },
           "cost_preference": {
             "$ref": "#/components/schemas/CostPreference-Output"
           },
@@ -3392,10 +3381,6 @@
                 "type": "null"
               }
             ]
-          },
-          "generated_at": {
-            "type": "string",
-            "title": "Generated At"
           }
         },
         "additionalProperties": false,
@@ -3404,7 +3389,6 @@
           "latitude",
           "longitude",
           "distance_km",
-          "distance_tolerance_km",
           "cost_preference",
           "road_avoidance",
           "max_routes",
@@ -3412,8 +3396,7 @@
           "assumed_speed_kmh",
           "waypoints",
           "destination",
-          "corrected_destination",
-          "generated_at"
+          "corrected_destination"
         ],
         "title": "GenerationConditions"
       },
@@ -6023,21 +6006,9 @@
             "type": "number",
             "title": "End Longitude"
           },
-          "cumulative_distance_km": {
-            "type": "number",
-            "title": "Cumulative Distance Km"
-          },
           "distance_km": {
             "type": "number",
             "title": "Distance Km"
-          },
-          "edge_start": {
-            "type": "integer",
-            "title": "Edge Start"
-          },
-          "edge_end": {
-            "type": "integer",
-            "title": "Edge End"
           },
           "sustained_gradient_percent": {
             "anyOf": [
@@ -6110,10 +6081,7 @@
           "start_longitude",
           "end_latitude",
           "end_longitude",
-          "cumulative_distance_km",
           "distance_km",
-          "edge_start",
-          "edge_end",
           "sustained_gradient_percent",
           "average_gradient_percent",
           "estimated_arrival_time",

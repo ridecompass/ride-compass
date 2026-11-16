@@ -6,7 +6,7 @@ from typing import Annotated, Literal
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import Field, PrivateAttr, RootModel, field_validator, model_validator
 
-from app.domain.time_zone import JST, as_jst
+from app.domain.time_zone import as_jst
 from app.api.dependencies import (
     RouteGenerationSetupOpener,
     get_generation_slots,
@@ -146,8 +146,6 @@ class GenerationConditions(StrictModel):
     longitude: float
     # 全長の目標距離（無ければNone）。
     distance_km: float | None
-    # 使った目標距離からの許容差（km。目標に対する割合の較正値から決めた長さ）。全長の目標が無ければNone。
-    distance_tolerance_km: float | None
     cost_preference: CostPreference
     # 道の区分ごとの避け方（実際に適用された値）。
     road_avoidance: RoadAvoidanceOverride
@@ -165,8 +163,6 @@ class GenerationConditions(StrictModel):
     # 一方通行の袋等）ため、出て戻れる最寄りNodeへ寄せ直して探索した場合の座標。寄せ直さなかった
     # （`destination`をそのまま使えた）場合はNone。
     corrected_destination: Coordinates | None
-    # ISO8601（JST）。周回の風評価は生成時刻に依存するため、厳密な再現はできない点に注意
-    generated_at: str
 
 
 class RouteGenerateResponse(StrictModel):
@@ -303,7 +299,6 @@ async def _run_generate_job(
                 latitude=request.latitude,
                 longitude=request.longitude,
                 distance_km=target.distance_km if isinstance(target, DistanceTarget) else None,
-                distance_tolerance_km=generated.distance_tolerance_km,
                 cost_preference=applied.cost_preference,
                 road_avoidance=RoadAvoidanceOverride(dict(applied.road_avoidance)),
                 max_routes=generated.max_routes,
@@ -312,7 +307,6 @@ async def _run_generate_job(
                 waypoints=request.waypoints,
                 destination=request.destination,
                 corrected_destination=generated.corrected_destination,
-                generated_at=datetime.now(JST).isoformat(),
             ),
         )
         job_registry.set_done(job_id, response)

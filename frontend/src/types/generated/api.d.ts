@@ -1008,8 +1008,6 @@ export interface components {
             longitude: number;
             /** Distance Km */
             distance_km: number | null;
-            /** Distance Tolerance Km */
-            distance_tolerance_km: number | null;
             cost_preference: components["schemas"]["CostPreference-Output"];
             road_avoidance: components["schemas"]["RoadAvoidanceOverride"];
             /** Max Routes */
@@ -1025,8 +1023,6 @@ export interface components {
             waypoints: components["schemas"]["Coordinates"][] | null;
             destination: components["schemas"]["Coordinates"] | null;
             corrected_destination: components["schemas"]["Coordinates"] | null;
-            /** Generated At */
-            generated_at: string;
         };
         /** GridPointToday */
         GridPointToday: {
@@ -1808,14 +1804,8 @@ export interface components {
             end_latitude: number;
             /** End Longitude */
             end_longitude: number;
-            /** Cumulative Distance Km */
-            cumulative_distance_km: number;
             /** Distance Km */
             distance_km: number;
-            /** Edge Start */
-            edge_start: number;
-            /** Edge End */
-            edge_end: number;
             /** Sustained Gradient Percent */
             sustained_gradient_percent: number | null;
             /** Average Gradient Percent */

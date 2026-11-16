@@ -25,11 +25,11 @@ const DEPARTED_AT = Date.parse("2026-10-13T00:00:00Z");
 function makeSegment(index: number, coordinates: [number, number][], secondsEach: number) {
   return makeRouteSegment({
     geometry: { type: "LineString", coordinates },
+    point_distances_m: [index * 10_000, (index + 1) * 10_000],
     start_latitude: coordinates[0][1],
     start_longitude: coordinates[0][0],
     end_latitude: coordinates[coordinates.length - 1][1],
     end_longitude: coordinates[coordinates.length - 1][0],
-    cumulative_distance_km: index * 10,
     distance_km: 10,
     ...penaltyFields({ ascent: 20 + index * 30 }, 10),
     estimated_arrival_time: new Date(DEPARTED_AT + index * secondsEach * 1000).toISOString(),
@@ -99,11 +99,9 @@ export function routeGenerateResponseFixture(): DoneJob["result"] {
       latitude: 35.7597,
       longitude: 139.7387,
       distance_km: 20,
-      distance_tolerance_km: 5,
       max_routes: 8,
       assumed_speed_kmh: 20,
       start_time: "2026-09-05T09:30:00+09:00",
-      generated_at: new Date().toISOString(),
     }),
   };
 }
