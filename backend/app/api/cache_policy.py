@@ -21,7 +21,6 @@ from starlette.datastructures import MutableHeaders
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from app.api.admin_paths import ADMIN_PATH_PREFIX
-from app.api.routers.derived_database import DERIVED_DATABASE_PATH
 from app.infrastructure import jma_tile_redis_cache
 
 
@@ -138,7 +137,7 @@ ROUTE_POLICIES: Final[tuple[tuple[str, CachePolicy], ...]] = (
     # 地図の点の名前から開くリンク（URLに名前と緯度経度を含むため点ごとに別エントリになる）
     ("/api/place-link", MASTER_LOOKUP),
     # 派生データベースの書き出し（同じURLのまま、作り直した世代へ置き換わる）
-    (DERIVED_DATABASE_PATH, MASTER_LOOKUP),
+    ("/api/derived-database", MASTER_LOOKUP),
     # ルート生成（POSTはそもそもキャッシュされないが、進捗のGETは明示的に禁じる）
     ("/api/routes/", NO_STORE),
     ("/api/region/road-inspector", NO_STORE),
