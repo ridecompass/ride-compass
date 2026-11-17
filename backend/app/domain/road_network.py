@@ -13,8 +13,9 @@
 """
 
 from collections.abc import Iterable, Iterator, Mapping
-from dataclasses import dataclass, fields
+import logging
 import threading
+from dataclasses import dataclass, fields
 from functools import cached_property
 
 import numpy as np
@@ -31,11 +32,14 @@ from app.domain.material_catalog import GRADIENT_PERCENT
 from app.domain.msm import MsmGrid
 from app.domain.region import ROAD_TILE_MIN_ZOOM, tile_bounds_lonlat
 from app.domain.road_classes import RoadClassDefinitions, class_columns, layer_columns
+from app.domain.stopwatch import elapsed_ms, start_timer
 from app.domain.wind_height import ROUGHNESS_LENGTH_M, WindHeights, height_factors
 
 #: 風の高さの倍率（`RoadNetwork.wind_height_factors`）を求める計算を1本に並べる。全区間の計算は重く、道路網を入れ替えた直後に
 #: 同時に来た要求（地図のタイル・生成）が、同じ計算を並べて走らせないようにする。
 _WIND_HEIGHTS_LOCK = threading.Lock()
+
+logger = logging.getLogger("ridecompass.graph")
 
 
 @dataclass(frozen=True, eq=False)
@@ -171,7 +175,9 @@ class RoadNetwork:
                 fills = MaterialFills(numeric_means=self.numeric_means, class_shares={})
                 percent = {field: fills.fill(field, self.numeric_values[:, self.numeric_ids.index(field)])
                            for field in ROUGHNESS_LENGTH_M}
+                started = start_timer()
                 cached = (grid, height_factors(percent, self.distance_m, self.mid_lat, self.mid_lon, grid))
+                logger.info("wind_height_factors edges=%d ms=%d", self.edge_count, elapsed_ms(started))
                 self.__dict__["_wind_heights"] = cached
             return cached[1]
 
