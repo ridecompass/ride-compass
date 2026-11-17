@@ -15,6 +15,7 @@ from app.domain.hard_filters import compute_search_exclusion
 from app.domain.material_catalog import GRADIENT_PERCENT
 from app.domain.road_classes import EMPTY_ROAD_CLASSES, class_material_id
 from app.domain.road_avoidance import level_multipliers
+from app.domain.wind_height import WindHeights
 from tests.profile_fixture import grade_profiles
 
 
@@ -26,6 +27,7 @@ def edge(facts: dict[str, str] | None = None) -> EdgeMaterialColumns:
         columns={GRADIENT_PERCENT: np.zeros(1), **{m: CategoricalColumn.encode([v]) for m, v in facts.items()}},
         distance_m=np.full(1, 100.0), bearing_deg=nan, mid_lat=nan, mid_lon=nan,
         elevation_profiles=grade_profiles(np.zeros(1), np.full(1, 100.0)),
+        wind_heights=WindHeights(lambda _grid: np.ones((1, 2)), np.zeros(1, dtype=np.int64)),
     )
 
 

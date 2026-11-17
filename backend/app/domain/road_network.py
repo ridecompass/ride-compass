@@ -13,6 +13,8 @@
 """
 
 from collections.abc import Iterable, Iterator, Mapping
+import logging
+import threading
 from dataclasses import dataclass, fields
 from functools import cached_property
 
@@ -27,8 +29,17 @@ from app.domain.attributes import (
 from app.domain.elevation_profile import ElevationProfiles, GradeDistribution
 from app.domain.geo import LatLonPoint
 from app.domain.material_catalog import GRADIENT_PERCENT
+from app.domain.msm import MsmGrid
 from app.domain.region import ROAD_TILE_MIN_ZOOM, tile_bounds_lonlat
 from app.domain.road_classes import RoadClassDefinitions, class_columns, layer_columns
+from app.domain.stopwatch import elapsed_ms, start_timer
+from app.domain.wind_height import ROUGHNESS_LENGTH_M, WindHeights, height_factors
+
+#: 風の高さの倍率（`RoadNetwork.wind_height_factors`）を求める計算を1本に並べる。全区間の計算は重く、道路網を入れ替えた直後に
+#: 同時に来た要求（地図のタイル・生成）が、同じ計算を並べて走らせないようにする。
+_WIND_HEIGHTS_LOCK = threading.Lock()
+
+logger = logging.getLogger("ridecompass.graph")
 
 
 @dataclass(frozen=True, eq=False)
@@ -153,6 +164,22 @@ class RoadNetwork:
             means[material_id] = float((values[known] * distance).sum()) / total if total > 0 else np.nan
         return means
 
+    def wind_height_factors(self, grid: MsmGrid) -> np.ndarray:
+        """全区間の、予報の10mの風を乗り手の高さへ直す倍率（`domain/wind_height.py: height_factors`）。土地被覆の割合の欠けは、
+        ほかの数値の材料と同じく取込範囲全体の平均で埋める（`MaterialFills`）。格子の側の粗度が全区間から決まるので、格子ごとに
+        1回だけ求め、最後の格子の分を道路網と同じ寿命で持つ。"""
+        with _WIND_HEIGHTS_LOCK:
+            # 凍った型なので、`cached_property`と同じくインスタンスの辞書へ直に持つ。
+            cached = self.__dict__.get("_wind_heights")
+            if cached is None or cached[0] != grid:
+                fills = MaterialFills(numeric_means=self.numeric_means, class_shares={})
+                percent = {field: fills.fill(field, self.numeric_values[:, self.numeric_ids.index(field)])
+                           for field in ROUGHNESS_LENGTH_M}
+                started = start_timer()
+                cached = (grid, height_factors(percent, self.distance_m, self.mid_lat, self.mid_lon, grid))
+                logger.info("wind_height_factors edges=%d ms=%d", self.edge_count, elapsed_ms(started))
+                self.__dict__["_wind_heights"] = cached
+            return cached[1]
 
 
 @dataclass(frozen=True, eq=False)
@@ -391,6 +418,7 @@ def material_arrays_of(road: RoadSlice) -> EdgeMaterialColumns:
         mid_lat=np.asarray(network.mid_lat[rows]),
         mid_lon=np.asarray(network.mid_lon[rows]),
         elevation_profiles=network.elevation_profiles.take(rows),
+        wind_heights=WindHeights(network.wind_height_factors, rows),
     )
 
 

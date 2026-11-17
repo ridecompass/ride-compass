@@ -32,6 +32,7 @@ from app.domain.road_avoidance import RoadAvoidanceMasks
 from app.domain.road_classes import EMPTY_ROAD_CLASSES
 from app.domain.cycling_speed import STANDARD_TEMPERATURE_C
 from app.domain.wind import WindForecastSeries
+from app.domain.wind_height import WindHeights
 from tests.cost_axes_fixture import cost_axes
 from tests.profile_fixture import grade_profiles, profiles
 from tests.tuning_fixture import TUNED
@@ -67,6 +68,8 @@ def _matrix(n: int, *, distance=1000.0, gradient=0.0, bearing=NORTH, surface="pa
         categorical_material_ids=list(categories),
         categorical_material_columns=[CategoricalColumn.encode(v) for v in categories.values()],
         elevation_profiles=grade_profiles(_column(gradient, n), _column(distance, n)),
+        # 予報の風をそのまま乗り手の風として解く（高さの換算は`test_wind_height.py`）。
+        wind_heights=WindHeights(lambda _grid: np.ones((n, 2)), np.arange(n)),
     )
 
 

@@ -1,6 +1,7 @@
 import math
 from dataclasses import dataclass
 from datetime import datetime
+from functools import cached_property
 
 import numpy as np
 from numba import njit
@@ -116,6 +117,11 @@ class WindForecastSeries:
         同じ添字の時刻は、どの格子点でも同じ風と気温を引く。"""
         index, _clamped = self._sample_index(start, np.asarray(passage_hours))
         return index if index.ndim else int(index)
+
+    @cached_property
+    def day_of_year(self) -> np.ndarray:
+        """`times`の時刻ごとの通日（1月1日が1）。"""
+        return np.array([time.timetuple().tm_yday for time in self.times], dtype=np.int64)
 
     def sample_at(self, index: int | np.ndarray, points: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         """予報の時刻の添字`index`（`time_index`。数なら全格子点が同じ時刻、配列なら`points`と同じ並び）の（風速, 風向, 気温）
