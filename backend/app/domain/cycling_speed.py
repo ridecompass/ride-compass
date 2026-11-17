@@ -31,6 +31,7 @@ from app.domain.search_graph import kernel_array
 from app.domain.traffic import stop_count_material_ids
 from app.domain.tuning import BASE_CRR_ID, Tuning, require_tuning
 from app.domain.wind import drag_increases_m2_s2, kmh_to_ms
+from app.domain.wind_height import FORECAST_HEIGHT_M, RIDER_HEIGHT_M
 
 _GRAVITY_M_S2 = 9.80665
 
@@ -74,6 +75,7 @@ def travel_model_wording(tuning: Tuning) -> str:
     return (
         f"所要時間は、平地・無風[気温{STANDARD_TEMPERATURE_C:g}℃・海面の空気]をこの速度で走る力を求め、区間ごとの{'・'.join(SEGMENT_SPEED_CONDITIONS)}に合わせて"
         "速度を変えて計算します。"
+        f"風は、予報の地上{FORECAST_HEIGHT_M:g}mの風を、道の周りの土地被覆から乗り手の高さ[{RIDER_HEIGHT_M:g}m]の風へ直して使います。"
         f"体格と機材は標準の値で計算します。総質量は{tuning.value('speed.mass_kg'):g}kg[体重・車体・装備の合計]、"
         f"空気抵抗CdAは{tuning.value('speed.cda_m2'):g}m²[ロードバイクでブラケットを握る姿勢]です。"
         f"下りは{tuning.value('speed.max_descent_kmh'):g}km/hまで[想定速度のほうが速ければ想定速度まで]出し、"

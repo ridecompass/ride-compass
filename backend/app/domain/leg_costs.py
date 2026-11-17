@@ -340,10 +340,12 @@ class LegCostComposer:
         lazy_row_index: np.ndarray,
         detour_ratio: float,
         material_fills: MaterialFills,
+        wind_height_factors: np.ndarray,
         settings: ModelSettings,
         parameters: LedgerParameters,
     ) -> None:
-        """`material_fills`は取込の範囲全体の材料の分布（欠けた材料を埋める）。費用は費目の帳簿の式（`domain/ledger_costs.py`）
+        """`material_fills`は取込の範囲全体の材料の分布（欠けた材料を埋める）、`wind_height_factors`は予報の10mの風を乗り手の
+        高さへ直す倍率（`domain/wind_height.py: height_factors`の、切り出した区間の順の行）。費用は費目の帳簿の式（`domain/ledger_costs.py`）
         で、`settings`の費用の軸と`parameters`の強さで組む。"""
         self._search_materials = search_materials
         self._material_fills = material_fills
@@ -363,6 +365,10 @@ class LegCostComposer:
         self._wind_series = wind_series
         # 各Edgeの中点に最も近い予報の格子点（切り出した区間の順。格子点の並びの外の中点は端の格子点へ寄せる）。
         self._wind_points = wind_series.lattice.points_of(search_materials.mid_lat, search_materials.mid_lon)
+        if np.shape(wind_height_factors) != (len(search_materials.distance_m), 2):
+            raise ValueError(f"風の高さの倍率の形が区間と揃っていません 区間={len(search_materials.distance_m)} "
+                             f"倍率={np.shape(wind_height_factors)}")
+        self._wind_height_factors = wind_height_factors
         self.start = start
         self.speed_kmh = speed_kmh
         self._lazy_row_index = lazy_row_index
@@ -500,6 +506,7 @@ class LegCostComposer:
         return WindContext(
             bearing_deg=take(self._search_materials.bearing_deg), wind_series=self._wind_series,
             forecast_index=time.forecast, wind_points=take(self._wind_points),
+            height_factors=take(self._wind_height_factors),
         )
 
     def values_at_rows(self, rows: np.ndarray, time: BinTime) -> LegValues:

@@ -11,11 +11,13 @@ from dataclasses import replace
 from datetime import datetime, timedelta
 from functools import partial
 
+import numpy as np
 import pytest
 
 from app.domain.cost_axes import EFFORT_AXES
 from app.domain.geo import bearing_between, haversine_distance_km
 from app.domain.gradient import GRADIENT_VALUE_DECIMALS
+from app.domain.landcover import LANDCOVER_CLASSES
 from app.domain.material_catalog import MATERIAL_CATALOG
 from app.domain.road_classes import TRUE_FACT_VALUE, AvoidanceClassification
 from app.domain.route import AxisFact, Coordinates
@@ -27,11 +29,13 @@ from tests.route_world import (
     BASE_LAT,
     BASE_LON,
     CALM,
+    CENTER,
     COORDINATES,
     DEPARTURE,
     HIGHWAY,
     LAT_STEP,
     LON_STEP,
+    NODE_OF,
     NORTH_EAST,
     SOUTH_EAST,
     SOUTH_WEST,
@@ -65,6 +69,27 @@ async def test_a_route_ridden_on_the_wind_of_a_previous_run_is_marked(engine_ove
 
     assert candidates
     assert {candidate.wind_previous_run_from for candidate in candidates} == {latest_run_end if expected else None}
+
+
+async def test_the_route_rides_the_forecast_wind_lowered_to_the_rider_by_the_roughness_around_the_road(engine_over):
+    """予報は地上10mの風で、乗り手の高さ（1m）では道の周りが粗いほど弱い。北へ1km走る道の向かい風の事実は、予報の北風6m/sに
+    周りの土地被覆の粗度長の対数則の倍率（森0.23・水辺0.80）を掛けた値で、同じ道・同じ予報でも森の中のほうが速く着く。"""
+    wind = replace(CALM, speed_ms=np.full_like(CALM.speed_ms, 6.0))
+
+    async def ride_north(cover: str):
+        landcover = {cls.percent_field: 100.0 if cls.percent_field == cover else 0.0 for cls in LANDCOVER_CLASSES}
+        network = grid_network(landcover_of=dict.fromkeys(WAYS, landcover))
+        candidates = (await engine_over(network, wind=wind).generate_via_waypoints(
+            at(NODE_OF[0, 1]), [], destination=at(CENTER), max_routes=1, start_time=DEPARTURE)).candidates
+        fastest = fastest_of(candidates)
+        assert ways_of(fastest) == [201]
+        return fastest
+
+    forest, waterside = await ride_north("trees_percent"), await ride_north("water_percent")
+
+    assert forest.facts.axes["headwind"].value == pytest.approx(6.0 * 0.23, abs=0.06)
+    assert waterside.facts.axes["headwind"].value == pytest.approx(6.0 * 0.80, abs=0.06)
+    assert forest.estimated_duration_seconds < waterside.estimated_duration_seconds
 
 
 async def test_segment_arrival_times_run_from_the_departure_within_the_duration(engine_over):

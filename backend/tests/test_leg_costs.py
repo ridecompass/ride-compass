@@ -98,6 +98,8 @@ def _composer(matrix: SearchMaterials, *, excluded=None, cost_scale=None, series
     return LegCostComposer(
         matrix, masks, series, START, CRUISE_KMH,
         np.arange(n) if lazy is None else np.asarray(lazy), detour_ratio=1.3, material_fills=fills,
+        # 予報の風をそのまま乗り手の風として解く（高さの換算は`test_wind_height.py`）。
+        wind_height_factors=np.ones((n, 2)),
         settings=ModelSettings(TUNED, EMPTY_ROAD_CLASSES, cost_axes() if axes is None else axes), parameters=parameters,
     )
 

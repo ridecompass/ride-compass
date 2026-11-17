@@ -2,7 +2,11 @@ import asyncio
 import logging
 from collections.abc import Mapping, Sequence
 
+import numpy as np
+
+from app.domain.msm import MsmGrid
 from app.domain.stopwatch import elapsed_ms, start_timer
+from app.domain.wind_height import ROUGHNESS_LENGTH_M, height_factors
 from app.domain.errors import SearchAreaTooLargeError, SearchMemoryBusyError
 from app.domain.geo import LatLonPoint
 from app.domain.graph import LeanEdge, parse_edge_key
@@ -101,6 +105,26 @@ def network_fills(network: RoadNetwork, material_ids: tuple[str, ...]) -> Materi
     fills = material_fills(network, classes, material_ids)
     _fills = (network, classes, material_ids, fills)
     return fills
+
+
+#: 最後に求めた風の高さの倍率と、求めたときの道路網・MSM の格子。どちらかが入れ替わったら求め直す。
+_wind_heights: tuple[RoadNetwork, MsmGrid, np.ndarray] | None = None
+
+
+def network_wind_heights(network: RoadNetwork, grid: MsmGrid) -> np.ndarray:
+    """取込範囲全体の区間ごとの、予報の10mの風を乗り手の高さへ直す倍率（`domain/wind_height.py: height_factors`）。格子の側の
+    粗度が道路網全体の区間から決まるので、道路網と格子の組ごとに1回だけ求める。"""
+    global _wind_heights
+    cached = _wind_heights
+    if cached is not None and cached[0] is network and cached[1] == grid:
+        return cached[2]
+    started = start_timer()
+    column = {material_id: i for i, material_id in enumerate(network.numeric_ids)}
+    percent = {field: network.numeric_values[:, column[field]] for field in ROUGHNESS_LENGTH_M if field in column}
+    factors = height_factors(percent, network.distance_m, network.mid_lat, network.mid_lon, grid)
+    logger.info("wind_height_factors edges=%d ms=%d", network.edge_count, elapsed_ms(started))
+    _wind_heights = (network, grid, factors)
+    return factors
 
 
 def _slice(network: RoadNetwork, bbox: BoundingBox) -> RoadSlice:

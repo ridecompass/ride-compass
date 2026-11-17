@@ -17,6 +17,7 @@ import pytest
 from app.api import dependencies
 from app.domain.cost_preference import CostPreference
 from app.domain.cost_axes import EFFORT_AXES, CostAxisDefinitions, replace_cost_axes
+from app.domain.landcover import LANDCOVER_CLASSES
 from app.domain.region import tile_position
 from app.domain.route_request import ASSUMED_SPEED_KMH
 from app.domain.traffic import POI_COUNT_KINDS, stop_event
@@ -32,7 +33,7 @@ from app.domain.time_zone import JST
 from tests.tuning_fixture import TUNED, TUNING
 from tests.route_world import (
     BAD_MATERIAL, CALM, COORDINATES, CENTER, NODE_OF, NORTH_EAST, SOUTH_WEST, WAYS, Weather, at, edges_of, generator_for, road_network,
-    serve_road_network,
+    serve_road_network, ways_of,
 )
 
 #: 段の境目（1kmあたりの代償の秒）。
@@ -49,6 +50,8 @@ AXES = CostAxisDefinitions.model_validate({
 })
 #: 無風で、標準より暑い日の予報（空気が薄い）。
 HOT = replace(CALM, temperature_c=np.full_like(CALM.temperature_c, 35.0))
+#: 北から6m/sで吹く予報。
+NORTH_WIND = replace(CALM, speed_ms=np.full_like(CALM.speed_ms, 6.0))
 #: 道1本で塗るズームの、格子の真ん中を含むタイル。
 Z = 12
 X, Y = (int(v) for v in tile_position(COORDINATES[CENTER][1], COORDINATES[CENTER][0], Z))
@@ -154,6 +157,33 @@ async def test_the_route_and_the_map_lens_climb_in_the_same_air_of_the_forecast(
     # ルートの区間の秒は0.1秒に丸めて返る。
     assert climbs == pytest.approx([hot * km] * len(climbs), abs=0.05)
     assert abs(hot - standard) * km > 0.5
+
+
+async def test_the_route_and_the_map_lens_lower_the_forecast_wind_to_the_rider_by_the_same_factor(cost_axes, road_network_root):
+    """ルートと地図のレンズは、同じ区間で同じ倍率で予報の10mの風を乗り手の高さへ下ろす。森の中の道（周りの道は水辺で、格子の側の
+    粗度はそれらの平均）を北風に向かって走る区間の向かい風の秒は、地図のレンズの値に道の長さを掛けたものと同じで、ルートの事実と
+    道の窓の向かい風も同じ値（違えば、ルートの線と周りの道が同じ道で違う色と違う風になる）。"""
+    def cover(field: str) -> dict[str, float]:
+        return {cls.percent_field: 100.0 if cls.percent_field == field else 0.0 for cls in LANDCOVER_CLASSES}
+
+    network = road_network(WAYS, COORDINATES, landcover_of={
+        way: cover("trees_percent" if way == CLIMBING_WAY else "water_percent") for way in WAYS})
+    candidates = (await generator_for(road_network_root, network, NORTH_WIND).generate_via_waypoints(
+        at(NODE_OF[0, 1]), [], destination=at(CENTER), max_routes=3, start_time=datetime(2026, 5, 1, 9, tzinfo=JST))).candidates
+    service = LensService(Weather(NORTH_WIND))
+    at_departure = datetime(2026, 5, 1, 9, tzinfo=JST)
+    lens = await service.way_materials("headwind", Z, X, Y, at_departure, ASSUMED_SPEED_KMH, CostPreference())
+    inspection = await service.inspect(str(CLIMBING_WAY), Z, X, Y, 0.0, at_departure, ASSUMED_SPEED_KMH, CostPreference())
+    (row,) = np.flatnonzero((network.edge_way_id == CLIMBING_WAY) & network.edge_forward)
+    km = float(network.distance_m[row]) / 1000.0
+    north = [candidate for candidate in candidates if ways_of(candidate) == [CLIMBING_WAY]]
+
+    assert lens is not None and inspection is not None and inspection.along is not None and north
+    (route,) = north
+    assert route.segments[0].penalty.axis_seconds["headwind"] == pytest.approx(
+        lens.materials[str(CLIMBING_WAY)][LENS_ALONG_LEAF] * km, abs=0.05)
+    assert inspection.along.facts["headwind"] == route.facts.axes["headwind"]
+    assert 0 < route.facts.axes["headwind"].value < 6.0 * 0.5
 
 
 async def test_the_lens_paints_with_the_users_strength_and_multipliers_like_the_route(client, cost_axes, road_network_root):

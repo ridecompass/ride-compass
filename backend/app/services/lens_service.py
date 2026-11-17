@@ -39,7 +39,7 @@ from app.domain.wind import WindForecastSeries
 from app.infrastructure import road_network_store
 from app.infrastructure.debug_log import log_external_call
 from app.infrastructure.msm_client import MsmUnavailableError
-from app.services.graph_service import network_classes, network_fills
+from app.services.graph_service import network_classes, network_fills, network_wind_heights
 from app.services.weather_service import WeatherService
 
 _CATEGORY = "region:lens"
@@ -88,14 +88,15 @@ class LensService:
         """タイルのレンズの値。`only`を渡すとそのフィーチャーだけで求める（無ければNone）。"""
         axes = settings.cost_axes
         with log_external_call(_CATEGORY, z=z, x=x, y=y) as fields:
-            prepared = await asyncio.to_thread(_prepare, road_network_store.current(), z, x, y, axes, only)
+            network = road_network_store.current()
+            prepared = await asyncio.to_thread(_prepare, network, z, x, y, axes, only)
             if prepared is None:
                 return None
             features, materials, fills, elevation_gain_m = prepared
             fields["features"] = len(features)
             wind = await self._wind(z, x, y, at, materials.mid_lat, materials.mid_lon)
-            return await asyncio.to_thread(_tile_lens, features, materials, settings, fills, speed_kmh, preference, wind,
-                                           elevation_gain_m)
+            return await asyncio.to_thread(_tile_lens, network, features, materials, settings, fills, speed_kmh, preference,
+                                           wind, elevation_gain_m)
 
     async def _wind(self, z: int, x: int, y: int, at: datetime | None, mid_lat: np.ndarray, mid_lon: np.ndarray,
 ) -> tuple[WindForecastSeries, datetime] | None:
@@ -129,15 +130,16 @@ def _prepare(network: RoadNetwork, z: int, x: int, y: int, axes: CostAxisDefinit
             network.elevation_gain_m[features.rows])
 
 
-def _tile_lens(features: LensFeatures, materials: EdgeMaterialColumns, settings: ModelSettings, fills: MaterialFills,
-               speed_kmh: float, preference: CostPreference, wind: tuple[WindForecastSeries, datetime] | None,
-               elevation_gain_m: np.ndarray) -> _TileLens:
+def _tile_lens(network: RoadNetwork, features: LensFeatures, materials: EdgeMaterialColumns, settings: ModelSettings,
+               fills: MaterialFills, speed_kmh: float, preference: CostPreference,
+               wind: tuple[WindForecastSeries, datetime] | None, elevation_gain_m: np.ndarray) -> _TileLens:
     components = previous_run_from = None
     if wind is not None:
         series, target = wind
         components = WindContext(
             bearing_deg=materials.bearing_deg, wind_series=series, forecast_index=series.time_index(target, 0.0),
-            wind_points=series.lattice.points_of(materials.mid_lat, materials.mid_lon)).components()
+            wind_points=series.lattice.points_of(materials.mid_lat, materials.mid_lon),
+            height_factors=network_wind_heights(network, series.lattice.grid)[features.rows]).components()
         previous_run_from = series.previous_run_from(target, 0.0)
     return _TileLens(*lens_table(features, materials.columns, materials.distance_m, materials.elevation_profiles, settings,
                                  ledger_parameters(preference, settings.tuning), speed_kmh, fills, components, elevation_gain_m),
