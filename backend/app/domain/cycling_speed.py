@@ -34,7 +34,7 @@ from app.domain.wind import drag_increases_m2_s2, kmh_to_ms
 
 _GRAVITY_M_S2 = 9.80665
 
-#: 予報の気温が無いときに解く気温（℃）。標準大気の海面の気温で、平地の出力の逆算もこの気温・標高0mの空気で行う。
+#: 予報を使わない計算で解く気温（℃）。標準大気の海面の気温で、平地の出力の逆算もこの気温・標高0mの空気で行う。
 STANDARD_TEMPERATURE_C = 15.0
 
 
@@ -358,7 +358,7 @@ class SegmentSpeedModel:
 
     def travel_seconds(self, headwind_ms: np.ndarray, crosswind_ms: np.ndarray, temperature_c: np.ndarray) -> np.ndarray:
         """区間ごとの走行時間（秒、float64）。`headwind_ms`は進行方向への向かい風成分（正が向かい風）、`crosswind_ms`は横成分、
-        `temperature_c`は気温（℃。予報が無ければ`STANDARD_TEMPERATURE_C`）。"""
+        `temperature_c`は気温（℃。予報を使わない計算は`STANDARD_TEMPERATURE_C`）。"""
         spans = self._spans
         speeds, _powers, _air = self._solve(spans, headwind_ms, crosswind_ms, temperature_c)
         return _span_seconds(spans.row, spans.length, speeds, spans.rows)
