@@ -17,7 +17,7 @@ import numpy as np
 from app.domain.cost_axes import (
     EFFORT_AXES, HEADWIND_FACT_LABEL, STOPS_FACT_LABEL, CategoricalBurden, EffortItem,
 )
-from app.domain.cycling_speed import RiderProfile, SegmentSpeedModel, crr_for_surface
+from app.domain.cycling_speed import STANDARD_TEMPERATURE_C, RiderProfile, SegmentSpeedModel, crr_for_surface
 from app.domain.attributes import CategoricalColumn
 from app.domain.elevation_profile import FLAT, ElevationProfiles, along_fractions
 from app.domain.ledger_costs import LedgerCosts, LedgerParameters
@@ -137,12 +137,13 @@ def _axis_seconds_per_km(settings: ModelSettings, parameters: LedgerParameters, 
     ledger = LedgerCosts.for_model(axes, parameters, model, {
         burden_id: burden if burden is not None and burden_id == axis_id else np.zeros(n) for burden_id in axes.burden})
     wind = np.zeros(n) if headwind_ms is None else np.asarray(headwind_ms, dtype=np.float64)
-    return ledger.row_seconds(model, wind, np.zeros(n))[1][axis_id]
+    return ledger.row_seconds(model, wind, np.zeros(n), np.full(n, STANDARD_TEMPERATURE_C))[1][axis_id]
 
 
 def _uniform_slopes(grade_percent: np.ndarray) -> ElevationProfiles:
-    """道ごとに、始まりの0mから一様に登る2点の断面。"""
+    """道ごとに、一様に登る2点の断面。標高の平均を海面（0m）に置く（空気を坂の大きさで変えない）。"""
     n = len(grade_percent)
-    elevation = np.column_stack([np.zeros(n), grade_percent / 100.0 * _ROAD_M]).astype(np.float32).ravel()
+    rise = grade_percent / 100.0 * _ROAD_M
+    elevation = np.column_stack([-rise / 2, rise / 2]).astype(np.float32).ravel()
     return ElevationProfiles(np.arange(n, dtype=np.int64) * 2, np.full(n, 2, dtype=np.int32), np.ones(n, dtype=bool),
                              elevation, np.tile(along_fractions((), 2), n), FLAT)

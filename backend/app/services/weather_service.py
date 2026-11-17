@@ -73,7 +73,7 @@ class WeatherService:
         )
 
     async def get_wind_forecast_lattice(self, bbox: BoundingBox) -> WindForecastSeries:
-        """`bbox`を覆うMSMの格子点ごとの時別風向・風速の予報系列（1時間刻み、JSTのローカル時刻、格子点の値のまま）。
+        """`bbox`を覆うMSMの格子点ごとの時別風向・風速・気温の予報系列（1時間刻み、JSTのローカル時刻、格子点の値のまま）。
         読めない・時刻が2つに満たなければ投げる。ルートの探索範囲にも、ルートを出す前の地図のタイルにも使う。
 
         格子点はMSMの格子そのもの（`domain/msm.py: MsmGrid.block_covering`）なので、ルートの区間と地図の道は、同じ地点で
@@ -89,6 +89,7 @@ class WeatherService:
             times=series.times,
             speed_ms=speed,
             direction_deg=direction,
+            temperature_c=series.temperature_c,
             lattice=series.points.block,
             latest_run_end=series.latest_run_end,
         )

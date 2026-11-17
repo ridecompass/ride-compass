@@ -91,7 +91,7 @@ async def test_route_generation_calls_from_python_only_the_jit_that_the_image_ba
     times = [datetime(2026, 9, 22, h) for h in range(24)]
     speed = np.full((4, len(times)), 3.0)
     wind = WindForecastSeries(
-        times=times, speed_ms=speed, direction_deg=np.zeros_like(speed),
+        times=times, speed_ms=speed, direction_deg=np.zeros_like(speed), temperature_c=np.full_like(speed, 15.0),
         lattice=MsmBlock(
             grid=MsmGrid(lat_min=BASE_LAT, lon_min=BASE_LON, d_lat=0.018, d_lon=0.022, n_lat=2, n_lon=2), row0=0, col0=0, rows=2, cols=2,
         ),

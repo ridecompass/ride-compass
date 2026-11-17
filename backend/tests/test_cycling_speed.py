@@ -1,5 +1,5 @@
 """`domain/cycling_speed.py`——平地・無風の巡航速度から出力を逆算し、区間の断面の点の間ごとに勾配・風・路面から速さを解いて
-区間の所要時間と、平地を越えて踏んだ体力の内訳にする走行モデル。
+区間の所要時間と、平地を越えて踏んだ体力の内訳にする走行モデル。空気抵抗の密度は区間の標高と気温から出す。
 
 入口は`RiderProfile`・`wheel_power_w`・`top_speed_kmh`・`SegmentSpeedModel`（`travel_seconds`・`ride`）・
 `crr_for_surface`。
@@ -18,7 +18,7 @@ from hypothesis import strategies as st
 
 from app.domain import cycling_speed
 from app.domain.attributes import CategoricalColumn
-from app.domain.cycling_speed import RiderProfile, SegmentSpeedModel
+from app.domain.cycling_speed import STANDARD_TEMPERATURE_C, RiderProfile, SegmentSpeedModel
 from app.domain.elevation_profile import GradeDistribution
 from app.domain.route_request import MAX_ASSUMED_SPEED_KMH, MIN_ASSUMED_SPEED_KMH
 from tests.profile_fixture import profiles as road_profiles
@@ -33,15 +33,21 @@ def _kmh(name: str) -> float:
     return TUNING[name] / 3.6
 
 
+def _standard(rows: int) -> np.ndarray:
+    """予報の無いときの気温を、区間の行の数だけ。"""
+    return np.full(rows, STANDARD_TEMPERATURE_C)
+
+
 def _model(profile: RiderProfile, grade: float = 0.0, crr: float | None = None) -> SegmentSpeedModel:
-    """1000mを勾配`grade`で一様に登る1区間の走行モデル。"""
-    return SegmentSpeedModel(profile, road_profiles([0.0, grade * 1000.0]), np.array([1000.0]),
+    """1000mを勾配`grade`で一様に登る1区間の走行モデル。標高の平均は海面（0m）。"""
+    return SegmentSpeedModel(profile, road_profiles([-grade * 500.0, grade * 500.0]), np.array([1000.0]),
                              np.array([profile.crr if crr is None else crr]), np.zeros(1), TUNED)
 
 
 def _speed(profile: RiderProfile, grade: float = 0.0, headwind: float = 0.0, crosswind: float = 0.0,
            crr: float | None = None) -> float:
-    return 1000.0 / float(_model(profile, grade, crr).travel_seconds(np.array([headwind]), np.array([crosswind]))[0])
+    return 1000.0 / float(_model(profile, grade, crr).travel_seconds(np.array([headwind]), np.array([crosswind]),
+                                                                     _standard(1))[0])
 
 
 def test_the_power_of_a_rider_cruising_at_20kmh_is_that_of_an_easy_ride():
@@ -132,7 +138,7 @@ def test_more_resistance_adds_the_declared_watts_per_newton_up_to_the_ceiling(cr
 
 
 def _ride(profile: RiderProfile, grade: float = 0.0, headwind: float = 0.0, crr: float | None = None):
-    return _model(profile, grade, crr).ride(np.array([headwind]), np.array([0.0]), 0.0)
+    return _model(profile, grade, crr).ride(np.array([headwind]), np.array([0.0]), _standard(1), 0.0)
 
 
 @pytest.mark.parametrize(
@@ -171,7 +177,7 @@ def test_the_effort_weight_grows_with_the_power_the_rider_wants_over_the_flat_po
     数える（0乗なら事実の量そのもの）。上限を越えて踏みたい急な坂ほど重い。"""
     flat_power_w = cycling_speed.wheel_power_w(RIDER)
     model = _model(RIDER, 0.03)
-    facts, weighted = (model.ride(np.zeros(1), np.zeros(1), exponent) for exponent in (0.0, 1.0))
+    facts, weighted = (model.ride(np.zeros(1), np.zeros(1), _standard(1), exponent) for exponent in (0.0, 1.0))
     desired = _desired_power(flat_power_w, RIDER.mass_kg * GRAVITY_M_S2 * 0.03)
 
     assert float(weighted.gravity_extra_j[0]) == pytest.approx(float(facts.gravity_extra_j[0]) * desired / flat_power_w)
@@ -201,7 +207,7 @@ def test_the_stops_on_a_road_go_to_the_inertia_item_of_the_effort_ledger():
     model = SegmentSpeedModel(RIDER, road_profiles([0.0, 0.0], [0.0, 0.0]), np.full(2, 500.0), np.full(2, RIDER.crr),
                               np.array([2.5, 0.0]), TUNED)
 
-    ride = model.ride(np.zeros(2), np.zeros(2), 0.0)
+    ride = model.ride(np.zeros(2), np.zeros(2), _standard(2), 0.0)
 
     assert ride.inertia_extra_j.tolist() == pytest.approx([2.5 * cycling_speed.kickoff_extra_j(RIDER, TUNED), 0.0])
     assert ride.seconds[0] == pytest.approx(ride.seconds[1])
@@ -212,7 +218,7 @@ def _seconds(*rows: list[float | None], distance: float, forward=None, distribut
         *rows, forward=forward, distribution=distribution)
     n = len(rows)
     model = SegmentSpeedModel(RIDER, built, np.full(n, distance), np.full(n, RIDER.crr), np.zeros(n), TUNED)
-    return model.travel_seconds(np.zeros(n), np.zeros(n)).tolist()
+    return model.travel_seconds(np.zeros(n), np.zeros(n), _standard(n)).tolist()
 
 
 def test_a_road_that_climbs_and_descends_takes_longer_than_a_flat_one_of_the_same_average():
@@ -234,30 +240,52 @@ def test_a_backward_row_runs_the_points_of_its_road_the_other_way():
 
 def test_a_road_without_elevation_runs_the_slopes_of_the_whole_network():
     """標高の無い長さは、道路網全体の勾配の分布どおりの坂を走る（平地とみなすと、標高の無い道が坂の無い速い道に見える）。
-    400mの道を、分布の4%の下り25%・2%の登り75%で走るのは、100mの4%の下りと300mの2%の登りを走るのと同じ。"""
+    400mの道を、分布の4%の下り25%・2%の登り75%で走るのは、100mの4%の下りと300mの2%の登りを走るのと同じ（標高の無い道の
+    空気は海面のものなので、比べる道も標高の平均を海面に置く）。"""
     mixed = GradeDistribution(np.array([-0.04, 0.02]), np.array([0.25, 0.75]))
     (missing,) = _seconds([], distance=400.0, distribution=mixed)
-    (down,) = _seconds([4.0, 0.0], distance=100.0)
-    (up,) = _seconds([0.0, 6.0], distance=300.0)
+    (down,) = _seconds([2.0, -2.0], distance=100.0)
+    (up,) = _seconds([-3.0, 3.0], distance=300.0)
 
     assert missing == pytest.approx(down + up)
 
 
 def test_riding_only_some_rows_gives_those_rows_of_riding_them_all():
     """経路の行だけを解いた走り（ルートの代償の内訳が読む）は、全部を解いた走り（探索の費用が読む）のその行と同じ。違うと、
-    結果の内訳の和が並べ方の費用と合わない。行は重なってよく、標高の無い行（全体の分布で走る）も混ぜる。"""
+    結果の内訳の和が並べ方の費用と合わない。行は重なってよく、標高の無い行（全体の分布で走る）も、行ごとに違う標高と気温も混ぜる。"""
     mixed = GradeDistribution(np.array([-0.04, 0.02]), np.array([0.25, 0.75]))
     model = SegmentSpeedModel(RIDER, road_profiles([0.0, 30.0], [], [12.0, 0.0, 6.0], distribution=mixed),
                               np.array([600.0, 400.0, 800.0]), np.array([RIDER.crr, 0.012, RIDER.crr]),
                               np.array([0.0, 1.5, 0.5]), TUNED)
-    headwind, crosswind = np.array([2.0, -1.0, 4.0]), np.array([0.0, 3.0, 1.0])
+    headwind, crosswind, temperature = np.array([2.0, -1.0, 4.0]), np.array([0.0, 3.0, 1.0]), np.array([30.0, 5.0, 15.0])
     rows = np.array([2, 0, 2])
 
-    whole = model.ride(headwind, crosswind, 1.0)
-    some = model.ride(headwind[rows], crosswind[rows], 1.0, rows)
+    whole = model.ride(headwind, crosswind, temperature, 1.0)
+    some = model.ride(headwind[rows], crosswind[rows], temperature[rows], 1.0, rows)
 
     for name in ("seconds", "gravity_extra_j", "air_extra_j", "rolling_extra_j", "inertia_extra_j"):
         assert getattr(some, name).tolist() == getattr(whole, name)[rows].tolist(), name
+
+
+@pytest.mark.parametrize(
+    ("elevation_m", "temperature_c"),
+    [(0.0, STANDARD_TEMPERATURE_C), (0.0, 35.0), (0.0, 0.0), (1000.0, 20.0), (1500.0, 10.0), (None, 25.0)],
+    ids=["海面・標準の気温", "海面・暑い日", "海面・寒い日", "標高1000m", "標高1500m", "標高の無い道"],
+)
+def test_the_air_of_the_road_and_the_forecast_sets_the_drag_of_the_flat_power(elevation_m, temperature_c):
+    """空気抵抗の密度は、区間の標高の気圧（NASA Glenn Research Center "Earth Atmosphere Model" の対流圏の式）を気温で
+    割ったもの（ρ = p / (0.2869 × (T + 273.1))）。平地の出力は人の側で決まり、空気の濃さで変えないので、薄い所・暑い日は
+    平地・無風でも巡航より速く、濃い所・寒い日は遅い。標高の無い道は海面の空気。解いた速さを走行方程式へ戻すと平地の出力になる。"""
+    model = SegmentSpeedModel(RIDER, road_profiles([] if elevation_m is None else [elevation_m, elevation_m]),
+                              np.array([1000.0]), np.array([RIDER.crr]), np.zeros(1), TUNED)
+    speed = 1000.0 / float(model.travel_seconds(np.zeros(1), np.zeros(1), np.array([temperature_c]))[0])
+    height = 0.0 if elevation_m is None else elevation_m
+    pressure_kpa = 101.29 * ((15.04 - 0.00649 * height + 273.1) / 288.08) ** 5.256
+    density = pressure_kpa / (0.2869 * (temperature_c + 273.1))
+    rolling_n = RIDER.crr * RIDER.mass_kg * GRAVITY_M_S2
+
+    assert (0.5 * density * RIDER.cda_m2 * speed**2 + rolling_n) * speed == pytest.approx(
+        cycling_speed.wheel_power_w(RIDER), rel=0.003)
 
 
 @pytest.mark.parametrize(
@@ -279,7 +307,9 @@ def test_a_steep_road_stops_at_the_limit_of_the_calibrated_value(grade, limit):
         lambda: SegmentSpeedModel(RIDER, road_profiles([0.0, 0.0], [0.0, 0.0], [0.0, 0.0]), np.ones(3), np.zeros(3),
                                   np.zeros(1), TUNED),
         lambda: SegmentSpeedModel(RIDER, road_profiles([0.0, 0.0], [0.0, 0.0], [0.0, 0.0]), np.ones(3), np.zeros(3),
-                                  np.zeros(3), TUNED).travel_seconds(np.zeros(1), np.zeros(3)),
+                                  np.zeros(3), TUNED).travel_seconds(np.zeros(1), np.zeros(3), _standard(3)),
+        lambda: SegmentSpeedModel(RIDER, road_profiles([0.0, 0.0], [0.0, 0.0], [0.0, 0.0]), np.ones(3), np.zeros(3),
+                                  np.zeros(3), TUNED).travel_seconds(np.zeros(3), np.zeros(3), _standard(1)),
     ],
 )
 def test_arrays_of_different_lengths_are_refused_instead_of_spread_over_every_segment(call):

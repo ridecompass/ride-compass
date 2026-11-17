@@ -23,6 +23,7 @@ from app.domain.stopwatch import add_elapsed_ms, elapsed_ms, start_timer, steps_
 from app.domain.attributes import CategoricalColumn, MaterialColumn
 from app.domain.cycling_speed import (
     SEGMENT_SPEED_CONDITIONS,
+    STANDARD_TEMPERATURE_C,
     RiderProfile,
     SegmentSpeedModel,
     crr_for_surface,
@@ -58,8 +59,10 @@ TIME_BIN_HOURS = 1.0
 MAX_TIME_BINS = 4
 
 #: 所要時間の計算が値の無い区間をどう数えるかを、利用者に言う文（`_travel_inputs`が標高の欠けを全体の坂の割合の平均で、
-#: 停止要因の件数の欠けを取込の範囲全体の平均の密度で置き換える）。置き換え方を変えたら、ここも変える。
-MISSING_TRAVEL_DATA_WORDING = "標高や止まる所の数が無い区間は、道路網全体の平均の値で所要時間を計算しています"
+#: 停止要因の件数の欠けを取込の範囲全体の平均の密度で置き換え、走行の模型が標高の無い区間の空気を海面のものとする）。
+#: 置き換え方を変えたら、ここも変える。
+MISSING_TRAVEL_DATA_WORDING = (
+    "標高や止まる所の数が無い区間は、道路網全体の平均の坂と止まる所の数で所要時間を計算しています[空気は海面の気圧とみなします]")
 
 #: 所要時間の見積もりが何を足したものかを、利用者に言う文（区間の走行時間・止まる出来事の待ち・曲がる所の時間）。
 DURATION_ESTIMATE_WORDING = (
@@ -316,8 +319,8 @@ def compile_leg_cost_kernels(tuning: Tuning) -> None:
     flat = ElevationProfiles(np.zeros(1, dtype=np.int64), np.full(1, 2, dtype=np.int32), np.ones(1, dtype=bool),
                              np.zeros(2, dtype=np.float32), along_fractions((), 2), FLAT)
     model = SegmentSpeedModel(RiderProfile.standard(20.0, tuning), flat, np.ones(1), np.zeros(1), np.zeros(1), tuning)
-    seconds = model.travel_seconds(np.zeros(1), np.zeros(1))
-    model.ride(np.zeros(1), np.zeros(1), 1.0)
+    seconds = model.travel_seconds(np.zeros(1), np.zeros(1), np.full(1, STANDARD_TEMPERATURE_C))
+    model.ride(np.zeros(1), np.zeros(1), np.full(1, STANDARD_TEMPERATURE_C), 1.0)
     _bin_cost_arrays(seconds, np.zeros(1), np.zeros(1, dtype=bool), np.ones(1), np.zeros(1), np.zeros(1, dtype=int), 1)
 
 
@@ -493,7 +496,7 @@ class LegCostComposer:
         return int(min(MAX_TIME_BINS, max(1, math.ceil(duration_hours / TIME_BIN_HOURS))))
 
     def _wind_context(self, time: BinTime, take: Callable[[np.ndarray], np.ndarray]) -> WindContext:
-        """時刻`time`の風の文脈（区間ごとの風の成分を引く入力）。"""
+        """時刻`time`の風の文脈（区間ごとの風の成分と気温を引く入力）。"""
         return WindContext(
             bearing_deg=take(self._search_materials.bearing_deg), wind_series=self._wind_series,
             forecast_index=time.forecast, wind_points=take(self._wind_points),
@@ -503,9 +506,9 @@ class LegCostComposer:
         """経路上の行`rows`（切り出した区間の順の行番号）だけを、時刻ビンの時刻`time`（`LegCostArrays.bin_times`の1つ）で
         合成し直した表示の値。"""
         rows = np.asarray(rows, dtype=np.int64)
-        headwind, crosswind = self._wind_context(time.take(rows), _row_taker(rows)).components()
+        headwind, crosswind, temperature = self._wind_context(time.take(rows), _row_taker(rows)).components()
         inputs = self._travel_inputs
-        travel_seconds, penalty_by_axis = self._ledger.row_seconds(inputs.model, headwind, crosswind, rows)
+        travel_seconds, penalty_by_axis = self._ledger.row_seconds(inputs.model, headwind, crosswind, temperature, rows)
         # 探索の費用（`_bin_costs`）のうち、避け方の倍率が足し引きした分。探索と同じく倍率を掛けてから引き、float64で求める。
         unscaled = travel_seconds + inputs.wait_seconds[rows] + sum(penalty_by_axis.values(), np.zeros(len(rows)))
         scaled = self._cost_scale[rows].astype(np.float64) * unscaled - unscaled
@@ -572,7 +575,7 @@ class LegCostComposer:
         return self._ledger.transition_costs(turn_seconds, turn_kickoffs)
 
     def _compose_bin(self, time: BinTime, steps_ms: dict[str, int]) -> _ComposedBin:
-        """時刻`time`で1本ぶん合成する。段ごとの時間を`steps_ms`へ足す。体力と道のストレスは風だけで決まる。欠けは取込の範囲
+        """時刻`time`で1本ぶん合成する。段ごとの時間を`steps_ms`へ足す。体力と道のストレスは風と気温だけで決まる。欠けは取込の範囲
         全体の平均で埋める（`material_fills`）。"""
         started = start_timer()
         travel_seconds, added_seconds = self._ledger_bin(time)

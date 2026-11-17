@@ -30,6 +30,7 @@ from app.domain.road_network import MaterialFills
 from app.domain.msm import MsmBlock, MsmGrid
 from app.domain.road_avoidance import RoadAvoidanceMasks
 from app.domain.road_classes import EMPTY_ROAD_CLASSES
+from app.domain.cycling_speed import STANDARD_TEMPERATURE_C
 from app.domain.wind import WindForecastSeries
 from tests.cost_axes_fixture import cost_axes
 from tests.profile_fixture import grade_profiles, profiles
@@ -75,6 +76,7 @@ def _series(speeds_by_hour: list[float], from_deg: float = NORTH) -> WindForecas
         times=[START + timedelta(hours=h) for h in range(len(speeds_by_hour))],
         speed_ms=np.array([speeds_by_hour], dtype=float),
         direction_deg=np.full((1, len(speeds_by_hour)), from_deg),
+        temperature_c=np.full((1, len(speeds_by_hour)), STANDARD_TEMPERATURE_C),
         lattice=MsmBlock(
             grid=MsmGrid(lat_min=35.0, lon_min=139.0, d_lat=0.05, d_lon=0.0625, n_lat=1, n_lon=1), row0=0, col0=0, rows=1, cols=1,
         ),
