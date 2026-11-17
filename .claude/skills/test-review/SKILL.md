@@ -37,7 +37,7 @@ description: "テストを3つの層（backend・frontend の単体テストと 
 
 ### 2. 単体テストの測りを起こす
 
-全部の測りは毎月定時にも起きる（下の「定期の測りから起きた消すタスク」）。直近の定時の測り（`gh run list -R ridecompass/ride-compass
+全部の測りは毎月定時にも起きる形だが、定時の起こしも手の起こしも、ワークフローを無効にして止めてある。回すときは先に `gh workflow enable <ワークフロー> -R ridecompass/ride-compass` で戻す（.claude/skills/run-checks/SKILL.md「変異テストでテストの効きを測る」）。直近の定時の測り（`gh run list -R ridecompass/ride-compass
 --workflow <ワークフロー> --event schedule -L 1 --json databaseId,headSha,conclusion`）が成功で、測った版から見直したいテストが
 変わっていなければ、起こさずにその実行を 3 の待ち終えたものとして読む。その重なりの候補は定時の測りが起こした消すタスクが持つので、
 6 で消す子にしない。
@@ -185,7 +185,7 @@ testing.md の2問目（その答えはモジュールの外——利用者の�
 
 導く原則: 1・4・5。
 
-単体テストの変異テストの全部の測りは、毎月定時に起きる（backend は1日、frontend は2日の 02:23（日本時間）。.claude/skills/run-checks/SKILL.md
+単体テストの変異テストの全部の測りは、毎月定時に起きる形（backend は1日、frontend は2日の 02:23（日本時間））で、今は止めてある（.claude/skills/run-checks/SKILL.md
 「変異テストでテストの効きを測る」）。測り終えて重なりの候補があれば、測りの review の段が、種類が保守の「テストの重なりを消す（<層>、<年月> の定期の測りから）」を
 起こす（本文は `backend/scripts/mutation/cleanup_issue.py` が書く）。ゲートが入口で採否を問い（docs/conventions/flow.md「ステータスと割り当て」の「入口」）、続けるの答えのあとは、このタスクの担当が、
 この節だけで始めから Pull Request まで進める（候補は1件ずつユーザーに問わずに消す。.claude/rules/testing-review.md「重なり」）。効き・書き方・隔離・e2e は、このタスクでは見ない（上の「テストの見直しを回す」が持つ）。

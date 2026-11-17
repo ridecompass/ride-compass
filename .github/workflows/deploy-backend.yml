@@ -17,9 +17,9 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    # 持ち時間は、2026-10-24 に測った成功した実行（masterのCIの直近60件のうちデプロイまで走った24件。最長10.0分）の
-    # 2倍を5分単位へ切り上げた値（決め方は ci.yml の先頭）。SSH が止まったジョブを既定の360分まで待たせない。
-    timeout-minutes: 20
+    # 持ち時間は、道路網の配列を作り直すデプロイ（下の SSH の段で約15.5分。ほかの段を足して約20分）の2倍を5分単位へ切り上げた値
+    # （決め方は ci.yml の先頭）。SSH が止まったジョブを既定の360分まで待たせない。
+    timeout-minutes: 40
     # 判定とデプロイを1つのジョブにし、まとめて1本ずつ走らせる。判定だけ先に済ませると、
     # 後から終わった古いCIの実行が、その間に出た新しいコミットを上書きしうる。どの ref から起こしても本番（公開先）は1つなので、
     # レーンの鍵は master に決めてある（レーンは docs/architecture/tech-stack.md「CIの実行枠」）。
@@ -72,7 +72,10 @@ jobs:
       - name: Deploy via SSH (native arm64 build on VM)
         id: deploy
         if: steps.gate.outputs.deploy == 'true'
-        timeout-minutes: 15
+        # 道路網の配列の形が変わるデプロイは、配列の作り直し（約7分半）とイメージの組み立てで、2026-11-15 に約15.5分かかった
+        # （段の始まり 18:10 UTC から新しいコンテナが起きた 18:25:29 UTC。15分の上限で打ち切られ、後ろの確かめの段が流れなかった）。
+        # いつもは約2分（2026-11-15〜16 の成功した20件）。作り直す回の2倍を5分単位へ切り上げる。
+        timeout-minutes: 35
         # VMで流す本文は標準入力で渡す。本文の中で標準入力を読むコマンド（`docker run -i` 等）を使うと、続きの本文を食う。
         run: |
           ssh prod bash -s <<'EOF'
@@ -107,7 +110,7 @@ jobs:
               sudo sed -i "s#^CORS_ALLOWED_ORIGINS=.*#&,$REQUIRED_ORIGIN#" "$ENV_FILE"
             fi
             sudo docker build -t ridecompass-backend:latest .
-            # backend/data配下（DEM・色別標高図・地域のタイルのキャッシュ・way_id別の動的値のディスク
+            # backend/data配下（DEM・地域のタイルのキャッシュ・way_id別の動的値のディスク
             # キャッシュ・道路網全体の配列・警報の区域の境界の置き場）はコンテナの書き込み可能レイヤーに置かれ、
             # ボリュームマウントが無いとdocker rm時に消える。ホスト側ディレクトリへマウントして
             # デプロイをまたいで残す。
