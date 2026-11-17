@@ -121,12 +121,12 @@ _SIGNAL_ID = event_seconds_parameter_id("stop", "signal")
 BASE_CRR_ID = "speed.crr"
 _CRR_GRAVEL_ID = "speed.crr_gravel"
 _CRR_COBBLESTONE_ID = "speed.crr_cobblestone"
+#: 走行モデルの較正値のうち、値に実測の出典が無いものの説明の末尾。
+_UNSOURCED = "値は根拠なし（出典のある実測が無い）。"
 _TURNAROUND_OVERLAP_ID = "search.turnaround_max_overlap_ratio"
 _TURNAROUND_RELAXED_OVERLAP_ID = "search.turnaround_relaxed_overlap_ratio"
 _LOOP_RATIO_MIN_ID = "search.loop_to_outbound_ratio_min"
 _LOOP_RATIO_MAX_ID = "search.loop_to_outbound_ratio_max"
-#: 走行モデルの較正値のうち、値に実測の出典が無いものの説明の末尾。
-_UNSOURCED = "値は根拠なし（出典のある実測が無い）。"
 _DISTANCE_TOLERANCE_ID = "search.distance_tolerance_ratio"
 #: 派生の段だけが読む較正値のid。
 SIGNAL_MATCH_RADIUS_ID = "signal.match_radius_m"
