@@ -52,8 +52,8 @@ def test_bins_cover_the_route_without_gaps_or_overlaps(distances):
 
     bins = _binned(segments)
 
-    # 経路全体の距離が合う（ビンの距離は小数2桁へ丸める）。
-    assert sum(b.distance_km for b in bins) == pytest.approx(sum(distances), abs=0.005 * len(bins))
+    # 経路全体の距離が合う（ビンの距離は小数2桁へ丸めるので、1本あたりちょうど0.005まで違いうる。その境目の浮動小数の誤差の分を足す）。
+    assert sum(b.distance_km for b in bins) == pytest.approx(sum(distances), abs=0.005 * len(bins) + 1e-9)
     # 最後のビンのほかは幅に届いている。
     assert all(b.distance_km >= WIDTH for b in bins[:-1])
     # ビンは途切れずに連なり、最初と最後は経路の両端。
