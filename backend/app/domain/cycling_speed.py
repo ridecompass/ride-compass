@@ -3,7 +3,7 @@
 区間ごとの速度は走行方程式で決まる:
 
     ホイール出力 P = ( 空気抵抗 + 転がり抵抗 + 重力 ) × 速度
-    空気抵抗 = ½ × ρ × CdA × (速度 + 向かい風)²
+    空気抵抗 = ½ × ρ × CdA × (速度 + 向かい風)²   （ρ は区間の標高と予報の気温の空気密度）
     転がり抵抗 = Crr × 質量 × g
     重力     = 質量 × g × 勾配
 
@@ -25,15 +25,33 @@ import numpy as np
 from numba import njit
 
 from app.domain.attributes import CategoricalColumn
-from app.domain.elevation_profile import ElevationProfiles, flatten_spans, unknown_lengths_m
+from app.domain.elevation_profile import ElevationProfiles, flatten_spans, row_elevations_m, unknown_lengths_m
 from app.domain.road_classes import RoadClassDefinitions, class_material_id
 from app.domain.search_graph import kernel_array
 from app.domain.traffic import stop_count_material_ids
 from app.domain.tuning import BASE_CRR_ID, Tuning, require_tuning
 from app.domain.wind import drag_increases_m2_s2, kmh_to_ms
 
-_AIR_DENSITY_KG_M3 = 1.225
 _GRAVITY_M_S2 = 9.80665
+
+#: 予報の気温が無いときに解く気温（℃）。標準大気の海面の気温で、平地の出力の逆算もこの気温・標高0mの空気で行う。
+STANDARD_TEMPERATURE_C = 15.0
+
+
+def _air_pressure_kpa(elevation_m):
+    """標高（m）の気圧（kPa）。NASA Glenn Research Center "Earth Atmosphere Model" の対流圏（11,000m 未満）の式で、標準の
+    気温の減り方から出す。"""
+    return 101.29 * ((15.04 - 0.00649 * elevation_m + 273.1) / 288.08) ** 5.256
+
+
+def _air_density_kg_m3(pressure_kpa, temperature_c):
+    """気圧（kPa）と気温（℃）の空気密度（kg/m³）。同じ文書の ρ = p / (0.2869 × (T + 273.1))。"""
+    return pressure_kpa / (0.2869 * (temperature_c + 273.1))
+
+
+#: 平地の出力を逆算する空気（標高0m・`STANDARD_TEMPERATURE_C`）の密度。乗り手の出力は人の側で決まり、空気の濃さでは
+#: 変えない——同じ出力で、空気が薄い所・暑い日は速く、濃い所・寒い日は遅く走る。
+_STANDARD_AIR_DENSITY_KG_M3 = _air_density_kg_m3(_air_pressure_kpa(0.0), STANDARD_TEMPERATURE_C)
 
 # 走ってみて決める値（CdA・Crr・質量・速度の上下限・登りの出力の増え方等）は
 # `domain/tuning.py`が宣言し、ここでは読むだけにする。定数として持つと、宣言と二重に
@@ -45,7 +63,7 @@ _SPEED_SOLVE_ITERATIONS = 12
 
 #: 区間ごとに速度を変える道と天気の条件の、画面で呼ぶ名前（走行方程式の重力・空気抵抗・転がり抵抗の順）。
 #: 方程式に条件を足したら、ここにも足す。
-SEGMENT_SPEED_CONDITIONS: tuple[str, ...] = ("坂", "風", "路面")
+SEGMENT_SPEED_CONDITIONS: tuple[str, ...] = ("坂", "風", "気温", "標高", "路面")
 
 #: 利用者が入れる巡航速度が何の速さかを、利用者に言う名前（出力を逆算する条件、`wheel_power_w`）。
 CRUISE_SPEED_LABEL = "平地・無風で巡航する速さ"
@@ -54,7 +72,7 @@ CRUISE_SPEED_LABEL = "平地・無風で巡航する速さ"
 def travel_model_wording(tuning: Tuning) -> str:
     """巡航速度から区間の速度を決める決まりを、`tuning`の標準値を入れて利用者に言う文。"""
     return (
-        f"所要時間は、平地・無風をこの速度で走る力を求め、区間ごとの{'・'.join(SEGMENT_SPEED_CONDITIONS)}に合わせて"
+        f"所要時間は、平地・無風[気温{STANDARD_TEMPERATURE_C:g}℃・海面の空気]をこの速度で走る力を求め、区間ごとの{'・'.join(SEGMENT_SPEED_CONDITIONS)}に合わせて"
         "速度を変えて計算します。"
         f"体格と機材は標準の値で計算します。総質量は{tuning.value('speed.mass_kg'):g}kg[体重・車体・装備の合計]、"
         f"空気抵抗CdAは{tuning.value('speed.cda_m2'):g}m²[ロードバイクでブラケットを握る姿勢]です。"
@@ -112,9 +130,9 @@ class RiderProfile:
 
 
 def wheel_power_w(profile: RiderProfile) -> float:
-    """平地・無風の巡航速度からホイール出力（W）を逆算する。"""
+    """平地・無風・標準の空気（`_STANDARD_AIR_DENSITY_KG_M3`）の巡航速度からホイール出力（W）を逆算する。"""
     speed = profile.cruise_speed_ms
-    drag = 0.5 * _AIR_DENSITY_KG_M3 * profile.cda_m2 * speed * speed
+    drag = 0.5 * _STANDARD_AIR_DENSITY_KG_M3 * profile.cda_m2 * speed * speed
     rolling = profile.crr * profile.mass_kg * _GRAVITY_M_S2
     return (drag + rolling) * speed
 
@@ -155,7 +173,7 @@ def top_speed_kmh(cruise_speed_kmh: float, tuning: Tuning) -> float:
 
 
 #: `SegmentSpeedModel`がJITへ渡す、乗り手と較正値の数の並び（1本のfloat32の配列で渡す）。
-_RIDER_WEIGHT, _RIDER_FLAT_POWER, _RIDER_BASE_CRR, _RIDER_POWER_PER_FORCE, _RIDER_MAX_RATIO, _RIDER_DRAG, _RIDER_LOWEST, \
+_RIDER_WEIGHT, _RIDER_FLAT_POWER, _RIDER_BASE_CRR, _RIDER_POWER_PER_FORCE, _RIDER_MAX_RATIO, _RIDER_HALF_CDA, _RIDER_LOWEST, \
     _RIDER_HIGHEST, _RIDER_CRUISE = range(9)
 
 
@@ -177,18 +195,17 @@ def _span_static(span_row: np.ndarray, span_grade: np.ndarray, crr: np.ndarray,
 
 @njit(cache=True, nogil=True)
 def _span_speeds(span_row: np.ndarray, constant_force: np.ndarray, static_extra: np.ndarray, air_extra_n: np.ndarray,
-                 headwind_ms: np.ndarray, crosswind_ms: np.ndarray,
+                 headwind_ms: np.ndarray, crosswind_ms: np.ndarray, drag: np.ndarray,
                  rider: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     """点の間ごとの`(速度（m/s）, 実際に踏む出力（W）)`。踏む出力は`_pushed_power`の決まり、速度は走行方程式
     `P = 抵抗力(v) × v`を二分法で解いたもの（3次方程式。ニュートン法は抵抗力が0を跨ぐ下り坂で発散しうるため、区間を
-    確実に狭める方を採る）。
+    確実に狭める方を採る）。`drag`は区間の行ごとの空気抵抗の係数 ½ρCdA。
 
     **演算はすべてfloat32で、1つずつ丸める**（numbaは`fastmath`を立てなければ演算をまとめない）。float32の有効桁は
     7桁で、二分法が詰める幅（0.003m/s）より4桁細かい。"""
     flat_power = rider[_RIDER_FLAT_POWER]
     per_force = rider[_RIDER_POWER_PER_FORCE]
     max_ratio = rider[_RIDER_MAX_RATIO]
-    drag = rider[_RIDER_DRAG]
     lowest = rider[_RIDER_LOWEST]
     highest = rider[_RIDER_HIGHEST]
     half = np.float32(0.5)
@@ -198,11 +215,13 @@ def _span_speeds(span_row: np.ndarray, constant_force: np.ndarray, static_extra:
     powers = np.empty(spans, dtype=np.float32)
     headwind = np.empty(spans, dtype=np.float32)
     cross_squared = np.empty(spans, dtype=np.float32)
+    span_drag = np.empty(spans, dtype=np.float32)
     for i in range(spans):
         row = span_row[i]
         powers[i] = _pushed_power(flat_power, per_force, max_ratio, static_extra[i] + air_extra_n[row])[1]
         headwind[i] = headwind_ms[row]
         cross_squared[i] = crosswind_ms[row] * crosswind_ms[row]
+        span_drag[i] = drag[row]
     speeds = np.empty(spans, dtype=np.float32)
     for i in range(spans):
         low = lowest
@@ -210,7 +229,7 @@ def _span_speeds(span_row: np.ndarray, constant_force: np.ndarray, static_extra:
         for _ in range(_SPEED_SOLVE_ITERATIONS):
             middle = (low + high) * half
             along = middle + headwind[i]
-            required = (np.sqrt(along * along + cross_squared[i]) * along * drag + constant_force[i]) * middle
+            required = (np.sqrt(along * along + cross_squared[i]) * along * span_drag[i] + constant_force[i]) * middle
             # 必要な出力が持っている出力を超えるなら、その速度は出せない（上限を下げる）。NaNは超えない側へ倒す。
             if required > powers[i]:
                 high = middle
@@ -276,10 +295,10 @@ class SegmentRide:
 
 
 class SegmentSpeedModel:
-    """区間ごとの走行モデルのうち、風に依らない部分（断面の点の間・路面・乗り手と較正値）を先に1回だけ揃えたもの。風の
-    成分を渡すたびに、点の間ごとに速さを解いて区間の秒へ足す。
+    """区間ごとの走行モデルのうち、天気に依らない部分（断面の点の間・区間の標高の気圧・路面・乗り手と較正値）を先に1回だけ
+    揃えたもの。風の成分と気温を渡すたびに、点の間ごとに速さを解いて区間の秒へ足す。
 
-    時刻ビンごとに変わるのは風だけなので、ルート生成は探索範囲に1回作ってビンの数だけ解く。
+    時刻ビンごとに変わるのは風と気温だけなので、ルート生成は探索範囲に1回作ってビンの数だけ解く。
     較正値は作るときに渡す。**配列はすべて区間の行の数で渡す**——長さの違う配列を区間の番号で
     読み違えないよう、揃っていることをここで確かめる。
     """
@@ -307,6 +326,9 @@ class SegmentSpeedModel:
             start, points, kernel_array(profiles.forward, np.bool_), elevation, position, distance, self.unknown_m,
             kernel_array(profiles.distribution.grade, np.float64), kernel_array(profiles.distribution.share, np.float64))
         crr = kernel_array(crr, np.float32)
+        # 区間の行の気圧は、断面の値のある点の標高の平均から出す。値のある点が無い行は海面（0m）とする。
+        row_elevation = row_elevations_m(start, points, elevation)
+        pressure_kpa = _air_pressure_kpa(np.where(np.isnan(row_elevation), 0.0, row_elevation))
         # 体力と漕ぎ出しが負・無限大にならない値だけで解く（上限倍率が1未満だと平地の出力を越えた分が負になる）。
         require_tuning({"speed.mass_kg": profile.mass_kg}, profile.mass_kg > 0, "0より大きい")
         power_per_force = tuning.checked("speed.extra_power_per_force", lambda v: v >= 0, "0以上")
@@ -325,31 +347,32 @@ class SegmentSpeedModel:
         # 増えた抵抗）を越えない——越えると、巡航の遅い人が登りや向かい風で巡航より速く走る。
         rider[_RIDER_POWER_PER_FORCE] = min(power_per_force, profile.cruise_speed_ms)
         rider[_RIDER_MAX_RATIO] = max_ratio
-        rider[_RIDER_DRAG] = 0.5 * _AIR_DENSITY_KG_M3 * profile.cda_m2
+        rider[_RIDER_HALF_CDA] = 0.5 * profile.cda_m2
         rider[_RIDER_LOWEST] = kmh_to_ms(walking_kmh)
         rider[_RIDER_HIGHEST] = kmh_to_ms(top_speed_kmh(profile.cruise_speed_kmh, tuning))
         rider[_RIDER_CRUISE] = profile.cruise_speed_ms
         self._rider = rider
         constant_force, static_extra = _span_static(span_row, span_grade, crr, rider)
         self._spans = _Spans(span_row, span_length, span_grade, constant_force, static_extra, crr,
-                             np.asarray(kickoffs, dtype=np.float64), len(distance_m))
+                             np.asarray(kickoffs, dtype=np.float64), pressure_kpa, len(distance_m))
 
-    def travel_seconds(self, headwind_ms: np.ndarray, crosswind_ms: np.ndarray) -> np.ndarray:
-        """区間ごとの走行時間（秒、float64）。`headwind_ms`は進行方向への向かい風成分（正が向かい風）、`crosswind_ms`は横成分。"""
+    def travel_seconds(self, headwind_ms: np.ndarray, crosswind_ms: np.ndarray, temperature_c: np.ndarray) -> np.ndarray:
+        """区間ごとの走行時間（秒、float64）。`headwind_ms`は進行方向への向かい風成分（正が向かい風）、`crosswind_ms`は横成分、
+        `temperature_c`は気温（℃。予報が無ければ`STANDARD_TEMPERATURE_C`）。"""
         spans = self._spans
-        speeds, _powers, _air = self._solve(spans, headwind_ms, crosswind_ms)
+        speeds, _powers, _air = self._solve(spans, headwind_ms, crosswind_ms, temperature_c)
         return _span_seconds(spans.row, spans.length, speeds, spans.rows)
 
-    def ride(self, headwind_ms: np.ndarray, crosswind_ms: np.ndarray, weight_exponent: float,
+    def ride(self, headwind_ms: np.ndarray, crosswind_ms: np.ndarray, temperature_c: np.ndarray, weight_exponent: float,
              rows: np.ndarray | None = None) -> SegmentRide:
         """区間ごとの走行時間と、平地の出力を越えて踏んだ体力の費目ごとの内訳。体力には、点の間ごとに踏みたい出力（上限で切る前）
         と平地の出力の比の`weight_exponent`乗の重みを掛ける（0なら事実の量そのもの。重みを掛けると内訳はJではなく重みを掛けた
         量）。漕ぎ出しは上限の出力で踏むので、重みは上限の比の`weight_exponent`乗（`kickoff_effort_j`）。
 
-        `rows`（区間の行。重なってよい）を渡すとその行の点の間だけを解き、風の成分も返す配列も`rows`の並びになる——経路の
+        `rows`（区間の行。重なってよい）を渡すとその行の点の間だけを解き、風の成分と気温も返す配列も`rows`の並びになる——経路の
         数百行を読むのに道路網の全部を解かない。点の間ごとの計算は互いに依らないので、全部を解いたときのその行と同じ値になる。"""
         spans = self._spans if rows is None else self._spans_of(np.asarray(rows, dtype=np.int64))
-        speeds, powers, air_extra_n = self._solve(spans, headwind_ms, crosswind_ms)
+        speeds, powers, air_extra_n = self._solve(spans, headwind_ms, crosswind_ms, temperature_c)
         work = _span_work(spans.row, spans.length, spans.grade, speeds, powers, spans.static_extra,
                           spans.crr, air_extra_n, self._rider, spans.rows, float(weight_exponent))
         return SegmentRide(seconds=_span_seconds(spans.row, spans.length, speeds, spans.rows),
@@ -364,34 +387,35 @@ class SegmentSpeedModel:
         position = np.repeat(np.arange(len(rows), dtype=np.int32), counts)
         taken = np.repeat(first - np.cumsum(counts) + counts, counts) + np.arange(int(counts.sum()))
         return _Spans(position, spans.length[taken], spans.grade[taken], spans.constant_force[taken],
-                      spans.static_extra[taken], spans.crr[rows], spans.kickoffs[rows], len(rows))
+                      spans.static_extra[taken], spans.crr[rows], spans.kickoffs[rows], spans.pressure_kpa[rows], len(rows))
 
     def kickoff_effort_j(self, weight_exponent: float) -> float:
         """止まる出来事1回の漕ぎ出しの体力（J）に、上限の出力と平地の出力の比の`weight_exponent`乗の重みを掛けたもの（曲がる所の
         漕ぎ出しも同じ換算）。"""
         return self._kickoff_extra_j * float(self._rider[_RIDER_MAX_RATIO]) ** weight_exponent
 
-    def _solve(self, spans: "_Spans", headwind_ms: np.ndarray,
-               crosswind_ms: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    def _solve(self, spans: "_Spans", headwind_ms: np.ndarray, crosswind_ms: np.ndarray,
+               temperature_c: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         """`spans`の点の間ごとの速度と踏む出力、区間ごとの向かい風で増えた空気抵抗（N）。"""
         headwind = kernel_array(headwind_ms, np.float32)
         cross = kernel_array(crosswind_ms, np.float32)
-        mismatched = {name: array.shape for name, array in (("headwind_ms", headwind), ("crosswind_ms", cross))
-                      if array.shape != (spans.rows,)}
+        temperature = np.asarray(temperature_c, dtype=np.float64)
+        mismatched = {name: array.shape for name, array in (
+            ("headwind_ms", headwind), ("crosswind_ms", cross), ("temperature_c", temperature)) if array.shape != (spans.rows,)}
         if mismatched:
             raise ValueError(f"区間の配列の長さが揃っていません 区間={spans.rows} {mismatched}")
+        drag = kernel_array(self._rider[_RIDER_HALF_CDA] * _air_density_kg_m3(spans.pressure_kpa, temperature), np.float32)
         # 向かい風で増えた空気抵抗（N）は、風の材料と同じ式を巡航速度で測る——速さに依らない基準で測り、踏む出力が解く
         # 速さに依らないようにする。
-        air_extra_n = kernel_array(self._rider[_RIDER_DRAG] * drag_increases_m2_s2(
-            headwind, cross, self._rider[_RIDER_CRUISE]), np.float32)
+        air_extra_n = kernel_array(drag * drag_increases_m2_s2(headwind, cross, self._rider[_RIDER_CRUISE]), np.float32)
         speeds, powers = _span_speeds(spans.row, spans.constant_force, spans.static_extra, air_extra_n, headwind, cross,
-                                      self._rider)
+                                      drag, self._rider)
         return speeds, powers, air_extra_n
 
 
 @dataclass(frozen=True)
 class _Spans:
-    """解く点の間の並び（`row`は点の間ごとの、結果の配列の位置。昇順）と、結果の配列の位置ごとの路面・漕ぎ出しの回数。"""
+    """解く点の間の並び（`row`は点の間ごとの、結果の配列の位置。昇順）と、結果の配列の位置ごとの路面・漕ぎ出しの回数・気圧（kPa）。"""
 
     row: np.ndarray
     length: np.ndarray
@@ -400,4 +424,5 @@ class _Spans:
     static_extra: np.ndarray
     crr: np.ndarray
     kickoffs: np.ndarray
+    pressure_kpa: np.ndarray
     rows: int

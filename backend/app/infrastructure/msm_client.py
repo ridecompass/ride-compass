@@ -53,6 +53,8 @@ class MsmGridPointSeries:
     points: MsmGridPoints
     wind_u_ms: np.ndarray
     wind_v_ms: np.ndarray
+    #: 地上2mの気温[℃]。
+    temperature_c: np.ndarray
     #: 最新のrunの予報の終わり（`times`と同じ形の時刻、この時刻を含まない）。この時刻から先の値は前に出たrunのもの。
     latest_run_end: datetime
 
@@ -95,8 +97,10 @@ FORECAST_VARIABLES: dict[str, str] = {
     "precipitation": "precipitation_mm",
     "temperature_2m": "temperature_c",
 }
-# 風だけを使う読み出しが読む変数。
+# 風の2つの変数（下の読み出しの変数の組が共に持つ）。
 _WIND_VARIABLES = ("wind_u_component_10m", "wind_v_component_10m")
+# 格子のまとまりの読み出し（走行の模型の風と気温）が読む変数。
+_WIND_AND_TEMPERATURE_VARIABLES = (*_WIND_VARIABLES, "temperature_2m")
 # 間引いた格子点の読み出しが読む変数。
 _WIND_AND_PRECIPITATION_VARIABLES = (*_WIND_VARIABLES, "precipitation")
 
@@ -452,7 +456,7 @@ def _read_sync[S: _Selection](
 async def _read[S: _Selection](
     select: Callable[[MsmGrid], S],
     extract: Callable[[S, np.ndarray], np.ndarray],
-    variables: tuple[str, ...] = _WIND_VARIABLES,
+    variables: tuple[str, ...],
 ) -> tuple[S, list[datetime], dict[str, np.ndarray], datetime]:
     """`_read_sync`を別スレッドで回す。
 
@@ -482,10 +486,11 @@ async def read_grid_points(latitudes: np.ndarray, longitudes: np.ndarray) -> Msm
 
 
 async def read_grid_block(south: float, west: float, north: float, east: float) -> MsmGridPointSeries:
-    """矩形を覆う格子点（`domain/msm.py: MsmGrid.block_covering`）の全部の時系列（格子点の値のまま、点の番号の順）。
+    """矩形を覆う格子点（`domain/msm.py: MsmGrid.block_covering`）の全部の風と気温の時系列（格子点の値のまま、点の番号の順）。
     読めなければ`MsmUnavailableError`。"""
     points, times, values, latest_run_end = await _read(
         lambda grid: grid.block_covering(south, west, north, east).all_points(), MsmGridPoints.values,
+        _WIND_AND_TEMPERATURE_VARIABLES,
     )
     return MsmGridPointSeries(times=times, points=points, latest_run_end=latest_run_end, **values)
 

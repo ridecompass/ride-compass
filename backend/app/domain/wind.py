@@ -78,23 +78,25 @@ def wind_components(wind_speed_ms, wind_direction_deg, travel_bearing_deg) -> tu
 
 @dataclass(frozen=True)
 class WindForecastSeries:
-    """MSMの格子点ごとの時別風向・風速の予報系列（1時間刻み、`times`はタイムゾーン無しのローカル時刻[JST]）。探索前に
-    各Edgeの通過予定時刻へ対応する風を引くために使う。`speed_ms`・`direction_deg`は（`lattice`の格子点, 時刻）で、
-    格子点の値のまま（補間していない）。
+    """MSMの格子点ごとの時別風向・風速・気温の予報系列（1時間刻み、`times`はタイムゾーン無しのローカル時刻[JST]）。探索前に
+    各Edgeの通過予定時刻へ対応する風と気温を引くために使う。`speed_ms`・`direction_deg`・`temperature_c`（地上2m、℃）は
+    （`lattice`の格子点, 時刻）で、格子点の値のまま（補間していない）。
     """
 
     times: list[datetime]
     speed_ms: np.ndarray
     direction_deg: np.ndarray
+    temperature_c: np.ndarray
     lattice: MsmBlock
     #: 最新のrunの予報の終わり（`times`と同じ形の時刻、この時刻を含まない）。この時刻から先の値は前に出たrunのもの。
     latest_run_end: datetime
 
     def __post_init__(self) -> None:
         expected = (self.lattice.size, len(self.times))
-        if len(self.times) < 2 or self.speed_ms.shape != expected or self.direction_deg.shape != expected:
+        if len(self.times) < 2 or any(values.shape != expected for values in (
+                self.speed_ms, self.direction_deg, self.temperature_c)):
             raise ValueError(
-                f"WindForecastSeries: speed_ms/direction_deg must have the shape {expected} with >= 2 times"
+                f"WindForecastSeries: speed_ms/direction_deg/temperature_c must have the shape {expected} with >= 2 times"
             )
         step_hours = (self.times[1] - self.times[0]).total_seconds() / 3600
         if not math.isclose(step_hours, 1.0):
@@ -111,14 +113,14 @@ class WindForecastSeries:
     def time_index(self, start: datetime, passage_hours: float | np.ndarray) -> int | np.ndarray:
         """`start`（タイムゾーン無しのローカル時刻）から`passage_hours`時間後に最も近い予報の時刻の添字（`passage_hours`が
         配列なら同じ並びの配列）。系列の範囲外は端の時刻へ寄せる（探索では欠損より端の値の方が妥当）。
-        同じ添字の時刻は、どの格子点でも同じ風を引く。"""
+        同じ添字の時刻は、どの格子点でも同じ風と気温を引く。"""
         index, _clamped = self._sample_index(start, np.asarray(passage_hours))
         return index if index.ndim else int(index)
 
-    def sample_at(self, index: int | np.ndarray, points: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-        """予報の時刻の添字`index`（`time_index`。数なら全格子点が同じ時刻、配列なら`points`と同じ並び）の（風速, 風向）
+    def sample_at(self, index: int | np.ndarray, points: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """予報の時刻の添字`index`（`time_index`。数なら全格子点が同じ時刻、配列なら`points`と同じ並び）の（風速, 風向, 気温）
         配列を、`points`の格子点ごとに返す。"""
-        return self.speed_ms[points, index], self.direction_deg[points, index]
+        return self.speed_ms[points, index], self.direction_deg[points, index], self.temperature_c[points, index]
 
     def previous_run_from(self, start: datetime, hours: float) -> datetime | None:
         """`start`から`hours`時間後までに引く風に、最新のrunの終わりから先の（前に出たrunの）時刻があれば、その終わりの時刻

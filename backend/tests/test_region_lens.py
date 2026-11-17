@@ -1,7 +1,7 @@
 """地図のレンズ——`GET /api/region/lens/{lens_id}/{z}/{x}/{y}`（道ごとの1kmあたりの代償の秒）と、`GET /api/cost-axes`の
 段の境目の目安、道の窓が出す値と事実（`services/lens_service.py: LensService.inspect`）。
 
-道路網は本番と同じ置き場から読ませ（`tests/route_world.py`）、差し替えるのは天気（風の予報は無い）だけ。
+道路網は本番と同じ置き場から読ませ（`tests/route_world.py`）、差し替えるのは天気（無風の予報）だけ。
 
 ここで見ないもの:
 - 走行の模型の体力の内訳そのもの → `test_cycling_speed.py`
@@ -31,7 +31,7 @@ from datetime import datetime
 from app.domain.time_zone import JST
 from tests.tuning_fixture import TUNED, TUNING
 from tests.route_world import (
-    BAD_MATERIAL, CALM, COORDINATES, CENTER, NORTH_EAST, SOUTH_WEST, WAYS, Weather, at, edges_of, generator_for, road_network,
+    BAD_MATERIAL, CALM, COORDINATES, CENTER, NODE_OF, NORTH_EAST, SOUTH_WEST, WAYS, Weather, at, edges_of, generator_for, road_network,
     serve_road_network,
 )
 
@@ -47,6 +47,8 @@ AXES = CostAxisDefinitions.model_validate({
         "kind": "linear", "material": BAD_MATERIAL, "points": [[0.0, 0.0], [1.0, ROUGH_WEIGHT]]}}},
     "total_lens": PRESENTATION,
 })
+#: 無風で、標準より暑い日の予報（空気が薄い）。
+HOT = replace(CALM, temperature_c=np.full_like(CALM.temperature_c, 35.0))
 #: 道1本で塗るズームの、格子の真ん中を含むタイル。
 Z = 12
 X, Y = (int(v) for v in tile_position(COORDINATES[CENTER][1], COORDINATES[CENTER][0], Z))
@@ -130,6 +132,28 @@ async def test_the_route_and_the_map_lens_count_the_same_seconds_on_the_same_roa
         assert {axis_id: penalty.axis_seconds[axis_id] for axis_id in others} \
             == pytest.approx({axis_id: line[axis_id] for axis_id in others}, abs=0.5)
         assert candidate.estimated_duration_seconds + penalty.total_seconds == pytest.approx(candidate.cost_seconds, abs=0.5)
+
+
+async def test_the_route_and_the_map_lens_climb_in_the_same_air_of_the_forecast(
+        client, cost_axes, road_network_root, override_dependency):
+    """ルートと地図のレンズは、同じ区間・同じ時刻の予報の気温（空気の濃さ）で解く。暑い日のルートが坂の道を登る区間の登坂の秒は、
+    暑い日のレンズの値に道の長さを掛けたものと同じで、標準の気温の日のレンズとは違う（違わなければ、気温を読まずに解いている）。"""
+    network = road_network(WAYS, COORDINATES, gradient_of={CLIMBING_WAY: 6.0})
+    candidates = (await generator_for(road_network_root, network, HOT).generate_via_waypoints(
+        at(NODE_OF[0, 1]), [], destination=at(CENTER), max_routes=3, start_time=datetime(2026, 5, 1, 9, tzinfo=JST))).candidates
+    standard = (await _lens(client, "ascent"))[str(CLIMBING_WAY)][LENS_ALONG_LEAF]
+    override_dependency(dependencies.get_lens_service, lambda: LensService(Weather(HOT)))
+    hot = (await _lens(client, "ascent"))[str(CLIMBING_WAY)][LENS_ALONG_LEAF]
+    (row,) = np.flatnonzero((network.edge_way_id == CLIMBING_WAY) & network.edge_forward)
+    km = float(network.distance_m[row]) / 1000.0
+    climbs = [segment.penalty.axis_seconds["ascent"] for candidate in candidates
+              for segment, (way, _, forward) in zip(candidate.segments, edges_of(candidate), strict=True)
+              if way == CLIMBING_WAY and forward]
+
+    assert climbs
+    # ルートの区間の秒は0.1秒に丸めて返る。
+    assert climbs == pytest.approx([hot * km] * len(climbs), abs=0.05)
+    assert abs(hot - standard) * km > 0.5
 
 
 async def test_the_lens_paints_with_the_users_strength_and_multipliers_like_the_route(client, cost_axes, road_network_root):

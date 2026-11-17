@@ -145,10 +145,10 @@ class LedgerCosts:
         return np.asarray(sum(self.penalty_by_axis(ride).values(), np.zeros(len(ride.seconds))), dtype=np.float64)
 
     def row_seconds(self, model: SegmentSpeedModel, headwind_ms: np.ndarray, crosswind_ms: np.ndarray,
-                    rows: np.ndarray | None = None) -> tuple[np.ndarray, dict[str, np.ndarray]]:
-        """区間の行`rows`（省略すると全部）だけを風の成分（`rows`の並び）で走ったときの`(走行時間, 軸ごとの代償の秒)`
+                    temperature_c: np.ndarray, rows: np.ndarray | None = None) -> tuple[np.ndarray, dict[str, np.ndarray]]:
+        """区間の行`rows`（省略すると全部）だけを風の成分と気温（`rows`の並び）で走ったときの`(走行時間, 軸ごとの代償の秒)`
         （`penalty_by_axis`）。"""
-        ride = model.ride(headwind_ms, crosswind_ms, self._weight_exponent, rows)
+        ride = model.ride(headwind_ms, crosswind_ms, temperature_c, self._weight_exponent, rows)
         return ride.seconds, self.penalty_by_axis(ride, rows)
 
     def turn_penalty_by_axis(self, kickoffs: float) -> dict[str, float]:
@@ -156,10 +156,10 @@ class LedgerCosts:
         うち通る道筋で決まる分で、軸と別の行を持たない。その軸が無効なら空。"""
         return {} if self._kickoff_axis_id is None else {self._kickoff_axis_id: kickoffs * self._kickoff_seconds}
 
-    def bin_seconds(self, model: SegmentSpeedModel, headwind_ms: np.ndarray,
-                    crosswind_ms: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-        """風の成分で走ったときの、区間ごとの`(走行時間, 代償の秒)`（体力の重みは式の`γ`で掛ける）。"""
-        ride = model.ride(headwind_ms, crosswind_ms, self._weight_exponent)
+    def bin_seconds(self, model: SegmentSpeedModel, headwind_ms: np.ndarray, crosswind_ms: np.ndarray,
+                    temperature_c: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        """風の成分と気温で走ったときの、区間ごとの`(走行時間, 代償の秒)`（体力の重みは式の`γ`で掛ける）。"""
+        ride = model.ride(headwind_ms, crosswind_ms, temperature_c, self._weight_exponent)
         return ride.seconds, self.penalty_seconds(ride)
 
     def transition_costs(self, turn_seconds: np.ndarray, turn_kickoffs: np.ndarray) -> np.ndarray:

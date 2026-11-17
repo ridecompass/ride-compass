@@ -289,7 +289,7 @@ backendの答え、タイルで配る要素ごとのタイルのパスを`script
 
 | メソッド | 用途 | 時刻 |
 |---|---|---|
-| `get_wind_forecast_lattice(bbox)` | `RoadGraphEngine`の探索前コスト合成（Edgeごとの通過予定時刻・最寄りの格子点の風）と、ルートを出す前の地図のレンズの風（`services/lens_service.py: LensService`） | 範囲を覆うMSMの格子点ごとの時別風向・風速の系列（JST、格子点の値のまま）。格子点はMSMの格子そのもの（`domain/msm.py: MsmGrid.block_covering`）で、どの範囲から引いても同じ地点は同じ格子点に当たる。時刻が2つ未満なら投げる |
+| `get_wind_forecast_lattice(bbox)` | `RoadGraphEngine`の探索前コスト合成（Edgeごとの通過予定時刻・最寄りの格子点の風と気温）と、ルートを出す前の地図のレンズの風と気温（`services/lens_service.py: LensService`） | 範囲を覆うMSMの格子点ごとの時別風向・風速・気温の系列（JST、格子点の値のまま）。格子点はMSMの格子そのもの（`domain/msm.py: MsmGrid.block_covering`）で、どの範囲から引いても同じ地点は同じ格子点に当たる。時刻が2つ未満なら投げる |
 | `get_msm_grid(bbox)` | 地図の風の矢印と降水の升目（`GET /api/weather/msm-grid`） | 現在時刻の正時から`domain/weather_elements.py: MSM_FORECAST_HOURS`時間ぶん（JST）。範囲の中の格子点を間引き、風速・風向・降水量を格子点の値のまま丸めて返す。格子の欠損はNone。読めなければ投げる |
 | `get_grid_point_today(point)` | 地点の最寄りの格子点の今日の値（`GET /api/weather`、`domain/weather.py: grid_point_today`） | 現在時刻の正時から、その日（JST）の24時まで。1時間ごとの気温・降水量・風速・風向を格子点の値のまま丸めて返し、格子点の位置と、地点から格子点までの距離（km）・方位を添える。最も高い・低い値は、並べた1時間ごとの値から選んだものとして`highest_hourly_*`・`lowest_hourly_*`の名前で返す（日の最高・最低気温ではない）。格子の欠損はNone。読めなければNone |
 
@@ -469,7 +469,7 @@ MSM（`.om`形式、CC-BY-4.0）をローカルへ同期して読む。予報を
 |---|---|
 | 配信元 | `settings.msm_base_url`（既定はopenmeteo.s3.amazonaws.comのjma_msm） |
 | 同期対象 | `msm_client.py: FORECAST_VARIABLES`（消費するものだけ。例: 風の東西成分・南北成分・1時間降水量・気温）の、現在時刻から`domain/weather_elements.py: MSM_FORECAST_HOURS`先までを覆うチャンク |
-| 読み出しの戻り値 | 格子点の値のまま読む`read_grid_points`（地点ごとの最寄りの格子点。`FORECAST_VARIABLES`の全部を読む）は`msm_client.py: MsmGridPointWeatherSeries`、`read_grid_block`（矩形を覆う格子点の全部）は`msm_client.py: MsmGridPointSeries`（どちらも読んだ格子点の番号・位置を持つ）、地図に描く格子点を読む`read_weather_grid`は`msm_client.py: MsmWeatherGridSeries`（風に加えて降水量と、間引いた格子点の間隔を持つ）。風だけを使う読み出しは降水量を読まない。どれも時刻列（タイムゾーン無しのJSTの`datetime`）と、項目ごとの[地点数, 時刻数]の配列を持つ。配信元の変数名は持たない——変数名と項目の対応は`FORECAST_VARIABLES`だけが持ち、サービスは項目で読む |
+| 読み出しの戻り値 | 格子点の値のまま読む`read_grid_points`（地点ごとの最寄りの格子点。`FORECAST_VARIABLES`の全部を読む）は`msm_client.py: MsmGridPointWeatherSeries`、`read_grid_block`（矩形を覆う格子点の全部の風と気温）は`msm_client.py: MsmGridPointSeries`（どちらも読んだ格子点の番号・位置を持つ）、地図に描く格子点を読む`read_weather_grid`は`msm_client.py: MsmWeatherGridSeries`（風に加えて降水量と、間引いた格子点の間隔を持つ）。走行の模型が読む`read_grid_block`は降水量を読まない。どれも時刻列（タイムゾーン無しのJSTの`datetime`）と、項目ごとの[地点数, 時刻数]の配列を持つ。配信元の変数名は持たない——変数名と項目の対応は`FORECAST_VARIABLES`だけが持ち、サービスは項目で読む |
 | チャンク | 変数ごとに日本全域・`chunk_time_length`時間ぶんを1ファイルにまとめたもの。1ファイル十数MB |
 | 保存先 | `backend/data/msm/`（本番はコンテナへマウントされるホスト側ディレクトリのため、デプロイをまたいで残る） |
 | 更新の検出 | ETagによる条件付きGET。内容が変わっていなければ304で転送自体が起きない |

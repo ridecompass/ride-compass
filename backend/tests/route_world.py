@@ -27,6 +27,7 @@ from app.domain.route import Coordinates
 from app.domain.route_request import FixedPoints, RequestedConditions
 from app.domain.msm import MsmBlock, MsmGrid
 from app.domain.time_zone import JST
+from app.domain.cycling_speed import STANDARD_TEMPERATURE_C
 from app.domain.wind import WindForecastSeries
 from app.infrastructure import road_network_store
 from app.services.graph_service import GraphService, SearchMemory
@@ -171,12 +172,13 @@ class NetworkRepository:
         }
 
 
-#: 2020〜2035年の毎時の、どこでも無風の予報（格子点1つ。区間はどこでも、一番近い格子点のこの1つを引く）。
+#: 2020〜2035年の毎時の、どこでも無風・標準の気温の予報（格子点1つ。区間はどこでも、一番近い格子点のこの1つを引く）。
 _CALM_HOURS = int((datetime(2035, 1, 1) - datetime(2020, 1, 1)).total_seconds() // 3600)
 CALM = WindForecastSeries(
     times=[datetime(2020, 1, 1) + timedelta(hours=hour) for hour in range(_CALM_HOURS)],
     speed_ms=np.zeros((1, _CALM_HOURS)),
     direction_deg=np.zeros((1, _CALM_HOURS)),
+    temperature_c=np.full((1, _CALM_HOURS), STANDARD_TEMPERATURE_C),
     lattice=MsmBlock(grid=MsmGrid(lat_min=35.0, lon_min=139.0, d_lat=0.05, d_lon=0.0625, n_lat=1, n_lon=1),
                      row0=0, col0=0, rows=1, cols=1),
     latest_run_end=datetime(2035, 1, 1),

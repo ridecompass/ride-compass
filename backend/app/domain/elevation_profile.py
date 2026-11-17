@@ -105,6 +105,22 @@ def unknown_lengths_m(start: np.ndarray, points: np.ndarray, elevation_m: np.nda
 
 
 @njit(cache=True, nogil=True)
+def row_elevations_m(start: np.ndarray, points: np.ndarray, elevation_m: np.ndarray) -> np.ndarray:
+    """区間の行ごとの標高（m）。断面の点のうち値のある点の標高の平均で、値のある点が無い行はNaN。"""
+    mean = np.full(len(points), np.nan)
+    for row in range(len(points)):
+        total = 0.0
+        known = 0
+        for i in range(start[row], start[row] + points[row]):
+            if not np.isnan(elevation_m[i]):
+                total += elevation_m[i]
+                known += 1
+        if known:
+            mean[row] = total / known
+    return mean
+
+
+@njit(cache=True, nogil=True)
 def flatten_spans(start: np.ndarray, points: np.ndarray, forward: np.ndarray, elevation_m: np.ndarray,
                    position: np.ndarray, distance_m: np.ndarray, unknown_m: np.ndarray, fill_grade: np.ndarray,
                    fill_share: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:

@@ -17,6 +17,7 @@ from typing import Literal
 import numpy as np
 
 from app.domain.attributes import MaterialColumn
+from app.domain.cycling_speed import STANDARD_TEMPERATURE_C
 from app.domain.lens_total import TOTAL_LENS_ID, lens_values_with_total
 from app.domain.elevation_profile import ElevationProfiles
 from app.domain.geo import bearings_between
@@ -155,21 +156,22 @@ class LensFactInputs:
 
 def lens_table(features: LensFeatures, materials: Mapping[str, MaterialColumn], distance_m: np.ndarray,
                profiles: ElevationProfiles, settings: ModelSettings, parameters: LedgerParameters, speed_kmh: float,
-               fills: MaterialFills, wind_ms: tuple[np.ndarray, np.ndarray] | None,
+               fills: MaterialFills, weather: tuple[np.ndarray, np.ndarray, np.ndarray] | None,
                elevation_gain_m: np.ndarray) -> tuple[LensTable, LensFactInputs]:
-    """`features.rows`の行の順の材料・長さ・断面・風の成分（向かい風・横風。Noneはフィーチャーが無く風を求めなかったとき）・行の向きの登りから、
+    """`features.rows`の行の順の材料・長さ・断面・風の成分と気温（向かい風・横風・気温。Noneはフィーチャーが無く風を求めなかった
+    とき。無風・`STANDARD_TEMPERATURE_C`で解く）・行の向きの登りから、
     レンズの値と、道の窓が出す区間の秒と事実の入力を求める。"""
     travel = travel_inputs(materials, distance_m, profiles, speed_kmh, fills, settings)
     axes = settings.cost_axes
     ledger = LedgerCosts.for_model(axes, parameters, travel.model, burden_weights(axes, parameters, materials, fills))
-    calm = (np.zeros(len(distance_m)), np.zeros(len(distance_m)))
-    _, penalties = ledger.row_seconds(travel.model, *(calm if wind_ms is None else wind_ms))
+    calm = (np.zeros(len(distance_m)), np.zeros(len(distance_m)), np.full(len(distance_m), STANDARD_TEMPERATURE_C))
+    _, penalties = ledger.row_seconds(travel.model, *(calm if weather is None else weather))
     km = _summed_by_direction(features, travel.model.distance_m) / 1000.0
     with np.errstate(invalid="ignore", divide="ignore"):
         per_km = {axis_id: _summed_by_direction(features, seconds) / km for axis_id, seconds in penalties.items()}
     return (LensTable(features=features, values=lens_values_with_total(per_km, np.zeros_like(km))),
             LensFactInputs(settings, materials, fills, travel.model.distance_m, penalties, elevation_gain_m, travel.stops,
-                           None if wind_ms is None else wind_ms[0]))
+                           None if weather is None else weather[0]))
 
 
 def _summed_by_direction(features: LensFeatures, per_row: np.ndarray) -> np.ndarray:
