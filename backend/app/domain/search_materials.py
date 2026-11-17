@@ -12,6 +12,7 @@ import numpy as np
 
 from app.domain.attributes import CategoricalColumn, EdgeMaterialColumns, MaterialColumn
 from app.domain.cycling_speed import travel_model_material_ids
+from app.domain.wind_height import WindHeights
 from app.domain.elevation_profile import ElevationProfiles
 from app.domain.hard_filters import hard_filtered
 from app.domain.road_classes import CLASS_MATERIAL_PREFIX, RoadClassDefinitions, material_spec
@@ -82,6 +83,8 @@ class SearchMaterials:
     categorical_material_columns: list[CategoricalColumn]
     # 区間の断面の点（所要時間が点の間ごとに速さを解く。`domain/elevation_profile.py`）。
     elevation_profiles: ElevationProfiles
+    # 区間の、予報の10mの風を乗り手の高さへ直す倍率の引き口（`domain/wind_height.py: WindHeights`）。
+    wind_heights: WindHeights
 
     def __post_init__(self) -> None:
         """行と列が揃っていることを、組み立てた場所で確かめる。揃っていないまま先へ進むと、行がずれた区間のコストを
@@ -100,6 +103,7 @@ class SearchMaterials:
                 ("mid_lat", self.mid_lat),
                 ("mid_lon", self.mid_lon),
                 ("hard_filtered", self.hard_filtered),
+                ("wind_heights.rows", self.wind_heights.rows),
                 ("material_values", self.material_values.T),
                 *((f"road_classes[{key}]", column.codes) for key, column in self.road_classes.items()),
                 *((f"categorical_material_columns[{material_id}]", column.codes) for material_id, column in zip(
@@ -147,6 +151,7 @@ def build_search_materials(
         categorical_material_ids=list(categorical),
         categorical_material_columns=list(categorical.values()),
         elevation_profiles=materials.elevation_profiles,
+        wind_heights=materials.wind_heights,
     )
     add_elapsed_ms(steps_ms, "stack", started)
     return table

@@ -36,9 +36,10 @@ EFFORT_AXES: dict[str, EffortItem] = {
 _NonNegative = Annotated[float, Field(ge=0.0, allow_inf_nan=False)]
 
 #: 体力の費目の事実のうち、ルートの事実・道の窓・凡例の目安の2つ以上が出すものの名前（同じ事実は同じ名前で出す）。止まる回数は、
-#: 止まる出来事（と、ルートなら曲がる所）を止まってから漕ぎ出す回数に換えたもの（`domain/traffic.py: StopEvent.kickoffs`）。
+#: 止まる出来事（と、ルートなら曲がる所）を止まってから漕ぎ出す回数に換えたもの（`domain/traffic.py: StopEvent.kickoffs`）。向かい風は
+#: 乗り手の高さの風の成分で、予報の地上10mの風速と別の値だと名前で分かるようにする。
 STOPS_FACT_LABEL = "止まる回数"
-HEADWIND_FACT_LABEL = "向かい風"
+HEADWIND_FACT_LABEL = "向かい風[乗り手の高さ]"
 
 #: 地図のレンズの量（道の1kmあたりの代償の秒）を、利用者に言う名前と単位。
 LENS_QUANTITY_LABEL = "1kmあたりの負担"

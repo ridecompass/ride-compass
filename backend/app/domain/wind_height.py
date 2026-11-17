@@ -4,20 +4,18 @@
 
 格子の側の粗度長 z0g（10mの風が吹く上流）で10mから混ざる高さ60mへ上げ、道の側の粗度長 z0r で60mから乗り手の高さ h へ
 下ろす。z0r は区間の周りの帯の土地被覆の割合で ln(z0) を平均したもの（被覆が混じるときの WMO の附属書の勧め）、z0g は
-中点に一番近い MSM の格子点が同じ区間どうしで、z0r の ln を長さで平均したもの。どちらも、土地被覆の無い区間・区間の無い
-格子点は道路網全体の区間の ln(z0) の長さの平均にする。倍率は風速に掛ける（向かい風と横風の両方に同じ倍率が効く）。
-
-倍率は区間と格子だけで決まり、風の時刻に依らない（季節だけで変わる）ので、道路網ごとに全区間について1回求め、探索と地図の
-レンズは同じ区間の同じ値を引く。
+中点に一番近い MSM の格子点が同じ区間どうしで、z0r の ln を長さで平均したもの。倍率は風速に掛ける（向かい風と横風の両方に
+同じ倍率が効く）。倍率は区間の被覆・長さ・中点と格子だけで決まり、風の時刻には季節でだけ依る。
 """
 
 import math
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
+from dataclasses import dataclass
 
 import numpy as np
 
 from app.domain.landcover import LANDCOVER_CLASSES
-from app.domain.msm import MsmGrid
+from app.domain.msm import MsmBlock, MsmGrid
 
 #: 予報の風の高さ（m）。MSM の地上10mの風。
 FORECAST_HEIGHT_M = 10.0
@@ -54,39 +52,26 @@ if set(ROUGHNESS_LENGTH_M) != {cls.percent_field for cls in LANDCOVER_CLASSES}:
 _SUMMER_DAYS = (105, 288)
 
 
-def _road_log_roughness(percent: Mapping[str, np.ndarray], winter: bool) -> np.ndarray:
-    """区間ごとの道の側の粗度長の対数 ln(z0r)（被覆の割合で ln(z0) を平均したもの。土地被覆の無い区間はNaN）。"""
-    weighted: np.ndarray | float = 0.0
-    total: np.ndarray | float = 0.0
-    for field, lengths in ROUGHNESS_LENGTH_M.items():
-        share = np.asarray(percent[field], dtype=np.float64) if field in percent else np.nan
-        weighted = weighted + share * math.log(min(lengths[winter], ROUGHNESS_CAP_M))
-        total = total + share
-    total = np.asarray(total, dtype=np.float64)
-    return np.divide(weighted, total, out=np.full(total.shape, np.nan), where=total > 0)  # NaNの割合は偽
-
-
 def height_factors(percent: Mapping[str, np.ndarray], distance_m: np.ndarray, mid_lat: np.ndarray, mid_lon: np.ndarray,
                    grid: MsmGrid) -> np.ndarray:
-    """区間ごとの、予報の10mの風を乗り手の高さの風へ直す倍率（`(区間, 2)`の float32。列は夏・冬）。`percent`は割合の列の名前 →
-    区間ごとの割合（%）で、無い列は値の無い列とみなす。`distance_m`・`mid_lat`・`mid_lon`は区間の長さと中点。どの区間も、MSM の
-    格子`grid`の中点に一番近い格子点（格子の外の中点は端の格子点）の組で、格子の側の粗度長を求める。"""
+    """区間ごとの、予報の10mの風を乗り手の高さの風へ直す倍率（`(区間, 2)`の float32。列は夏・冬）。`percent`は土地被覆の
+    割合の列の名前（`ROUGHNESS_LENGTH_M`の鍵の全部）→ 区間ごとの割合（%。欠けは埋めて渡す）、`distance_m`・`mid_lat`・`mid_lon`は
+    区間の長さと中点。格子の側の粗度は、中点に一番近い MSM の格子`grid`の格子点（格子の外の中点は端の格子点）が同じ区間の組で
+    求める。割合の無い区間（渡した全区間に土地被覆が無い）は、開けた平地の粗度長の道とする。"""
     distance = np.asarray(distance_m, dtype=np.float64)
-    rows = np.clip(np.rint((np.asarray(mid_lat, dtype=np.float64) - grid.lat_min) / grid.d_lat), 0, grid.n_lat - 1)
-    cols = np.clip(np.rint((np.asarray(mid_lon, dtype=np.float64) - grid.lon_min) / grid.d_lon), 0, grid.n_lon - 1)
-    _, points = np.unique(rows.astype(np.int64) * grid.n_lon + cols.astype(np.int64), return_inverse=True)
+    nearest = MsmBlock(grid=grid, row0=0, col0=0, rows=grid.n_lat, cols=grid.n_lon).points_of(mid_lat, mid_lon)
+    _, points = np.unique(nearest, return_inverse=True)
+    lengths = np.bincount(points, weights=distance)
     blending = math.log(BLENDING_HEIGHT_M)
     factors = np.empty((len(distance), 2), dtype=np.float32)
     for season in (0, 1):
-        road = _road_log_roughness(percent, winter=bool(season))
-        known = ~np.isnan(road)
-        weight = np.where(known, distance, 0.0)
-        weighted = weight * np.where(known, road, 0.0)
-        overall = float(weighted.sum() / weight.sum()) if weight.sum() > 0 else math.log(OPEN_TERRAIN_ROUGHNESS_M)
-        lengths = np.bincount(points, weights=weight)
-        grid_side = np.divide(np.bincount(points, weights=weighted), lengths, out=np.full(len(lengths), overall),
-                              where=lengths > 0)[points]
-        road = np.where(known, road, overall)
+        weighted = sum(np.asarray(percent[field], dtype=np.float64) * math.log(min(roughness[season], ROUGHNESS_CAP_M))
+                       for field, roughness in ROUGHNESS_LENGTH_M.items())
+        total = sum(np.asarray(percent[field], dtype=np.float64) for field in ROUGHNESS_LENGTH_M)
+        road = np.divide(weighted, total, out=np.full(len(distance), math.log(OPEN_TERRAIN_ROUGHNESS_M)),
+                         where=total > 0)  # NaNの割合は偽
+        mean = np.divide(np.bincount(points, weights=distance * road), lengths, out=np.zeros_like(lengths), where=lengths > 0)
+        grid_side = np.where(lengths[points] > 0, mean[points], road)  # 長さ0の区間だけの格子点は、その区間の粗度
         factors[:, season] = ((blending - grid_side) / (math.log(FORECAST_HEIGHT_M) - grid_side)
                               * (math.log(RIDER_HEIGHT_M) - road) / (blending - road))
     return factors
@@ -97,4 +82,19 @@ def seasonal_factors(factors: np.ndarray, day_of_year: int | np.ndarray) -> np.n
     列（区間ごと）。"""
     day = np.asarray(day_of_year)
     summer = (day >= _SUMMER_DAYS[0]) & (day <= _SUMMER_DAYS[1])
+    if summer.ndim == 0:
+        return factors[:, 0 if summer else 1]
     return np.where(summer, factors[:, 0], factors[:, 1])
+
+
+@dataclass(frozen=True)
+class WindHeights:
+    """区間の行の倍率（`height_factors`）の引き口。倍率は格子で決まり、格子は風の予報を読むまで決まらないので、格子を渡されたときに
+    引く。`factors_of`は格子 → 全区間の倍率、`rows`はそのうちのこの区間の行。"""
+
+    factors_of: Callable[[MsmGrid], np.ndarray]
+    rows: np.ndarray
+
+    def of_grid(self, grid: MsmGrid) -> np.ndarray:
+        """格子`grid`での、`rows`の並びの倍率。"""
+        return self.factors_of(grid)[self.rows]

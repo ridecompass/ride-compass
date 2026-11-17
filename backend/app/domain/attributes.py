@@ -6,6 +6,7 @@ import numpy as np
 
 from app.domain.elevation_profile import MAX_PLAUSIBLE_GRADE_PERCENT, ElevationProfiles
 from app.domain.strict_model import StrictModel
+from app.domain.wind_height import WindHeights
 
 
 class ElevationAttribute(StrictModel):
@@ -142,6 +143,8 @@ class EdgeMaterialColumns:
     mid_lon: np.ndarray  # dtype=float64
     # 区間の断面の点（所要時間が読む）。
     elevation_profiles: ElevationProfiles
+    # 区間の、予報の10mの風を乗り手の高さへ直す倍率の引き口。
+    wind_heights: WindHeights
 
     def __len__(self) -> int:
         return len(self.distance_m)

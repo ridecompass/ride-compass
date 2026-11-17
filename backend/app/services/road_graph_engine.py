@@ -84,7 +84,7 @@ from app.domain.wind import (
     detour_ratio_or_default,
 )
 from app.infrastructure import detour_ratio_cache
-from app.services.graph_service import GraphService, network_fills, network_wind_heights
+from app.services.graph_service import GraphService, network_fills
 from app.domain.loop_routing import LoopTurnaround, TracedLoop
 from app.services.weather_service import WeatherService
 from app.services import road_graph_via_routes
@@ -267,7 +267,6 @@ class RoadGraphEngine:
                 wind_series, start, self._assumed_speed_kmh, lazy_graph.edge_rows,
                 detour_ratio=detour_ratio_or_default(learned_detour_ratio),
                 material_fills=network_fills(road.network, burden_material_ids(cost_axes)),
-                wind_height_factors=network_wind_heights(road.network, wind_series.lattice.grid)[road.rows],
                 settings=self._settings,
                 parameters=ledger_parameters(self._cost_preference, self._settings.tuning),
             )
