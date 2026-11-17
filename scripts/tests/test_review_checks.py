@@ -218,7 +218,7 @@ def test_friction_picks_the_friction_and_maintenance_lines_written_after_the_rev
             "保守の候補: 地の文\n"
             "> - 保守の候補: 引用の箇条書き\n"
             "本文の中の 流れの摩擦: は拾わない\n"
-            "  - 流れの摩擦: 字下げは拾わない"
+            "  - 流れの摩擦: 字下げ"
         )},
     ]
     assert rc.reported_lines(805, comments, since) == [
@@ -228,6 +228,7 @@ def test_friction_picks_the_friction_and_maintenance_lines_written_after_the_rev
         "#805 - 流れの摩擦: 箇条書き",
         "#805 保守の候補: 地の文",
         "#805 > - 保守の候補: 引用の箇条書き",
+        "#805   - 流れの摩擦: 字下げ",
     ]
 
 

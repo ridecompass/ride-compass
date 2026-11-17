@@ -59,8 +59,8 @@ TRIGGER_DAYS = 14
 FLOW_CONFIG = json.loads((REPO_ROOT / "tools" / "flow-gate" / "flow.config.json").read_text(encoding="utf-8"))
 TASKS_REPO = FLOW_CONFIG["tasks"]
 #: 周期レビューが集める報告の行（流れの摩擦と保守の候補）。担当の終え方の要約は、後始末が終わりのコメントへ `> ` で引用して
-#: 写すので、引用と箇条書きの頭も拾う。
-REPORTED_RE = re.compile(r"^(> )?(- )?(流れの摩擦|保守の候補):")
+#: 写すので、引用と箇条書きの頭も拾う。箇条書きの下へ字下げした行も拾う。
+REPORTED_RE = re.compile(r"^(> )?\s*(- )?(流れの摩擦|保守の候補):")
 TRIGGER_IMPL_LINES = 20_000
 
 MARKDOWN_LINK_RE = re.compile(r"\[[^\]]*\]\(([^)\s#]+)(?:#[^)]*)?\)")
