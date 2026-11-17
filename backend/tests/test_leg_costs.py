@@ -25,12 +25,15 @@ from app.domain.cost_axes import EFFORT_AXES, CostAxisDefinitions
 from app.domain.cost_preference import CostPreference
 from app.domain.ledger_costs import LedgerParameters
 from app.domain.leg_costs import LegCostArrays, LegCostComposer, LegValues
+from app.domain.model_settings import ModelSettings
 from app.domain.road_network import MaterialFills
 from app.domain.msm import MsmBlock, MsmGrid
 from app.domain.road_avoidance import RoadAvoidanceMasks
+from app.domain.road_classes import EMPTY_ROAD_CLASSES
 from app.domain.wind import WindForecastSeries
 from tests.cost_axes_fixture import cost_axes
 from tests.profile_fixture import grade_profiles, profiles
+from tests.tuning_fixture import TUNED
 
 START = datetime(2026, 10, 3, 9, 0)
 CRUISE_KMH = 20.0
@@ -93,7 +96,7 @@ def _composer(matrix: SearchMaterials, *, excluded=None, cost_scale=None, series
     return LegCostComposer(
         matrix, masks, series, START, CRUISE_KMH,
         np.arange(n) if lazy is None else np.asarray(lazy), detour_ratio=1.3, material_fills=fills,
-        axes=cost_axes() if axes is None else axes, parameters=parameters,
+        settings=ModelSettings(TUNED, EMPTY_ROAD_CLASSES, cost_axes() if axes is None else axes), parameters=parameters,
     )
 
 
@@ -155,19 +158,8 @@ def test_each_stop_on_a_segment_adds_its_share_of_the_wait():
     leg = _snapshot(_matrix(3, distance=500.0, materials={STOP_DENSITY["signal"]: [2.0, 0.0, np.nan]}))
 
     assert leg.travel_seconds_lazy[0] - leg.travel_seconds_lazy[1] == pytest.approx(
-        traffic.stop_event("stop", "signal").expected_seconds)
+        traffic.stop_event("stop", "signal", TUNED).expected_seconds)
     assert leg.travel_seconds_lazy[2] == leg.travel_seconds_lazy[1]
-
-
-def test_a_matrix_without_a_column_the_travel_time_reads_is_refused():
-    """所要時間が読む材料の列が無い行列を通すと、その材料が足す時間（停止の待ち等）が全区間で黙って0秒になる。"""
-    matrix = _matrix(2)
-    kept = [i for i, material_id in enumerate(matrix.material_ids) if material_id != STOP_DENSITY["signal"]]
-
-    with pytest.raises(ValueError, match=STOP_DENSITY["signal"]):
-        dataclasses.replace(
-            matrix, material_ids=[matrix.material_ids[i] for i in kept], material_values=matrix.material_values[kept],
-        )
 
 
 def test_an_excluded_segment_cannot_be_passed():
@@ -320,7 +312,7 @@ def test_composing_compiles_nothing_after_baking_whatever_arrays_the_matrix_hold
     合成が費用の組み立てのJITへ渡す配列の型を揃えるため、行列の列のdtype・読み取り専用かに依らず、焼いた後の合成は
     コンパイルしない——本番の最初のルート生成がコンパイルを払わない（道路網の列は読み取り専用で読まれる）。
     コンパイルはnumbaの出来事で数える。"""
-    leg_costs.compile_leg_cost_kernels()
+    leg_costs.compile_leg_cost_kernels(TUNED)
     matrix = _matrix(3)
     distance = np.full(3, 1000.0)
     distance.flags.writeable = False

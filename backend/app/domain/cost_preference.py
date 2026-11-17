@@ -10,7 +10,7 @@ from typing import Annotated, NamedTuple
 
 from pydantic import AfterValidator, Field
 
-from app.domain.cost_axes import cost_axis_ids, current_cost_axes
+from app.domain.cost_axes import CostAxisDefinitions, cost_axis_ids, current_cost_axes
 from app.domain.display_palette import SEMANTIC_COLORS
 from app.domain.strict_model import StrictModel
 
@@ -93,11 +93,11 @@ class CostPreference(StrictModel):
             raise ValueError(f"cost axis both disabled and multiplied: {both}")
         return self
 
-    def resolved(self) -> "CostPreference":
-        """今の費用の軸を全部、軸の順に書いた形（数える軸は倍率に、無効の軸は無効に。条件のエコーに返す——そのまま送り直せば
+    def resolved(self, axes: CostAxisDefinitions) -> "CostPreference":
+        """費用の軸`axes`を全部、軸の順に書いた形（数える軸は倍率に、無効の軸は無効に。条件のエコーに返す——そのまま送り直せば
         同じ条件になる）。"""
         disabled = set(self.disabled_axes)
-        axis_ids = cost_axis_ids(current_cost_axes())
+        axis_ids = cost_axis_ids(axes)
         return CostPreference(
             strength=self.strength,
             multipliers={axis_id: self.multipliers.get(axis_id, STANDARD_COST_FACTOR)

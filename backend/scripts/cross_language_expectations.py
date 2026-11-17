@@ -23,7 +23,6 @@ from app.domain.jma_tile_specs import (
 )
 from app.domain.region import BoundingBox, tile_bounds_lonlat, tile_position, tiles_covering_bbox
 from app.domain.time_zone import jst_local_text
-from app.domain.tuning import TUNING_VALUES
 from app.domain.way_value_formula import (
     FALSE,
     Binary,
@@ -405,7 +404,7 @@ _Y = feature("y")
 
 #: 場面 → 木と、木へ入れる道ごとの材料（値の無い材料は載せない）と条件の組。
 #: 直角とみなす幅（較正値。値の正本はDBなので、表の入力としてここで置く）。向きの行（104・105・106度）がこの幅の境目を挟む。
-TUNING_VALUES["gradient.perpendicular_band_deg"] = 15.0
+_PERPENDICULAR_BAND_DEG = 15.0
 
 _WAY_VALUE_FORMULAS: list[tuple[str, WayValueFormula, list[tuple[dict[str, float], dict[str, float]]]]] = [
     (
@@ -451,7 +450,7 @@ _WAY_VALUE_FORMULAS: list[tuple[str, WayValueFormula, list[tuple[dict[str, float
     ),
     (
         "走る向きで選ぶ勾配（道の向き寄り・逆向き寄り・直角の付近・向きの無い道）",
-        travel_direction_formula(feature("forward"), feature("backward")),
+        travel_direction_formula(feature("forward"), feature("backward"), _PERPENDICULAR_BAND_DEG),
         [({ROAD_BEARING_LEAF: road, "forward": 3.0, "backward": -3.0}, {"bearing_deg": bearing})
          for road, bearing in ((10.0, 0.0), (10.0, 200.0), (350.0, 5.0), (0.0, 104.0), (0.0, 105.0), (0.0, 106.0),
                                (0.0, 255.5), (180.0, 359.75))]

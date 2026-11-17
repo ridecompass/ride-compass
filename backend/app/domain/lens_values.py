@@ -17,7 +17,6 @@ from typing import Literal
 import numpy as np
 
 from app.domain.attributes import MaterialColumn
-from app.domain.cost_axes import CostAxisDefinitions
 from app.domain.lens_total import TOTAL_LENS_ID, lens_values_with_total
 from app.domain.elevation_profile import ElevationProfiles
 from app.domain.geo import bearings_between
@@ -25,10 +24,12 @@ from app.domain.graph import edge_feature_key
 from app.domain.gradient import ROAD_BEARING_LEAF, travel_direction_formula
 from app.domain.ledger_costs import LedgerCosts, LedgerParameters
 from app.domain.leg_costs import axis_facts, burden_weights, travel_inputs
+from app.domain.model_settings import ModelSettings
 from app.domain.msm_grid import ForecastTime
 from app.domain.region import EDGE_UNIT_MIN_ZOOM
 from app.domain.road_network import MaterialFills, RoadNetwork, rows_in_tile
 from app.domain.strict_model import StrictModel
+from app.domain.tuning import Tuning
 from app.domain.route import AxisFact, elevation_gain
 from app.domain.way_value_formula import WayValueConditionName, WayValueFormula, evaluate_formula, feature
 
@@ -40,10 +41,11 @@ LENS_AGAINST_LEAF = "lens_against"
 LENS_MATERIAL_CONDITIONS: tuple[WayValueConditionName, ...] = ("at", "speed_kmh")
 
 
-def lens_way_formula() -> WayValueFormula:
+def lens_way_formula(tuning: Tuning) -> WayValueFormula:
     """レンズの道の値の木: 走行方位で道を辿る向きを選び、その向きの値を塗る（勾配と同じ決まり。直角に近い道は向きで
     決まらない）。"""
-    return travel_direction_formula(feature(LENS_ALONG_LEAF), feature(LENS_AGAINST_LEAF))
+    return travel_direction_formula(feature(LENS_ALONG_LEAF), feature(LENS_AGAINST_LEAF),
+                                    tuning.value("gradient.perpendicular_band_deg"))
 
 #: 辿る向きの列（値の表の2列目）。0は道の向き、1は逆向き。
 ALONG, AGAINST = 0, 1
@@ -136,7 +138,7 @@ class LensTable:
 class LensFactInputs:
     """道の窓が出す区間の秒と事実の入力（配列はどれも`features.rows`の行の順）。"""
 
-    axes: CostAxisDefinitions
+    settings: ModelSettings
     #: 材料id→列と、欠けを埋める取込の範囲全体の平均（`domain/leg_costs.py: axis_facts`が読む）。
     materials: Mapping[str, MaterialColumn]
     fills: MaterialFills
@@ -152,12 +154,13 @@ class LensFactInputs:
 
 
 def lens_table(features: LensFeatures, materials: Mapping[str, MaterialColumn], distance_m: np.ndarray,
-               profiles: ElevationProfiles, axes: CostAxisDefinitions, parameters: LedgerParameters, speed_kmh: float,
+               profiles: ElevationProfiles, settings: ModelSettings, parameters: LedgerParameters, speed_kmh: float,
                fills: MaterialFills, wind_ms: tuple[np.ndarray, np.ndarray] | None,
                elevation_gain_m: np.ndarray) -> tuple[LensTable, LensFactInputs]:
     """`features.rows`の行の順の材料・長さ・断面・風の成分（向かい風・横風。Noneはフィーチャーが無く風を求めなかったとき）・行の向きの登りから、
     レンズの値と、道の窓が出す区間の秒と事実の入力を求める。"""
-    travel = travel_inputs(materials, distance_m, profiles, speed_kmh, fills)
+    travel = travel_inputs(materials, distance_m, profiles, speed_kmh, fills, settings)
+    axes = settings.cost_axes
     ledger = LedgerCosts.for_model(axes, parameters, travel.model, burden_weights(axes, parameters, materials, fills))
     calm = (np.zeros(len(distance_m)), np.zeros(len(distance_m)))
     _, penalties = ledger.row_seconds(travel.model, *(calm if wind_ms is None else wind_ms))
@@ -165,7 +168,7 @@ def lens_table(features: LensFeatures, materials: Mapping[str, MaterialColumn], 
     with np.errstate(invalid="ignore", divide="ignore"):
         per_km = {axis_id: _summed_by_direction(features, seconds) / km for axis_id, seconds in penalties.items()}
     return (LensTable(features=features, values=lens_values_with_total(per_km, np.zeros_like(km))),
-            LensFactInputs(axes, materials, fills, travel.model.distance_m, penalties, elevation_gain_m, travel.stops,
+            LensFactInputs(settings, materials, fills, travel.model.distance_m, penalties, elevation_gain_m, travel.stops,
                            None if wind_ms is None else wind_ms[0]))
 
 
@@ -221,9 +224,9 @@ class RoadInspection(StrictModel):
     lens: LensInspection
 
 
-def painted_direction(bearing_deg: float, road_bearing_deg: float) -> Literal["along", "against"] | None:
+def painted_direction(bearing_deg: float, road_bearing_deg: float, tuning: Tuning) -> Literal["along", "against"] | None:
     """走行方位`bearing_deg`で、地図が道を塗る向き（`lens_way_formula`と同じ木で選ぶ）。"""
-    formula = lens_way_formula()
+    formula = lens_way_formula(tuning)
     leaves = {LENS_ALONG_LEAF: 0.0, LENS_AGAINST_LEAF: 1.0, ROAD_BEARING_LEAF: road_bearing_deg}
     conditions = {"bearing_deg": bearing_deg}
     if evaluate_formula(formula.undetermined, leaves, conditions, 1)[0]:
@@ -245,7 +248,7 @@ def lens_inspection(features: LensFeatures, index: int, painted: Literal["along"
         return LensDirection(
             total_seconds=lens_values_with_total(sums, 0.0)[TOTAL_LENS_ID],
             axes=[LensAxisSeconds(axis_id=axis_id, seconds=value) for axis_id, value in sums.items()],
-            facts=axis_facts(facts.axes, facts.materials, facts.fills, rows, facts.distance_m[rows], seconds,
+            facts=axis_facts(facts.settings, facts.materials, facts.fills, rows, facts.distance_m[rows], seconds,
                              elevation_gain(facts.elevation_gain_m[rows]),
                              None if facts.headwind_ms is None else facts.headwind_ms[rows], float(facts.stops[rows].sum())),
         )

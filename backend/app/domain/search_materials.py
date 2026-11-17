@@ -14,8 +14,7 @@ from app.domain.attributes import CategoricalColumn, EdgeMaterialColumns, Materi
 from app.domain.cycling_speed import travel_model_material_ids
 from app.domain.elevation_profile import ElevationProfiles
 from app.domain.hard_filters import hard_filtered
-from app.domain.material_catalog import material_spec
-from app.domain.road_classes import CLASS_MATERIAL_PREFIX
+from app.domain.road_classes import CLASS_MATERIAL_PREFIX, RoadClassDefinitions, material_spec
 from app.domain.search_graph import EDGE_VALUE_DTYPE
 from app.domain.stopwatch import add_elapsed_ms, start_timer
 
@@ -24,9 +23,10 @@ class _ColumnsOrEmpty(Mapping[str, MaterialColumn]):
     """材料id→列。`columns`に無い材料カタログの材料は、値の無い列（`_empty_material_column`）を返す——読む材料を先に並べず、
     読まれたときに埋める。並べ上げる（`iter`）のは`columns`の材料だけ。"""
 
-    def __init__(self, columns: Mapping[str, MaterialColumn], n: int) -> None:
+    def __init__(self, columns: Mapping[str, MaterialColumn], n: int, road_classes: RoadClassDefinitions) -> None:
         self._columns = columns
         self._n = n
+        self._road_classes = road_classes
         self._empty: dict[str, MaterialColumn] = {}
 
     def __getitem__(self, material_id: str) -> MaterialColumn:
@@ -35,7 +35,7 @@ class _ColumnsOrEmpty(Mapping[str, MaterialColumn]):
         except KeyError:
             pass
         if (column := self._empty.get(material_id)) is None:
-            column = _empty_material_column(material_id, self._n)
+            column = _empty_material_column(material_id, self._n, self._road_classes)
             if column is None:
                 raise KeyError(material_id) from None
             self._empty[material_id] = column
@@ -48,9 +48,9 @@ class _ColumnsOrEmpty(Mapping[str, MaterialColumn]):
         return len(self._columns)
 
 
-def _empty_material_column(material_id: str, n: int) -> MaterialColumn | None:
-    """`MATERIAL_CATALOG`にある材料の、値の無い区間`n`本ぶんの列。カタログに無ければNone。"""
-    spec = material_spec(material_id)
+def _empty_material_column(material_id: str, n: int, road_classes: RoadClassDefinitions) -> MaterialColumn | None:
+    """宣言のある材料（`domain/road_classes.py: material_spec`）の、値の無い区間`n`本ぶんの列。宣言が無ければNone。"""
+    spec = material_spec(material_id, road_classes)
     if spec is None:
         return None
     if spec.dtype == "categorical":
@@ -92,11 +92,6 @@ class SearchMaterials:
         if len(self.categorical_material_columns) != len(self.categorical_material_ids):
             raise ValueError(f"区分の材料の列の数がidの数と違います: {len(self.categorical_material_columns)}, "
                              f"{len(self.categorical_material_ids)}")
-        # 所要時間の入力が欠けた表を通すと、読む側はその材料を区間ごとの欠損と区別できず、
-        # 全区間を取込の範囲全体の平均で数え、道ごとの坂・待ちの違いを黙って失う。
-        missing_inputs = set(travel_model_material_ids()) - {*self.material_ids, *self.categorical_material_ids}
-        if missing_inputs:
-            raise ValueError(f"材料の表に所要時間が読む材料の列がありません: {sorted(missing_inputs)}")
         wrong_rows = {
             name: array.shape
             for name, array in (
@@ -118,6 +113,7 @@ class SearchMaterials:
 
 def build_search_materials(
     materials: EdgeMaterialColumns, steps_ms: dict[str, int], cost_material_ids: Sequence[str],
+    road_classes: RoadClassDefinitions,
 ) -> SearchMaterials:
     """切り出した範囲の材料から`SearchMaterials`を組む（生成のたびに1回）。段ごとの所要時間を`steps_ms`へ足す。
 
@@ -127,8 +123,8 @@ def build_search_materials(
     """
     started = start_timer()
     n = len(materials)
-    columns = _ColumnsOrEmpty(materials.columns, n)
-    carried = dict.fromkeys((*travel_model_material_ids(), *cost_material_ids))
+    columns = _ColumnsOrEmpty(materials.columns, n, road_classes)
+    carried = dict.fromkeys((*travel_model_material_ids(road_classes), *cost_material_ids))
     numeric = {material_id: values for material_id in carried if isinstance(values := columns.get(material_id), np.ndarray)}
     categorical = {
         material_id: column for material_id in carried if isinstance(column := columns.get(material_id), CategoricalColumn)

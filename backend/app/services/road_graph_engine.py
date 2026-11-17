@@ -27,14 +27,14 @@ import numpy as np
 from app.domain.stopwatch import elapsed_ms, start_timer, steps_note
 from app.domain.time_zone import as_series_time
 from app.domain.traffic import highway_rank
-from app.domain.tuning import tuning_value
+from app.domain.model_settings import ModelSettings
 from app.domain.errors import RoutingError
 from app.domain.search_materials import SearchMaterials, build_search_materials
 from app.domain.hard_filters import compute_routable_nodes, compute_search_exclusion
 from app.domain.leg_costs import LegCostArrays, LegCostComposer
-from app.domain.cost_axes import burden_material_ids, current_cost_axes
+from app.domain.cost_axes import burden_material_ids
 from app.domain.cost_preference import CostPreference
-from app.domain.ledger_costs import current_ledger_parameters
+from app.domain.ledger_costs import ledger_parameters
 from app.domain.road_avoidance import AvoidanceLevel, RoadAvoidanceMasks, level_multipliers
 from app.domain.geo import (
     bearing_between,
@@ -65,7 +65,7 @@ from app.domain.route_search import (
 from app.domain.search_graph import LazyRoadGraph, SearchGraphStatics, build_lazy_road_graph, build_search_graph_statics
 from app.domain.node_spatial_index import NodeSpatialIndex, build_node_spatial_index, snap_to_accessible_node
 from app.domain.turn_structure import (
-    current_turn_cost,
+    turn_cost,
     TurnExpandedStructure,
     build_turn_expanded_structure,
     edge_bearings,
@@ -120,9 +120,10 @@ _BBOX_MARGIN_MIN_KM = 2.0
 logger = logging.getLogger("ridecompass.graph")
 
 
-def _search_materials(road: RoadSlice, steps_ms: dict[str, int], cost_material_ids: tuple[str, ...]) -> SearchMaterials:
+def _search_materials(road: RoadSlice, steps_ms: dict[str, int], cost_material_ids: tuple[str, ...],
+                      settings: ModelSettings) -> SearchMaterials:
     """切り出した区間の材料から探索の材料の表を組む。段ごとの時間を`steps_ms`へ足す。"""
-    return build_search_materials(material_arrays_of(road), steps_ms, cost_material_ids)
+    return build_search_materials(material_arrays_of(road), steps_ms, cost_material_ids, settings.road_classes)
 
 
 @dataclass
@@ -196,6 +197,7 @@ class RoadGraphEngine:
         cost_preference: CostPreference,
         road_avoidance: Mapping[str, AvoidanceLevel],
         assumed_speed_kmh: float,
+        settings: ModelSettings,
     ):
         self._graph_service = graph_service
         # 仮定巡航速度（km/h、リクエスト単位で上書き可）。各Edgeの通過予定時刻・区間の
@@ -206,13 +208,17 @@ class RoadGraphEngine:
         self._cost_preference = cost_preference
         # 道のレイヤの行→避け方の段。
         self._road_avoidance = road_avoidance
-        # 避け方の段→区間の費用の倍率。較正値から作るため、組み立てた時点の値で1回の生成を通す。
-        self._avoidance_multipliers = level_multipliers(tuning_value("avoidance.avoid_cost_multiplier"))
-        # 交差点でのターンの費用（秒）。較正値のため、組み立てた時点の値で1回の生成を通す。
-        self._turn_cost = current_turn_cost()
-        # 費用の軸の定義。管理APIの書き込みが途中で差し替えても、表の列・欠けの埋め方・費用の式が同じ写しを読むよう、
-        # 組み立てた時点で1回だけ写す。
-        self._cost_axes = current_cost_axes()
+        # 較正値・道の区分・費用の軸の定義。1回の生成の間は、管理APIが全体を差し替えてもこの写しを読む。
+        self._settings = settings
+        # 避け方の段→区間の費用の倍率。
+        self._avoidance_multipliers = level_multipliers(settings.tuning.value("avoidance.avoid_cost_multiplier"))
+        # 交差点でのターンの費用（秒）。
+        self._turn_cost = turn_cost(settings.tuning)
+        self._cost_axes = settings.cost_axes
+
+    @property
+    def settings(self) -> ModelSettings:
+        return self._settings
 
     async def _build_search_graph(
         self, bbox: BoundingBox, origin: Coordinates, now: datetime
@@ -238,7 +244,7 @@ class RoadGraphEngine:
         materials_started = start_timer()
         materials_steps_ms: dict[str, int] = {}
         materials = await asyncio.to_thread(_search_materials, road, materials_steps_ms,
-                                               burden_material_ids(self._cost_axes))
+                                               burden_material_ids(self._cost_axes), self._settings)
         materials_ms = elapsed_ms(materials_started)
         # 通過予定時刻の基準（出発時刻）。
         start = as_series_time(now)
@@ -261,8 +267,8 @@ class RoadGraphEngine:
                 wind_series, start, self._assumed_speed_kmh, lazy_graph.edge_rows,
                 detour_ratio=detour_ratio_or_default(learned_detour_ratio),
                 material_fills=network_fills(road.network, burden_material_ids(cost_axes)),
-                axes=cost_axes,
-                parameters=current_ledger_parameters(self._cost_preference),
+                settings=self._settings,
+                parameters=ledger_parameters(self._cost_preference, self._settings.tuning),
             )
             return search_masks, composer, composer.compose("outbound", 0.0, +1)
 
@@ -387,7 +393,7 @@ class RoadGraphEngine:
             statics=statics,
             turn_structure=turn_structure,
             transition_cost=search.composer.transition_costs(turn_structure.turn_seconds, turn_structure.turn_kickoffs),
-            cost_axes=self._cost_axes,
+            tuning=self._settings.tuning,
             tile_set=search.tile_set,
         )
 
@@ -500,7 +506,7 @@ class RoadGraphEngine:
         # 代えられる（リング）。逆向きの木を求めない。
         uses_ring = fixed.closes and leg_index == 0
         if uses_ring:
-            ring_lower_m, outbound_upper_m, _ = turnaround_ring_m(distance_km, distance_tolerance_km)
+            ring_lower_m, outbound_upper_m, _ = turnaround_ring_m(distance_km, distance_tolerance_km, context.tuning)
             band_km = (ring_lower_m / 1000, outbound_upper_m / 1000)
         else:
             outbound_upper_m = LengthBand.from_km(distance_km, distance_tolerance_km).upper_m - fixed_m
@@ -515,7 +521,7 @@ class RoadGraphEngine:
             context.legs = [*context.legs[:leg_index + 1], inbound]
             backward_tree = await asyncio.to_thread(
                 lambda: build_turn_expanded_tree(
-                    context.turn_structure, avoiding_traveled(inbound.cost_lazy, inbound.travel_seconds_lazy, traveled),
+                    context.turn_structure, avoiding_traveled(inbound.cost_lazy, inbound.travel_seconds_lazy, traveled, context.tuning),
                     statics.edge_length_m,
                     destination_states(context.turn_structure, end_node), statics.csr.node_count,
                     reverse=True, edge_seconds=inbound.travel_seconds_lazy, transition_cost=context.transition_cost
@@ -524,7 +530,7 @@ class RoadGraphEngine:
         tree_started = start_timer()
 
         def outbound_tree() -> TurnExpandedTree:
-            outbound_costs = avoiding_traveled(outbound.cost_bins_lazy, outbound.travel_bins_lazy, traveled)
+            outbound_costs = avoiding_traveled(outbound.cost_bins_lazy, outbound.travel_bins_lazy, traveled, context.tuning)
             cost_limit = tree_cost_bound(context.turn_structure, outbound_costs, statics.edge_length_m, outbound_upper_m, transition_cost=context.transition_cost)
             return build_turn_expanded_tree(
                 context.turn_structure, outbound_costs, statics.edge_length_m,
@@ -539,10 +545,10 @@ class RoadGraphEngine:
         def select_from_tree() -> _TurnaroundSelection:
             length = tree.node_length_m
             if backward_tree is None:
-                in_ring, closeness_m = turnaround_band(length, distance_km, distance_tolerance_km)
+                in_ring, closeness_m = turnaround_band(length, distance_km, distance_tolerance_km, context.tuning)
             else:
                 in_ring, closeness_m = relay_band(
-                    fixed_m, length, backward_tree.node_length_m, distance_km, distance_tolerance_km,
+                    fixed_m, length, backward_tree.node_length_m, distance_km, distance_tolerance_km, context.tuning,
                 )
                 in_ring[end_node] = False
             in_ring[start_node] = False
@@ -558,7 +564,7 @@ class RoadGraphEngine:
             closeness_key = closeness_m[ring]
             ranking = rank_by_pareto_layers(
                 ring, closeness_key, tree.node_cost[ring], tree.node_seconds[ring], ring_length,
-                max_items=pool_size, max_examined=None, tie_by_distance=True,
+                max_items=pool_size, max_examined=None, tie_by_distance=True, tuning=context.tuning,
             )
             order = ranking.order
             ranked = ring[order]
@@ -580,13 +586,13 @@ class RoadGraphEngine:
 
             far_enough = turnaround_separation(
                 ranked_list, context.node_lat[ranked], context.node_lon[ranked],
-                float(context.node_lat[context.origin_node]),
+                float(context.node_lat[context.origin_node]), context.tuning,
             )
 
             # 閾値を昇順に渡すと、埋まらなかったときの緩和までを1回の呼び出しで行う。
             selected = select_diverse_by_overlap(
                 [], TreePathOverlap(tree),
-                corridor_overlap_ratios(), pool_size, far_enough,
+                corridor_overlap_ratios(context.tuning), pool_size, far_enough,
                 tie_groups=tie_groups, prefer=prefer,
             )
 
@@ -677,7 +683,7 @@ class RoadGraphEngine:
         return_edge_index_list = await asyncio.to_thread(
             lambda: turn_expanded_shortest_path(
                 context.turn_structure,
-                avoiding_traveled(inbound_leg.cost_bins_lazy, inbound_leg.travel_bins_lazy, penalized_columns), heuristic,
+                avoiding_traveled(inbound_leg.cost_bins_lazy, inbound_leg.travel_bins_lazy, penalized_columns, context.tuning), heuristic,
                 origin_states(context.statics, data.node), fixed.end_node,
                 inbound_leg.travel_bins_lazy, inbound_leg.bin_seconds, transition_cost=context.transition_cost
             )
@@ -775,7 +781,7 @@ class RoadGraphEngine:
         """
         fixed_count = len(fixed.edges)
         candidate_lengths = physical_segments(context, candidate.data[fixed_count:])
-        max_ratio = loop_max_overlap_ratio()
+        max_ratio = loop_max_overlap_ratio(context.tuning)
         for other in accepted:
             ratio = physical_overlap_ratio(candidate_lengths, physical_segments(context, other.data[fixed_count:]))
             if ratio > max_ratio:

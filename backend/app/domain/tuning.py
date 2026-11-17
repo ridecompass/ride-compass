@@ -19,6 +19,7 @@ from collections import Counter
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from enum import Enum
+from types import MappingProxyType
 
 
 class TuningEffect(Enum):
@@ -466,13 +467,8 @@ if _DUPLICATE_IDS:
 
 #: いま効いている値（id → 値）。起動時にDBの表から宣言の全idを読み込み、管理APIで書いたときに**中身だけ**を
 #: 差し替える（束縛済みの参照先が古いままにならないよう、`.update()`で更新する。`.clear()`は挟まない——理由は
-#: `services/tuning_service.py: refresh_tuning_values`）。
+#: `services/tuning_service.py: refresh_tuning_values`）。計算はここを読まず、入口が`current_tuning`で写した束を受ける。
 TUNING_VALUES: dict[str, float] = {}
-
-
-def tuning_value(param_id: str) -> float:
-    """いま効いている較正値。"""
-    return TUNING_VALUES[param_id]
 
 
 class TuningValueError(ValueError):
@@ -488,11 +484,27 @@ def require_tuning(values: Mapping[str, float], holds: bool, condition: str) -> 
     raise TuningValueError(f"較正値 {named} では計算できません（{condition}であること）。管理画面で値を直してください")
 
 
-def checked_tuning_value(param_id: str, holds: Callable[[float], bool], condition: str) -> float:
-    """いま効いている較正値。`holds`を満たさなければ`require_tuning`で断る。"""
-    value = tuning_value(param_id)
-    require_tuning({param_id: value}, holds(value), condition)
-    return value
+@dataclass(frozen=True)
+class Tuning:
+    """較正値の束（id → 値）。計算はこれを値で受け、1回の計算の間に管理APIが書き換えても同じ値を読む。"""
+
+    values: Mapping[str, float]
+
+    def value(self, param_id: str) -> float:
+        return self.values[param_id]
+
+    def checked(self, param_id: str, holds: Callable[[float], bool], condition: str) -> float:
+        """較正値。`holds`を満たさなければ`require_tuning`で断る。"""
+        value = self.values[param_id]
+        require_tuning({param_id: value}, holds(value), condition)
+        return value
+
+
+def current_tuning() -> Tuning:
+    """いま効いている較正値の写し。入口（services・batch・道具）だけが呼ぶ。読み込む前に読むのは起動の順の誤りなので、止める。"""
+    if not TUNING_VALUES:
+        raise RuntimeError("較正値を読み込む前に読んだ（services/definitions_loading.py: refresh_definitions を先に通す）")
+    return Tuning(MappingProxyType(dict(TUNING_VALUES)))
 
 
 def tuning_parameters_by_effect() -> list[TuningParameter]:
@@ -514,10 +526,10 @@ REBUILT_CLIENT_TUNING_IDS: tuple[str, ...] = tuple(
 )
 
 
-def client_tuning_values() -> dict[str, float]:
-    """フロントへ配る較正値のうち、`REBUILT_CLIENT_TUNING_IDS`を除くもの（id → いま効いている値）。"""
+def client_tuning_values(tuning: Tuning) -> dict[str, float]:
+    """フロントへ配る較正値のうち、`REBUILT_CLIENT_TUNING_IDS`を除くもの（id → `tuning`の値）。"""
     return {
-        p.id: tuning_value(p.id)
+        p.id: tuning.value(p.id)
         for p in TUNING_PARAMETERS
         if _sent_to_client(p) and p.id not in REBUILT_CLIENT_TUNING_IDS
     }

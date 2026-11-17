@@ -16,7 +16,7 @@ from app.domain.display_palette import (
 from app.domain.cost_preference import multiplier_label
 from app.domain.hard_filters import HARD_FILTER_PROPERTY, HARD_FILTERS
 from app.domain.road_avoidance import AVOIDANCE_LEVELS, AvoidanceLevel, avoidance_rows, level_multipliers
-from app.domain.tuning import tuning_value
+from app.domain.tuning import Tuning
 from app.domain.road_classes import (
     RoadClassDefinitions,
     by_sort_order,
@@ -93,7 +93,7 @@ class RoadClassCatalog(StrictModel):
     avoidance: RoadAvoidanceView
 
 
-def road_class_catalog(definitions: RoadClassDefinitions) -> RoadClassCatalog:
+def road_class_catalog(definitions: RoadClassDefinitions, tuning: Tuning) -> RoadClassCatalog:
     layers = []
     for key, layer in published_map_layers(definitions):
         classification = definitions.classifications[key]
@@ -130,7 +130,7 @@ def road_class_catalog(definitions: RoadClassDefinitions) -> RoadClassCatalog:
             )
         )
     avoidance = avoidance_rows(definitions)
-    multipliers = level_multipliers(tuning_value("avoidance.avoid_cost_multiplier"))
+    multipliers = level_multipliers(tuning.value("avoidance.avoid_cost_multiplier"))
     # 0次ハードフィルタの行。路面タイルは道の当たるフィルタの名前を`HARD_FILTER_PROPERTY`に焼く。
     fixed = [
         AvoidanceRowView(

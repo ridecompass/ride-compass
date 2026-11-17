@@ -145,10 +145,14 @@ def undeclared_references(definitions: RoadClassDefinitions) -> list[str]:
     return problems
 
 
-_current = EMPTY_ROAD_CLASSES
+#: プロセス内の道の区分。起動で読み込む（`services/road_class_service.py: refresh_road_classes`）までは None。
+_current: RoadClassDefinitions | None = None
 
 
 def current_road_classes() -> RoadClassDefinitions:
+    """プロセス内の道の区分。入口（services・batch・道具）だけが呼ぶ。読み込む前に読むのは起動の順の誤りなので、止める。"""
+    if _current is None:
+        raise RuntimeError("道の区分を読み込む前に読んだ（services/definitions_loading.py: refresh_definitions を先に通す）")
     return _current
 
 
@@ -214,7 +218,7 @@ def class_labels(classification: RoadClassification | None) -> dict[str, str]:
 
 
 def class_material_id(classification_key: str) -> str:
-    """分け方の区分の列の材料のid。区分の列は材料の列と同じ経路で運び、軸からも材料として選べる（`class_material_spec`）。"""
+    """分け方の区分の列の材料のid。区分の列は材料の列と同じ経路で運び、軸からも材料として選べる（`material_spec`）。"""
     return f"{CLASS_MATERIAL_PREFIX}{classification_key}"
 
 
@@ -267,11 +271,15 @@ def _class_material_spec(key: str, classification: RoadClassification) -> Materi
     )
 
 
-def class_material_spec(material_id: str) -> MaterialSpec | None:
-    """区分から作る材料（`class:<分け方>`）の宣言。今の区分にその分け方が無ければNone。"""
+def material_spec(material_id: str, definitions: RoadClassDefinitions) -> MaterialSpec | None:
+    """材料idの宣言。`domain/material_catalog.py: MATERIAL_CATALOG`の材料と、道の区分から作る材料（`class:<分け方>`、区分
+    `definitions`の分け方ごとに1つ）を引く。無い材料idにはNoneを返す。"""
+    spec = MATERIAL_CATALOG.get(material_id)
+    if spec is not None:
+        return spec
     if not material_id.startswith(CLASS_MATERIAL_PREFIX):
         return None
     key = material_id.removeprefix(CLASS_MATERIAL_PREFIX)
-    classification = current_road_classes().classifications.get(key)
+    classification = definitions.classifications.get(key)
     return _class_material_spec(key, classification) if classification is not None else None
 

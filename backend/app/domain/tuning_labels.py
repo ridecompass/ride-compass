@@ -4,14 +4,13 @@
 `domain/tuning.py`は値を使う側の宣言を読めない（循環する）ので、両方を読めるここで添える。
 """
 
-from app.domain.road_classes import by_sort_order, current_road_classes
+from app.domain.road_classes import RoadClassDefinitions, by_sort_order
 from app.domain.traffic import stop_parameter_subjects
 from app.domain.tuning import TuningParameter
 
 
-def _rolling_resistance_subjects() -> dict[str, tuple[str, ...]]:
+def _rolling_resistance_subjects(definitions: RoadClassDefinitions) -> dict[str, tuple[str, ...]]:
     """転がり抵抗の較正値のid → その値を使う路面の見込みの区分の名前（区分の並び）。"""
-    definitions = current_road_classes()
     key = definitions.rolling_resistance_classification
     if key is None:
         return {}
@@ -23,9 +22,9 @@ def _rolling_resistance_subjects() -> dict[str, tuple[str, ...]]:
     return subjects
 
 
-def tuning_subjects() -> dict[str, tuple[str, ...]]:
+def tuning_subjects(road_classes: RoadClassDefinitions) -> dict[str, tuple[str, ...]]:
     """較正値のid → 名前へ添える対象。並べる較正値の1件ずつへ同じものを渡せるよう、まとめて作る。"""
-    return {**_rolling_resistance_subjects(), **stop_parameter_subjects()}
+    return {**_rolling_resistance_subjects(road_classes), **stop_parameter_subjects()}
 
 
 def tuning_label(parameter: TuningParameter, subjects_by_id: dict[str, tuple[str, ...]]) -> str:

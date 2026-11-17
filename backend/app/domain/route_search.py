@@ -18,39 +18,39 @@ from app.domain.leg_costs import LegCostArrays, LegCostComposer
 from app.domain.route import EvaluatedRoute, penalty_seconds_per_km
 from app.domain.route_diversity import pareto_layer_index
 from app.domain.routing import time_bin_of
-from app.domain.tuning import checked_tuning_value, tuning_value
+from app.domain.tuning import Tuning
 from app.domain.wind import cruise_hours, kmh_to_ms
 
 # --- フロンティア方式の折返し点選定・復路探索 ---
-# 折返し点・周回・帰りの選び方の値は較正値（`domain/tuning.py`の`search.*`）で、呼ばれた時点で読む。
+# 折返し点・周回・帰りの選び方の値は較正値（`domain/tuning.py`の`search.*`）で、呼び手が束`Tuning`で渡す。
 
 
-def corridor_overlap_ratios() -> list[float]:
+def corridor_overlap_ratios(tuning: Tuning) -> list[float]:
     """同じ道筋の候補を間引く重なりの上限と、候補が埋まらないときに緩めた上限（昇順）。
 
     周回の折返し点の往路どうしにも、距離なしの目的地の代替経路（前向き＋後ろ向き）どうしにも使う——どちらも
     「同じ道筋の候補が上位を占めるのを防ぐ」判断なので、片方だけ変える理由が無い。
     """
     return [
-        tuning_value("search.turnaround_max_overlap_ratio"),
-        tuning_value("search.turnaround_relaxed_overlap_ratio"),
+        tuning.value("search.turnaround_max_overlap_ratio"),
+        tuning.value("search.turnaround_relaxed_overlap_ratio"),
     ]
 
 
-def loop_max_overlap_ratio() -> float:
+def loop_max_overlap_ratio(tuning: Tuning) -> float:
     """帰りまで継いだ周回どうしの、進む向きを無視した重なりの上限。"""
-    return tuning_value("search.loop_max_overlap_ratio")
+    return tuning.value("search.loop_max_overlap_ratio")
 
 
-def loop_to_outbound_ratios() -> tuple[float, float]:
+def loop_to_outbound_ratios(tuning: Tuning) -> tuple[float, float]:
     """周回全長／往路実距離の比の見込みの下限・上限。往路は軸コスト最適経路、帰りはその往路を避けて探すため、
     帰りは往路と同程度以上に長くなる。上下限は解析的には決まらず、実分布から置く。"""
-    return tuning_value("search.loop_to_outbound_ratio_min"), tuning_value("search.loop_to_outbound_ratio_max")
+    return tuning.value("search.loop_to_outbound_ratio_min"), tuning.value("search.loop_to_outbound_ratio_max")
 
 
-def distance_tolerance_km(distance_km: float) -> float:
+def distance_tolerance_km(distance_km: float, tuning: Tuning) -> float:
     """全長の目標からの許容（km）。目標の距離に対する割合の較正値から決め、長い目標ほど広くする。"""
-    return distance_km * tuning_value("search.distance_tolerance_ratio")
+    return distance_km * tuning.value("search.distance_tolerance_ratio")
 
 
 #: 利用者が置いた点（出発地・経由地・目的地）を、出て戻れるNodeへ寄せてよい上限（km）。狙いは、道のすぐそばに
@@ -87,7 +87,7 @@ class LengthBand:
         return self.target_m + self.tolerance_m
 
 
-def turnaround_ring_m(distance_km: float, tolerance_km: float) -> tuple[float, float, float]:
+def turnaround_ring_m(distance_km: float, tolerance_km: float, tuning: Tuning) -> tuple[float, float, float]:
     """折返し点を探すリング（往路の実距離の範囲）の下限・上限と中心（m）。
 
     周回全長が目標±許容に収まるよう`[(目標-許容)/MIN, (目標+許容)/MAX]`に置き、許容が見込みの幅より狭く
@@ -97,7 +97,7 @@ def turnaround_ring_m(distance_km: float, tolerance_km: float) -> tuple[float, f
     中心（並べ方の「リング中心に近い順」の基準）は上下限の平均ではなく、目標を比の見込みの中央で割った値にする——
     許容が目標以上のとき下限が0で頭打ちになり、上下限の平均だと中心が0付近まで下がって極端に短い往路が上位に来る。
     """
-    ratio_min, ratio_max = loop_to_outbound_ratios()
+    ratio_min, ratio_max = loop_to_outbound_ratios(tuning)
     band = LengthBand.from_km(distance_km, tolerance_km)
     lower_m = max(0.0, band.lower_m / ratio_min)
     upper_m = band.upper_m / ratio_max
@@ -110,6 +110,7 @@ def turnaround_ring_m(distance_km: float, tolerance_km: float) -> tuple[float, f
 
 def relay_band(
     fixed_m: float, outbound_m: np.ndarray, return_shortest_m: np.ndarray, distance_km: float, tolerance_km: float,
+    tuning: Tuning,
 ) -> tuple[np.ndarray, np.ndarray]:
     """距離ありで、置いた点を通るか目的地で終わるときの、中継点の帯と並べる鍵（中継点ごと）。
 
@@ -120,7 +121,7 @@ def relay_band(
     届かない（長さが有限でない）中継点は帯に入らない。鍵は全長の見込みの中央と目標のずれ（m）で、目標より短すぎる経路も
     長すぎる経路も対称に扱う。
     """
-    loop_min, loop_max = loop_to_outbound_ratios()
+    loop_min, loop_max = loop_to_outbound_ratios(tuning)
     return_min, return_max = loop_min - 1.0, loop_max - 1.0
     band = LengthBand.from_km(distance_km, tolerance_km)
     head_m = fixed_m + np.asarray(outbound_m, dtype=float)
@@ -137,7 +138,7 @@ def relay_band(
 
 
 def turnaround_band(
-    outbound_m: np.ndarray, distance_km: float, tolerance_km: float,
+    outbound_m: np.ndarray, distance_km: float, tolerance_km: float, tuning: Tuning,
 ) -> tuple[np.ndarray, np.ndarray]:
     """経由地の無い周回の、折返し点の帯と並べる鍵（折返し点ごと）。
 
@@ -145,19 +146,19 @@ def turnaround_band(
     帯に入らない。鍵は往路の実距離とリング中心のずれ（m）で、周回では距離が「短いほど良い」ではなく「目標に近いほど
     良い」ため、目標より短すぎる往路（起点のすぐ近くで折り返す周回）も長すぎる往路も対称に扱う。
     """
-    lower_m, upper_m, center_m = turnaround_ring_m(distance_km, tolerance_km)
+    lower_m, upper_m, center_m = turnaround_ring_m(distance_km, tolerance_km, tuning)
     length_m = np.asarray(outbound_m, dtype=float)
     with np.errstate(invalid="ignore"):
         in_band = (length_m >= lower_m) & (length_m <= upper_m)
     return in_band, np.abs(length_m - center_m)
 
 
-def retrace_penalized(costs: np.ndarray, travel_seconds: np.ndarray) -> np.ndarray:
+def retrace_penalized(costs: np.ndarray, travel_seconds: np.ndarray, tuning: Tuning) -> np.ndarray:
     """復路探索の間に、往路の区間（と同じNode対の逆向きの区間）へ置くコスト。罰は区間の所要時間`travel_seconds`（`costs`と
     同じ形）に掛け、費用には掛けない——費用に掛けると、避け方の倍率で費用を下げた「好む」の道ほど罰が縮み、帰りが好む道を
     往復する。倍率は有限でなければ断る——帰りが往路を戻るほかに道が無い区間（袋小路等）は通れる必要がある。1未満も断る
     （費用が負になりうる）。"""
-    multiplier = checked_tuning_value("search.retrace_penalty_multiplier", lambda v: v >= 1, "1以上")
+    multiplier = tuning.checked("search.retrace_penalty_multiplier", lambda v: v >= 1, "1以上")
     # 通れない区間（所要時間も費用も無限大）は罰を足さない（倍率がちょうど1のとき 0 × 無限大 が NaN になる）。
     return costs + (multiplier - 1.0) * np.where(np.isinf(travel_seconds), 0.0, travel_seconds)
 
@@ -206,6 +207,7 @@ def rank_by_pareto_layers(
     max_items: int,
     max_examined: int | None,
     tie_by_distance: bool,
+    tuning: Tuning,
 ) -> _CandidateRanking:
     """候補（折返し点・経由Node）を「距離の鍵」「1kmあたりの代償の秒」（`penalty_seconds_per_km`。`length_m`はそこまでの
     道のり）の2指標で非優越ソートし、パレート層の順に並べる。
@@ -220,7 +222,7 @@ def rank_by_pareto_layers(
     keyed = _penalty_key(penalty)
     layer = pareto_layer_index(
         distance_key, penalty,
-        quantum_a=checked_tuning_value("search.pareto_distance_quantum_m", lambda v: v > 0, "0より大きい"), quantum_b=PENALTY_PER_KM_QUANTUM, max_items=max_items,
+        quantum_a=tuning.checked("search.pareto_distance_quantum_m", lambda v: v > 0, "0より大きい"), quantum_b=PENALTY_PER_KM_QUANTUM, max_items=max_items,
     )
     layer_key = np.where(layer >= 0, layer, np.iinfo(np.int32).max)
     keys = (ids, distance_key, keyed, layer_key) if tie_by_distance else (ids, keyed, layer_key)
@@ -251,7 +253,7 @@ def order_by_bearing_spread(
 
 
 def turnaround_separation(
-    nodes: Sequence[int], node_lat: np.ndarray, node_lon: np.ndarray, origin_lat: float
+    nodes: Sequence[int], node_lat: np.ndarray, node_lon: np.ndarray, origin_lat: float, tuning: Tuning
 ) -> Callable[[int, list[int]], bool]:
     """`nodes`のどれかが、採用済みのどれとも最小の間隔（較正値`search.min_turnaround_separation_km`）以上離れているかを返す判定。
 
@@ -259,7 +261,7 @@ def turnaround_separation(
     平方距離をPythonのfloat演算で比べる——候補ごとにnumpyのhaversineを呼ぶと、1回あたりの
     呼び出し費用が候補数ぶん積み上がる。`node_lat`・`node_lon`は`nodes`と同じ並び。
     """
-    min_separation_sq = tuning_value("search.min_turnaround_separation_km") ** 2
+    min_separation_sq = tuning.value("search.min_turnaround_separation_km") ** 2
     node_y = dict(zip(nodes, (node_lat * KM_PER_DEGREE_LATITUDE).tolist()))
     node_x = dict(zip(nodes, (node_lon * km_per_degree_longitude(origin_lat)).tolist()))
 
@@ -297,7 +299,7 @@ def straight_distances_m(node_lat: np.ndarray, node_lon: np.ndarray, target_node
     return haversine_distance_km_array(node_lat, node_lon, target) * 1000
 
 
-def heuristic_seconds(straight_m: np.ndarray, cruise_speed_kmh: float, cost_scale: float) -> np.ndarray:
+def heuristic_seconds(straight_m: np.ndarray, cruise_speed_kmh: float, cost_scale: float, tuning: Tuning) -> np.ndarray:
     """Nodeごとの直線距離（m）を、費用の下界（秒）へ直す。`cost_scale`は区間の費用が所要時間に対して下がる最小の倍率
     （`domain/leg_costs.py: LegCostComposer.min_cost_scale`）。所要時間で探すときも同じ値で、下界のまま緩むだけ。
 
@@ -305,7 +307,7 @@ def heuristic_seconds(straight_m: np.ndarray, cruise_speed_kmh: float, cost_scal
     所要時間を上回らない。区間の費用は所要時間に代償（0以上）を足して避け方の倍率を掛けたもので、所要時間の`cost_scale`倍を
     下回らないので、それを掛けた値は費用の下界になる＝A*のヒューリスティックとして使える（admissible）。
     """
-    return np.asarray(straight_m, dtype=float) / kmh_to_ms(top_speed_kmh(cruise_speed_kmh)) * cost_scale
+    return np.asarray(straight_m, dtype=float) / kmh_to_ms(top_speed_kmh(cruise_speed_kmh, tuning)) * cost_scale
 
 
 def reverse_leg_assignment(leg_of_edge: list[int]) -> list[int]:
@@ -462,10 +464,11 @@ def by_closeness_to_target(loops: list[TracedLoop], target_km: float) -> list[Tr
     return sorted(loops, key=lambda loop: abs(loop.distance_km - target_km))
 
 
-def alternative_via_nodes(cost: np.ndarray, length_m: np.ndarray, reachable: np.ndarray) -> tuple[int, np.ndarray]:
+def alternative_via_nodes(cost: np.ndarray, length_m: np.ndarray, reachable: np.ndarray, tuning: Tuning
+                          ) -> tuple[int, np.ndarray]:
     """目的地ルートの最良路の経由Node（合成コスト最小）と、代替経路の候補にする経由Node
     （最良路の長さの`search.alternative_max_stretch`倍以内）。`reachable`が1つ以上あること。"""
     best_index = int(np.argmin(np.where(reachable, cost, np.inf)))
-    max_stretch = tuning_value("search.alternative_max_stretch")
+    max_stretch = tuning.value("search.alternative_max_stretch")
     within_stretch = reachable & (length_m <= float(length_m[best_index]) * max_stretch)
     return best_index, np.flatnonzero(within_stretch)

@@ -91,7 +91,7 @@ async def select_via_nodes(
     context.legs = [*context.legs[:leg_index], outbound]
     forward_tree = await asyncio.to_thread(
         lambda: build_turn_expanded_tree(
-            context.turn_structure, avoiding_traveled(outbound.cost_bins_lazy, outbound.travel_bins_lazy, traveled),
+            context.turn_structure, avoiding_traveled(outbound.cost_bins_lazy, outbound.travel_bins_lazy, traveled, context.tuning),
             context.statics.edge_length_m,
             origin_states(context.statics, start_node), context.statics.csr.node_count,
             edge_seconds=outbound.travel_bins_lazy, bin_seconds=outbound.bin_seconds, transition_cost=context.transition_cost
@@ -128,7 +128,7 @@ async def select_via_nodes(
     context.legs = [*context.legs[:leg_index + 1], inbound]
     backward_tree = await asyncio.to_thread(
         lambda: build_turn_expanded_tree(
-            context.turn_structure, avoiding_traveled(inbound.cost_lazy, inbound.travel_seconds_lazy, traveled),
+            context.turn_structure, avoiding_traveled(inbound.cost_lazy, inbound.travel_seconds_lazy, traveled, context.tuning),
             context.statics.edge_length_m,
             destination_states(context.turn_structure, destination_index),
             context.statics.csr.node_count, reverse=True, edge_seconds=inbound.travel_seconds_lazy, transition_cost=context.transition_cost
@@ -160,7 +160,7 @@ async def select_via_nodes(
         )
         return []
 
-    best_index, candidates = alternative_via_nodes(junction.cost, junction.length_m, reachable)
+    best_index, candidates = alternative_via_nodes(junction.cost, junction.length_m, reachable, context.tuning)
     best_length_m = float(junction.length_m[best_index])
     # 周回の折返し点選定と同じく、経路長・1kmあたりの代償の秒のパレート非劣解を先に並べる
     # （目的地ルートは目標距離を持たず代わりの道の長さの上限（較正値）以内という上限だけが効くぶん、
@@ -168,7 +168,7 @@ async def select_via_nodes(
     ranking = rank_by_pareto_layers(
         candidates, junction.length_m[candidates], junction.cost[candidates], junction.seconds[candidates],
         junction.length_m[candidates],
-        max_items=max_routes, max_examined=_MAX_VIA_NODE_CANDIDATES_EXAMINED, tie_by_distance=False,
+        max_items=max_routes, max_examined=_MAX_VIA_NODE_CANDIDATES_EXAMINED, tie_by_distance=False, tuning=context.tuning,
     )
     ranked = candidates[ranking.order].tolist()
     if len(candidates) > _MAX_VIA_NODE_CANDIDATES_EXAMINED:
@@ -182,7 +182,7 @@ async def select_via_nodes(
     paths = JunctionPaths(junction, forward_tree, backward_tree, context.lazy_graph.edge_from, context.lazy_graph.edge_to)
     selected = select_diverse_by_overlap(
         ranked, EdgeSetOverlap(paths.edges, context.statics.edge_length_m, max_routes),
-        corridor_overlap_ratios(), max_routes,
+        corridor_overlap_ratios(context.tuning), max_routes,
     )
 
     traced: list[TracedLoop] = []

@@ -13,7 +13,7 @@ from app.domain.attributes import CategoricalColumn, EdgeMaterialColumns
 from app.domain.search_materials import build_search_materials
 from app.domain.hard_filters import compute_search_exclusion
 from app.domain.material_catalog import GRADIENT_PERCENT
-from app.domain.road_classes import class_material_id
+from app.domain.road_classes import EMPTY_ROAD_CLASSES, class_material_id
 from app.domain.road_avoidance import level_multipliers
 from tests.profile_fixture import grade_profiles
 
@@ -47,7 +47,8 @@ MULTIPLIERS = level_multipliers(4.0)
 def test_the_largest_multiplier_of_the_rows_of_a_road_decides_how_its_segments_are_searched(levels, excluded, cost_scale):
     """「通らない」を選んでも国道を通る・「通る」を選んでも国道を避けると、選んだ避け方が探索に効かない。"""
     matrix = build_search_materials(
-        edge(facts={class_material_id("kind"): "national", class_material_id("surface"): "gravel"}), {}, ())
+        edge(facts={class_material_id("kind"): "national", class_material_id("surface"): "gravel"}), {}, (),
+        EMPTY_ROAD_CLASSES)
 
     masks = compute_search_exclusion(matrix, {**levels, "kind.local": "exclude", "other.national": "exclude"}, MULTIPLIERS)
 
@@ -62,6 +63,6 @@ def test_the_largest_multiplier_of_the_rows_of_a_road_decides_how_its_segments_a
 ], ids=["高速道路", "自動車専用道路", "標識の無い国道", "自転車通行禁止"])
 def test_only_the_roads_cyclists_may_not_ride_are_always_excluded(tags, excluded):
     """自動車専用道路を通るルートを作ると走れず、標識の無い国道まで外すと遠回りになる。"""
-    matrix = build_search_materials(edge(facts=tags), {}, ())
+    matrix = build_search_materials(edge(facts=tags), {}, (), EMPTY_ROAD_CLASSES)
 
     assert compute_search_exclusion(matrix, {}, MULTIPLIERS).excluded.tolist() == [excluded]

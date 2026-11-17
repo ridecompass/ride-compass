@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends
 from app.api.dependencies import get_region_service
 from app.domain.cycling_speed import travel_model_wording
 from app.domain.road_class_catalog import RoadClassCatalog, road_class_catalog
-from app.domain.road_classes import current_road_classes
+from app.domain.model_settings import current_model_settings
 from app.domain.strict_model import StrictModel
 from app.domain.tuning import client_tuning_values
 from app.services.region_service import RegionService
@@ -32,9 +32,10 @@ class ClientConfigResponse(StrictModel):
 @router.get("/api/client-config", response_model=ClientConfigResponse)
 async def get_client_config(region_service: RegionService = Depends(get_region_service)) -> ClientConfigResponse:
     # 区分と較正値はプロセス内の値。事故の収録年と作り直しで効く較正値だけがDBを見る。
+    settings = current_model_settings()
     return ClientConfigResponse(
-        client_tuning={**client_tuning_values(), **await region_service.get_rebuilt_client_tuning()},
+        client_tuning={**client_tuning_values(settings.tuning), **await region_service.get_rebuilt_client_tuning()},
         accident_years=await region_service.get_accident_years(),
-        road_classes=road_class_catalog(current_road_classes()),
-        travel_model_wording=travel_model_wording(),
+        road_classes=road_class_catalog(settings.road_classes, settings.tuning),
+        travel_model_wording=travel_model_wording(settings.tuning),
     )

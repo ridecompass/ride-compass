@@ -19,17 +19,17 @@
 探索中には呼ばず、コスト配列を合成するときに区間ごと（風は時刻ビンごと）へ事前計算する。
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 import numpy as np
 from numba import njit
 
 from app.domain.attributes import CategoricalColumn
 from app.domain.elevation_profile import ElevationProfiles, flatten_spans, unknown_lengths_m
-from app.domain.road_classes import class_material_id, current_road_classes
+from app.domain.road_classes import RoadClassDefinitions, class_material_id
 from app.domain.search_graph import kernel_array
 from app.domain.traffic import stop_count_material_ids
-from app.domain.tuning import BASE_CRR_ID, checked_tuning_value, require_tuning, tuning_value
+from app.domain.tuning import BASE_CRR_ID, Tuning, require_tuning
 from app.domain.wind import drag_increases_m2_s2, kmh_to_ms
 
 _AIR_DENSITY_KG_M3 = 1.225
@@ -51,45 +51,44 @@ SEGMENT_SPEED_CONDITIONS: tuple[str, ...] = ("坂", "風", "路面")
 CRUISE_SPEED_LABEL = "平地・無風で巡航する速さ"
 
 
-def travel_model_wording() -> str:
-    """巡航速度から区間の速度を決める決まりを、いま効いている標準値を入れて利用者に言う文。"""
+def travel_model_wording(tuning: Tuning) -> str:
+    """巡航速度から区間の速度を決める決まりを、`tuning`の標準値を入れて利用者に言う文。"""
     return (
         f"所要時間は、平地・無風をこの速度で走る力を求め、区間ごとの{'・'.join(SEGMENT_SPEED_CONDITIONS)}に合わせて"
         "速度を変えて計算します。"
-        f"体格と機材は標準の値で計算します。総質量は{tuning_value('speed.mass_kg'):g}kg[体重・車体・装備の合計]、"
-        f"空気抵抗CdAは{tuning_value('speed.cda_m2'):g}m²[ロードバイクでブラケットを握る姿勢]です。"
-        f"下りは{tuning_value('speed.max_descent_kmh'):g}km/hまで[想定速度のほうが速ければ想定速度まで]出し、"
-        f"登りで{tuning_value('speed.walking_kmh'):g}km/h以下になる所は押して歩くとみなします。"
+        f"体格と機材は標準の値で計算します。総質量は{tuning.value('speed.mass_kg'):g}kg[体重・車体・装備の合計]、"
+        f"空気抵抗CdAは{tuning.value('speed.cda_m2'):g}m²[ロードバイクでブラケットを握る姿勢]です。"
+        f"下りは{tuning.value('speed.max_descent_kmh'):g}km/hまで[想定速度のほうが速ければ想定速度まで]出し、"
+        f"登りで{tuning.value('speed.walking_kmh'):g}km/h以下になる所は押して歩くとみなします。"
     )
 
-def rolling_resistance_material_id() -> str | None:
+def rolling_resistance_material_id(road_classes: RoadClassDefinitions) -> str | None:
     """走行モデルが転がり抵抗に読む区分の列の材料id（転がり抵抗の表が指す分け方。指していなければNone）。"""
-    key = current_road_classes().rolling_resistance_classification
+    key = road_classes.rolling_resistance_classification
     return class_material_id(key) if key is not None else None
 
 
-def travel_model_material_ids() -> tuple[str, ...]:
+def travel_model_material_ids(road_classes: RoadClassDefinitions) -> tuple[str, ...]:
     """所要時間（走行方程式の路面と、停止の待ち）が区間ごとに読む材料id。勾配は材料ではなく区間の断面の点から読む
     （`domain/elevation_profile.py`）。
 
     探索の材料の表はこれらを**費用の軸の構成と無関係に**列として運び、欠けた表は組み立てで断る
-    （`search_materials.py: SearchMaterials`）。軸が分解した材料だけを運ぶ既定に任せると、その軸を
+    （`search_materials.py: build_search_materials`）。軸が分解した材料だけを運ぶ既定に任せると、その軸を
     非公開にした瞬間に所要時間から路面・停止の待ちが静かに消える。
     """
-    rolling = rolling_resistance_material_id()
+    rolling = rolling_resistance_material_id(road_classes)
     return (*((rolling,) if rolling is not None else ()), *stop_count_material_ids())
 
 
-def crr_for_surface(rolling_classes: CategoricalColumn) -> np.ndarray:
+def crr_for_surface(rolling_classes: CategoricalColumn, road_classes: RoadClassDefinitions, tuning: Tuning) -> np.ndarray:
     """路面の見込み（転がり抵抗の表が指す分け方の区分）から、区間ごとの転がり抵抗を返す。
 
     区分の外の道・表に無い区分は、基準の転がり抵抗（`RiderProfile.crr`）にする。
     """
-    definitions = current_road_classes()
-    ids = definitions.rolling_resistance_classes.get(definitions.rolling_resistance_classification or "", {})
-    table = {key: tuning_value(tuning_id) for key, tuning_id in ids.items()}
+    ids = road_classes.rolling_resistance_classes.get(road_classes.rolling_resistance_classification or "", {})
+    table = {key: tuning.value(tuning_id) for key, tuning_id in ids.items()}
     crr = rolling_classes.lookup(table)
-    return np.where(np.isnan(crr), tuning_value(BASE_CRR_ID), crr)
+    return np.where(np.isnan(crr), tuning.value(BASE_CRR_ID), crr)
 
 
 @dataclass(frozen=True)
@@ -97,11 +96,15 @@ class RiderProfile:
     """走行モデルの個人パラメータ。利用者が入力するのは巡航速度だけで、残りは標準値。"""
 
     cruise_speed_kmh: float
-    # 標準値は宣言（`domain/tuning.py`）が持ち、作り手は渡さない。読むのは**生成のたび**で、
-    # import時ではない——import時に束ねると、管理画面から変えた値が効かない。
-    cda_m2: float = field(init=False, default_factory=lambda: tuning_value("speed.cda_m2"))
-    crr: float = field(init=False, default_factory=lambda: tuning_value(BASE_CRR_ID))
-    mass_kg: float = field(init=False, default_factory=lambda: tuning_value("speed.mass_kg"))
+    cda_m2: float
+    crr: float
+    mass_kg: float
+
+    @classmethod
+    def standard(cls, cruise_speed_kmh: float, tuning: Tuning) -> "RiderProfile":
+        """巡航速度`cruise_speed_kmh`の人。体格と機材は較正値の標準値。"""
+        return cls(cruise_speed_kmh=cruise_speed_kmh, cda_m2=tuning.value("speed.cda_m2"), crr=tuning.value(BASE_CRR_ID),
+                   mass_kg=tuning.value("speed.mass_kg"))
 
     @property
     def cruise_speed_ms(self) -> float:
@@ -134,21 +137,21 @@ def _pushed_power(flat_power_w: float, power_per_force: float, max_ratio: float,
     return desired, min(desired, flat_power_w * max_ratio)
 
 
-def kickoff_extra_j(profile: RiderProfile) -> float:
+def kickoff_extra_j(profile: RiderProfile, tuning: Tuning) -> float:
     """止まる出来事1回の漕ぎ出しで、平地の出力を越えて踏む体力（J）。止まった所から巡航速度まで、平地の出力の上限倍率
     （`speed.max_climb_power_ratio`）で踏んで加速する前提で、要る運動エネルギー½mv²のうち平地の出力を越えた分
     （1 − 1/上限倍率）。"""
     speed = profile.cruise_speed_ms
-    return 0.5 * profile.mass_kg * speed * speed * (1.0 - 1.0 / tuning_value("speed.max_climb_power_ratio"))
+    return 0.5 * profile.mass_kg * speed * speed * (1.0 - 1.0 / tuning.value("speed.max_climb_power_ratio"))
 
 
-def top_speed_kmh(cruise_speed_kmh: float) -> float:
+def top_speed_kmh(cruise_speed_kmh: float, tuning: Tuning) -> float:
     """区間の速度の上限。下りの上限か、それより速ければ巡航速度。
 
     下りの上限だけで止めると、それより速い巡航速度を入れた人が平地・無風でも上限で頭打ちになり、
     入れた速度が所要時間に効かない。
     """
-    return max(tuning_value("speed.max_descent_kmh"), cruise_speed_kmh)
+    return max(tuning.value("speed.max_descent_kmh"), cruise_speed_kmh)
 
 
 #: `SegmentSpeedModel`がJITへ渡す、乗り手と較正値の数の並び（1本のfloat32の配列で渡す）。
@@ -277,12 +280,12 @@ class SegmentSpeedModel:
     成分を渡すたびに、点の間ごとに速さを解いて区間の秒へ足す。
 
     時刻ビンごとに変わるのは風だけなので、ルート生成は探索範囲に1回作ってビンの数だけ解く。
-    較正値は作った時点で読む。**配列はすべて区間の行の数で渡す**——長さの違う配列を区間の番号で
+    較正値は作るときに渡す。**配列はすべて区間の行の数で渡す**——長さの違う配列を区間の番号で
     読み違えないよう、揃っていることをここで確かめる。
     """
 
     def __init__(self, profile: RiderProfile, profiles: ElevationProfiles, distance_m: np.ndarray,
-                 crr: np.ndarray, kickoffs: np.ndarray) -> None:
+                 crr: np.ndarray, kickoffs: np.ndarray, tuning: Tuning) -> None:
         """`profiles`は区間の行ごとの断面、`distance_m`は区間の長さ、`crr`は区間ごとの転がり抵抗（`crr_for_surface`）、
         `kickoffs`は区間の止まる出来事の漕ぎ出しの回数（`domain/traffic.py: StopEvent.kickoffs`の和）。"""
         shape = np.shape(distance_m)
@@ -306,10 +309,10 @@ class SegmentSpeedModel:
         crr = kernel_array(crr, np.float32)
         # 体力と漕ぎ出しが負・無限大にならない値だけで解く（上限倍率が1未満だと平地の出力を越えた分が負になる）。
         require_tuning({"speed.mass_kg": profile.mass_kg}, profile.mass_kg > 0, "0より大きい")
-        power_per_force = checked_tuning_value("speed.extra_power_per_force", lambda v: v >= 0, "0以上")
-        max_ratio = checked_tuning_value("speed.max_climb_power_ratio", lambda v: v >= 1, "1以上")
-        walking_kmh = checked_tuning_value("speed.walking_kmh", lambda v: v > 0, "0より大きい")
-        self._kickoff_extra_j = kickoff_extra_j(profile)
+        power_per_force = tuning.checked("speed.extra_power_per_force", lambda v: v >= 0, "0以上")
+        max_ratio = tuning.checked("speed.max_climb_power_ratio", lambda v: v >= 1, "1以上")
+        walking_kmh = tuning.checked("speed.walking_kmh", lambda v: v > 0, "0より大きい")
+        self._kickoff_extra_j = kickoff_extra_j(profile, tuning)
         #: 平地・無風の巡航速度のホイール出力（W）。体力を秒へ換算する基準（`domain/ledger_costs.py`）。
         self.flat_power_w = wheel_power_w(profile)
         require_tuning({"speed.cda_m2": profile.cda_m2, BASE_CRR_ID: profile.crr, "speed.mass_kg": profile.mass_kg},
@@ -324,7 +327,7 @@ class SegmentSpeedModel:
         rider[_RIDER_MAX_RATIO] = max_ratio
         rider[_RIDER_DRAG] = 0.5 * _AIR_DENSITY_KG_M3 * profile.cda_m2
         rider[_RIDER_LOWEST] = kmh_to_ms(walking_kmh)
-        rider[_RIDER_HIGHEST] = kmh_to_ms(top_speed_kmh(profile.cruise_speed_kmh))
+        rider[_RIDER_HIGHEST] = kmh_to_ms(top_speed_kmh(profile.cruise_speed_kmh, tuning))
         rider[_RIDER_CRUISE] = profile.cruise_speed_ms
         self._rider = rider
         constant_force, static_extra = _span_static(span_row, span_grade, crr, rider)

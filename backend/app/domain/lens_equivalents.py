@@ -15,16 +15,17 @@ from typing import Literal
 import numpy as np
 
 from app.domain.cost_axes import (
-    EFFORT_AXES, HEADWIND_FACT_LABEL, STOPS_FACT_LABEL, CategoricalBurden, CostAxisDefinitions, EffortItem,
+    EFFORT_AXES, HEADWIND_FACT_LABEL, STOPS_FACT_LABEL, CategoricalBurden, EffortItem,
 )
 from app.domain.cycling_speed import RiderProfile, SegmentSpeedModel, crr_for_surface
 from app.domain.attributes import CategoricalColumn
 from app.domain.elevation_profile import FLAT, ElevationProfiles, along_fractions
 from app.domain.ledger_costs import LedgerCosts, LedgerParameters
-from app.domain.road_classes import CLASS_MATERIAL_PREFIX, RoadClassDefinitions, class_labels
+from app.domain.model_settings import ModelSettings
+from app.domain.road_classes import CLASS_MATERIAL_PREFIX, class_labels
 from app.domain.route_request import ASSUMED_SPEED_KMH
 from app.domain.strict_model import StrictModel
-from app.domain.tuning import BASE_CRR_ID, tuning_value
+from app.domain.tuning import BASE_CRR_ID
 
 _ROAD_M = 1000.0
 #: 引き戻す事実の値の刻み（最小・最大・刻み）。最大は、それより大きい事実の道がほぼ無い所に置く。
@@ -59,25 +60,25 @@ class ExampleEquivalents(StrictModel):
 LensEquivalents = ThresholdEquivalents | ExampleEquivalents
 
 
-def lens_equivalents(axes: CostAxisDefinitions, parameters: LedgerParameters,
-                     road_classes: RoadClassDefinitions) -> dict[str, LensEquivalents]:
+def lens_equivalents(settings: ModelSettings, parameters: LedgerParameters) -> dict[str, LensEquivalents]:
     """軸id → 段の境目の目安（数える軸だけを、体力の軸をコードの表の順、続けて道のストレスの軸）。"""
     result: dict[str, LensEquivalents] = {}
     for axis_id, item in EFFORT_AXES.items():
         if parameters.counts(axis_id):
-            result[axis_id] = _effort_equivalents(axes, parameters, road_classes, axis_id, item)
-    for axis_id in axes.burden:
+            result[axis_id] = _effort_equivalents(settings, parameters, axis_id, item)
+    for axis_id in settings.cost_axes.burden:
         if parameters.counts(axis_id):
-            result[axis_id] = _burden_examples(axes, parameters, road_classes, axis_id)
+            result[axis_id] = _burden_examples(settings, parameters, axis_id)
     return result
 
 
-def _effort_equivalents(axes: CostAxisDefinitions, parameters: LedgerParameters, road_classes: RoadClassDefinitions,
-                        axis_id: str, item: EffortItem) -> LensEquivalents:
-    thresholds = axes.effort[axis_id].lens.thresholds
+def _effort_equivalents(settings: ModelSettings, parameters: LedgerParameters, axis_id: str, item: EffortItem
+                        ) -> LensEquivalents:
+    road_classes = settings.road_classes
+    thresholds = settings.cost_axes.effort[axis_id].lens.thresholds
 
     def seconds(**road) -> np.ndarray:
-        return _axis_seconds_per_km(axes, parameters, axis_id, **road)
+        return _axis_seconds_per_km(settings, parameters, axis_id, **road)
 
     if item == "gravity":
         return _inverted("斜度", "%", _GRADE_PERCENT, lambda grade: seconds(grade_percent=grade), thresholds)
@@ -95,15 +96,15 @@ def _effort_equivalents(axes: CostAxisDefinitions, parameters: LedgerParameters,
                                         for key, value in zip(classes, per_class)])
 
 
-def _burden_examples(axes: CostAxisDefinitions, parameters: LedgerParameters, road_classes: RoadClassDefinitions,
-                     axis_id: str) -> ExampleEquivalents:
+def _burden_examples(settings: ModelSettings, parameters: LedgerParameters, axis_id: str) -> ExampleEquivalents:
+    axes, road_classes = settings.cost_axes, settings.road_classes
     burden = axes.burden[axis_id].burden
     if isinstance(burden, CategoricalBurden):
         labels = class_labels(road_classes.classifications.get(burden.material.removeprefix(CLASS_MATERIAL_PREFIX)))
         weights = [(labels.get(key, key), weight) for key, weight in burden.per_km.items()]
     else:
         weights = [(f"{value:g}", weight) for value, weight in burden.points]
-    seconds = _axis_seconds_per_km(axes, parameters, axis_id, burden=np.array([weight for _, weight in weights]))
+    seconds = _axis_seconds_per_km(settings, parameters, axis_id, burden=np.array([weight for _, weight in weights]))
     return ExampleEquivalents(examples=[SecondsExample(label=label, seconds_per_km=float(value))
                                         for (label, _), value in zip(weights, seconds)])
 
@@ -120,7 +121,7 @@ def _inverted(fact: str, unit: str, grid: tuple[float, float, float], seconds_of
     return ThresholdEquivalents(fact=fact, unit=unit, values=values)
 
 
-def _axis_seconds_per_km(axes: CostAxisDefinitions, parameters: LedgerParameters, axis_id: str, *,
+def _axis_seconds_per_km(settings: ModelSettings, parameters: LedgerParameters, axis_id: str, *,
                          grade_percent: np.ndarray | None = None, headwind_ms: np.ndarray | None = None,
                          kickoffs: np.ndarray | None = None, surface: CategoricalColumn | None = None,
                          burden: np.ndarray | None = None) -> np.ndarray:
@@ -128,9 +129,11 @@ def _axis_seconds_per_km(axes: CostAxisDefinitions, parameters: LedgerParameters
     `axis_id`の1kmあたりの重さ。"""
     n = len(next(v for v in (grade_percent, headwind_ms, kickoffs, surface, burden) if v is not None))
     grade = np.zeros(n) if grade_percent is None else np.asarray(grade_percent, dtype=np.float64)
-    crr = np.full(n, tuning_value(BASE_CRR_ID)) if surface is None else crr_for_surface(surface)
-    model = SegmentSpeedModel(RiderProfile(cruise_speed_kmh=ASSUMED_SPEED_KMH), _uniform_slopes(grade),
-                              np.full(n, _ROAD_M), crr, np.zeros(n) if kickoffs is None else kickoffs)
+    tuning, axes = settings.tuning, settings.cost_axes
+    crr = (np.full(n, tuning.value(BASE_CRR_ID)) if surface is None
+           else crr_for_surface(surface, settings.road_classes, tuning))
+    model = SegmentSpeedModel(RiderProfile.standard(ASSUMED_SPEED_KMH, tuning), _uniform_slopes(grade),
+                              np.full(n, _ROAD_M), crr, np.zeros(n) if kickoffs is None else kickoffs, tuning)
     ledger = LedgerCosts.for_model(axes, parameters, model, {
         burden_id: burden if burden is not None and burden_id == axis_id else np.zeros(n) for burden_id in axes.burden})
     wind = np.zeros(n) if headwind_ms is None else np.asarray(headwind_ms, dtype=np.float64)

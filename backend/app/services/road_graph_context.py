@@ -14,7 +14,6 @@ from typing import NoReturn
 
 import numpy as np
 
-from app.domain.cost_axes import CostAxisDefinitions
 from app.domain.errors import RoutingError
 from app.domain.leg_costs import LegCostArrays, LegCostComposer
 from app.domain.graph import LeanEdge, edge_key, node_key, parse_edge_key
@@ -32,6 +31,7 @@ from app.domain.route_search import (
 )
 from app.domain.search_graph import LazyRoadGraph, SearchGraphStatics, edge_index_between
 from app.domain.node_spatial_index import NodeSpatialIndex, snap_to_accessible_node
+from app.domain.tuning import Tuning
 from app.domain.turn_structure import TurnExpandedStructure
 from app.domain.route_diversity import lengths_by_physical_segment
 from app.domain.wind import (
@@ -79,8 +79,8 @@ class RoadGraphContext:
     # 遷移ごとの曲がる所の費用（秒、`turn_structure`の遷移の並び）。区間の費用と同じく利用者ごとに変わりうる値なので、
     # 構造ではなく文脈が持ち、探索・木の費用の上界・繋ぎ目へ値で渡す。漕ぎ出しの代償を費用に足すまでは時間そのもの。
     transition_cost: np.ndarray
-    # 費用の軸の定義（`composer`を組んだのと同じもの）。候補の事実が道のストレスの軸の名前を読む。
-    cost_axes: CostAxisDefinitions
+    # 較正値（`composer`を組んだのと同じもの）。探索の選び方の値を読む。
+    tuning: Tuning
     # 探索範囲を覆うタイル集合。学習した迂回率の鍵に使う。
     tile_set: frozenset[tuple[int, int, int]]
     # A*のヒューリスティック（(向かうノード番号, 費用の最小の倍率)→各Nodeからの費用の下界[秒]）。向かう先（置いた点・終点）は
@@ -305,7 +305,7 @@ def heuristic_to(context: RoadGraphContext, node: int) -> np.ndarray:
     if heuristic is None:
         heuristic = context.heuristics[node] = heuristic_seconds(
             straight_distances_m(context.node_lat, context.node_lon, node), context.composer.speed_kmh,
-            context.composer.min_cost_scale,
+            context.composer.min_cost_scale, context.tuning,
         )
     return heuristic
 
@@ -326,13 +326,13 @@ def traveled_columns(context: RoadGraphContext, edges: Sequence[int]) -> np.ndar
     return np.fromiter(traveled, dtype=np.int64, count=len(traveled))
 
 
-def avoiding_traveled(costs: np.ndarray, travel_seconds: np.ndarray, columns: np.ndarray) -> np.ndarray:
+def avoiding_traveled(costs: np.ndarray, travel_seconds: np.ndarray, columns: np.ndarray, tuning: Tuning) -> np.ndarray:
     """`costs`（区間が最後の軸）の`columns`の区間へ、走った道を避ける罰（`retrace_penalized`。`travel_seconds`は`costs`と
     同じ形の所要時間）を置いた配列。罰が要れば写しを作り、元の配列は変えない——同じ配列を区間の表示と、ほかのレグの探索も読む。"""
     if len(columns) == 0:
         return costs
     penalized = costs.copy()
-    penalized[..., columns] = retrace_penalized(costs[..., columns], travel_seconds[..., columns])
+    penalized[..., columns] = retrace_penalized(costs[..., columns], travel_seconds[..., columns], tuning)
     return penalized
 
 

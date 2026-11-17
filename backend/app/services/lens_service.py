@@ -11,12 +11,13 @@ from datetime import datetime
 
 import numpy as np
 
-from app.domain.cost_axes import CostAxisDefinitions, burden_material_ids, cost_axis_ids, current_cost_axes
+from app.domain.cost_axes import CostAxisDefinitions, burden_material_ids, cost_axis_ids
 from app.domain.lens_total import TOTAL_LENS_ID
 from app.domain.cost_preference import CostPreference
 from app.domain.wind_context import WindContext
 from app.domain.gradient import ROAD_BEARING_LEAF
-from app.domain.ledger_costs import current_ledger_parameters
+from app.domain.ledger_costs import ledger_parameters
+from app.domain.model_settings import ModelSettings, current_model_settings
 from app.domain.lens_values import (
     LensFactInputs,
     LENS_AGAINST_LEAF,
@@ -61,9 +62,10 @@ class LensService:
         """レンズ`lens_id`の、タイルのフィーチャーの、時刻`at`（省略すると今）の風と想定速度`speed_kmh`と利用者の値
         `preference`（つまみと倍率。ルート生成と同じ値で塗る）での道ごとの材料。知らないレンズか、利用者が無効にした軸の
         レンズ（表に無い）ならNone。風を読めない・時刻が予報の範囲の外なら投げる。"""
-        if lens_id not in {TOTAL_LENS_ID, *cost_axis_ids(current_cost_axes())}:
+        settings = current_model_settings()
+        if lens_id not in {TOTAL_LENS_ID, *cost_axis_ids(settings.cost_axes)}:
             return None
-        tile = await self._tile(z, x, y, at, speed_kmh, preference)
+        tile = await self._tile(settings, z, x, y, at, speed_kmh, preference)
         assert tile is not None  # フィーチャーを絞らなければ、空のタイルも空の表で返る
         if lens_id not in tile.table.values:
             return None
@@ -74,16 +76,17 @@ class LensService:
                       speed_kmh: float, preference: CostPreference) -> LensInspection | None:
         """押したフィーチャー（地図がタイル`z/x/y`で塗っている単位）の、地図と同じ秒を区間の長さぶん足したものと、その元の事実。
         タイルにそのフィーチャーが無ければNone。"""
-        tile = await self._tile(z, x, y, at, speed_kmh, preference, only=feature_key)
+        settings = current_model_settings()
+        tile = await self._tile(settings, z, x, y, at, speed_kmh, preference, only=feature_key)
         if tile is None:
             return None
-        painted = painted_direction(bearing_deg, float(tile.table.features.bearing_deg[0]))
+        painted = painted_direction(bearing_deg, float(tile.table.features.bearing_deg[0]), settings.tuning)
         return lens_inspection(tile.table.features, 0, painted, tile.facts)
 
-    async def _tile(self, z: int, x: int, y: int, at: datetime | None, speed_kmh: float, preference: CostPreference,
-                    only: str | None = None) -> _TileLens | None:
+    async def _tile(self, settings: ModelSettings, z: int, x: int, y: int, at: datetime | None, speed_kmh: float,
+                    preference: CostPreference, only: str | None = None) -> _TileLens | None:
         """タイルのレンズの値。`only`を渡すとそのフィーチャーだけで求める（無ければNone）。"""
-        axes = current_cost_axes()
+        axes = settings.cost_axes
         with log_external_call(_CATEGORY, z=z, x=x, y=y) as fields:
             prepared = await asyncio.to_thread(_prepare, road_network_store.current(), z, x, y, axes, only)
             if prepared is None:
@@ -91,7 +94,7 @@ class LensService:
             features, materials, fills, elevation_gain_m = prepared
             fields["features"] = len(features)
             wind = await self._wind(z, x, y, at, materials.mid_lat, materials.mid_lon)
-            return await asyncio.to_thread(_tile_lens, features, materials, axes, fills, speed_kmh, preference, wind,
+            return await asyncio.to_thread(_tile_lens, features, materials, settings, fills, speed_kmh, preference, wind,
                                            elevation_gain_m)
 
     async def _wind(self, z: int, x: int, y: int, at: datetime | None, mid_lat: np.ndarray, mid_lon: np.ndarray,
@@ -126,7 +129,7 @@ def _prepare(network: RoadNetwork, z: int, x: int, y: int, axes: CostAxisDefinit
             network.elevation_gain_m[features.rows])
 
 
-def _tile_lens(features: LensFeatures, materials: EdgeMaterialColumns, axes: CostAxisDefinitions, fills: MaterialFills,
+def _tile_lens(features: LensFeatures, materials: EdgeMaterialColumns, settings: ModelSettings, fills: MaterialFills,
                speed_kmh: float, preference: CostPreference, wind: tuple[WindForecastSeries, datetime] | None,
                elevation_gain_m: np.ndarray) -> _TileLens:
     components = previous_run_from = None
@@ -136,8 +139,8 @@ def _tile_lens(features: LensFeatures, materials: EdgeMaterialColumns, axes: Cos
             bearing_deg=materials.bearing_deg, wind_series=series, forecast_index=series.time_index(target, 0.0),
             wind_points=series.lattice.points_of(materials.mid_lat, materials.mid_lon)).components()
         previous_run_from = series.previous_run_from(target, 0.0)
-    return _TileLens(*lens_table(features, materials.columns, materials.distance_m, materials.elevation_profiles, axes,
-                                 current_ledger_parameters(preference), speed_kmh, fills, components, elevation_gain_m),
+    return _TileLens(*lens_table(features, materials.columns, materials.distance_m, materials.elevation_profiles, settings,
+                                 ledger_parameters(preference, settings.tuning), speed_kmh, fills, components, elevation_gain_m),
                      previous_run_from)
 
 

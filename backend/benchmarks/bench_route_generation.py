@@ -145,7 +145,7 @@ async def main() -> int:
     print(f"\n=== {label} / {origin.latitude},{origin.longitude} / {distance_km}km / {runs}回 ===")
     records: list[dict[str, object]] = []
 
-    # 定義を読む前に組み立てると、費用の軸の定義が無く、較正値も宣言の既定のままになる。
+    # 組み立ては較正値・区分・軸の定義を写すので、先に読み込む（読む前に組むと止まる）。
     async with get_session_factory()() as session:
         await refresh_definitions(session)
     # 評価条件を省いた生成の要求と、画面の既定の除外・避け方で組む。
@@ -161,7 +161,7 @@ async def main() -> int:
             async with sample_resources(dsn) as trace:
                 started = time.perf_counter()
                 candidates = (await generator.generate_loops(
-                    origin, distance_km=distance_km, distance_tolerance_km=distance_tolerance_km(distance_km),
+                    origin, distance_km=distance_km, distance_tolerance_km=distance_tolerance_km(distance_km, setup.settings.tuning),
                     points=FixedPoints(waypoints=[], destination=None),
                     max_routes=DEFAULT_MAX_ROUTES, start_time=datetime.now(JST))).candidates
                 elapsed = time.perf_counter() - started

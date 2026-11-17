@@ -101,8 +101,7 @@ wayの長さ（0はNULL）になる——件数と長さは必ず同じ側から
 `SearchMaterials`を組む。行は切り出した区間の順で、数値の材料は材料のidごとに区間の値が連続する行列で持つ。キャッシュしない。
 
 - **運ぶ材料**は、所要時間が読む材料（`domain/cycling_speed.py: travel_model_material_ids`）と、費用の式が読む材料（道のストレスの軸の
-  材料。`domain/cost_axes.py: burden_material_ids`）だけ。所要時間が読む材料の列が欠けた表は組み立てで断る（`ValueError`）——欠けたまま
-  通すと、全区間が取込の範囲全体の平均で数えられ、道ごとの坂・待ちの違いが黙って消える。区間ごとの値の欠け（NaN）は
+  材料。`domain/cost_axes.py: burden_material_ids`）だけ。区間ごとの値の欠け（NaN）は
   取込の範囲全体の平均（坂の割合・停止要因の密度）で数え、その区間の距離の割合を`missing_travel_data_share`で数える。
 - **DBに無い材料**は、材料カタログにあれば値の無い列で読める（`_ColumnsOrEmpty`が読まれたときに埋める）。
 - **分類の材料**（`highway`・路面の見込み等）は、道路網の置き場が持つ語彙への番号の列（`domain/attributes.py: CategoricalColumn`）
@@ -127,8 +126,8 @@ wayの長さ（0はNULL）になる——件数と長さは必ず同じ側から
   だけ求める。曲がる所の費用も同じ換算で組み（`LegCostComposer.transition_costs`）、探索へは`RoadGraphContext.transition_cost`
   で渡る。
 - **利用者の値**: つまみと倍率は生成の要求の`cost_preference`（`domain/cost_preference.py: CostPreference`）で届く。つまみは
-  較正値`evaluation.penalty_strength`に掛ける比で、帳簿の較正値の束（`domain/ledger_costs.py: current_ledger_parameters`）が
-  呼ぶたびに今の較正値で組む——較正値を変えても利用者の値は標準のまま。倍率は書いていない軸を標準とし、条件のエコーへは
+  較正値`evaluation.penalty_strength`に掛ける比で、帳簿の較正値の束（`domain/ledger_costs.py: ledger_parameters`）が
+  入口の写した較正値で組む——較正値を変えても利用者の値は標準のまま。倍率は書いていない軸を標準とし、条件のエコーへは
   今の費用の軸を全部書いた形（`CostPreference.resolved`）を返す。
 - **組み立ての部品**: 走行の模型の入力（転がり抵抗・止まる出来事の待ちと漕ぎ出し・断面。`domain/leg_costs.py: travel_inputs`）と
   道のストレスの1kmあたりの重さ（`domain/leg_costs.py: burden_weights`）は、材料の列（材料id→区間の列）から組む関数で、探索の合成と

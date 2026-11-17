@@ -36,7 +36,9 @@ from app.domain.cost_axes import (
     EffortItem,
 )
 from app.domain.geo import length_weighted_mean
-from app.domain.material_catalog import MaterialSpec, material_spec
+from app.domain.material_catalog import MaterialSpec
+from app.domain.model_settings import ModelSettings
+from app.domain.road_classes import material_spec
 from app.domain.route import STOP_COUNT_DECIMALS, WIND_MS_DECIMALS, AxisFact
 from app.domain.elevation_profile import FLAT, ElevationProfiles, along_fractions
 from app.domain.search_materials import SearchMaterials
@@ -45,6 +47,7 @@ from app.domain.road_network import MaterialFills
 from app.domain.road_avoidance import RoadAvoidanceMasks
 from app.domain.search_graph import EDGE_VALUE_DTYPE, kernel_array
 from app.domain.traffic import POI_COUNT_KINDS, stop_count_material_ids, stop_event
+from app.domain.tuning import Tuning
 from app.domain.wind import WindForecastSeries
 from app.domain.wind_context import WindContext
 
@@ -171,12 +174,12 @@ class TravelInputs:
 
 
 def travel_inputs(materials: Mapping[str, MaterialColumn], distance_m: np.ndarray, profiles: ElevationProfiles,
-                  speed_kmh: float, fills: MaterialFills) -> TravelInputs:
+                  speed_kmh: float, fills: MaterialFills, settings: ModelSettings) -> TravelInputs:
     """区間の材料（材料id→区間の行の順の列）から、所要時間のうち風に依らない入力を組む。探索（`LegCostComposer`）と地図の
     レンズ（`domain/lens_values.py`）が同じ値を読むよう、組み方はここだけが持つ。ターンは遷移ごとに決まるためここには
     含まない（探索側が足す）。"""
     distance_m = np.asarray(distance_m, dtype=np.float64)
-    rolling = rolling_resistance_material_id()
+    rolling = rolling_resistance_material_id(settings.road_classes)
     surface = materials.get(rolling) if rolling is not None else None
     if not isinstance(surface, CategoricalColumn):  # 転がり抵抗の表が分け方を指していない: どの区間も基準の転がり抵抗
         surface = CategoricalColumn.empty(len(distance_m))
@@ -184,13 +187,14 @@ def travel_inputs(materials: Mapping[str, MaterialColumn], distance_m: np.ndarra
     kickoffs = np.zeros(len(distance_m))
     distance_km = distance_m / 1000.0
     for kind, material_id in zip(POI_COUNT_KINDS, stop_count_material_ids(), strict=True):
-        event = stop_event("stop", kind)
+        event = stop_event("stop", kind, settings.tuning)
         # 停止要因の数の無い区間は、取込の範囲全体の平均の密度で数える（0とみなすと、数の無い道が止まらない速い道に見える）。
         count = np.nan_to_num(fills.fill(material_id, cast(np.ndarray, materials[material_id]))) * distance_km
         waits += count * event.expected_seconds
         kickoffs += count * event.kickoffs
-    crr = crr_for_surface(surface)
-    model = SegmentSpeedModel(RiderProfile(cruise_speed_kmh=speed_kmh), profiles, distance_m, crr, kickoffs)
+    crr = crr_for_surface(surface, settings.road_classes, settings.tuning)
+    model = SegmentSpeedModel(RiderProfile.standard(speed_kmh, settings.tuning), profiles, distance_m, crr, kickoffs,
+                              settings.tuning)
     return TravelInputs(model, waits, kickoffs)
 
 
@@ -202,7 +206,7 @@ def burden_weights(axes: CostAxisDefinitions, parameters: LedgerParameters, mate
             for axis_id, axis in axes.burden.items() if parameters.counts(axis_id)}
 
 
-def axis_facts(axes: CostAxisDefinitions, materials: Mapping[str, MaterialColumn], fills: MaterialFills,
+def axis_facts(settings: ModelSettings, materials: Mapping[str, MaterialColumn], fills: MaterialFills,
                rows: np.ndarray, distance_m: np.ndarray, penalty_by_axis: Mapping[str, np.ndarray],
                ascent_m: float | None, headwind_ms: np.ndarray | None, stops: float) -> dict[str, AxisFact]:
     """費用の軸id→その軸の秒の元になった事実（その軸の換算ルールが読む値を1つ）。数える軸（`penalty_by_axis`の軸）だけで、
@@ -212,6 +216,7 @@ def axis_facts(axes: CostAxisDefinitions, materials: Mapping[str, MaterialColumn
     - 登坂は登り`ascent_m`、向かい風は向かい風の成分の長さで重みを付けた平均（風を読めなければNone）、停止は止まる回数`stops`。
     - 摩擦（転がり抵抗の分け方）と道のストレスの軸（定義の材料）は、読む材料の値（`_material_fact`）。
     """
+    axes = settings.cost_axes
     mean_headwind = None if headwind_ms is None else length_weighted_mean(headwind_ms, distance_m)
     numbers: dict[EffortItem, tuple[str, float | None, str]] = {
         "gravity": ("登り", ascent_m, "m"),
@@ -226,19 +231,21 @@ def axis_facts(axes: CostAxisDefinitions, materials: Mapping[str, MaterialColumn
             label, value, unit = numbers[item]
             fact = None if value is None else AxisFact(label=label, value=value, unit=unit)
         else:
-            material = rolling_resistance_material_id() if item == "rolling" else axes.burden[axis_id].burden.material
-            fact = None if material is None else _material_fact(material, materials, fills, rows, seconds, distance_m)
+            material = (rolling_resistance_material_id(settings.road_classes) if item == "rolling"
+                        else axes.burden[axis_id].burden.material)
+            fact = None if material is None else _material_fact(material, settings, materials, fills, rows, seconds,
+                                                                distance_m)
         if fact is not None:
             facts[axis_id] = fact
     return facts
 
 
-def _material_fact(material_id: str, materials: Mapping[str, MaterialColumn], fills: MaterialFills, rows: np.ndarray,
-                   seconds: np.ndarray, distance_m: np.ndarray) -> AxisFact | None:
+def _material_fact(material_id: str, settings: ModelSettings, materials: Mapping[str, MaterialColumn], fills: MaterialFills,
+                   rows: np.ndarray, seconds: np.ndarray, distance_m: np.ndarray) -> AxisFact | None:
     """材料`material_id`の、秒`seconds`に一番効いた所の値（名前と単位は材料の宣言から）。区分の列なら区分の名前（秒が同じなら長い
     区分。値なしの区間しか無ければNone）、数の列なら一番効いた区間の値（欠けは費用と同じく取込の範囲全体の平均で埋める。どの区間も
     秒が0なら、効いた区間が無いのでNone）。"""
-    spec = cast(MaterialSpec, material_spec(material_id))
+    spec = cast(MaterialSpec, material_spec(material_id, settings.road_classes))
     column = materials[material_id]
     if not isinstance(column, CategoricalColumn):
         top = int(np.argmax(seconds))
@@ -303,12 +310,12 @@ def _bin_cost_arrays(
     )
 
 
-def compile_leg_cost_kernels() -> None:
+def compile_leg_cost_kernels(tuning: Tuning) -> None:
     """費用の組み立てのJIT（走行モデルとビンの仕上げ）を、本番と同じ引数の型で1回ずつ呼んでコンパイルする
     （`domain/search_kernels.py: compile_search_kernels`がイメージの組み立てで呼ぶ）。"""
     flat = ElevationProfiles(np.zeros(1, dtype=np.int64), np.full(1, 2, dtype=np.int32), np.ones(1, dtype=bool),
                              np.zeros(2, dtype=np.float32), along_fractions((), 2), FLAT)
-    model = SegmentSpeedModel(RiderProfile(cruise_speed_kmh=20.0), flat, np.ones(1), np.zeros(1), np.zeros(1))
+    model = SegmentSpeedModel(RiderProfile.standard(20.0, tuning), flat, np.ones(1), np.zeros(1), np.zeros(1), tuning)
     seconds = model.travel_seconds(np.zeros(1), np.zeros(1))
     model.ride(np.zeros(1), np.zeros(1), 1.0)
     _bin_cost_arrays(seconds, np.zeros(1), np.zeros(1, dtype=bool), np.ones(1), np.zeros(1), np.zeros(1, dtype=int), 1)
@@ -330,14 +337,14 @@ class LegCostComposer:
         lazy_row_index: np.ndarray,
         detour_ratio: float,
         material_fills: MaterialFills,
-        axes: CostAxisDefinitions,
+        settings: ModelSettings,
         parameters: LedgerParameters,
     ) -> None:
         """`material_fills`は取込の範囲全体の材料の分布（欠けた材料を埋める）。費用は費目の帳簿の式（`domain/ledger_costs.py`）
-        で、`axes`の軸と`parameters`の強さで組む。"""
+        で、`settings`の費用の軸と`parameters`の強さで組む。"""
         self._search_materials = search_materials
         self._material_fills = material_fills
-        self._axes = axes
+        self._settings = settings
         self._parameters = parameters
         # 所要時間と費用の式が読む材料の値（材料の表の列をそのまま指す。切り出した区間の順）。
         self._static_material_arrays = dict(zip(search_materials.material_ids, search_materials.material_values, strict=True))
@@ -377,7 +384,7 @@ class LegCostComposer:
     def _travel_inputs(self) -> TravelInputs:
         """所要時間のうち風に依らない入力（`travel_inputs`）。静的材料だけから決まるため、リクエストに1回だけ求める。"""
         return travel_inputs(self._materials, self._search_materials.distance_m, self._search_materials.elevation_profiles,
-                             self.speed_kmh, self._material_fills)
+                             self.speed_kmh, self._material_fills, self._settings)
 
     def bin_time(self, hours: float) -> BinTime:
         """全区間を出発から`hours`時間後の時刻で合成するビンの、時刻の入力（`BinTime`）。"""
@@ -542,18 +549,18 @@ class LegCostComposer:
     @cached_property
     def _ledger(self) -> LedgerCosts:
         """費目の帳簿の式。道のストレスは時刻に依らないので、ここで1回だけ求める。"""
-        return LedgerCosts.for_model(self._axes, self._parameters, self._travel_inputs.model, self._burden_per_km)
+        return LedgerCosts.for_model(self._settings.cost_axes, self._parameters, self._travel_inputs.model, self._burden_per_km)
 
     @cached_property
     def _burden_per_km(self) -> dict[str, np.ndarray]:
         """道のストレスの軸id→区間ごとの1kmあたりの重さ。"""
-        return burden_weights(self._axes, self._parameters, self._materials, self._material_fills)
+        return burden_weights(self._settings.cost_axes, self._parameters, self._materials, self._material_fills)
 
     def axis_facts(self, rows: np.ndarray, penalty_by_axis: Mapping[str, np.ndarray], ascent_m: float | None,
                    headwind_ms: np.ndarray, turn_kickoffs: float) -> dict[str, AxisFact]:
         """切り出した区間の順の行`rows`を通る経路の、軸ごとの事実（`axis_facts`）。`penalty_by_axis`・`headwind_ms`は`rows`の
         並び。止まる回数には、曲がる所の漕ぎ出し`turn_kickoffs`回を足す。"""
-        return axis_facts(self._axes, self._materials, self._material_fills, rows, self.distance_m[rows], penalty_by_axis,
+        return axis_facts(self._settings, self._materials, self._material_fills, rows, self.distance_m[rows], penalty_by_axis,
                           ascent_m, headwind_ms, float(self._travel_inputs.stops[rows].sum()) + turn_kickoffs)
 
     def turn_penalty_by_axis(self, kickoffs: float) -> dict[str, float]:

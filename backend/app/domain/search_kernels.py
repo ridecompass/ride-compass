@@ -6,8 +6,8 @@ from app.domain.route_diversity import EdgeSetOverlap
 from app.domain.routing import build_turn_expanded_tree, turn_expanded_shortest_path
 from app.domain.search_graph import build_lazy_road_graph, build_search_graph_statics
 from app.domain.tree_paths import JunctionPaths, TreePathOverlap, combine_forward_backward_at_nodes
-from app.domain.tuning import TUNING_PARAMETERS_BY_ID, TUNING_VALUES
-from app.domain.turn_structure import build_turn_expanded_structure, current_turn_cost
+from app.domain.tuning import TUNING_PARAMETERS_BY_ID, Tuning
+from app.domain.turn_structure import build_turn_expanded_structure, turn_cost
 
 
 def compile_search_kernels() -> None:
@@ -21,23 +21,15 @@ def compile_search_kernels() -> None:
     ここで呼ぶものに限る（部品は探索の中へ展開し、Pythonからは素の関数を呼ぶ）。
 
     コンパイルは引数の型だけを見て、値は結果に効かない。イメージの組み立てではDBの較正値を読めないので、宣言の全idに仮の値
-    （1）を置いて呼び、抜けるときに前の値へ戻す（同じプロセスで後からルートを作っても、仮の値で作らない）。
+    （1）を置いた束を渡す。
     """
-    loaded = dict(TUNING_VALUES)
-    TUNING_VALUES.update(dict.fromkeys(TUNING_PARAMETERS_BY_ID, 1.0))
-    try:
-        _call_search_kernels()
-    finally:
-        TUNING_VALUES.update(loaded)
-
-
-def _call_search_kernels() -> None:
+    tuning = Tuning(dict.fromkeys(TUNING_PARAMETERS_BY_ID, 1.0))
     lazy_graph = build_lazy_road_graph(np.array([0, 1]), np.array([1, 0]), 2)
     statics = build_search_graph_statics(lazy_graph, np.ones(2))
     largest_strongly_connected_nodes(statics.csr, np.ones(2, dtype=bool))
     nodes_reached_without_retracing(statics.csr, np.ones(2, dtype=bool), np.ones(2, dtype=bool), [0])
     structure = build_turn_expanded_structure(
-        statics.csr, lazy_graph, np.zeros(2), np.zeros(2), np.zeros(2, dtype=np.int64), current_turn_cost(),
+        statics.csr, lazy_graph, np.zeros(2), np.zeros(2), np.zeros(2, dtype=np.int64), turn_cost(tuning),
         np.zeros(2, dtype=bool), np.zeros(2, dtype=np.int64), np.ones(2, dtype=np.int16),
     )
     cost = np.ones((1, 2))
@@ -58,4 +50,4 @@ def _call_search_kernels() -> None:
     edge_overlap.max_ratio(0)
     turn_expanded_shortest_path(structure, cost, np.zeros(2), origin_states, 0, edge_seconds=cost,
                                 transition_cost=structure.turn_seconds)
-    compile_leg_cost_kernels()
+    compile_leg_cost_kernels(tuning)

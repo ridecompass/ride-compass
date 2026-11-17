@@ -1,7 +1,7 @@
 """費用の軸の公開読み取りAPI。
 
 画面（設定の軸ごとの倍率・結果の代償の内訳・地図のレンズと凡例）が、軸の名前・説明・アイコン・レンズの段と、軸の帳簿（体力か
-道のストレスか）を読む。プロセス内の定義（`domain/cost_axes.py: current_cost_axes`）から返すので、管理APIで書いた定義は
+道のストレスか）を読む。プロセス内の定義（`domain/model_settings.py: current_model_settings`）から返すので、管理APIで書いた定義は
 再デプロイなしにここへ出る。
 """
 
@@ -12,13 +12,13 @@ from fastapi import APIRouter, Depends, Query
 from fastapi.exceptions import RequestValidationError
 from pydantic import Field, TypeAdapter, ValidationError
 
-from app.domain.cost_axes import AxisPresentation, CostAxisCatalogEntry, cost_axis_catalog, current_cost_axes
+from app.domain.cost_axes import AxisPresentation, CostAxisCatalogEntry, cost_axis_catalog
 from app.domain.cost_preference import STANDARD_COST_FACTOR, CostPreference, RequestedCostPreference
 from app.domain.lens_total import TOTAL_LENS_ID
-from app.domain.ledger_costs import current_ledger_parameters, turn_kickoff_wording
+from app.domain.ledger_costs import ledger_parameters, turn_kickoff_wording
 from app.domain.lens_equivalents import LensEquivalents, lens_equivalents
 from app.domain.lens_values import LENS_MATERIAL_CONDITIONS, lens_way_formula
-from app.domain.road_classes import current_road_classes
+from app.domain.model_settings import current_model_settings
 from app.domain.strict_model import StrictModel
 from app.domain.way_value_formula import WayValueConditionName, WayValueFormula
 
@@ -49,11 +49,12 @@ class CostAxisCatalogResponse(StrictModel):
 
 @router.get("/api/cost-axes", response_model=CostAxisCatalogResponse)
 async def get_cost_axis_catalog() -> CostAxisCatalogResponse:
-    definitions = current_cost_axes()
+    settings = current_model_settings()
+    definitions = settings.cost_axes
     return CostAxisCatalogResponse(
         axes=cost_axis_catalog(definitions),
         total_lens=TotalLens(lens_id=TOTAL_LENS_ID, **definitions.total_lens.model_dump()),
-        map_lens=MapLens(formula=lens_way_formula(), material_conditions=list(LENS_MATERIAL_CONDITIONS)),
+        map_lens=MapLens(formula=lens_way_formula(settings.tuning), material_conditions=list(LENS_MATERIAL_CONDITIONS)),
         turn_kickoff_wording=turn_kickoff_wording(definitions),
     )
 
@@ -90,7 +91,6 @@ async def get_lens_equivalents(
     """地図のレンズの段の境目の秒が、利用者の値（つまみと倍率。地図のレンズと同じクエリ）で、その事実1つだけが効いた無風の
     1kmの道のどれだけの事実に当たるかの目安（体力の軸をコードの表の順、続けて道のストレスの軸）。地図が塗る色と凡例の目安を同じ
     値で揃える。"""
-    definitions = current_cost_axes()
+    settings = current_model_settings()
     # 目安は合成の道で走行の模型を解くので、イベントループの外で求める。
-    return await asyncio.to_thread(
-        lens_equivalents, definitions, current_ledger_parameters(preference), current_road_classes())
+    return await asyncio.to_thread(lens_equivalents, settings, ledger_parameters(preference, settings.tuning))

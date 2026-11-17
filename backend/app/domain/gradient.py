@@ -1,6 +1,5 @@
 import math
 
-from app.domain.tuning import tuning_value
 from app.domain.way_value_formula import (
     Binary,
     FormulaNode,
@@ -36,9 +35,9 @@ GRADIENT_VALUE_DECIMALS = 1
 ROAD_BEARING_LEAF = "road_bearing_deg"
 
 
-def travel_direction_formula(forward: FormulaNode, backward: FormulaNode) -> WayValueFormula:
+def travel_direction_formula(forward: FormulaNode, backward: FormulaNode, perpendicular_band_deg: float) -> WayValueFormula:
     """要求の走行方位で道を辿るとき、道の向き寄りなら`forward`、逆向き寄りなら`backward`になる値。道の向きが走行方位に
-    直角に近い道（直角からの幅は較正値`gradient.perpendicular_band_deg`で、呼ばれた時点で読む）は、どちらとも決まらない
+    直角に近い道（直角からの幅`perpendicular_band_deg`は較正値`gradient.perpendicular_band_deg`）は、どちらとも決まらない
     （`undetermined`）。向きを持たない道は`backward`になる。
 
     示せるかの判定と値の算出を1つの木に持つ——別々の口にすると、判定を読まない呼び出し側が符号の決まらない値を
@@ -50,7 +49,7 @@ def travel_direction_formula(forward: FormulaNode, backward: FormulaNode) -> Way
     # 逆走（符号が反転するだけ）を同じ扱いにするため。剰余は割られる数の符号に従うので、負の余りは180を足して戻す。
     remainder = Binary(op="mod", left=diff, right=const(180.0))
     folded = case(Binary(op="lt", left=remainder, right=const(0.0)), add(remainder, const(180.0)), remainder)
-    band_deg = const(tuning_value("gradient.perpendicular_band_deg"))
+    band_deg = const(perpendicular_band_deg)
     near_perpendicular = Binary(op="le", left=Unary(op="abs", arg=sub(folded, const(90.0))), right=band_deg)
     has_bearing = Unary(op="not", arg=Unary(op="is_missing", arg=feature(ROAD_BEARING_LEAF)))
     return WayValueFormula(

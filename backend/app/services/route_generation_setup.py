@@ -9,7 +9,7 @@ from typing import assert_never
 
 from app.domain.cost_preference import CostPreference
 from app.domain.road_avoidance import AvoidanceLevel, resolve_road_avoidance
-from app.domain.road_classes import current_road_classes
+from app.domain.model_settings import ModelSettings, current_model_settings
 from app.domain.road_network import RoadNetwork
 from app.domain.route import Coordinates, RouteCandidate
 from app.domain.route_request import (
@@ -45,6 +45,8 @@ class RouteGenerationSetup:
 
     generator: RouteGenerator
     conditions: _AppliedConditions
+    # 1回の生成が読む較正値・区分・軸の定義（エンジンへ渡したのと同じ写し）。
+    settings: ModelSettings
 
 
 def assemble_route_generation_setup(
@@ -56,11 +58,13 @@ def assemble_route_generation_setup(
 
     省略された評価条件の既定はここで1度だけ決める。以後は解決済みの値だけを回し、
     レスポンスのconditionsへも同じ値をエコーする（画面が見る値と探索が使う値を分けない）。
+    較正値・区分・軸の定義もここで1度だけ写し、生成の間は管理APIの書き込みに左右されない。
     """
+    settings = current_model_settings()
     applied = _AppliedConditions(
-        cost_preference=requested.cost_preference.resolved(),
+        cost_preference=requested.cost_preference.resolved(settings.cost_axes),
         assumed_speed_kmh=requested.assumed_speed_kmh,
-        road_avoidance=resolve_road_avoidance(requested.road_avoidance, current_road_classes()),
+        road_avoidance=resolve_road_avoidance(requested.road_avoidance, settings.road_classes),
     )
     engine = RoadGraphEngine(
         graph_service,
@@ -68,8 +72,9 @@ def assemble_route_generation_setup(
         cost_preference=applied.cost_preference,
         road_avoidance=applied.road_avoidance,
         assumed_speed_kmh=applied.assumed_speed_kmh,
+        settings=settings,
     )
-    return RouteGenerationSetup(generator=RouteGenerator(engine), conditions=applied)
+    return RouteGenerationSetup(generator=RouteGenerator(engine), conditions=applied, settings=settings)
 
 
 @dataclass(frozen=True)
@@ -125,7 +130,7 @@ async def generate_route_candidates(
                 generated = await generator.generate_loops(
                     origin=origin,
                     distance_km=target.distance_km,
-                    distance_tolerance_km=distance_tolerance_km(target.distance_km),
+                    distance_tolerance_km=distance_tolerance_km(target.distance_km, setup.settings.tuning),
                     max_routes=max_routes,
                     start_time=start_time,
                     points=target.points,

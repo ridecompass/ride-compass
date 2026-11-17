@@ -27,7 +27,7 @@ async def test_a_written_value_reaches_the_running_value(road_graph_session: Asy
 
     await refresh_tuning_values(road_graph_session)
 
-    assert tuning.tuning_value(_PARAM) == changed
+    assert tuning.current_tuning().value(_PARAM) == changed
 
 
 async def test_a_declared_value_without_a_row_stops_naming_the_id(road_graph_session: AsyncSession):

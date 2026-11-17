@@ -22,7 +22,9 @@ import pytest
 
 from app.domain.errors import GENERATION_BUSY_MESSAGE, RoutingError, SearchAreaTooLargeError, SearchMemoryBusyError
 from app.domain.loop_routing import LoopTurnaround, TracedLoop
+from app.domain.model_settings import ModelSettings
 from app.domain.route import PenaltyBreakdown, Coordinates, EvaluatedRoute, RouteCandidate, RouteFacts, RouteSegmentDetail
+from app.domain.road_classes import EMPTY_ROAD_CLASSES
 from app.domain.route_request import DEFAULT_MAX_ROUTES, MAX_ROUTES, FixedPoints
 from app.domain.time_zone import JST
 from app.services import route_generator
@@ -30,7 +32,9 @@ from app.services.road_graph_context import FixedLegs, ResolvedEnd
 from app.services.road_graph_engine import RoadGraphEngine
 from app.services.route_generator import RouteGenerator
 from tests.bound_fake import bound
+from tests.cost_axes_fixture import cost_axes
 from tests.route_world import NO_POINTS
+from tests.tuning_fixture import TUNED
 
 ORIGIN = Coordinates(latitude=35.6789, longitude=139.7712)
 WAYPOINT = Coordinates(latitude=35.69, longitude=139.78)
@@ -96,6 +100,7 @@ class FakeEngine:
 
     def __init__(self, *, routes=None, context=..., prepare_error=None, turnarounds=(), similar=(),
                  fixed_error=None, via=(), fastest=None, build_error=None, drop_evaluated=False, closes=None):
+        self.settings = ModelSettings(TUNED, EMPTY_ROAD_CLASSES, cost_axes())
         self.routes = routes or {}
         self.context = SimpleNamespace(evaluate_steps_ms={}) if context is ... else context
         self.prepare_error = prepare_error
