@@ -106,25 +106,28 @@ def _desired_power(flat_power_w: float, extra_n: float) -> float:
 
 
 @pytest.mark.parametrize(
-    ("grade", "power"),
-    [(-0.01, "flat"), (0.02, "desired"), (0.06, "ceiling")],
-    ids=["下り", "登り", "上限を越える登り"],
+    ("cruise_kmh", "grade", "power"),
+    [(20.0, -0.01, "flat"), (20.0, 0.02, "desired"), (20.0, 0.06, "ceiling"), (5.0, 0.005, "cruise")],
+    ids=["下り", "登り", "上限を越える登り", "巡航が踏み増しの値より遅い人の登り"],
 )
-def test_more_resistance_adds_the_declared_watts_per_newton_up_to_the_ceiling(grade, power):
-    """増えた抵抗に比例してWを足し、上限倍率で止まる。平地より楽なら平地の出力のまま。解いた速さを走行方程式へ戻すと、
+def test_more_resistance_adds_the_declared_watts_per_newton_up_to_the_ceiling(cruise_kmh, grade, power):
+    """増えた抵抗に比例してWを足し、上限倍率で止まる。平地より楽なら平地の出力のまま。巡航速度（m/s）が1Nあたりの踏み増しより
+    小さい人は、その条件で巡航速度を保つ出力で止まる（登りで巡航より速くならない）。解いた速さを走行方程式へ戻すと、
     その出力になる（空気抵抗の係数は、平地・無風の巡航速度と出力から戻す）。"""
-    flat_power_w = cycling_speed.wheel_power_w(RIDER)
-    cruise = RIDER.cruise_speed_ms
-    rolling_n = RIDER.crr * RIDER.mass_kg * GRAVITY_M_S2
+    rider = RiderProfile(cruise_speed_kmh=cruise_kmh)
+    flat_power_w = cycling_speed.wheel_power_w(rider)
+    cruise = rider.cruise_speed_ms
+    rolling_n = rider.crr * rider.mass_kg * GRAVITY_M_S2
     drag = (flat_power_w / cruise - rolling_n) / cruise**2
-    gravity_n = RIDER.mass_kg * GRAVITY_M_S2 * grade
+    gravity_n = rider.mass_kg * GRAVITY_M_S2 * grade
     expected = {
         "flat": flat_power_w,
         "desired": _desired_power(flat_power_w, gravity_n),
         "ceiling": flat_power_w * cycling_speed.tuning_value("speed.max_climb_power_ratio"),
+        "cruise": flat_power_w + cruise * gravity_n,
     }[power]
 
-    speed = _speed(RIDER, grade)
+    speed = _speed(rider, grade)
 
     assert (drag * speed**2 + rolling_n + gravity_n) * speed == pytest.approx(expected, rel=0.01)
 

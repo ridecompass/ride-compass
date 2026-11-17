@@ -120,10 +120,9 @@ def wheel_power_w(profile: RiderProfile) -> float:
 def _pushed_power(flat_power_w: float, power_per_force: float, max_ratio: float,
                   extra_force_n: float) -> tuple[float, float]:
     """抵抗が平地より`extra_force_n`（N。負なら平地より楽）増えたときに、踏みたい出力と実際に踏む出力（W）。JITのループから
-    呼ぶので、較正値（`power_per_force`は`speed.extra_power_per_force`、`max_ratio`は`speed.max_climb_power_ratio`）は
-    呼び手が読んで渡す。
+    呼ぶので、増えた抵抗1Nあたりの踏み増し`power_per_force`（W/N）と上限倍率`max_ratio`は呼び手が決めて渡す。
 
-    踏みたい出力は、増えた抵抗1Nごとに決まったWを平地の出力へ足したもの。坂の重力も
+    踏みたい出力は、増えた抵抗1Nごとに`power_per_force`のWを平地の出力へ足したもの。坂の重力も
     向かい風の空気抵抗も路面の転がり抵抗も、同じ決まりで踏み増す。抵抗が平地より減る区間（下り・追い風）は平地の出力のまま
     （減らさない）。実際に踏む出力は、踏みたい出力を平地の出力の上限倍率で止めたもの。
 
@@ -319,7 +318,9 @@ class SegmentSpeedModel:
         rider[_RIDER_WEIGHT] = profile.mass_kg * _GRAVITY_M_S2
         rider[_RIDER_FLAT_POWER] = self.flat_power_w
         rider[_RIDER_BASE_CRR] = profile.crr
-        rider[_RIDER_POWER_PER_FORCE] = power_per_force
+        # 1Nあたりの踏み増しを巡航速度（m/s）で止める。踏みたい出力が、その条件で巡航速度を保つ出力（平地の出力＋巡航速度×
+        # 増えた抵抗）を越えない——越えると、巡航の遅い人が登りや向かい風で巡航より速く走る。
+        rider[_RIDER_POWER_PER_FORCE] = min(power_per_force, profile.cruise_speed_ms)
         rider[_RIDER_MAX_RATIO] = max_ratio
         rider[_RIDER_DRAG] = 0.5 * _AIR_DENSITY_KG_M3 * profile.cda_m2
         rider[_RIDER_LOWEST] = kmh_to_ms(walking_kmh)

@@ -121,6 +121,8 @@ _SIGNAL_ID = event_seconds_parameter_id("stop", "signal")
 BASE_CRR_ID = "speed.crr"
 _CRR_GRAVEL_ID = "speed.crr_gravel"
 _CRR_COBBLESTONE_ID = "speed.crr_cobblestone"
+#: 走行モデルの較正値のうち、値に実測の出典が無いものの説明の末尾。
+_UNSOURCED = "値は根拠なし（出典のある実測が無い）。"
 _TURNAROUND_OVERLAP_ID = "search.turnaround_max_overlap_ratio"
 _TURNAROUND_RELAXED_OVERLAP_ID = "search.turnaround_relaxed_overlap_ratio"
 _LOOP_RATIO_MIN_ID = "search.loop_to_outbound_ratio_min"
@@ -267,59 +269,59 @@ TUNING_PARAMETERS: tuple[TuningParameter, ...] = (
     TuningParameter(
         "speed.cda_m2",
         "空気抵抗 CdA", "m²", TuningEffect.IMMEDIATE,
-        "走る姿勢の空気抵抗の係数と前面投影面積の積。",
+        "走る姿勢の空気抵抗の係数と前面投影面積の積。" + _UNSOURCED,
     ),
     TuningParameter(
         BASE_CRR_ID,
         "転がり抵抗", "", TuningEffect.IMMEDIATE,
-        "基準の路面（舗装）の転がり抵抗の係数。区分の外の道もこの値で走る。",
+        "基準の路面（舗装）の転がり抵抗の係数。区分の外の道もこの値で走る。" + _UNSOURCED,
     ),
     # 路面の区分ごとの転がり抵抗。どの区分がどの値を使うかは管理DBの道の区分の転がり抵抗の表が持つ。
     TuningParameter(
         "speed.crr_paving_stones",
         "転がり抵抗", "", TuningEffect.IMMEDIATE,
-        "切石・レンガの敷石の路面の転がり抵抗の係数。",
+        "切石・レンガの敷石の路面の転がり抵抗の係数。" + _UNSOURCED,
     ),
     TuningParameter(
         "speed.crr_compacted",
         "転がり抵抗", "", TuningEffect.IMMEDIATE,
-        "締め固めた路面の転がり抵抗の係数。",
+        "締め固めた路面の転がり抵抗の係数。" + _UNSOURCED,
     ),
     TuningParameter(
         _CRR_GRAVEL_ID,
         "転がり抵抗", "", TuningEffect.IMMEDIATE,
-        "砂利の路面の転がり抵抗の係数。",
+        "砂利の路面の転がり抵抗の係数。" + _UNSOURCED,
     ),
     TuningParameter(
         "speed.crr_soil",
         "転がり抵抗", "", TuningEffect.IMMEDIATE,
-        "土・草・砂の路面の転がり抵抗の係数。",
+        "土・草・砂の路面の転がり抵抗の係数。" + _UNSOURCED,
     ),
     TuningParameter(
         _CRR_COBBLESTONE_ID,
         "転がり抵抗", "", TuningEffect.IMMEDIATE,
-        "石畳（玉石）の路面の転がり抵抗の係数。",
+        "石畳（玉石）の路面の転がり抵抗の係数。" + _UNSOURCED,
     ),
     TuningParameter(
         "speed.crr_unknown",
         "転がり抵抗", "", TuningEffect.IMMEDIATE,
-        "舗装か未舗装かが分からない路面の転がり抵抗の係数。",
+        "舗装か未舗装かが分からない路面の転がり抵抗の係数。" + _UNSOURCED,
     ),
     TuningParameter(
         "speed.mass_kg",
         "総質量", "kg", TuningEffect.IMMEDIATE,
-        "体重＋車体＋装備。",
+        "体重＋車体＋装備。" + _UNSOURCED,
     ),
     TuningParameter(
         "speed.max_descent_kmh",
         "下りの速度上限", "km/h", TuningEffect.IMMEDIATE,
-        "上限が無いと、急な下りで計算上の速度が際限なく上がる。巡航速度がこれより速い人は、巡航速度を上限にする。",
+        "上限が無いと、急な下りで計算上の速度が際限なく上がる。巡航速度がこれより速い人は、巡航速度を上限にする。" + _UNSOURCED,
         shown_to_users=True,
     ),
     TuningParameter(
         "speed.walking_kmh",
         "押して歩く速度", "km/h", TuningEffect.IMMEDIATE,
-        "登りでこれ以下になったら押して歩くとみなす。",
+        "登りでこれ以下になったら押して歩くとみなす。" + _UNSOURCED,
     ),
     TuningParameter(
         "cost.effort_alpha",
@@ -342,12 +344,14 @@ TUNING_PARAMETERS: tuple[TuningParameter, ...] = (
         "speed.extra_power_per_force",
         "抵抗1Nあたりの出力の増加", "W/N", TuningEffect.IMMEDIATE,
         "平地・無風・基準の路面より抵抗（坂の重力・向かい風の空気抵抗・路面の転がり抵抗の増えた分の和）が1N増えるごとに、"
-        "何W余分に踏むか。抵抗の種類によらず同じ決まりで踏み増す。",
+        "何W余分に踏むか。抵抗の種類によらず同じ決まりで踏み増す。巡航速度（m/s）より大きければ巡航速度で止める（巡航が遅い人が"
+        "登りや向かい風で巡航より速くならない）。値の出典は坂での速さの実測（Flügel ら 2017・Belikhov ら 2025）で、支える値の幅と"
+        "合わせ方は docs/modules/backend/routing-engine.md「較正値（走ってみて決める値）」。",
     ),
     TuningParameter(
         "speed.max_climb_power_ratio",
         "踏み増しの上限倍率", "倍", TuningEffect.IMMEDIATE,
-        "平地の巡航に対して何倍まで踏むか。踏み増しをここで頭打ちにする。",
+        "平地の巡航に対して何倍まで踏むか。踏み増しをここで頭打ちにする。" + _UNSOURCED,
     ),
     # --- 道の避け方 ---
     TuningParameter(
