@@ -31,7 +31,7 @@ from app.domain.geo import haversine_distance_km
 from app.domain.map_display import MAP_OVERLAY_GROUPS
 from app.domain.loop_routing import TracedLoop
 from app.domain.route_request import NOTHING_TO_GENERATE, FixedPoints
-from app.domain.tuning import tuning_value
+from app.domain.tuning import Tuning
 from app.domain.route_search import (
     by_closeness_to_target,
     candidate_order,
@@ -141,7 +141,7 @@ class _Finish(Protocol):
     @property
     def log_label(self) -> str: ...
 
-    def search_radius_km(self, origin: Coordinates) -> float:
+    def search_radius_km(self, origin: Coordinates, tuning: Tuning) -> float:
         """置いた点を覆う探索の範囲に、さらに足す半径（km）。"""
         ...
 
@@ -167,13 +167,13 @@ class _DistanceFinish:
     def log_label(self) -> str:
         return "generate(loops)"
 
-    def search_radius_km(self, origin: Coordinates) -> float:
+    def search_radius_km(self, origin: Coordinates, tuning: Tuning) -> float:
         # 自由に選ぶ部分（最後の固定点 → 中継点 → 終点）の長さは、目標から前段の長さを引いた残り。前段の長さを直線で
         # 見積もるので、残りは実際より長く、範囲は広い側に倒れる。経由地が無ければ目標そのもの。
         stops = [origin, *self.points.waypoints]
         fixed_km = sum(haversine_distance_km(a, b) for a, b in zip(stops, stops[1:]))
         # 半径が足りなければ一対全探索が範囲で切れ、折返し点の候補が欠けるだけで壊れない。
-        return max(0.0, self.distance_km - fixed_km) * tuning_value("search.turnaround_radius_ratio")
+        return max(0.0, self.distance_km - fixed_km) * tuning.value("search.turnaround_radius_ratio")
 
     @property
     def log_detail(self) -> str:
@@ -191,7 +191,8 @@ class _DistanceFinish:
         )
         select_ms = elapsed_ms(select_started)
         if not turnarounds:
-            ring_lower_m, ring_upper_m, _ = turnaround_ring_m(self.distance_km, self.distance_tolerance_km)
+            ring_lower_m, ring_upper_m, _ = turnaround_ring_m(
+                self.distance_km, self.distance_tolerance_km, engine.settings.tuning)
             return _Selection.empty(
                 f"出発地から片道{ring_lower_m / 1000:.1f}〜{ring_upper_m / 1000:.1f}kmで到達できる折返し地点が見つかりませんでした。"
                 f"距離や「{_ROAD_SETTINGS_TAB}」の設定を変えてお試しください。"
@@ -287,7 +288,7 @@ class _NoDistanceFinish:
     def log_label(self) -> str:
         return "generate(destination)" if self.points.destination is not None else "generate(via_waypoints)"
 
-    def search_radius_km(self, origin: Coordinates) -> float:
+    def search_radius_km(self, origin: Coordinates, tuning: Tuning) -> float:
         # 代わりの道は置いた点を覆う範囲（と固定の余裕）の中で探す。
         return 0.0
 
@@ -461,7 +462,7 @@ class RouteGenerator:
         origin_label = _origin_label(origin)
         # 探索の範囲は置いた点（目的地を含む）を覆い、仕上げの戦略が自由に選ぶ部分の届く半径を足す。
         context = await self._prepare(
-            origin, points.placed, finish.search_radius_km(origin), start_time,
+            origin, points.placed, finish.search_radius_km(origin, self._engine.settings.tuning), start_time,
             log_label=finish.log_label, log_detail=finish.log_detail,
             failure_phrase="候補を生成できませんでした。対応エリア外の可能性があります。")
         prepare_ms = elapsed_ms(started)

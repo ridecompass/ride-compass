@@ -15,11 +15,12 @@ from app.domain.cost_axes import EFFORT_AXES, CostAxisDefinitions
 from app.domain.cycling_speed import RiderProfile, SegmentRide, kickoff_extra_j, wheel_power_w
 from app.domain.leg_costs import burden_weights
 from app.domain.cost_preference import CostPreference
-from app.domain.ledger_costs import LedgerCosts, LedgerParameters, burden_per_km, current_ledger_parameters
+from app.domain.ledger_costs import LedgerCosts, LedgerParameters, burden_per_km, ledger_parameters
 from app.domain.material_catalog import GRADIENT_PERCENT
 from app.domain.road_network import MaterialFills
+from tests.tuning_fixture import TUNED
 
-RIDER = RiderProfile(cruise_speed_kmh=20.0)
+RIDER = RiderProfile.standard(20.0, TUNED)
 LENS = {"thresholds": [1.0], "band_labels": ["a", "b"]}
 VIBRATION = "class:surface_estimate"
 
@@ -43,7 +44,7 @@ def _parameters(strength=1.0, alpha=1.0, beta=180.0, exponent=0.0, disabled=(), 
 
 
 def _ledger(parameters: LedgerParameters, vibration_km: list[float]) -> LedgerCosts:
-    return LedgerCosts(AXES, parameters, wheel_power_w(RIDER), kickoff_extra_j(RIDER), {"vibration": np.array(vibration_km)},
+    return LedgerCosts(AXES, parameters, wheel_power_w(RIDER), kickoff_extra_j(RIDER, TUNED), {"vibration": np.array(vibration_km)},
                        np.full(len(vibration_km), 1000.0))
 
 
@@ -71,8 +72,8 @@ def test_a_disabled_axis_is_not_built_and_a_disabled_stop_axis_does_not_count_th
     parameters = _parameters(disabled=("ascent", "vibration", "stopping"))
     weights = burden_weights(AXES, parameters, {VIBRATION: CategoricalColumn.encode(["gravel"])},
                              MaterialFills(numeric_means={}, class_shares={}))
-    ledger = LedgerCosts(AXES, parameters, wheel_power_w(RIDER), kickoff_extra_j(RIDER), weights, np.full(1, 1000.0))
-    ride = _ride(1, gravity=5000.0, inertia=kickoff_extra_j(RIDER))
+    ledger = LedgerCosts(AXES, parameters, wheel_power_w(RIDER), kickoff_extra_j(RIDER, TUNED), weights, np.full(1, 1000.0))
+    ride = _ride(1, gravity=5000.0, inertia=kickoff_extra_j(RIDER, TUNED))
 
     assert set(ledger.penalty_by_axis(ride)) == {"headwind", "friction"}
     assert ledger.penalty_seconds(ride).tolist() == [0.0]
@@ -82,11 +83,11 @@ def test_a_disabled_axis_is_not_built_and_a_disabled_stop_axis_does_not_count_th
 
 def test_with_the_strength_off_no_axis_is_built():
     """負担の全体の割合を無効（0）にすると、全部の軸を無効にしたのと同じく、どの軸も組まない（内訳にも地図のレンズにも出ない）。"""
-    parameters = current_ledger_parameters(CostPreference(strength=0.0))
+    parameters = ledger_parameters(CostPreference(strength=0.0), TUNED)
     weights = burden_weights(AXES, parameters, {VIBRATION: CategoricalColumn.encode(["gravel"])},
                              MaterialFills(numeric_means={}, class_shares={}))
-    ledger = LedgerCosts(AXES, parameters, wheel_power_w(RIDER), kickoff_extra_j(RIDER), weights, np.full(1, 1000.0))
-    ride = _ride(1, gravity=5000.0, inertia=kickoff_extra_j(RIDER))
+    ledger = LedgerCosts(AXES, parameters, wheel_power_w(RIDER), kickoff_extra_j(RIDER, TUNED), weights, np.full(1, 1000.0))
+    ride = _ride(1, gravity=5000.0, inertia=kickoff_extra_j(RIDER, TUNED))
 
     assert ledger.penalty_by_axis(ride) == {}
     assert ledger.turn_penalty_by_axis(2.0) == {}
@@ -95,7 +96,7 @@ def test_with_the_strength_off_no_axis_is_built():
 def test_a_turn_costs_its_time_and_the_kickoffs_like_a_stop_on_a_road():
     """曲がる所の費用は、時間に漕ぎ出しの回数 × 漕ぎ出しの代償を足したもの。区間の止まる出来事（慣性の費目）と同じ換算。"""
     ledger = _ledger(_parameters(strength=2.0, stopping=1.5), [0.0])
-    one_stop_on_a_road = ledger.penalty_seconds(_ride(1, inertia=kickoff_extra_j(RIDER)))[0]
+    one_stop_on_a_road = ledger.penalty_seconds(_ride(1, inertia=kickoff_extra_j(RIDER, TUNED)))[0]
 
     costs = ledger.transition_costs(np.array([10.0, 0.0], dtype=np.float32), np.array([1.0, 0.0], dtype=np.float32))
 

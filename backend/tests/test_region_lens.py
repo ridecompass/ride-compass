@@ -20,9 +20,8 @@ from app.domain.cost_axes import EFFORT_AXES, CostAxisDefinitions, replace_cost_
 from app.domain.region import tile_position
 from app.domain.route_request import ASSUMED_SPEED_KMH
 from app.domain.traffic import POI_COUNT_KINDS, stop_event
-from app.domain.tuning import tuning_value
 from app.domain.lens_values import LENS_AGAINST_LEAF, LENS_ALONG_LEAF
-from app.domain.material_catalog import material_spec
+from app.domain.material_catalog import MATERIAL_CATALOG
 from app.domain.route import AxisFact
 from app.main import app
 from app.services.lens_service import LensService
@@ -30,6 +29,7 @@ from dataclasses import replace
 from datetime import datetime
 
 from app.domain.time_zone import JST
+from tests.tuning_fixture import TUNED, TUNING
 from tests.route_world import (
     BAD_MATERIAL, CALM, COORDINATES, CENTER, NORTH_EAST, SOUTH_WEST, WAYS, Weather, at, edges_of, generator_for, road_network,
     serve_road_network,
@@ -85,7 +85,7 @@ async def test_each_axis_lens_paints_its_own_penalty_seconds_per_km_and_the_tota
     total = await _lens(client, "total")
     by_axis = {axis_id: await _lens(client, axis_id) for axis_id in (*EFFORT_AXES, "rough")}
 
-    burden_seconds = tuning_value("evaluation.penalty_strength") * tuning_value("cost.burden_seconds_per_km") * ROUGH_WEIGHT
+    burden_seconds = TUNING["evaluation.penalty_strength"] * TUNING["cost.burden_seconds_per_km"] * ROUGH_WEIGHT
     flat = total[str(FLAT_ROUGH_WAY)]
     assert (flat[LENS_ALONG_LEAF], flat[LENS_AGAINST_LEAF]) == pytest.approx((burden_seconds, burden_seconds))
     assert by_axis["rough"][str(FLAT_ROUGH_WAY)][LENS_ALONG_LEAF] == pytest.approx(burden_seconds)
@@ -175,7 +175,7 @@ async def test_the_legend_tells_the_slope_and_the_stops_a_threshold_stands_for(c
     # 止まる所の密度1/kmの道の秒から、境目の秒に当たる回数を引き直す（秒は回数に比例する）。
     one_stop = stopping[str(STOPPING_WAY)][LENS_ALONG_LEAF]
     assert stops == pytest.approx(THRESHOLDS[0] / one_stop * _kickoffs_per_stop(), rel=0.02)
-    burden_seconds = 2.0 * tuning_value("evaluation.penalty_strength") * tuning_value("cost.burden_seconds_per_km")
+    burden_seconds = 2.0 * TUNING["evaluation.penalty_strength"] * TUNING["cost.burden_seconds_per_km"]
     assert equivalents["rough"]["examples"] == [
         {"label": "0", "seconds_per_km": 0.0},
         {"label": "1", "seconds_per_km": pytest.approx(burden_seconds * ROUGH_WEIGHT)},
@@ -187,7 +187,7 @@ async def test_the_legend_tells_the_slope_and_the_stops_a_threshold_stands_for(c
 
 def _kickoffs_per_stop() -> float:
     """止まる所の密度1/km（種類ごと）の道が、1kmで漕ぎ出す回数。"""
-    return sum(stop_event("stop", kind).kickoffs for kind in POI_COUNT_KINDS)
+    return sum(stop_event("stop", kind, TUNED).kickoffs for kind in POI_COUNT_KINDS)
 
 
 async def test_the_inspector_gives_both_directions_and_the_facts_behind_them(cost_axes, road_network_root):
@@ -207,8 +207,7 @@ async def test_the_inspector_gives_both_directions_and_the_facts_behind_them(cos
         total.materials[str(CLIMBING_WAY)][LENS_ALONG_LEAF] * float(network.distance_m[row]) / 1000.0)
     assert inspection.along.facts["ascent"].value == pytest.approx(network.elevation_gain_m[row], abs=0.05)
     assert inspection.against.facts["ascent"].value == 0.0
-    bad = material_spec(BAD_MATERIAL)
-    assert bad is not None
+    bad = MATERIAL_CATALOG[BAD_MATERIAL]
     assert inspection.along.facts["rough"] == AxisFact(label=bad.label, value=1.0, unit=bad.unit)
 
     without_rough = await service.inspect(str(CLIMBING_WAY), Z, X, Y, 0.0, None, ASSUMED_SPEED_KMH,

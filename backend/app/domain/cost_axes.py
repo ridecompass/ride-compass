@@ -18,7 +18,7 @@ from pydantic import Field, field_validator, model_validator
 
 from app.domain.display_palette import cost_series_colors
 from app.domain.lens_total import TOTAL_LENS_ID
-from app.domain.material_catalog import material_dtype
+from app.domain.material_catalog import MATERIAL_CATALOG
 from app.domain.road_classes import CLASS_MATERIAL_PREFIX, RoadClassDefinitions
 from app.domain.strict_model import StrictModel
 
@@ -139,7 +139,8 @@ def check_cost_axes(definitions: CostAxisDefinitions, road_classes: RoadClassDef
                 if missing:
                     problems.append(f"{axis_id}: 重さの無い区分 {missing}")
             continue
-        dtype = material_dtype(burden.material)
+        spec = MATERIAL_CATALOG.get(burden.material)
+        dtype = spec.dtype if spec is not None else None
         if dtype is None:
             problems.append(f"{axis_id}: 知らない材料 {burden.material}")
         elif isinstance(burden, CategoricalBurden):

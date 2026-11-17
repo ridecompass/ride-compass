@@ -35,7 +35,6 @@ from app.domain.graph import node_key, parse_edge_key
 from app.domain.road_network import RoadNetwork
 from app.domain.road_classes import AvoidanceClassification
 from app.domain.route_request import ASSUMED_SPEED_KMH, DEFAULT_MAX_ROUTES, MAX_SPLICED_EDGES, MAX_WAYPOINTS
-from app.domain.tuning import tuning_value
 from app.infrastructure import rate_limiter, road_network_store
 from app.infrastructure.job_registry import JOB_WAIT_MAX_SECONDS
 from app.main import app
@@ -44,6 +43,7 @@ from app.services.route_generation_setup import assemble_route_generation_setup
 from tests.bound_fake import bound
 from tests.road_class_fixture import classification, fact_is, map_layer, replaced_road_classes, road_classes
 from tests.cost_axes_fixture import BAD_AXIS, cost_axes, cost_axes_declared
+from tests.tuning_fixture import TUNING
 from tests.route_world import (
     BAD_MATERIAL,
     CENTER,
@@ -272,7 +272,7 @@ async def test_a_distance_with_placed_points_is_the_length_of_the_whole_route(cl
     """経由地を置いても、距離は全長の目標として効く（夕食と銭湯に寄って30kmの周回）。
     探索は置いた点の近くに限らず、全長の目標に足りる広さで探す。"""
     world.serve(LATTICE)
-    tolerance_ratio = tuning_value("search.distance_tolerance_ratio")
+    tolerance_ratio = TUNING["search.distance_tolerance_ratio"]
     origin, waypoint, target = (1, 1), (1, 2), 12.0
 
     result = (await _generate(

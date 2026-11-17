@@ -16,7 +16,7 @@ import pytest
 from app.domain.cost_axes import EFFORT_AXES
 from app.domain.geo import bearing_between, haversine_distance_km
 from app.domain.gradient import GRADIENT_VALUE_DECIMALS
-from app.domain.material_catalog import material_spec
+from app.domain.material_catalog import MATERIAL_CATALOG
 from app.domain.road_classes import TRUE_FACT_VALUE, AvoidanceClassification
 from app.domain.route import AxisFact, Coordinates
 from app.domain.tuning import BASE_CRR_ID
@@ -278,8 +278,7 @@ async def test_the_duration_and_the_penalty_of_each_axis_and_of_the_preferred_an
     # 事実は軸ごとに、名前と単位を付けて返す（画面が軸idで出し分けない）。数の材料の軸は、その軸の秒に一番効いた区間（道100）の
     # 材料の値を材料の宣言の名前と単位で、摩擦は一番効いた路面の区分の名前を出す。
     facts = fastest.facts.axes
-    bad = material_spec(BAD_MATERIAL)
-    assert bad is not None
+    bad = MATERIAL_CATALOG[BAD_MATERIAL]
     assert facts[BAD_AXIS] == AxisFact(label=bad.label, value=1.0, unit=bad.unit)
     assert facts["friction"] == AxisFact(label=definitions.classifications["kind"].classes["local"].label, value=None, unit="")
     assert facts["stopping"].value > 0

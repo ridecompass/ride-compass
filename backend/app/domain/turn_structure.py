@@ -12,7 +12,7 @@ import numpy as np
 from app.domain.geo import LatLonPoint, bearing_between
 from app.domain.search_graph import EDGE_VALUE_DTYPE, SEARCH_INDEX_DTYPE, CsrGraphStructure, LazyRoadGraph
 from app.domain.traffic import MAJOR_CROSSING_MIN_RANK, NO_EVENT, StopEvent, stop_event
-from app.domain.tuning import tuning_value
+from app.domain.tuning import Tuning
 
 
 @dataclass(frozen=True)
@@ -21,7 +21,7 @@ class TurnCostSpec:
 
     左折は止まらず減速する出来事、右折（自転車は二段階右折）・Uターン・上位の道の横断/右左折は止まる出来事。
     割合・待ち・直進とみなす方位差は、いずれも走ってみて決める値のため`domain/tuning.py`が宣言する。既定を組み立てるのは
-    `current_turn_cost()`で、ここにフィールドの既定値は置かない——既定が分かれると、片方だけが変わる。
+    `turn_cost`で、ここにフィールドの既定値は置かない——既定が分かれると、片方だけが変わる。
     """
 
     left: StopEvent
@@ -35,18 +35,15 @@ class TurnCostSpec:
     major_turn: StopEvent
 
 
-def current_turn_cost() -> TurnCostSpec:
-    """いま効いている較正値で組み立てた曲がる所の出来事。
-
-    **呼ぶたびに組み立てる**——プロセス内に束ねると、管理画面から変えた値が効かない。
-    """
+def turn_cost(tuning: Tuning) -> TurnCostSpec:
+    """較正値`tuning`で組み立てた曲がる所の出来事。"""
     return TurnCostSpec(
-        left=stop_event("turn", "left"),
-        right=stop_event("turn", "right"),
-        uturn=stop_event("turn", "uturn"),
-        straight_max_deg=tuning_value("turn.straight_max_deg"),
-        major_crossing=stop_event("turn", "major_crossing"),
-        major_turn=stop_event("turn", "major_turn"),
+        left=stop_event("turn", "left", tuning),
+        right=stop_event("turn", "right", tuning),
+        uturn=stop_event("turn", "uturn", tuning),
+        straight_max_deg=tuning.value("turn.straight_max_deg"),
+        major_crossing=stop_event("turn", "major_crossing", tuning),
+        major_turn=stop_event("turn", "major_turn", tuning),
     )
 
 

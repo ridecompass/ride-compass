@@ -2,7 +2,7 @@
 
 入口は次のとおり。
 - `MaterialSpec`: dtypeと噛み合わない宣言を断る・表示用の名前
-- カタログから導く一覧: `material_dtype`・`material_array_columns`（`material_value_sql`を通る）・
+- カタログから導く一覧: `material_array_columns`（`material_value_sql`を通る）・
   `material_coverage_specs`・`material_coverage_exclusions`
 - `display_axis_missing_semantics`: 地図の表示の軸の値が欠けたときの意味
 - `check_material_catalog`: 材料を2通りに配るカタログを断る

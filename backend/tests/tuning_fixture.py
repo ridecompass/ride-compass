@@ -1,7 +1,9 @@
 """テストが置く較正値（id → 値）。本番は起動で表`tuning_overrides`から全部を読み、行の無い宣言があれば起動しない。
 
-テストは`conftest.py`がテストごとにこの値を置く。テストはこの値から入力を組み、値を差し替えない。
+テストは`conftest.py`がテストごとにこの値を置く。テストはこの値から入力を組み、値を差し替えない。値で受ける計算には束`TUNED`を渡す。
 """
+
+from app.domain.tuning import Tuning
 
 TUNING = {
     'turn.left_share': 1.0,
@@ -70,3 +72,5 @@ TUNING = {
     'splice.min_stretch_km': 0.2,
     'evaluation.penalty_strength': 0.7,
 }
+
+TUNED = Tuning(TUNING)

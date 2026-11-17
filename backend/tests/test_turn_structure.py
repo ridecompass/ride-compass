@@ -2,7 +2,7 @@
 
 ここで見ないもの:
 - 較正値そのものの妥当性（左折が何秒か） → `domain/tuning.py`側。較正値をターンの費用へ詰める
-  `current_turn_cost`は判断を持たないので単体では見ない（`test_route_generation_behavior.py`が通す）
+  `turn_cost`は判断を持たないので単体では見ない（`test_route_generation_behavior.py`が通す）
 - 遷移を使った探索 → `test_routing.py`
 """
 import dataclasses

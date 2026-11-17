@@ -27,7 +27,7 @@ from app.domain.cost_preference import STANDARD_COST_FACTOR, CostPreference
 from app.domain.cost_axes import EFFORT_AXES, Burden, CategoricalBurden, CostAxisDefinitions, EffortItem
 from app.domain.cycling_speed import SegmentRide, SegmentSpeedModel
 from app.domain.road_network import MaterialFills
-from app.domain.tuning import checked_tuning_value, tuning_value
+from app.domain.tuning import Tuning
 
 
 #: 曲がる所の漕ぎ出しを数える体力の費目。
@@ -66,16 +66,16 @@ class LedgerParameters:
         return self.multipliers.get(axis_id, STANDARD_COST_FACTOR)
 
 
-def current_ledger_parameters(preference: CostPreference) -> LedgerParameters:
-    """利用者の値`preference`と、いま効いている較正値で組む（呼ぶたびに読む——束ねると管理画面から変えた値が効かない）。
-    つまみは標準的な人の強さ（較正値）に掛ける比。標準の人の値は`CostPreference()`で組む。"""
+def ledger_parameters(preference: CostPreference, tuning: Tuning) -> LedgerParameters:
+    """利用者の値`preference`と較正値`tuning`で組む。つまみは標準的な人の強さ（較正値）に掛ける比。標準の人の値は
+    `CostPreference()`で組む。"""
     return LedgerParameters(
-        effective_strength=preference.strength * checked_tuning_value("evaluation.penalty_strength", lambda v: v > 0, "0より大きい"),
+        effective_strength=preference.strength * tuning.checked("evaluation.penalty_strength", lambda v: v > 0, "0より大きい"),
         multipliers=preference.multipliers,
         counts=preference.counts,
-        effort_alpha=checked_tuning_value("cost.effort_alpha", lambda v: v >= 0, "0以上"),
-        burden_seconds_per_km=checked_tuning_value("cost.burden_seconds_per_km", lambda v: v >= 0, "0以上"),
-        effort_weight_exponent=tuning_value("cost.effort_weight_exponent"),
+        effort_alpha=tuning.checked("cost.effort_alpha", lambda v: v >= 0, "0以上"),
+        burden_seconds_per_km=tuning.checked("cost.burden_seconds_per_km", lambda v: v >= 0, "0以上"),
+        effort_weight_exponent=tuning.value("cost.effort_weight_exponent"),
     )
 
 

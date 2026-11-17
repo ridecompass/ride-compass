@@ -63,7 +63,7 @@ from app.domain.leg_costs import LegCostArrays
 from app.domain.routing import TurnExpandedTree, build_turn_expanded_tree
 from app.domain.tree_paths import NodeJunction, add_terminal_candidate
 from app.domain.geo import KM_PER_DEGREE_LATITUDE
-from app.domain.tuning import tuning_value
+from tests.tuning_fixture import TUNED, TUNING
 from tests.search_graph_world import LINE_EDGES, LINE_NODES, build_all, make_graph, state_index
 
 
@@ -215,7 +215,7 @@ def test_retracing_a_preferred_road_is_penalized_as_much_as_a_plain_road_of_the_
     travel = np.array([60.0, 60.0])
     costs = np.array([60.0, 30.0])
 
-    added = retrace_penalized(costs, travel) - costs
+    added = retrace_penalized(costs, travel, TUNED) - costs
 
     assert added[0] == added[1] > 0
 
@@ -334,7 +334,7 @@ def _ranked_ids(ids, distance, penalty_per_km, *, tie_by_distance):
     seconds = np.full(len(ids), 100.0)
     ranking = rank_by_pareto_layers(
         np.array(ids), np.array(distance, dtype=float), seconds + 2 * np.array(penalty_per_km), seconds,
-        np.full(len(ids), 2000.0), max_items=10, max_examined=10, tie_by_distance=tie_by_distance,
+        np.full(len(ids), 2000.0), max_items=10, max_examined=10, tie_by_distance=tie_by_distance, tuning=TUNED
     )
     return np.array(ids)[ranking.order].tolist()
 
@@ -347,25 +347,25 @@ def test_rank_puts_the_pareto_layer_before_the_penalty():
 
 def test_rank_treats_distances_within_the_calibrated_quantum_as_the_same():
     """距離の差が較正値の粒度に満たない候補は同じ距離とみなされ、代償だけで並ぶ。"""
-    near = 0.4 * tuning_value("search.pareto_distance_quantum_m")
+    near = 0.4 * TUNING["search.pareto_distance_quantum_m"]
 
     assert _ranked_ids([5, 7, 9], [0.0, near, near], [50.0, 10.0, 30.0], tie_by_distance=False) == [7, 9, 5]
 
 
 def test_alternative_routes_are_at_most_the_calibrated_stretch_of_the_best():
     """目的地への代わりの道は、最良路（1km）の長さの較正値の倍まで（ちょうどを含む）を候補にする。"""
-    longest = 1000.0 * tuning_value("search.alternative_max_stretch")
+    longest = 1000.0 * TUNING["search.alternative_max_stretch"]
 
     best, alternatives = alternative_via_nodes(
-        np.array([1.0, 2.0, 3.0]), np.array([1000.0, longest, longest + 1.0]), np.array([True, True, True]))
+        np.array([1.0, 2.0, 3.0]), np.array([1000.0, longest, longest + 1.0]), np.array([True, True, True]), TUNED)
     assert (best, alternatives.tolist()) == (0, [0, 1])
 
 
 def test_a_turnaround_closer_than_the_calibrated_separation_to_an_accepted_one_is_skipped():
     """採用済みの折返し点から較正値の間隔より近い点は採らず、離れた点は採る（近い点ばかり採ると、同じ方面の周回が並ぶ）。"""
-    separation_km = tuning_value("search.min_turnaround_separation_km")
+    separation_km = TUNING["search.min_turnaround_separation_km"]
     lat = 35.0 + np.array([0.0, separation_km - 0.01, separation_km + 0.01]) / KM_PER_DEGREE_LATITUDE
-    far_enough = turnaround_separation([1, 2, 3], lat, np.full(3, 139.0), 35.0)
+    far_enough = turnaround_separation([1, 2, 3], lat, np.full(3, 139.0), 35.0, TUNED)
 
     assert (far_enough(2, [1]), far_enough(3, [1])) == (False, True)
 
@@ -380,10 +380,10 @@ def test_rank_breaks_ties_by_distance_only_when_asked(tie_by_distance, expected)
 def test_turnaround_ring_is_made_for_every_target_with_the_default_tolerance_and_estimate(distance_km):
     """既定の許容の割合と周回の全長の見込みで、受け付ける目標のどれでも、リングのどの往路から見込んだ全長も
     目標±許容に収まる。範囲が反転すると往路が見込みで全長を外れ、継いだ周回が距離の判定で落ちる。"""
-    ratio_min, ratio_max = loop_to_outbound_ratios()
-    tolerance_km = distance_tolerance_km(distance_km)
+    ratio_min, ratio_max = loop_to_outbound_ratios(TUNED)
+    tolerance_km = distance_tolerance_km(distance_km, TUNED)
 
-    lower_m, upper_m, _ = turnaround_ring_m(distance_km, tolerance_km)
+    lower_m, upper_m, _ = turnaround_ring_m(distance_km, tolerance_km, TUNED)
     assert lower_m < upper_m
     assert lower_m * ratio_min >= (distance_km - tolerance_km) * 1000.0 - 1e-6
     assert upper_m * ratio_max <= (distance_km + tolerance_km) * 1000.0 + 1e-6
@@ -393,14 +393,14 @@ def test_turnaround_ring_is_centered_on_the_target_when_the_tolerance_is_too_nar
     """許容が見込みの幅より狭いと`[(目標-許容)/MIN, (目標+許容)/MAX]`が逆転し、折返し点が1つも見つからない。置き直す
     先は見込みの中央で割った目標±許容で、見込みの下限で割ると往路が長い側に偏り、周回のほとんどが長すぎて落ちる。
     既定の見込み1.8〜2.2で目標10km±0.1kmの往路は、9.9km÷2.0〜10.1km÷2.0。"""
-    lower_m, upper_m, center_m = turnaround_ring_m(10.0, 0.1)
+    lower_m, upper_m, center_m = turnaround_ring_m(10.0, 0.1, TUNED)
     assert (lower_m, upper_m, center_m) == pytest.approx((4950.0, 5050.0, 5000.0))
 
 
 def test_turnaround_ring_center_lies_inside_the_ring():
     """折返し点の候補はリング中心に近い順に並ぶ。中心がリングの外にあると、リングの端の候補ばかりが先に試される。
     許容が狭くリングが戻る場合は、リングだけが広がり中心は動かないので、ここでは戻らない許容で見る。"""
-    lower_m, upper_m, center_m = turnaround_ring_m(10.0, 2.0)
+    lower_m, upper_m, center_m = turnaround_ring_m(10.0, 2.0, TUNED)
     assert lower_m <= center_m <= upper_m
 
 
@@ -420,12 +420,12 @@ def test_turnaround_ring_center_lies_inside_the_ring():
 def test_relay_band_takes_relays_whose_whole_estimate_of_the_route_fits_the_distance(outbound_m, shortest_m, in_band):
     """目標10km±1km、前段2km。テストの較正値の周回の見込み1.8〜2.2で、全長の見込みは前段＋往路＋帰りの最短×0.8〜1.2。
     帯から外れた中継点を選ぶと、帰りを探したあとの距離フィルタで落ち、候補が減る。"""
-    (inside,), _ = relay_band(2000.0, np.array([outbound_m]), np.array([shortest_m]), 10.0, 1.0)
+    (inside,), _ = relay_band(2000.0, np.array([outbound_m]), np.array([shortest_m]), 10.0, 1.0, TUNED)
     assert bool(inside) is in_band
 
 
 def test_relay_band_ranks_relays_by_how_far_the_middle_of_the_estimate_is_from_the_target():
     """見込みの中央（テストの較正値の周回の見込み1.8〜2.2で、帰り×1.0）が目標から遠いほど後ろに並ぶ。短すぎる経路も
     長すぎる経路も同じに扱う。"""
-    _, closeness_m = relay_band(2000.0, np.array([3000.0, 3000.0]), np.array([4000.0, 6000.0]), 10.0, 1.0)
+    _, closeness_m = relay_band(2000.0, np.array([3000.0, 3000.0]), np.array([4000.0, 6000.0]), 10.0, 1.0, TUNED)
     assert closeness_m == pytest.approx([1000.0, 1000.0])

@@ -27,6 +27,7 @@ from app.domain.tuning import (
     TUNING_PARAMETERS_BY_ID,
     TURN_BEARING_DISTANCE_ID,
     TuningValueError,
+    current_tuning,
     require_tuning,
 )
 from app.infrastructure.road_graph_repository import RoadGraphRepository
@@ -61,30 +62,31 @@ def test_a_value_is_refused_when_the_condition_fails_or_it_is_not_finite(value, 
 
 
 def _speed_model() -> None:
-    cycling_speed.SegmentSpeedModel(cycling_speed.RiderProfile(cruise_speed_kmh=20.0), road_profiles([0.0, 0.0]),
-                                    np.array([1000.0]), np.array([TUNING["speed.crr"]]), np.zeros(1))
+    tuning = current_tuning()
+    cycling_speed.SegmentSpeedModel(cycling_speed.RiderProfile.standard(20.0, tuning), road_profiles([0.0, 0.0]),
+                                    np.array([1000.0]), np.array([TUNING["speed.crr"]]), np.zeros(1), tuning)
 
 
 def _pareto() -> None:
     one = np.zeros(1)
     route_search.rank_by_pareto_layers(np.array([0]), one, one, one, np.ones(1),
-                                       max_items=1, max_examined=None, tie_by_distance=False)
+                                       max_items=1, max_examined=None, tie_by_distance=False, tuning=current_tuning())
 
 
-#: 使う所（呼ぶと値を読む入口）と、そこで計算が成り立たない値。
+#: 使う所（入口が写した束を受ける計算）と、そこで計算が成り立たない値。
 _UNUSABLE = [
-    ("evaluation.penalty_strength", 0.0, lambda: ledger_costs.current_ledger_parameters(CostPreference())),
-    ("cost.effort_alpha", -1.0, lambda: ledger_costs.current_ledger_parameters(CostPreference())),
-    ("cost.burden_seconds_per_km", -1.0, lambda: ledger_costs.current_ledger_parameters(CostPreference())),
-    ("stop.signal_share", -1.0, lambda: traffic.stop_event("stop", "signal")),
-    ("stop.signal_seconds", -1.0, lambda: traffic.stop_event("stop", "signal")),
-    ("stop.slowed_speed_ratio", 1.5, lambda: traffic.stop_event("stop", "signal")),
+    ("evaluation.penalty_strength", 0.0, lambda: ledger_costs.ledger_parameters(CostPreference(), current_tuning())),
+    ("cost.effort_alpha", -1.0, lambda: ledger_costs.ledger_parameters(CostPreference(), current_tuning())),
+    ("cost.burden_seconds_per_km", -1.0, lambda: ledger_costs.ledger_parameters(CostPreference(), current_tuning())),
+    ("stop.signal_share", -1.0, lambda: traffic.stop_event("stop", "signal", current_tuning())),
+    ("stop.signal_seconds", -1.0, lambda: traffic.stop_event("stop", "signal", current_tuning())),
+    ("stop.slowed_speed_ratio", 1.5, lambda: traffic.stop_event("stop", "signal", current_tuning())),
     ("speed.mass_kg", 0.0, _speed_model),
     ("speed.cda_m2", -1.0, _speed_model),
     ("speed.extra_power_per_force", -1.0, _speed_model),
     ("speed.max_climb_power_ratio", 0.5, _speed_model),
     ("speed.walking_kmh", 0.0, _speed_model),
-    ("search.retrace_penalty_multiplier", 0.5, lambda: route_search.retrace_penalized(np.zeros(1), np.zeros(1))),
+    ("search.retrace_penalty_multiplier", 0.5, lambda: route_search.retrace_penalized(np.zeros(1), np.zeros(1), current_tuning())),
     ("search.pareto_distance_quantum_m", 0.0, _pareto),
 ]
 

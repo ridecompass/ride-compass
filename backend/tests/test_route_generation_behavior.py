@@ -28,12 +28,12 @@ from app.domain.road_classes import TRUE_FACT_VALUE
 from app.domain.road_network import RoadNetwork
 from app.domain.route import Coordinates
 from app.domain.wind import WindForecastSeries
-from app.domain.tuning import tuning_value
 from tests.cost_axes_fixture import cost_axes, cost_axes_declared
 from app.domain.road_classes import AvoidanceClassification, ConditionTerm
 from tests.road_class_fixture import classification, fact_is, map_layer, replaced_road_classes, road_classes
 from app.domain.route_request import FixedPoints
 from app.domain.route_search import MAX_SNAP_CORRECTION_KM
+from tests.tuning_fixture import TUNING
 from tests.route_world import (
     BAD_MATERIAL,
     CALM,
@@ -301,7 +301,7 @@ async def test_a_detour_on_preferred_roads_is_taken_when_it_costs_less_than_the_
     with replaced_road_classes(definitions):
         candidates = (await engine_over(
             grid_network(tunnel_ways=set(AROUND_THE_EDGE)), road_avoidance={"tunnel.yes": "prefer", "tunnel.no": "avoid"},
-            assumed_speed_kmh=tuning_value("speed.max_descent_kmh"),
+            assumed_speed_kmh=TUNING["speed.max_descent_kmh"],
         ).generate_via_waypoints(at(SOUTH_WEST), [at(SOUTH_EAST)], destination=at(CENTER), max_routes=3,
                                  start_time=DEPARTURE)).candidates
 

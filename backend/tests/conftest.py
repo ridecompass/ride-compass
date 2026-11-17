@@ -48,6 +48,7 @@ from app.infrastructure.road_graph_repository import (
 )
 from app.config import settings
 from app.domain.cost_axes import replace_cost_axes
+from app.domain.road_classes import EMPTY_ROAD_CLASSES, replace_road_classes
 from app.domain.tuning import TUNING_VALUES
 from scripts.schema_gap import collect_gaps
 from tests.admin_auth import ADMIN_PASSWORD, ADMIN_USERNAME
@@ -223,10 +224,11 @@ def monotonic_clock(_monotonic_clock_for_the_session) -> MonotonicClock:
 
 
 @pytest.fixture(autouse=True)
-def _standard_cost_axes():
-    """テストごとに、体力の4軸だけの費用の軸の定義を置く（本番は起動で表から読み、無ければ起動しない）。前のテストが
-    差し替えた定義を持ち越さない。"""
+def _standard_definitions():
+    """テストごとに、体力の4軸だけの費用の軸の定義と空の道の区分を置く（本番は起動で表から読み、無ければ起動しない）。前の
+    テストが差し替えた定義を持ち越さない。"""
     replace_cost_axes(cost_axes())
+    replace_road_classes(EMPTY_ROAD_CLASSES)
 
 
 #: テストの較正値（`tests/tuning_fixture.py`）を置く（本番は起動で表から読む）。テストのモジュールの先頭で読む所があるので、
