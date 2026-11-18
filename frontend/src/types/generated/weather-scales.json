@@ -154,23 +154,23 @@
       "label": "活動度4: 激しい雷[雹に注意]",
       "color": "#9333ea",
       "painted": true,
-      "tile_color": null
+      "tile_color": "#c800ff"
     }
   ],
   "tornado_potential": [
     {
       "key": "potential1",
       "label": "発生確度1: 広く注意[見逃しを減らす、的中率1〜7%]",
-      "color": "#38bdf8",
+      "color": "#faf500",
       "painted": false,
-      "tile_color": null
+      "tile_color": "#faf500"
     },
     {
       "key": "potential2",
       "label": "発生確度2: 重点警戒[気象庁「竜巻注意」相当、的中率7〜14%]",
-      "color": "#1d4ed8",
+      "color": "#ff2800",
       "painted": true,
-      "tile_color": null
+      "tile_color": "#ff2800"
     }
   ],
   "wind_calm_below_ms": 0.3,

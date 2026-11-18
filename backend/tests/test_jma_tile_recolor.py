@@ -18,6 +18,7 @@ from app.domain.weather_display import (
     PRECIPITATION_COLOR_STOPS,
     RISK_LEVEL_COLORS,
     THUNDER_ACTIVITY_LEVELS,
+    TORNADO_POTENTIAL_LEVELS,
     LevelColor,
     RiskLevel,
 )
@@ -31,6 +32,7 @@ from tests.tile_images import palette_tile, pixels, rgba, rgba_tile
 FRAME = "bosai/jmatile/data/nowc/20260101000000/none/20260101000500/surf"
 PRECIPITATION = f"{FRAME}/hrpns/6/57/25.png"
 THUNDER = f"{FRAME}/thns/6/57/25.png"
+TORNADO = f"{FRAME}/trns/6/57/25.png"
 LANDSLIDE = "bosai/jmatile/data/risk/20260101000000/none/20260101000000/surf/land/6/57/25.png"
 RAINBAND_FORECAST = "bosai/jmatile/data/rasrf/20260101000000/none/20260101000000/surf/sjfcstmap/6/57/25.png"
 
@@ -61,6 +63,7 @@ def _measured(levels: tuple[LevelColor | RiskLevel, ...]) -> list[LevelColor | R
     ("path", "tile", "levels"),
     [
         (THUNDER, rgba_tile, _measured(THUNDER_ACTIVITY_LEVELS)),
+        (TORNADO, rgba_tile, _measured(TORNADO_POTENTIAL_LEVELS)),
         (LANDSLIDE, palette_tile, _measured(RISK_LEVEL_COLORS) + [RISK_LEVEL_COLORS[2]._replace(tile_color="#ff2800")]),
     ],
 )
