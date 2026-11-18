@@ -206,7 +206,7 @@ export function drawingOf(element: DeclaredElement): Drawing {
   return DRAWINGS[`${element.group}/${element.source}/${element.kind}` as DrawnKey];
 }
 
-/** 範囲の印と縁取りを描く、段で塗る災害の要素（配信元のラスタ）。 */
+/** 範囲の印を描く、段で塗る災害の要素（配信元のラスタ）。 */
 type HazardElement = Extract<DeclaredElement, { kind: "rasterTile"; levelScale: string }>;
 type HazardSource = HazardElement["source"];
 

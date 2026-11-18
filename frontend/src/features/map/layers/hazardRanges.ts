@@ -19,6 +19,13 @@ export interface HazardMarkPoint {
 
 /** 地図の倍率0での世界の一辺（画面のpx）。地図の倍率は512pxのタイルで数える。 */
 const WORLD_PX = 512;
+/** 配信元のタイルの一辺（px）。 */
+const JMA_TILE_PX = 256;
+
+/** 倍率`zoom`の地図が取る配信元のタイルのズーム（`minZoom`〜`maxZoom`に収める）。256pxのタイルは倍率より1つ上のズームで取られる。 */
+export function jmaTileZoomAt(zoom: number, minZoom: number, maxZoom: number): number {
+  return Math.max(minZoom, Math.min(maxZoom, Math.round(zoom + Math.log2(WORLD_PX / JMA_TILE_PX))));
+}
 
 /**
  * 倍率`zoom`の地図で、`bounds`の中の、世界の座標で`spacingPx`おきの格子点を`offsetPx`だけ横へずらした点のうち、ズーム`z`の

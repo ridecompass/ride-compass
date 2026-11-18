@@ -51,6 +51,7 @@ from app.domain.place_search import (
 )
 from cross_language_expectations import EXPECTATIONS
 from app.domain.weather_elements import (
+    LEVELS_OF_SCALE,
     MSM_FORECAST_HOURS,
     WEATHER_ELEMENTS,
     WEATHER_LAYER_GROUPS,
@@ -118,9 +119,6 @@ from app.domain.weather_display import (
     LINEAR_RAINBAND_OUTLINE_CASING_COLOR,
     LINEAR_RAINBAND_OUTLINE_COLOR,
     PRECIPITATION_COLOR_STOPS,
-    RISK_LEVEL_COLORS,
-    THUNDER_ACTIVITY_LEVELS,
-    TORNADO_POTENTIAL_LEVELS,
     WIND_CALM_BELOW_MS,
     WIND_SPEED_COLOR_STOPS,
 )
@@ -515,11 +513,9 @@ def main() -> None:
         {
             "precipitation": [s._asdict() for s in PRECIPITATION_COLOR_STOPS],
             "wind_speed": [s._asdict() for s in WIND_SPEED_COLOR_STOPS],
-            "risk_levels": [level._asdict() for level in RISK_LEVEL_COLORS],
             "linear_rainband_outline_color": LINEAR_RAINBAND_OUTLINE_COLOR,
             "linear_rainband_outline_casing_color": LINEAR_RAINBAND_OUTLINE_CASING_COLOR,
-            "thunder_activity": [level._asdict() for level in THUNDER_ACTIVITY_LEVELS],
-            "tornado_potential": [level._asdict() for level in TORNADO_POTENTIAL_LEVELS],
+            **{scale: [level._asdict() for level in levels] for scale, levels in LEVELS_OF_SCALE.items()},
             "wind_calm_below_ms": WIND_CALM_BELOW_MS,
             "precipitation_none_below_mm": PRECIPITATION_MIN_MM,
         },

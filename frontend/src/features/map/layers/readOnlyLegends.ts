@@ -8,10 +8,8 @@ import { LANDCOVER_PAINTED_CLASSES } from "@/lib/mapDisplay/landcoverClasses";
 import { PRECIPITATION_INTENSITY_LEVELS, PRECIPITATION_LEGEND_HEADING } from "./precipitationNowcast";
 import { WIND_SPEED_LEGEND_LEVELS } from "./windLayer";
 import { DISASTER_ELEMENTS } from "./dynamicWeather";
+import { isUndrawnLevel } from "./jmaTileMasks";
 import { hazardBadgeOf } from "@/features/map/scene/groups/weatherDrawings";
-
-/** 危険度の段の「平常（危険度なし）」の番号。配信元のタイルは描かない（透明）。 */
-const NO_RISK_LEVEL = 0;
 
 /** 表示専用の凡例の1ブロック。 */
 export interface ReadOnlyLegendBlock {
@@ -34,7 +32,7 @@ function disasterLegendBlocks(): ReadOnlyLegendBlock[] {
   return scales.map((scale) => ({
     label: labelList(DISASTER_ELEMENTS.filter((element) => element.levelScale === scale)),
     legend: weatherScales[scale].map((level) =>
-      "level" in level && level.level === NO_RISK_LEVEL ? level : { ...level, badge: hazardBadgeOf(level) },
+      isUndrawnLevel(level) ? level : { ...level, badge: hazardBadgeOf(level) },
     ),
   }));
 }
