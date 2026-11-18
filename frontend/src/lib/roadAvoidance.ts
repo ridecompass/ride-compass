@@ -49,3 +49,34 @@ export function avoidanceChoiceOf(
   });
   return { levels, rows };
 }
+
+/** 区間が通る、段の付いた（地図に塗る）道の区分の行1つ。 */
+export interface PaintedStretch {
+  /** 行の載るまとまりの名前（道路タブの見出し）。 */
+  readonly section: string;
+  readonly row: AvoidanceRow;
+  readonly level: AvoidanceLevelView & { color: string };
+  /** 区間の中でその区分を通る長さ（km）。 */
+  readonly km: number;
+}
+
+/**
+ * 区間の道の区分の長さ（応答の`road_classes`）のうち、生成に使った避け方（`applied`）で段の付いた行を、画面の設定の行の並びで返す。
+ * 地図のルートの両脇の線（好む・避けるの区間）が、どの区分から出たかを見せるのに使う。段の向き（好む・避ける）は段の名前と色が示す。
+ */
+export function paintedStretches(
+  roadClasses: Readonly<Record<string, readonly { distance_km: number; value: string | null }[]>>,
+  applied: RoadAvoidanceOverride,
+  view: RoadAvoidanceView,
+): PaintedStretch[] {
+  return view.rows.flatMap((row) => {
+    const level = view.levels.find((candidate) => candidate.key === avoidanceLevelOf(row, applied));
+    if (level === undefined || !isPainted(level)) return [];
+    const km = (roadClasses[row.section] ?? [])
+      .filter((part) => part.value === row.class_key)
+      .reduce((sum, part) => sum + part.distance_km, 0);
+    if (km <= 0) return [];
+    const section = view.sections.find((candidate) => candidate.key === row.section)?.label ?? row.section;
+    return [{ section, row, level, km }];
+  });
+}

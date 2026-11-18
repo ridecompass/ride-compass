@@ -20,7 +20,8 @@ import { cn } from "@/lib/cn";
 import { formatPenalty, penaltyRows } from "@/lib/routePenalty";
 import type { RoadTrackRow } from "@/lib/mapDisplay/roadTracks";
 import { formatJstHourMinute } from "@/lib/time";
-import type { SelectedRouteSegment } from "@/types/route";
+import type { RoadAvoidanceOverride, SelectedRouteSegment } from "@/types/route";
+import RailReason from "./RailReason";
 
 const isLineLayer = (layer: ProfileLayer): layer is LineLayer => layer.draw.kind === "line";
 
@@ -59,8 +60,11 @@ export function SectionOnMapButton({ onMap }: { onMap: SectionOnMap }) {
 export default function SegmentDetail({
   selection,
   layers,
+  appliedAvoidance,
 }: {
   selection: SelectedRouteSegment;
+  /** 候補を作った生成に使った避け方（応答の条件）。ルートの脇の線の理由の区分を引く。 */
+  appliedAvoidance: RoadAvoidanceOverride | null;
   /** グラフで選んでいる層。 */
   layers: readonly ProfileLayer[];
 }) {
@@ -93,6 +97,7 @@ export default function SegmentDetail({
           </span>
         )}
       </PopupHeader>
+      <RailReason segment={segment} applied={appliedAvoidance} />
       {(lines.length > 0 || bands.length > 0) && (
         <div role="group" aria-label="グラフの層の値" className="flex flex-col gap-1">
           {lines.map(({ layer, mean, sustained }) => (
