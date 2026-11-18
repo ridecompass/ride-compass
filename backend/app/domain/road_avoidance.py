@@ -94,6 +94,16 @@ class RoadAvoidanceMasks:
     excluded: np.ndarray
     #: 区間の費用に掛ける倍率（当たる行の段の倍率のうち一番大きいもの。どの行にも当たらない区間と、通らない区間は1）。
     cost_scale: np.ndarray
+    #: 区間ごとの、倍率を決めた行（`deciding_keys`の位置。どの行にも当たらない区間は-1）。同じ倍率の行がいくつも当たれば先の行。
+    deciding_row: np.ndarray
+    #: `deciding_row`が指す行の鍵（`段の行の鍵`）と、その行の段。
+    deciding_keys: tuple[str, ...]
+    deciding_levels: tuple[AvoidanceLevel, ...]
+
+    def deciding_at(self, rows: np.ndarray) -> list[tuple[str, AvoidanceLevel] | None]:
+        """区間`rows`ごとの、倍率を決めた行の鍵と段（どの行にも当たらなければNone）。"""
+        return [None if code < 0 else (self.deciding_keys[code], self.deciding_levels[code])
+                for code in self.deciding_row[np.asarray(rows, dtype=np.int64)].tolist()]
 
 
 def road_avoidance_masks(
@@ -105,6 +115,9 @@ def road_avoidance_masks(
     """区分の列（`domain/road_classes.py: class_material_id`の鍵）と、行→段と、段→倍率（`level_multipliers`）から、区間ごとに
     当たる行の倍率のうち一番大きいものを求める。列の無い分け方の行と、列の語彙に無い区分の行は、どの区間にも当たらない。"""
     largest = np.full(n, np.nan)
+    deciding = np.full(n, -1, dtype=np.int32)
+    keys: list[str] = []
+    deciding_levels: list[AvoidanceLevel] = []
     for key, level in levels.items():
         if level == "pass":
             continue
@@ -113,6 +126,12 @@ def road_avoidance_masks(
         if column is None or class_key not in column.vocab:
             continue
         hit = column.codes == column.vocab.index(class_key)
-        largest[hit] = np.fmax(largest[hit], multipliers[level])
+        # 当たる行の倍率が今までの一番より大きい区間だけ、この行が決める（まだ当たっていない区間の NaN との比べは偽）。
+        wins = hit & ~(largest >= multipliers[level])
+        largest[wins] = multipliers[level]
+        deciding[wins] = len(keys)
+        keys.append(key)
+        deciding_levels.append(level)
     excluded = np.isinf(largest)
-    return RoadAvoidanceMasks(excluded=excluded, cost_scale=np.where(np.isnan(largest) | excluded, 1.0, largest))
+    return RoadAvoidanceMasks(excluded=excluded, cost_scale=np.where(np.isnan(largest) | excluded, 1.0, largest),
+                              deciding_row=deciding, deciding_keys=tuple(keys), deciding_levels=tuple(deciding_levels))

@@ -690,6 +690,20 @@ export interface components {
             /** Label */
             label: string;
         };
+        /** AvoidanceStretch */
+        AvoidanceStretch: {
+            /** Row Key */
+            row_key: string;
+            /**
+             * Level
+             * @enum {string}
+             */
+            level: "pass" | "slight_prefer" | "prefer" | "slight_avoid" | "avoid" | "exclude";
+            /** Distance Km */
+            distance_km: number;
+            /** Seconds */
+            seconds: number;
+        };
         /** AxisFact */
         AxisFact: {
             /** Label */
@@ -1809,6 +1823,8 @@ export interface components {
             road_classes: {
                 [key: string]: components["schemas"]["RoadClassStretch"][];
             };
+            /** Avoidance Stretches */
+            avoidance_stretches: components["schemas"]["AvoidanceStretch"][];
             /** Lens Seconds Per Km */
             readonly lens_seconds_per_km: {
                 [key: string]: number;

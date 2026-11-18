@@ -2183,6 +2183,43 @@
         ],
         "title": "AvoidanceSectionView"
       },
+      "AvoidanceStretch": {
+        "properties": {
+          "row_key": {
+            "type": "string",
+            "title": "Row Key"
+          },
+          "level": {
+            "type": "string",
+            "enum": [
+              "pass",
+              "slight_prefer",
+              "prefer",
+              "slight_avoid",
+              "avoid",
+              "exclude"
+            ],
+            "title": "Level"
+          },
+          "distance_km": {
+            "type": "number",
+            "title": "Distance Km"
+          },
+          "seconds": {
+            "type": "number",
+            "title": "Seconds"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "row_key",
+          "level",
+          "distance_km",
+          "seconds"
+        ],
+        "title": "AvoidanceStretch"
+      },
       "AxisFact": {
         "properties": {
           "label": {
@@ -6055,6 +6092,13 @@
             "type": "object",
             "title": "Road Classes"
           },
+          "avoidance_stretches": {
+            "items": {
+              "$ref": "#/components/schemas/AvoidanceStretch"
+            },
+            "type": "array",
+            "title": "Avoidance Stretches"
+          },
           "lens_seconds_per_km": {
             "anyOf": [
               {
@@ -6086,6 +6130,7 @@
           "estimated_arrival_time",
           "penalty",
           "road_classes",
+          "avoidance_stretches",
           "lens_seconds_per_km"
         ],
         "title": "RouteSegmentDetail"

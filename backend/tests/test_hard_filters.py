@@ -36,18 +36,21 @@ MULTIPLIERS = level_multipliers(TUNED)
 
 
 @pytest.mark.parametrize(
-    ("levels", "excluded", "scaled_by"),
+    ("levels", "excluded", "scaled_by", "deciding"),
     [
-        ({"kind.national": "pass"}, False, "pass"),
-        ({"kind.national": "avoid"}, False, "avoid"),
-        ({"kind.national": "exclude"}, True, "pass"),
+        ({"kind.national": "pass"}, False, "pass", None),
+        ({"kind.national": "avoid"}, False, "avoid", ("kind.national", "avoid")),
+        ({"kind.national": "exclude"}, True, "pass", ("kind.national", "exclude")),
         # 1つの道が2つの行に当たれば倍率の大きい方: 「通る」は何も指定していない扱いで、避ける側は好む側より大きい。
-        ({"kind.national": "pass", "surface.gravel": "prefer"}, False, "prefer"),
-        ({"kind.national": "avoid", "surface.gravel": "prefer"}, False, "avoid"),
-        ({"kind.national": "slight_prefer", "surface.gravel": "prefer"}, False, "slight_prefer"),
+        ({"kind.national": "pass", "surface.gravel": "prefer"}, False, "prefer", ("surface.gravel", "prefer")),
+        ({"kind.national": "avoid", "surface.gravel": "prefer"}, False, "avoid", ("kind.national", "avoid")),
+        ({"kind.national": "slight_prefer", "surface.gravel": "prefer"}, False, "slight_prefer",
+         ("kind.national", "slight_prefer")),
+        # 同じ段の行がいくつも当たれば、先の行が決めた行になる。
+        ({"kind.national": "avoid", "surface.gravel": "avoid"}, False, "avoid", ("kind.national", "avoid")),
     ],
 )
-def test_the_largest_multiplier_of_the_rows_of_a_road_decides_how_its_segments_are_searched(levels, excluded, scaled_by):
+def test_the_largest_multiplier_of_the_rows_of_a_road_decides_how_its_segments_are_searched(levels, excluded, scaled_by, deciding):
     """「通らない」を選んでも国道を通る・「通る」を選んでも国道を避けると、選んだ避け方が探索に効かない。"""
     matrix = build_search_materials(
         edge(facts={class_material_id("kind"): "national", class_material_id("surface"): "gravel"}), {}, (),
@@ -56,6 +59,8 @@ def test_the_largest_multiplier_of_the_rows_of_a_road_decides_how_its_segments_a
     masks = compute_search_exclusion(matrix, {**levels, "kind.local": "exclude", "other.national": "exclude"}, MULTIPLIERS)
 
     assert (masks.excluded.tolist(), masks.cost_scale.tolist()) == ([excluded], [MULTIPLIERS[scaled_by]])
+    # 区間の小窓が、ルートの脇の線の理由として出す行。
+    assert masks.deciding_at(np.array([0])) == [deciding]
 
 
 @pytest.mark.parametrize(("tags", "excluded"), [

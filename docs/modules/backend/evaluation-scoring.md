@@ -66,7 +66,9 @@ wayの長さ（0はNULL）になる——件数と長さは必ず同じ側から
   「好む」の行に当たる区間は較正値`avoidance.prefer_cost_multiplier`を掛けて費用にし、「少し」の段はそれぞれの平方根を掛ける
   （倍率の対数で「通る」との真ん中。`domain/road_avoidance.py: level_multipliers`・`domain/leg_costs.py: LegCostComposer`）。
   倍率は代償には掛けない。好むと避けるは別の定義で、避ける側の逆数にしない。1つの区間が複数の行に当たれば倍率の大きい段が効く（通るは何も指定していない扱い。
-  `domain/road_avoidance.py: road_avoidance_masks`）。管理DBの区分の既定には、通るのほかのどの段も置ける（通るは上書きの行を持たない）。
+  `domain/road_avoidance.py: road_avoidance_masks`）。効いた段を決めた行（同じ倍率なら先の行）も区間ごとに残し、ルートの区間の
+  `avoidance_stretches`（倍率を決めた行ごとの長さと、倍率が所要時間から足し引きした秒）として返す。画面はこれを地図のルートの両脇の線の
+  理由として区間の小窓に出し、どの行が効いたかを自分で推し量らない。管理DBの区分の既定には、通るのほかのどの段も置ける（通るは上書きの行を持たない）。
   要求に無い行は、管理DBが持つ既定の段を取る。画面に配る段の名前は掛ける倍率そのもの（×0.5・×1・×2・×∞の形。
   `domain/cost_preference.py: multiplier_label`。費用の軸の倍率の段と同じ書き方）で、較正値から作るので、管理画面で倍率を変えると段の数字も変わる。並びは倍率の順。
   倍率は物理の外の標準の人の好みの定義で、出典は無い（[設計原則](../../architecture/design-principles.md)構造仕様13）。

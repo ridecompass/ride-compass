@@ -113,6 +113,7 @@ def _composer(matrix: SearchMaterials, *, excluded=None, cost_scale=None, series
     masks = RoadAvoidanceMasks(
         excluded=np.zeros(n, dtype=bool) if excluded is None else np.asarray(excluded, dtype=bool),
         cost_scale=np.ones(n) if cost_scale is None else np.asarray(cost_scale, dtype=float),
+        deciding_row=np.full(n, -1, dtype=np.int32), deciding_keys=(), deciding_levels=(),
     )
     return LegCostComposer(
         matrix, masks, series, START, CRUISE_KMH,

@@ -16,6 +16,7 @@ from app.domain.attributes import ElevationAttribute
 from app.domain.leg_costs import LegValues
 from app.domain.geo import compass_label
 from app.domain.graph import LeanEdge
+from app.domain.road_avoidance import AvoidanceLevel
 from app.domain.road_network import elevation_attribute
 from app.domain.route_road_classes import SegmentClassReader
 from app.domain.route import (
@@ -298,6 +299,10 @@ def _build_candidate(
         elevation_gain_m=elevation_gain_m,
     )
 
+#: 区間の代償の秒の内訳: 軸ごとの秒・好む道で下げた秒・避ける道で上乗せした秒・避け方の倍率を決めた行。
+_SegmentPenalty = tuple[dict[str, float], float, float, tuple[str, AvoidanceLevel] | None]
+
+
 def _build_segment_details(
     orientation: _Orientation,
     line: tuple[list[list[float]], list[float], list[int]],
@@ -317,7 +322,7 @@ def _build_segment_details(
     coordinates, point_distances_m, offsets = line
     for index, (edge, row) in enumerate(zip(orientation.edges, orientation.rows)):
         elevation_attr = elevation_by_edge.get(edge.edge_id)
-        axis_seconds, preferred_seconds, avoided_seconds = penalties[index]
+        axis_seconds, preferred_seconds, avoided_seconds, deciding_row = penalties[index]
         start_lat, start_lon = edge.geometry[0]
         end_lat, end_lon = edge.geometry[-1]
         # 2点未満のEdgeは形状にならないためNone（フロントは始点・終点の直線で代替描画する）。
@@ -344,6 +349,7 @@ def _build_segment_details(
                 axis_seconds=axis_seconds,
                 preferred_seconds=preferred_seconds,
                 avoided_seconds=avoided_seconds,
+                deciding_row=deciding_row,
                 road_classes=road_classes.values_at(row),
             )
         )
@@ -351,15 +357,17 @@ def _build_segment_details(
     return segments
 
 
-def _segment_penalties(orientation: _Orientation) -> list[tuple[dict[str, float], float, float]]:
-    """区間ごとの代償の秒の内訳（通った道の分。`LegValues.penalty_by_axis`）。軸ごとの秒・好む道で下げた秒・避ける道で上乗せした秒の組。"""
+def _segment_penalties(orientation: _Orientation) -> list[_SegmentPenalty]:
+    """区間ごとの代償の秒の内訳（通った道の分。`LegValues.penalty_by_axis`）。軸ごとの秒・好む道で下げた秒・避ける道で上乗せした秒と、
+    避け方の倍率を決めた行の組。"""
 
-    def of(read: _RowRead) -> list[tuple[dict[str, float], float, float]]:
+    def of(read: _RowRead) -> list[_SegmentPenalty]:
         values = read.values
         axis_lists = {axis_id: seconds.tolist() for axis_id, seconds in values.penalty_by_axis.items()}
         preferred, avoided = values.preferred_seconds.tolist(), values.avoided_seconds.tolist()
         return [
-            ({axis_id: seconds[position] for axis_id, seconds in axis_lists.items()}, preferred[position], avoided[position])
+            ({axis_id: seconds[position] for axis_id, seconds in axis_lists.items()}, preferred[position], avoided[position],
+             values.deciding_rows[position])
             for position in range(len(read.indices))
         ]
 
