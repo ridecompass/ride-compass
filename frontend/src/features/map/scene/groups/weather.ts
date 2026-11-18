@@ -97,7 +97,7 @@ const WEATHER_ELEMENTS: readonly WeatherElement[] = mapDisplay.weatherElements.m
 export type WeatherState = {
   /** 表示ON/OFFと中身。鍵は`weatherElementKey`が作る。 */
   readonly shown: ReadonlyMap<string, { readonly visible: boolean; readonly payload?: DynamicWeatherRenderPayload }>;
-  /** 段で塗る災害の範囲の印の地物（`useHazardRanges.ts`）。無ければ描かない。 */
+  /** 段で塗る災害の範囲の印の地物（`useHazardRanges.ts`）。無い・空なら層を出さない。 */
   readonly hazardRanges?: GeoJSON.FeatureCollection;
 };
 
@@ -176,7 +176,7 @@ export const weatherGroup = declareGroup<WeatherState>((state) => {
     source: HAZARD_RANGE_SOURCE,
     paint: HAZARD_MARK_DRAWING.paint,
     layout: HAZARD_MARK_DRAWING.layout,
-    visible: ranges !== undefined,
+    visible: (ranges?.features.length ?? 0) > 0,
   });
 
   return { sources, layers, images: WEATHER_IMAGES };
