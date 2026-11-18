@@ -15,7 +15,7 @@ from app.domain.geo import (
     km_per_degree_longitude,
 )
 from app.domain.leg_costs import LegCostArrays, LegCostComposer
-from app.domain.route import COST_SECONDS_DECIMALS, EvaluatedRoute, penalty_seconds_per_km
+from app.domain.route import COST_SECONDS_DECIMALS, EvaluatedRoute, seconds_per_km
 from app.domain.route_diversity import pareto_layer_index
 from app.domain.routing import time_bin_of
 from app.domain.tuning import Tuning
@@ -164,35 +164,34 @@ def retrace_penalized(costs: np.ndarray, travel_seconds: np.ndarray, tuning: Tun
     return costs + (multiplier - 1.0) * np.where(np.isinf(travel_seconds), 0.0, travel_seconds)
 
 
-#: 1kmあたりの秒（代償・費用）の、区別する最小の差。パレート層は1kmあたりの代償を、周回の並べ方は1kmあたりの費用を、この刻みで
-#: 同点とみなす。刻みは応答に出す秒の桁。
-PENALTY_PER_KM_QUANTUM = 10.0 ** -COST_SECONDS_DECIMALS
+#: 1kmあたりの費用の秒の、区別する最小の差。候補を選ぶパレート層と周回の並べ方は、この刻みで同点とみなす。刻みは応答に出す秒の桁。
+PER_KM_QUANTUM = 10.0 ** -COST_SECONDS_DECIMALS
 
 
-def _penalty_key(per_km: np.ndarray) -> np.ndarray:
-    """1kmあたりの秒を、`PENALTY_PER_KM_QUANTUM`の刻みの数にしたもの（同点の比べに使う）。"""
-    return np.rint(np.asarray(per_km, dtype=float) / PENALTY_PER_KM_QUANTUM).astype(np.int64)
+def _per_km_key(per_km: np.ndarray) -> np.ndarray:
+    """1kmあたりの秒を、`PER_KM_QUANTUM`の刻みの数にしたもの（同点の比べに使う）。"""
+    return np.rint(np.asarray(per_km, dtype=float) / PER_KM_QUANTUM).astype(np.int64)
 
 
 @dataclass(frozen=True)
 class _CandidateRanking:
-    """`rank_by_pareto_layers`の結果。`layer_key`・`penalty_key`は渡した候補の位置ごと。"""
+    """`rank_by_pareto_layers`の結果。`layer_key`・`cost_key`は渡した候補の位置ごと。"""
 
     #: 渡した候補の位置を、並べた順に`max_examined`件まで（Noneなら全件）。
     order: np.ndarray
     #: パレート層の番号（層に入らなかった候補は最大値で最後尾）。
     layer_key: np.ndarray
-    #: 1kmあたりの代償の秒を`PENALTY_PER_KM_QUANTUM`の刻みの数にした値。
-    penalty_key: np.ndarray
+    #: 1kmあたりの費用の秒を`PER_KM_QUANTUM`の刻みの数にした値。
+    cost_key: np.ndarray
 
     def tie_groups(self, ids: np.ndarray) -> list[list[int]]:
-        """並べた候補（`ids[order]`）を、層と刻んだ代償がともに等しい連続の組に分ける。
+        """並べた候補（`ids[order]`）を、層と刻んだ費用がともに等しい連続の組に分ける。
 
-        層を見るのは、非劣解群の末尾と劣解群の先頭が同じ代償を持つとき、両者を同点として
+        層を見るのは、非劣解群の末尾と劣解群の先頭が同じ費用を持つとき、両者を同点として
         混ぜると劣解が非劣解より先に試されうるため。
         """
         ranked = ids[self.order]
-        group_key = np.stack([self.layer_key[self.order].astype(np.int64), self.penalty_key[self.order]])
+        group_key = np.stack([self.layer_key[self.order].astype(np.int64), self.cost_key[self.order]])
         return [
             group.tolist()
             for group in np.split(ranked, np.flatnonzero(np.any(np.diff(group_key, axis=1) != 0, axis=0)) + 1)
@@ -203,7 +202,6 @@ def rank_by_pareto_layers(
     ids: np.ndarray,
     distance_key: np.ndarray,
     cost: np.ndarray,
-    seconds: np.ndarray,
     length_m: np.ndarray,
     *,
     max_items: int,
@@ -211,20 +209,21 @@ def rank_by_pareto_layers(
     tie_by_distance: bool,
     tuning: Tuning,
 ) -> _CandidateRanking:
-    """候補（折返し点・経由Node）を「距離の鍵」「1kmあたりの代償の秒」（`penalty_seconds_per_km`。`length_m`はそこまでの
-    道のり）の2指標で非優越ソートし、パレート層の順に並べる。
+    """候補（折返し点・経由Node）を「距離の鍵」「1kmあたりの費用の秒」（探索が最小にした費用`cost`（所要時間と代償の和）を、
+    そこまでの道のり`length_m`で割ったもの。候補を並べる`candidate_order`と同じく時間も入れて比べる）の2指標で非優越ソートし、
+    パレート層の順に並べる。
 
-    代償だけで並べると、1kmあたりの「平均」であるために遠回りして難所を避けた候補が常に上位を占めるため、層の順を
+    費用だけで並べると、1kmあたりの「平均」であるために遠回りして難所を避けた候補が常に上位を占めるため、層の順を
     主キーにする。第1層だけでは2〜3件にしかならないので、`max_items`件が埋まるまで層を重ねる
-    （`pareto_layer_index`）。層の中は刻んだ代償の昇順、`tie_by_distance`なら次に距離の鍵の
+    （`pareto_layer_index`）。層の中は刻んだ費用の昇順、`tie_by_distance`なら次に距離の鍵の
     昇順、最後に`ids`の昇順で決定的にする。打ち切りは**並べてから**行う——番号順で先に切ると、
     良い候補が後ろの番号に居るだけで検討から外れる。
     """
-    penalty = penalty_seconds_per_km(cost, seconds, length_m)
-    keyed = _penalty_key(penalty)
+    per_km = seconds_per_km(cost, length_m)
+    keyed = _per_km_key(per_km)
     layer = pareto_layer_index(
-        distance_key, penalty,
-        quantum_a=tuning.checked("search.pareto_distance_quantum_m", lambda v: v > 0, "0より大きい"), quantum_b=PENALTY_PER_KM_QUANTUM, max_items=max_items,
+        distance_key, per_km,
+        quantum_a=tuning.checked("search.pareto_distance_quantum_m", lambda v: v > 0, "0より大きい"), quantum_b=PER_KM_QUANTUM, max_items=max_items,
     )
     layer_key = np.where(layer >= 0, layer, np.iinfo(np.int32).max)
     keys = (ids, distance_key, keyed, layer_key) if tie_by_distance else (ids, keyed, layer_key)
@@ -431,12 +430,12 @@ CANDIDATE_ORDER_WORDING = "所要時間と負担の和が小さい順[周回は1
 def candidate_order(candidate: EvaluatedRoute, *, loop: bool) -> float:
     """候補を返す並びの鍵。どの形も探索が最小にした費用（所要時間と代償の和）で比べ、先頭が最も良い候補という契約で配る。
     目的地は同じ所へ着くので費用の小さい順、周回（出発地へ戻る経路）は距離が目標の幅の中でばらつくので1kmあたりの費用の
-    小さい順（`PENALTY_PER_KM_QUANTUM`の刻みで同点）。所要時間か長さの無い候補は、費用に時間が入らず比べられないので周回の末尾へ回す。"""
+    小さい順（`PER_KM_QUANTUM`の刻みで同点）。所要時間か長さの無い候補は、費用に時間が入らず比べられないので周回の末尾へ回す。"""
     if not loop:
         return candidate.cost_seconds
     if candidate.estimated_duration_seconds is None or not candidate.distance_km > 0:
         return float("inf")
-    return float(_penalty_key(np.asarray(candidate.cost_seconds / candidate.distance_km)))
+    return float(_per_km_key(np.asarray(candidate.cost_seconds / candidate.distance_km)))
 
 
 def keep_routes_with_baseline(

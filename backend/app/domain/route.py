@@ -88,11 +88,10 @@ class PenaltyBreakdown(StrictModel):
                      COST_SECONDS_DECIMALS)
 
 
-def penalty_seconds_per_km(cost: np.ndarray | float, seconds: np.ndarray | float, length_m: np.ndarray | float) -> np.ndarray:
-    """費用から所要時間を引いた代償の秒を、1kmあたりにしたもの（数を渡すと0次元の配列）。求まらない要素（長さ0・到達不能）は0。
-    周回の候補を並べる値で、候補の帯もこれで塗る。"""
+def seconds_per_km(seconds: np.ndarray | float, length_m: np.ndarray | float) -> np.ndarray:
+    """秒（費用・代償）を、1kmあたりにしたもの（数を渡すと0次元の配列）。求まらない要素（長さ0・到達不能）は0。"""
     with np.errstate(invalid="ignore", divide="ignore"):
-        per_km = (np.asarray(cost, dtype=float) - np.asarray(seconds, dtype=float)) / (np.asarray(length_m, dtype=float) / 1000.0)
+        per_km = np.asarray(seconds, dtype=float) / (np.asarray(length_m, dtype=float) / 1000.0)
     return np.where(np.isfinite(per_km), per_km, 0.0)
 
 
@@ -253,14 +252,14 @@ class EvaluatedRoute(StrictModel):
     penalty: PenaltyBreakdown
 
     def penalty_per_km(self) -> float | None:
-        """候補全体の1kmあたりの代償の秒（曲がる所の漕ぎ出しと避け方の秒を含むルート全体の損。`penalty_seconds_per_km`）。曲がる所の
+        """候補全体の1kmあたりの代償の秒（曲がる所の漕ぎ出しと避け方の秒を含むルート全体の損）。曲がる所の
         罰は道の負担でないので入れない——入れると、地図のレンズの総合の段で塗る候補の帯が道の負担とずれる。
         候補の帯は応答の`penalty_seconds_per_km`で塗る。所要時間か
         長さが無ければNone。"""
         if self.estimated_duration_seconds is None or not self.distance_km > 0:
             return None
-        return float(penalty_seconds_per_km(self.cost_seconds - self.penalty.turn_penalty_seconds, self.estimated_duration_seconds,
-                                            self.distance_km * 1000.0))
+        return float(seconds_per_km(
+            self.cost_seconds - self.penalty.turn_penalty_seconds - self.estimated_duration_seconds, self.distance_km * 1000.0))
 
     @computed_field  # type: ignore[prop-decorator]
     @property

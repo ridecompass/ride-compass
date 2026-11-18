@@ -289,15 +289,15 @@ def test_route_passages_reads_each_edge_in_the_time_bin_the_search_used():
 @pytest.mark.parametrize(
     ("node_best_state", "expected"),
     [
-        # 1つでも繋ぎ目側の値が残ると、1kmあたりの代償が別経路のコストと秒と長さで求まる
-        (3, (5.0, 60.0, 4.0, 3, -1)),
+        # 1つでも繋ぎ目側の値が残ると、1kmあたりの費用が別経路のコストと長さで求まる
+        (3, (5.0, 60.0, 3, -1)),
         # 前向きの木が着いていなければ、繋ぎ目の値に触れない
-        (-1, (999.0, 111.0, 222.0, -1, 42)),
+        (-1, (999.0, 111.0, -1, 42)),
     ],
 )
 def test_add_terminal_candidate_copies_every_field_from_the_forward_tree(node_best_state, expected):
     junction = NodeJunction(
-        cost=np.array([np.inf, 999.0]), length_m=np.array([0.0, 111.0]), seconds=np.array([0.0, 222.0]),
+        cost=np.array([np.inf, 999.0]), length_m=np.array([0.0, 111.0]),
         forward_state=np.array([-1, -1], dtype=np.int64), backward_state=np.array([-1, 42], dtype=np.int64),
     )
     forward = turn_tree(
@@ -307,8 +307,7 @@ def test_add_terminal_candidate_copies_every_field_from_the_forward_tree(node_be
 
     add_terminal_candidate(junction, forward, 1)
 
-    assert (junction.cost[1], junction.length_m[1], junction.seconds[1], junction.forward_state[1],
-            junction.backward_state[1]) == expected
+    assert (junction.cost[1], junction.length_m[1], junction.forward_state[1], junction.backward_state[1]) == expected
 
 
 # --------------------------------------------------------------------------------------
@@ -337,24 +336,29 @@ def test_order_by_bearing_spread_puts_the_most_distant_bearing_on_the_circle_fir
 # --------------------------------------------------------------------------------------
 
 
-def _ranked_ids(ids, distance, penalty_per_km, *, tie_by_distance):
-    """どの候補も道のり2km・所要時間100秒で、1kmあたりの代償が`penalty_per_km`秒。"""
-    seconds = np.full(len(ids), 100.0)
+def _ranked_ids(ids, distance, cost_per_km, *, tie_by_distance):
+    """どの候補も道のり2kmで、1kmあたりの費用（所要時間と代償の和）が`cost_per_km`秒。"""
     ranking = rank_by_pareto_layers(
-        np.array(ids), np.array(distance, dtype=float), seconds + 2 * np.array(penalty_per_km), seconds,
+        np.array(ids), np.array(distance, dtype=float), 2 * np.array(cost_per_km, dtype=float),
         np.full(len(ids), 2000.0), max_items=10, max_examined=10, tie_by_distance=tie_by_distance, tuning=TUNED
     )
     return np.array(ids)[ranking.order].tolist()
 
 
-def test_rank_puts_the_pareto_layer_before_the_penalty():
+def test_rank_puts_the_pareto_layer_before_the_cost():
     """遠回りして難所を避けた候補（7）だけが上位を占めず、近くて難所を通る候補（5）も一覧に残る。
-    両方に負ける候補（9）は代償が真ん中でも後ろへ回る。"""
+    両方に負ける候補（9）は費用が真ん中でも後ろへ回る。"""
     assert _ranked_ids([5, 7, 9], [0.0, 2000.0, 2000.0], [50.0, 10.0, 30.0], tie_by_distance=False) == [7, 5, 9]
 
 
+def test_rank_counts_the_time_as_well_as_the_penalty():
+    """代償が同じ1kmあたり20秒でも、所要時間が長い（1kmあたり100秒の）候補（5）は、短い（50秒の）候補（7）に負けて後ろへ回る。
+    代償だけで比べると同点になり、番号の順で遅い候補が先に試される。"""
+    assert _ranked_ids([5, 7], [0.0, 0.0], [100.0 + 20.0, 50.0 + 20.0], tie_by_distance=False) == [7, 5]
+
+
 def test_rank_treats_distances_within_the_calibrated_quantum_as_the_same():
-    """距離の差が較正値の粒度に満たない候補は同じ距離とみなされ、代償だけで並ぶ。"""
+    """距離の差が較正値の粒度に満たない候補は同じ距離とみなされ、費用だけで並ぶ。"""
     near = 0.4 * TUNING["search.pareto_distance_quantum_m"]
 
     assert _ranked_ids([5, 7, 9], [0.0, near, near], [50.0, 10.0, 30.0], tie_by_distance=False) == [7, 9, 5]
@@ -382,7 +386,7 @@ def test_a_turnaround_closer_than_the_calibrated_separation_to_an_accepted_one_i
 
 @pytest.mark.parametrize(("tie_by_distance", "expected"), [(True, [8, 3]), (False, [3, 8])])
 def test_rank_breaks_ties_by_distance_only_when_asked(tie_by_distance, expected):
-    """同じ層・同じ代償の中は、周回なら距離の鍵（リング中心からのずれ）の順、目的地なら番号の順。"""
+    """同じ層・同じ費用の中は、周回なら距離の鍵（リング中心からのずれ）の順、目的地なら番号の順。"""
     assert _ranked_ids([3, 8], [60.0, 10.0], [20.0, 20.0], tie_by_distance=tie_by_distance) == expected
 
 

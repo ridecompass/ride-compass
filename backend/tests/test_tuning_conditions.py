@@ -69,7 +69,7 @@ def _speed_model() -> None:
 
 def _pareto() -> None:
     one = np.zeros(1)
-    route_search.rank_by_pareto_layers(np.array([0]), one, one, one, np.ones(1),
+    route_search.rank_by_pareto_layers(np.array([0]), one, one, np.ones(1),
                                        max_items=1, max_examined=None, tie_by_distance=False, tuning=current_tuning())
 
 

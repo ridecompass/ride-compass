@@ -163,12 +163,11 @@ async def select_via_nodes(
 
     best_index, candidates = alternative_via_nodes(junction.cost, reachable, context.tuning)
     best_length_m = float(junction.length_m[best_index])
-    # 周回の折返し点選定と同じく、経路長・1kmあたりの代償の秒のパレート非劣解を先に並べる
+    # 周回の折返し点選定と同じく、経路長・1kmあたりの費用の秒のパレート非劣解を先に並べる
     # （目的地ルートは目標距離を持たず代わりの道の費用の伸び率の上限（較正値）以内という上限だけが効くぶん、
-    # 1kmあたりの代償だけで並べると伸び率上限いっぱいの遠回りが上位を占めやすい）。
+    # 1kmあたりの費用だけで並べると伸び率上限いっぱいの遠回りが上位を占めやすい）。
     ranking = rank_by_pareto_layers(
-        candidates, junction.length_m[candidates], junction.cost[candidates], junction.seconds[candidates],
-        junction.length_m[candidates],
+        candidates, junction.length_m[candidates], junction.cost[candidates], junction.length_m[candidates],
         max_items=max_routes, max_examined=_MAX_VIA_NODE_CANDIDATES_EXAMINED, tie_by_distance=False, tuning=context.tuning,
     )
     ranked = candidates[ranking.order].tolist()

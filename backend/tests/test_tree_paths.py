@@ -171,8 +171,6 @@ def test_tree_and_junction_keep_per_node_the_cheapest_and_on_a_tie_the_lowest_nu
     assert np.array_equal(junction.forward_state[joined], source[picked[joined]])
     assert np.array_equal(junction.backward_state[joined], target[picked[joined]])
     assert np.array_equal(junction.cost[joined], total[picked[joined]])
-    expected_seconds = (forward.state_seconds[source] + structure.turn_seconds + backward.state_seconds[target])[picked[joined]]
-    assert np.array_equal(junction.seconds[joined], expected_seconds)
     assert np.all(junction.forward_state[~joined] == -1)
     assert np.all(np.isinf(junction.cost[~joined]))
 
