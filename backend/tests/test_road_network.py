@@ -5,7 +5,7 @@
 - `slice_network`: 範囲に掛かる区間と、その両端のノードを取り出す
 - `rows_in_tile`: 地図のタイルに掛かる区間の行
 - `road_class_columns`・`material_arrays_of`: 区分の列と、切り出した区間の材料
-- `material_fills`: 欠けた材料を埋める、取込範囲全体の分布
+- `RoadNetwork.numeric_means`: 欠けた数値の材料を埋める、取込範囲全体の平均
 - `elevation_attribute`: 1区間の標高属性
 - `edge_row_of`: `(道, 区間番号, 向き)`から区間の行
 
@@ -31,7 +31,6 @@ from app.domain.road_network import (
     edge_row_of,
     elevation_attribute,
     material_arrays_of,
-    material_fills,
     road_class_columns,
     rows_in_tile,
     slice_network,
@@ -123,21 +122,16 @@ def test_the_materials_and_road_classes_of_a_slice_follow_its_rows():
     assert [columns[class_material_id("k")].value_at(i) for i in range(2)] == ["is_y", None]
 
 
-def test_the_fills_are_the_distance_weighted_distributions_of_the_whole_network():
-    """欠けを埋める平均は取込範囲全体の距離で重みを付けたもの（値の無い区間を除く）。"""
+def test_the_numeric_means_are_the_distance_weighted_means_of_the_whole_network():
+    """欠けを埋める数値の材料の平均は取込範囲全体の距離で重みを付けたもの（値の無い区間を除く）。"""
     whole = network()
-    rules = {"is_x": [fact_is("cat_a", "x")], "is_y": [fact_is("cat_a", "y")]}
-    classes = road_class_columns(whole, road_classes({"k": classification(rules)}))
 
-    fills = material_fills(whole, classes[0], [class_material_id("k")])
-
-    # 区間の長さは経度の差に比べて4:4:10:20:20（同じ緯度の上）。num_aは0〜40。勾配は道20と道30の1区間目、区分は道30の
-    # 1区間目だけ値が無い。勾配を長さで重みづけた和は区間の登りの和で、道10の両向きは打ち消し合い、道30の2区間目の3mだけが残る。
-    assert fills.numeric_means == pytest.approx({
+    # 区間の長さは経度の差に比べて4:4:10:20:20（同じ緯度の上）。num_aは0〜40。勾配は道20と道30の1区間目だけ値が無い。
+    # 勾配を長さで重みづけた和は区間の登りの和で、道10の両向きは打ち消し合い、道30の2区間目の3mだけが残る。
+    assert whole.numeric_means == pytest.approx({
         "num_a": (10 * 4 + 20 * 10 + 30 * 20 + 40 * 20) / 58,
         GRADIENT_PERCENT: 3.0 * 100 / whole.distance_m[[0, 1, 4]].sum(),
     }, rel=1e-4)
-    assert fills.class_shares == {class_material_id("k"): pytest.approx({"is_x": 8 / 38, "is_y": 30 / 38}, rel=1e-4)}
 
 
 def test_the_elevation_attribute_reads_the_average_grade_from_the_material_and_the_steepest_slopes():

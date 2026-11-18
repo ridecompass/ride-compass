@@ -172,7 +172,7 @@ class RoadNetwork:
             # 凍った型なので、`cached_property`と同じくインスタンスの辞書へ直に持つ。
             cached = self.__dict__.get("_wind_heights")
             if cached is None or cached[0] != grid:
-                fills = MaterialFills(numeric_means=self.numeric_means, class_shares={})
+                fills = MaterialFills(numeric_means=self.numeric_means)
                 percent = {field: fills.fill(field, self.numeric_values[:, self.numeric_ids.index(field)])
                            for field in ROUGHNESS_LENGTH_M}
                 started = start_timer()
@@ -219,11 +219,9 @@ class RoadSlice:
 @dataclass(frozen=True)
 class MaterialFills:
     """取込範囲全体の材料の分布で、欠けた材料を埋める（探索の範囲で埋めると、同じ道の費用が探索の範囲で変わる）。
-    `numeric_means`は数値の材料の距離で重みを付けた平均、`class_shares`は区分の材料の値ごとの距離の割合（値の無い道を除いて
-    和が1）。"""
+    `numeric_means`は数値の材料の距離で重みを付けた平均。"""
 
     numeric_means: Mapping[str, float]
-    class_shares: Mapping[str, Mapping[str, float]]
 
     def fill(self, material_id: str, values: np.ndarray) -> np.ndarray:
         """数値の材料`material_id`の値の欠けを平均で埋める（平均を持たない材料はNaNのまま）。"""
@@ -231,20 +229,13 @@ class MaterialFills:
         return np.where(np.isnan(values), self.numeric_means.get(material_id, np.nan), values)
 
 
-def material_fills(network: RoadNetwork, classes: Mapping[str, CategoricalColumn],
-                   class_ids: Iterable[str]) -> MaterialFills:
-    """取込範囲全体の材料の分布。数値の材料は全部（`RoadNetwork.numeric_means`）、区分の材料は`class_ids`の分だけ、取込範囲
-    全体の区分の列（`classes`。`road_class_columns`）の値ごとの距離の割合を求める。"""
-    shares: dict[str, dict[str, float]] = {}
-    for material_id in class_ids:
-        column = classes.get(material_id)
-        if column is None:
-            continue
-        lengths = np.bincount(column.codes, weights=network.distance_m, minlength=len(column.vocab))
-        total = float(lengths[1:].sum())
-        shares[material_id] = {
-            str(value): float(length) / total for value, length in zip(column.vocab[1:], lengths[1:]) if total > 0 and length > 0}
-    return MaterialFills(numeric_means=network.numeric_means, class_shares=shares)
+def network_material_column(network: RoadNetwork, classes: Mapping[str, CategoricalColumn],
+                            material_id: str) -> MaterialColumn | None:
+    """取込範囲全体の、材料`material_id`の区間ごとの列（数値の材料は道路網の列をそのまま指し、区分の材料は`classes`。
+    `road_class_columns`）。道路網に無い材料はNone。"""
+    if material_id in network.numeric_ids:
+        return network.numeric_values[:, network.numeric_ids.index(material_id)]
+    return classes.get(material_id)
 
 
 def road_class_columns(

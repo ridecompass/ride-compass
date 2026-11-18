@@ -6,12 +6,13 @@
 """
 
 import asyncio
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime
 
 import numpy as np
 
-from app.domain.cost_axes import CostAxisDefinitions, burden_material_ids, cost_axis_ids
+from app.domain.cost_axes import CostAxisDefinitions, cost_axis_ids
 from app.domain.lens_total import TOTAL_LENS_ID
 from app.domain.cost_preference import CostPreference
 from app.domain.wind_context import WindContext
@@ -39,7 +40,7 @@ from app.domain.wind import WindForecastSeries
 from app.infrastructure import road_network_store
 from app.infrastructure.debug_log import log_external_call
 from app.infrastructure.msm_client import MsmUnavailableError
-from app.services.graph_service import network_classes, network_fills
+from app.services.graph_service import network_burden_fills, network_classes
 from app.services.weather_service import WeatherService
 
 _CATEGORY = "region:lens"
@@ -91,11 +92,11 @@ class LensService:
             prepared = await asyncio.to_thread(_prepare, road_network_store.current(), z, x, y, axes, only)
             if prepared is None:
                 return None
-            features, materials, fills, elevation_gain_m = prepared
+            features, materials, fills, burden_fills, elevation_gain_m = prepared
             fields["features"] = len(features)
             wind = await self._wind(z, x, y, at, materials.mid_lat, materials.mid_lon)
-            return await asyncio.to_thread(_tile_lens, features, materials, settings, fills, speed_kmh, preference, wind,
-                                           elevation_gain_m)
+            return await asyncio.to_thread(_tile_lens, features, materials, settings, fills, burden_fills, speed_kmh,
+                                           preference, wind, elevation_gain_m)
 
     async def _wind(self, z: int, x: int, y: int, at: datetime | None, mid_lat: np.ndarray, mid_lon: np.ndarray,
 ) -> tuple[WindForecastSeries, datetime] | None:
@@ -116,29 +117,30 @@ class LensService:
 
 
 def _prepare(network: RoadNetwork, z: int, x: int, y: int, axes: CostAxisDefinitions, only: str | None
-             ) -> tuple[LensFeatures, EdgeMaterialColumns, MaterialFills, np.ndarray] | None:
-    """風に依らない入力（フィーチャーと行・材料・欠けを埋める平均・行の向きの登り）。道路網ごとの初回は、
-    タイルの区間の表（`domain/road_network.py: RoadNetwork.road_tile_rows`）と取込範囲全体の区分の列と平均も求めるので、
+             ) -> tuple[LensFeatures, EdgeMaterialColumns, MaterialFills, Mapping[str, float], np.ndarray] | None:
+    """風に依らない入力（フィーチャーと行・材料・欠けを埋める材料の平均と道のストレスの重さの平均・行の向きの登り）。道路網ごとの
+    初回は、タイルの区間の表（`domain/road_network.py: RoadNetwork.road_tile_rows`）と取込範囲全体の区分の列と平均も求めるので、
     イベントループの外で呼ぶ。"""
     tile = tile_features(network, z, x, y)
     features = tile if only is None else tile.only(only)
     if features is None:
         return None
     materials = material_arrays_of(slice_rows(network, network_classes(network), features.rows))
-    return (features, materials, network_fills(network, burden_material_ids(axes)),
+    return (features, materials, MaterialFills(numeric_means=network.numeric_means), network_burden_fills(network, axes),
             network.elevation_gain_m[features.rows])
 
 
 def _tile_lens(features: LensFeatures, materials: EdgeMaterialColumns, settings: ModelSettings, fills: MaterialFills,
-               speed_kmh: float, preference: CostPreference, wind: tuple[WindForecastSeries, datetime] | None,
-               elevation_gain_m: np.ndarray) -> _TileLens:
+               burden_fills: Mapping[str, float], speed_kmh: float, preference: CostPreference,
+               wind: tuple[WindForecastSeries, datetime] | None, elevation_gain_m: np.ndarray) -> _TileLens:
     components = previous_run_from = None
     if wind is not None:
         series, target = wind
         components = WindContext.of(series, materials).components(series.time_index(target, 0.0))
         previous_run_from = series.previous_run_from(target, 0.0)
     return _TileLens(*lens_table(features, materials.columns, materials.distance_m, materials.elevation_profiles, settings,
-                                 ledger_parameters(preference, settings.tuning), speed_kmh, fills, components, elevation_gain_m),
+                                 ledger_parameters(preference, settings.tuning), speed_kmh, fills, burden_fills, components,
+                                 elevation_gain_m),
                      previous_run_from)
 
 

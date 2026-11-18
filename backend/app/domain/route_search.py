@@ -15,7 +15,7 @@ from app.domain.geo import (
     km_per_degree_longitude,
 )
 from app.domain.leg_costs import LegCostArrays, LegCostComposer
-from app.domain.route import EvaluatedRoute, penalty_seconds_per_km
+from app.domain.route import COST_SECONDS_DECIMALS, EvaluatedRoute, penalty_seconds_per_km
 from app.domain.route_diversity import pareto_layer_index
 from app.domain.routing import time_bin_of
 from app.domain.tuning import Tuning
@@ -115,14 +115,15 @@ def relay_band(
     """距離ありで、置いた点を通るか目的地で終わるときの、中継点の帯と並べる鍵（中継点ごと）。
 
     中継点ごとの全長の見込み（前段`fixed_m`＋往路`outbound_m`＋帰りの最短`return_shortest_m`×帰りの比）が目標±許容に
-    収まる中継点を帯に入れる。帰りは走った道を避けて探すので最短より長くなる。帰りの比は周回の比の見込み
-    （`loop_to_outbound_ratios`）から1を引いたもので、周回の帰り（≈往路×(比−1)）と同じ見込みを置く（別に持つと、
-    周回と目的地で帰りの見込みが食い違う）。見込みの幅が許容の幅より広い中継点は、全長を見込みの中央の1点として見る。
+    収まる中継点を帯に入れる。帰りの比は周回の比の見込み（`loop_to_outbound_ratios`）から1を引いたもので、周回の帰り
+    （≈往路×(比−1)）と同じ見込みを置く（別に持つと、周回と目的地で帰りの見込みが食い違う）。ただし1を下回らせない——周回の
+    帰りは費用で選んだ往路より短くもなりうるが、ここで掛ける相手は帰りの最短そのもので、帰りがそれより短くなることは無い。
+    見込みの幅が許容の幅より広い中継点は、全長を見込みの中央の1点として見る。
     届かない（長さが有限でない）中継点は帯に入らない。鍵は全長の見込みの中央と目標のずれ（m）で、目標より短すぎる経路も
     長すぎる経路も対称に扱う。
     """
     loop_min, loop_max = loop_to_outbound_ratios(tuning)
-    return_min, return_max = loop_min - 1.0, loop_max - 1.0
+    return_min, return_max = max(1.0, loop_min - 1.0), max(1.0, loop_max - 1.0)
     band = LengthBand.from_km(distance_km, tolerance_km)
     head_m = fixed_m + np.asarray(outbound_m, dtype=float)
     shortest_m = np.asarray(return_shortest_m, dtype=float)
@@ -164,7 +165,8 @@ def retrace_penalized(costs: np.ndarray, travel_seconds: np.ndarray, tuning: Tun
 
 
 #: 1kmあたりの代償の秒（`penalty_seconds_per_km`）の、区別する最小の差。並べ方とパレート層は、この刻みで同点とみなす。
-PENALTY_PER_KM_QUANTUM = 0.1
+#: 刻みは応答に出す秒の桁——応答で同じ値に見える候補の順を、利用者に見えない差で決めない。
+PENALTY_PER_KM_QUANTUM = 10.0 ** -COST_SECONDS_DECIMALS
 
 
 def _penalty_key(per_km: np.ndarray) -> np.ndarray:
@@ -304,8 +306,9 @@ def heuristic_seconds(straight_m: np.ndarray, cruise_speed_kmh: float, cost_scal
     （`domain/leg_costs.py: LegCostComposer.min_cost_scale`）。所要時間で探すときも同じ値で、下界のまま緩むだけ。
 
     実経路は直線より長く、実際の速度は走行モデルの速度の上限以下のため、直線距離÷速度の上限は真の
-    所要時間を上回らない。区間の費用は所要時間に代償（0以上）を足して避け方の倍率を掛けたもので、所要時間の`cost_scale`倍を
-    下回らないので、それを掛けた値は費用の下界になる＝A*のヒューリスティックとして使える（admissible）。
+    所要時間を上回らない。区間の費用は所要時間に避け方の倍率を掛けて代償（0以上）を足したもので、所要時間の`cost_scale`倍を
+    下回らないので、それを掛けた値は費用の下界になる＝A*のヒューリスティックとして使える（admissible）。曲がる所の費用も
+    0以上なので、下界のまま。
     """
     return np.asarray(straight_m, dtype=float) / kmh_to_ms(top_speed_kmh(cruise_speed_kmh, tuning)) * cost_scale
 
@@ -362,11 +365,13 @@ def transition_values_along(values: np.ndarray, entries: Sequence[int | None]) -
     return [0.0 if entry is None else float(values[entry]) for entry in entries]
 
 
-def route_cost(passages: Sequence[EdgePassage], turn_waits: Sequence[float], turn_kickoffs: Sequence[float],
+def route_cost(passages: Sequence[EdgePassage], turn_search_seconds: Sequence[float], turn_kickoffs: Sequence[float],
                composer: LegCostComposer) -> float:
-    """経路の費用（秒）: 探索と同じ費用の配列から読んだ区間の費用と、曲がる所の費用（`LegCostComposer.transition_costs`）の和。
-    帰りの探索が来た道に置く罰（`retrace_penalized`）は探索の中だけの値なので含めない。"""
-    turns = composer.transition_costs(np.asarray(turn_waits, dtype=np.float64), np.asarray(turn_kickoffs, dtype=np.float64))
+    """経路の費用（秒）: 探索と同じ費用の配列から読んだ区間の費用と、曲がる所の費用（`LegCostComposer.transition_costs`。
+    `turn_search_seconds`は遷移ごとの探索の重み）の和。帰りの探索が来た道に置く罰（`retrace_penalized`）は探索の中だけの値
+    なので含めない。"""
+    turns = composer.transition_costs(np.asarray(turn_search_seconds, dtype=np.float64),
+                                      np.asarray(turn_kickoffs, dtype=np.float64))
     return sum(passage.cost for passage in passages) + float(turns.sum())
 
 
@@ -464,11 +469,11 @@ def by_closeness_to_target(loops: list[TracedLoop], target_km: float) -> list[Tr
     return sorted(loops, key=lambda loop: abs(loop.distance_km - target_km))
 
 
-def alternative_via_nodes(cost: np.ndarray, length_m: np.ndarray, reachable: np.ndarray, tuning: Tuning
-                          ) -> tuple[int, np.ndarray]:
-    """目的地ルートの最良路の経由Node（合成コスト最小）と、代替経路の候補にする経由Node
-    （最良路の長さの`search.alternative_max_stretch`倍以内）。`reachable`が1つ以上あること。"""
+def alternative_via_nodes(cost: np.ndarray, reachable: np.ndarray, tuning: Tuning) -> tuple[int, np.ndarray]:
+    """目的地ルートの最良路の経由Node（合成コスト最小）と、代替経路の候補にする経由Node（最良路の費用の
+    `search.alternative_max_cost_stretch`倍以内）。`reachable`が1つ以上あること。伸び率を長さで測ると、好む道・避ける道と
+    代償で選んだ最良路に対して、同じ長さでも費用のずっと高い道が候補に残る（探索が最小にした量で測る）。"""
     best_index = int(np.argmin(np.where(reachable, cost, np.inf)))
-    max_stretch = tuning.value("search.alternative_max_stretch")
-    within_stretch = reachable & (length_m <= float(length_m[best_index]) * max_stretch)
+    max_stretch = tuning.checked("search.alternative_max_cost_stretch", lambda v: v >= 1, "1以上")
+    within_stretch = reachable & (cost <= float(cost[best_index]) * max_stretch)
     return best_index, np.flatnonzero(within_stretch)

@@ -90,7 +90,7 @@ async def test_each_axis_lens_paints_its_own_penalty_seconds_per_km_and_the_tota
     total = await _lens(client, "total")
     by_axis = {axis_id: await _lens(client, axis_id) for axis_id in (*EFFORT_AXES, "rough")}
 
-    burden_seconds = TUNING["evaluation.penalty_strength"] * TUNING["cost.burden_seconds_per_km"] * ROUGH_WEIGHT
+    burden_seconds = TUNING["cost.burden_seconds_per_km"] * ROUGH_WEIGHT
     flat = total[str(FLAT_ROUGH_WAY)]
     assert (flat[LENS_ALONG_LEAF], flat[LENS_AGAINST_LEAF]) == pytest.approx((burden_seconds, burden_seconds))
     assert by_axis["rough"][str(FLAT_ROUGH_WAY)][LENS_ALONG_LEAF] == pytest.approx(burden_seconds)
@@ -229,7 +229,7 @@ async def test_the_legend_tells_the_slope_and_the_stops_a_threshold_stands_for(c
     # 止まる所の密度1/kmの道の秒から、境目の秒に当たる回数を引き直す（秒は回数に比例する）。
     one_stop = stopping[str(STOPPING_WAY)][LENS_ALONG_LEAF]
     assert stops == pytest.approx(THRESHOLDS[0] / one_stop * _kickoffs_per_stop(), rel=0.02)
-    burden_seconds = 2.0 * TUNING["evaluation.penalty_strength"] * TUNING["cost.burden_seconds_per_km"]
+    burden_seconds = 2.0 * TUNING["cost.burden_seconds_per_km"]
     assert equivalents["rough"]["examples"] == [
         {"label": "0", "seconds_per_km": 0.0},
         {"label": "1", "seconds_per_km": pytest.approx(burden_seconds * ROUGH_WEIGHT)},

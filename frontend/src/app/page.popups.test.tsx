@@ -170,6 +170,7 @@ describe("地図の小窓", () => {
         axis_seconds: { ascent: 120, vibration: 0 },
         preferred_seconds: 0,
         avoided_seconds: 0,
+        turn_penalty_seconds: 0,
         total_seconds: 120,
       },
     });

@@ -45,6 +45,7 @@ const PROFILE_PENALTY = {
   axis_seconds: { ascent: 40, vibration: 0 },
   preferred_seconds: 0,
   avoided_seconds: 0,
+  turn_penalty_seconds: 0,
   total_seconds: 40,
 };
 

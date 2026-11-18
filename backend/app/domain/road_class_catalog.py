@@ -130,7 +130,7 @@ def road_class_catalog(definitions: RoadClassDefinitions, tuning: Tuning) -> Roa
             )
         )
     avoidance = avoidance_rows(definitions)
-    multipliers = level_multipliers(tuning.value("avoidance.avoid_cost_multiplier"))
+    multipliers = level_multipliers(tuning)
     # 0次ハードフィルタの行。路面タイルは道の当たるフィルタの名前を`HARD_FILTER_PROPERTY`に焼く。
     fixed = [
         AvoidanceRowView(

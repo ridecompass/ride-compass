@@ -6,7 +6,8 @@ id・管理画面が並べる項目・変更が効くために何をやり直す
 値の正本はDBの表（`infrastructure/tuning_overrides.py`）で、起動時に全部を読む。変えられるようにする対象と管理画面が面倒を見る対象を
 別々に決めると必ずズレるため、宣言を1つにする。
 
-**載せてよいのは走ってみて決める値だけ**。物理定数・資源の上限・外部データの刻みは載せず、
+**載せてよいのは、走ってみて決める物理の較正値と、標準の人の好みの定義（代償の交換比・避ける・好むの倍率）だけ**。
+定義は物理の外で、正解が測りで決まらないので、出典の無い定義だと説明に書く。物理定数・資源の上限・外部データの刻みは載せず、
 使う側のモジュールが値と根拠を隣り合わせで持つ——ここへ載せた瞬間に管理画面から変えられる
 ようになり、模型を壊す値や本番を止める値が画面の手に入る。
 
@@ -124,6 +125,8 @@ _CRR_GRAVEL_ID = "speed.crr_gravel"
 _CRR_COBBLESTONE_ID = "speed.crr_cobblestone"
 #: 走行モデルの較正値のうち、値に実測の出典が無いものの説明の末尾。
 _UNSOURCED = "値は根拠なし（出典のある実測が無い）。"
+#: 標準の人の好みの定義（物理の較正値ではないもの）の説明の末尾。
+_PREFERENCE_DEFINITION = "物理の較正値ではなく、標準の人の好みの定義（出典は無い）。"
 _TURNAROUND_OVERLAP_ID = "search.turnaround_max_overlap_ratio"
 _TURNAROUND_RELAXED_OVERLAP_ID = "search.turnaround_relaxed_overlap_ratio"
 _LOOP_RATIO_MIN_ID = "search.loop_to_outbound_ratio_min"
@@ -160,7 +163,8 @@ TUNING_PARAMETERS: tuple[TuningParameter, ...] = (
         "止まる出来事として数える。",
     ),
     *_turn_parameters(
-        "uturn", "Uターン", "折り返し1回で止まって失う時間。実質的に選ばせないための大きな値。",
+        "uturn", "Uターン", "折り返し1回の罰。実際に失う時間ではなく、行き止まりのほかで選ばせないための大きな値なので、"
+        "予想の所要時間には入れず、探索の費用（所要時間だけで選ぶ経路の重みも）にだけ足す。",
     ),
     TuningParameter(
         "turn.straight_max_deg",
@@ -328,12 +332,14 @@ TUNING_PARAMETERS: tuple[TuningParameter, ...] = (
         "cost.effort_alpha",
         "体力の換算", "倍", TuningEffect.IMMEDIATE,
         "平地の出力を超えて使った体力を、平地を何秒走る分に当たるかに換算し、その秒に掛ける倍率（費用の式のα）。"
-        "体力の負担のすべての種類に共通。",
+        "標準の人が、体力の1秒分を何秒の所要時間と引き換えにするかの交換比。体力の負担のすべての種類に共通。"
+        + _PREFERENCE_DEFINITION,
     ),
     TuningParameter(
         "cost.burden_seconds_per_km",
         "道のストレスの換算", "秒/km", TuningEffect.IMMEDIATE,
-        "道のストレスの基準の重さ（1）の道を1km走ることを、何秒の負担とみなすか（費用の式のβ）。道のストレスのすべての種類に共通。",
+        "道のストレスの基準の重さ（1）の道を1km走ることを、何秒の負担とみなすか（費用の式のβ）。標準の人が、その1kmを何秒の"
+        "所要時間と引き換えにするかの交換比。道のストレスのすべての種類に共通。" + _PREFERENCE_DEFINITION,
     ),
     TuningParameter(
         "cost.effort_weight_exponent",
@@ -358,9 +364,16 @@ TUNING_PARAMETERS: tuple[TuningParameter, ...] = (
     TuningParameter(
         "avoidance.avoid_cost_multiplier",
         "「なるべく避ける」の割り増し", "倍", TuningEffect.IMMEDIATE,
-        "道のレイヤの行を「なるべく避ける」にしたとき、その行に当たる区間の探索の費用に掛ける倍率。"
-        "2なら、その区間を通るより倍の長さまでの回り道を選ぶ。1は避けない。「好む」にした行の区間には、この逆数を掛ける。「少し避ける」「少し好む」はその平方根。"
-        "道路タブの段の名前は、掛ける倍率で出す。",
+        "道のレイヤの行を「なるべく避ける」にしたとき、その行に当たる区間の所要時間に掛けて探索の費用にする倍率（代償には"
+        "掛けない）。2なら、代償が同じなら、その区間を通るより所要時間が倍までの回り道を選ぶ。1は避けない。「少し避ける」は"
+        "その平方根。道路タブの段の名前は、掛ける倍率で出す。" + _PREFERENCE_DEFINITION,
+    ),
+    TuningParameter(
+        "avoidance.prefer_cost_multiplier",
+        "「好む」の割り引き", "倍", TuningEffect.IMMEDIATE,
+        "道のレイヤの行を「好む」にしたとき、その行に当たる区間の所要時間に掛けて探索の費用にする倍率（代償には掛けない）。"
+        "0.8なら好む道の1分を0.8分とみなし、代償が同じなら、好む道を通る時間がほかの道の1.25倍以内のとき好む道を選ぶ。"
+        "0より大きく1以下。「少し好む」はその平方根。" + _PREFERENCE_DEFINITION,
     ),
     # --- 候補の選び方 ---
     TuningParameter(
@@ -390,9 +403,10 @@ TUNING_PARAMETERS: tuple[TuningParameter, ...] = (
     TuningParameter(
         _LOOP_RATIO_MIN_ID,
         "周回の全長の見込みの下限", "倍", TuningEffect.IMMEDIATE,
-        "周回の全長が往路の何倍になるかの見込みの下限。帰りは往路を避けて探すため往路と同じかそれより長い。"
+        "周回の全長が往路の何倍になるかの見込みの下限。帰りは往路を避けて探すが、往路は費用の最も低い道で最短とは限らないので、"
+        "帰りは往路より短くもなりうる。"
         "全長が目標±許容に入るよう、折返し点を探す往路の長さの範囲をこの見込みで決める。"
-        "置いた点を通る・目的地で終わるときの帰りは、終点までの最短のこの値−1倍以上と見込む。",
+        "置いた点を通る・目的地で終わるときの帰りは、終点までの最短のこの値−1倍以上（最短を下回らない）と見込む。",
     ),
     TuningParameter(
         _LOOP_RATIO_MAX_ID,
@@ -400,10 +414,11 @@ TUNING_PARAMETERS: tuple[TuningParameter, ...] = (
         f"{_LOOP_RATIO_MIN_ID}の上限側。{_LOOP_RATIO_MIN_ID}以上にする。",
     ),
     TuningParameter(
-        "search.alternative_max_stretch",
-        "目的地への代わりの道の長さの上限", "倍", TuningEffect.IMMEDIATE,
-        "距離なしで目的地へ向かうとき、合成の費用が最も低い道の長さの何倍までの道を代わりの道の候補にするか。"
-        "上げるほど遠回りの候補が並ぶ。",
+        "search.alternative_max_cost_stretch",
+        "目的地への代わりの道の費用の上限", "倍", TuningEffect.IMMEDIATE,
+        "距離なしで目的地へ向かうとき、合成の費用が最も低い道の費用の何倍までの道を代わりの道の候補にするか（伸び率は長さでなく"
+        "費用で測る。Abraham ら 2010 は伸び率の上限を1.25に置く）。"
+        "上げるほど費用の高い候補が並ぶ。",
     ),
     TuningParameter(
         "search.pareto_distance_quantum_m",
@@ -446,12 +461,6 @@ TUNING_PARAMETERS: tuple[TuningParameter, ...] = (
         "区間を割る下限", "km", TuningEffect.CLIENT_RELOAD,
         "区間の乗り換えで、これより短い断片は作らない。"
         "細かく割るほど選択肢が増え、1区間=1行の一覧が縦に伸びる。",
-    ),
-    # --- 代償の強さ ---
-    TuningParameter(
-        "evaluation.penalty_strength",
-        "負担の基準の倍率", "", TuningEffect.IMMEDIATE,
-        "すべての負担に掛ける基準の倍率。利用者が選ぶ負担の全体の割合（無効〜200%）は、この値にさらに掛ける。",
     ),
 )
 

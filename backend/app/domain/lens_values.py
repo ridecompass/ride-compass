@@ -140,9 +140,8 @@ class LensFactInputs:
     """道の窓が出す区間の秒と事実の入力（配列はどれも`features.rows`の行の順）。"""
 
     settings: ModelSettings
-    #: 材料id→列と、欠けを埋める取込の範囲全体の平均（`domain/leg_costs.py: axis_facts`が読む）。
+    #: 材料id→列（`domain/leg_costs.py: axis_facts`が読む）。
     materials: Mapping[str, MaterialColumn]
-    fills: MaterialFills
     distance_m: np.ndarray
     #: 数える軸id→行ごとの代償の秒（レンズの値と同じ秒）。
     penalties: Mapping[str, np.ndarray]
@@ -156,21 +155,22 @@ class LensFactInputs:
 
 def lens_table(features: LensFeatures, materials: Mapping[str, MaterialColumn], distance_m: np.ndarray,
                profiles: ElevationProfiles, settings: ModelSettings, parameters: LedgerParameters, speed_kmh: float,
-               fills: MaterialFills, weather: tuple[np.ndarray, np.ndarray, np.ndarray] | None,
+               fills: MaterialFills, burden_fills: Mapping[str, float],
+               weather: tuple[np.ndarray, np.ndarray, np.ndarray] | None,
                elevation_gain_m: np.ndarray) -> tuple[LensTable, LensFactInputs]:
     """`features.rows`の行の順の材料・長さ・断面・風の成分と気温（向かい風・横風・気温。Noneはフィーチャーが無く風を求めなかった
     とき。無風・`STANDARD_TEMPERATURE_C`で解く）・行の向きの登りから、
     レンズの値と、道の窓が出す区間の秒と事実の入力を求める。"""
     travel = travel_inputs(materials, distance_m, profiles, speed_kmh, fills, settings)
     axes = settings.cost_axes
-    ledger = LedgerCosts.for_model(axes, parameters, travel.model, burden_weights(axes, parameters, materials, fills))
+    ledger = LedgerCosts.for_model(axes, parameters, travel.model, burden_weights(axes, parameters, materials, burden_fills))
     calm = (np.zeros(len(distance_m)), np.zeros(len(distance_m)), np.full(len(distance_m), STANDARD_TEMPERATURE_C))
     _, penalties = ledger.row_seconds(travel.model, *(calm if weather is None else weather))
     km = _summed_by_direction(features, travel.model.distance_m) / 1000.0
     with np.errstate(invalid="ignore", divide="ignore"):
         per_km = {axis_id: _summed_by_direction(features, seconds) / km for axis_id, seconds in penalties.items()}
     return (LensTable(features=features, values=lens_values_with_total(per_km, np.zeros_like(km))),
-            LensFactInputs(settings, materials, fills, travel.model.distance_m, penalties, elevation_gain_m, travel.stops,
+            LensFactInputs(settings, materials, travel.model.distance_m, penalties, elevation_gain_m, travel.stops,
                            None if weather is None else weather[0]))
 
 
@@ -250,7 +250,7 @@ def lens_inspection(features: LensFeatures, index: int, painted: Literal["along"
         return LensDirection(
             total_seconds=lens_values_with_total(sums, 0.0)[TOTAL_LENS_ID],
             axes=[LensAxisSeconds(axis_id=axis_id, seconds=value) for axis_id, value in sums.items()],
-            facts=axis_facts(facts.settings, facts.materials, facts.fills, rows, facts.distance_m[rows], seconds,
+            facts=axis_facts(facts.settings, facts.materials, rows, facts.distance_m[rows], seconds,
                              elevation_gain(facts.elevation_gain_m[rows]),
                              None if facts.headwind_ms is None else facts.headwind_ms[rows], float(facts.stops[rows].sum())),
         )

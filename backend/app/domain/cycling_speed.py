@@ -9,7 +9,7 @@
 
 利用者から取る入力は**平地・無風の巡航速度**だけで、そこからホイール出力を逆算する
 （`wheel_power_w`）。体重・出力・ケイデンスは一般の利用者が答えられないため、CdA・Crr・質量は
-標準値を使う。坂・向かい風・路面で抵抗が増えると、同じ決まりで踏み増す（`_pushed_power`）。「向かい風に強い／弱い」の差の
+全員に共通の較正値（`domain/tuning.py`の宣言。走ってみて決める値）を使う。坂・向かい風・路面で抵抗が増えると、同じ決まりで踏み増す（`_pushed_power`）。「向かい風に強い／弱い」の差の
 多くは巡航速度の違いとして式から出る。
 
 **駆動系の伝達効率は掛けない**。巡航速度から逆算するのはホイールでの出力で、他の条件でも
@@ -71,7 +71,7 @@ CRUISE_SPEED_LABEL = "平地・無風で巡航する速さ"
 
 
 def travel_model_wording(tuning: Tuning) -> str:
-    """巡航速度から区間の速度を決める決まりを、`tuning`の標準値を入れて利用者に言う文。"""
+    """巡航速度から区間の速度を決める決まりを、`tuning`の較正値を入れて利用者に言う文。"""
     return (
         f"所要時間は、平地・無風[気温{STANDARD_TEMPERATURE_C:g}℃・海面の空気]をこの速度で走る力を求め、区間ごとの{'・'.join(SEGMENT_SPEED_CONDITIONS)}に合わせて"
         "速度を変えて計算します。"
@@ -113,7 +113,7 @@ def crr_for_surface(rolling_classes: CategoricalColumn, road_classes: RoadClassD
 
 @dataclass(frozen=True)
 class RiderProfile:
-    """走行モデルの個人パラメータ。利用者が入力するのは巡航速度だけで、残りは標準値。"""
+    """走行モデルの個人パラメータ。利用者が入力するのは巡航速度だけで、残りは全員に共通の較正値。"""
 
     cruise_speed_kmh: float
     cda_m2: float
@@ -122,7 +122,7 @@ class RiderProfile:
 
     @classmethod
     def standard(cls, cruise_speed_kmh: float, tuning: Tuning) -> "RiderProfile":
-        """巡航速度`cruise_speed_kmh`の人。体格と機材は較正値の標準値。"""
+        """巡航速度`cruise_speed_kmh`の人。体格と機材は較正値。"""
         return cls(cruise_speed_kmh=cruise_speed_kmh, cda_m2=tuning.value("speed.cda_m2"), crr=tuning.value(BASE_CRR_ID),
                    mass_kg=tuning.value("speed.mass_kg"))
 

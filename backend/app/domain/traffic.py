@@ -20,7 +20,7 @@ from app.domain.tuning import (
     event_share_parameter_id,
 )
 
-# 交差点判定の次数しきい値（この数以上の異なる隣接Nodeを持つNodeを交差点とみなす）。
+#: 交差点（分かれ道）とみなす、ノードに集まる道の本数（`road_nodes.branch_count`）の下限。
 INTERSECTION_DEGREE_THRESHOLD = 3
 
 _StopPoiKind = Literal[
@@ -200,7 +200,7 @@ def stop_event(group: str, name: str, tuning: Tuning) -> StopEvent:
     """止まる出来事（`group`は`stop`＝停止要因［種類は`POI_COUNT_KINDS`のキー］・`turn`＝曲がる所）を、較正値`tuning`から
     組む（走ってみて決める値のため、管理画面から変えられる）。減速だけの出来事は巡航速度の
     `stop.slowed_speed_ratio`倍から戻すので、漕ぎ出しは止まってからの（1 − 割合²）倍。"""
-    share = tuning.checked(event_share_parameter_id(group, name), lambda v: v >= 0, "0以上")
+    share = tuning.checked(event_share_parameter_id(group, name), lambda v: 0 <= v <= 1, "0以上1以下")
     slowed = tuning.checked("stop.slowed_speed_ratio", lambda v: -1 <= v <= 1, "-1以上1以下")
     wait_seconds = tuning.checked(event_seconds_parameter_id(group, name), lambda v: v >= 0, "0以上")
     return StopEvent(share=share, wait_seconds=wait_seconds,
@@ -236,7 +236,11 @@ def place_count_sql(inside_ends: str) -> str:
 
 
 def stop_cluster_sql(geom: str, eps_m: str, partition: str) -> str:
-    """停止要因の点`geom`を`partition`ごとに地面の m で`eps_m`以内に連なるまとまりへ分ける窓の式。"""
+    """停止要因の点`geom`を`partition`ごとに地面の m で`eps_m`以内に連なるまとまりへ分ける窓の式。
+
+    `minpoints := 1`なので、隣どうしが`eps_m`以内なら鎖のようにどこまでもつなぎ、まとまりの差し渡しは`eps_m`で頭打ちに
+    ならない。1つの交差点の点は流入路ごとに置かれ、広い交差点ほど差し渡しが道の幅とともに延びるので、差し渡しで切ると広い交差点を
+    いくつもの停止に割る。別の場所を分けるのは、点どうしの隙間が`eps_m`を越えることだけ。"""
     return f"ST_ClusterDBSCAN({ground_m_sql(geom)}, eps := {eps_m}, minpoints := 1) OVER (PARTITION BY {partition})"
 
 

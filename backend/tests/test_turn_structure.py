@@ -25,18 +25,24 @@ from tests.search_graph_world import (
 
 
 def transitions(lazy, structure):
-    """`(遷移元edge_id, 遷移先edge_id) -> (曲がりの種類, ターンの秒数)`。"""
+    """`(遷移元edge_id, 遷移先edge_id) -> (曲がりの種類, ターンの秒数, 探索の重みの秒数)`。`structure`は`TURN_SPEC`で組んだもの。"""
+    search = turn_structure.turn_search_seconds(structure, TURN_SPEC)
     out = {}
     for source in range(structure.state_count):
         for entry in range(int(structure.indptr[source]), int(structure.indptr[source + 1])):
             target = int(structure.target_state[entry])
             out[(lazy.edge_ids[source], lazy.edge_ids[target])] = (
-                turn_structure.TurnKind(int(structure.turn_kind[entry])), float(structure.turn_seconds[entry]))
+                turn_structure.TurnKind(int(structure.turn_kind[entry])), float(structure.turn_seconds[entry]),
+                float(search[entry]))
     return out
 
 
 def transition_seconds(lazy, structure):
-    return {pair: seconds for pair, (_kind, seconds) in transitions(lazy, structure).items()}
+    return {pair: seconds for pair, (_kind, seconds, _search) in transitions(lazy, structure).items()}
+
+
+def transition_search_seconds(lazy, structure):
+    return {pair: search for pair, (_kind, _seconds, search) in transitions(lazy, structure).items()}
 
 
 def rank_array(lazy, by_edge_id):
@@ -77,15 +83,19 @@ def test_turn_transitions_lead_to_every_outgoing_edge_and_classify_the_turn(edge
     方位差の符号で左右を分け、直進とみなす幅の内側は0秒、始点へ戻る遷移はUターン。向きは交差点の
     そばで測るので、区間が交差点から離れた所で曲がっていても分け方は変わらない（区間の端から端の向きで
     測ると、交差点の直進が曲がりに・曲がりが直進に見える）。
+
+    Uターンの秒は選ばせないための罰で、実際に失う時間ではないので、探索の重みにだけ入り、予想の所要時間には入らない
+    （入れると、行き止まりから折り返す候補の所要時間と到着の予想が罰の分だけ延びる）。左右の曲がりの待ちは両方に入る。
     """
     graph = make_graph(PLUS_NODES, edges)
     lazy, _, structure = build_all(graph, spec=TURN_SPEC)
     from_west = {target: turn for (source, target), turn in transitions(lazy, structure).items() if source == "WC"}
+    left, right = TURN_SPEC.left.expected_seconds, TURN_SPEC.right.expected_seconds
     assert from_west == {
-        "CE": (turn_structure.TurnKind.STRAIGHT, 0.0),
-        "CN": (turn_structure.TurnKind.LEFT, pytest.approx(TURN_SPEC.left.expected_seconds)),
-        "CS": (turn_structure.TurnKind.RIGHT, pytest.approx(TURN_SPEC.right.expected_seconds)),
-        "CW": (turn_structure.TurnKind.UTURN, pytest.approx(TURN_SPEC.uturn.expected_seconds)),
+        "CE": (turn_structure.TurnKind.STRAIGHT, 0.0, 0.0),
+        "CN": (turn_structure.TurnKind.LEFT, pytest.approx(left), pytest.approx(left)),
+        "CS": (turn_structure.TurnKind.RIGHT, pytest.approx(right), pytest.approx(right)),
+        "CW": (turn_structure.TurnKind.UTURN, 0.0, pytest.approx(TURN_SPEC.uturn.expected_seconds)),
     }
 
 
@@ -155,13 +165,13 @@ def test_a_shallow_fork_guided_off_the_straighter_branch_adds_no_turn_wait():
 
 def test_a_bend_without_a_branch_adds_no_wait_even_beside_a_higher_ranked_road():
     """分かれ道の無い点（道のデータの継ぎ目）では道を選ばないので、曲がりの待ちも上位の道の待ちも足さない。
-    足すと、同じカーブでも区間の継ぎ目の位置しだいで経路と所要が変わる。来た道へ戻るUターンの待ちは足す。"""
+    足すと、同じカーブでも区間の継ぎ目の位置しだいで経路と所要が変わる。来た道へ戻るUターンの罰は足す。"""
     graph = make_graph(BEND_NODES, BEND_EDGES)
     lazy = lazy_of(graph)
     ranks = rank_array(lazy, {edge_id: (MAJOR if edge_id in {"BC", "CB"} else MAJOR - 1) for edge_id in BEND_EDGES})
     _, _, structure = build_all(graph, spec=TURN_SPEC, edge_rank=ranks)
     from_a = {
-        target: seconds for (source, target), seconds in transition_seconds(lazy, structure).items()
+        target: seconds for (source, target), seconds in transition_search_seconds(lazy, structure).items()
         if source == "AB"
     }
     assert from_a == pytest.approx({"BC": 0.0, "BA": TURN_SPEC.uturn.expected_seconds})
@@ -209,7 +219,7 @@ def test_crossing_a_higher_ranked_road_adds_a_wait_split_by_straight_or_turning(
     assert seconds[("WC", "CS")] == pytest.approx(
         TURN_SPEC.right.expected_seconds + TURN_SPEC.major_turn.expected_seconds
     )
-    assert seconds[("WC", "CW")] == pytest.approx(TURN_SPEC.uturn.expected_seconds)
+    assert transition_search_seconds(lazy, structure)[("WC", "CW")] == pytest.approx(TURN_SPEC.uturn.expected_seconds)
 
 
 @pytest.mark.parametrize(
@@ -301,7 +311,7 @@ def _entries(lazy, structure):
 
 def test_a_turn_takes_its_share_of_the_wait_and_of_the_kickoff():
     """曲がる所の時間は 割合 × 待ち、漕ぎ出しは割合ぶんの回数（減速だけの左折は、出来事が持つ減った回数）。直進は
-    どちらも0。"""
+    どちらも0。Uターンの秒は罰で時間に入らないが、折り返す漕ぎ出しは数える。"""
     graph = make_graph(PLUS_NODES, PLUS_EDGES)
     spec = dataclasses.replace(TURN_SPEC, right=traffic.StopEvent(share=0.5, wait_seconds=3.0, kickoffs=0.5))
     lazy, _, structure = build_all(graph, spec=spec)
@@ -312,5 +322,5 @@ def test_a_turn_takes_its_share_of_the_wait_and_of_the_kickoff():
 
     assert seconds_and_kickoffs(("WC", "CN")) == pytest.approx((5.0, 0.75))  # 左折（減速）
     assert seconds_and_kickoffs(("WC", "CS")) == pytest.approx((1.5, 0.5))  # 右折（半分の割合で止まる）
-    assert seconds_and_kickoffs(("WC", "CW")) == pytest.approx((20.0, 1.0))  # Uターン
+    assert seconds_and_kickoffs(("WC", "CW")) == pytest.approx((0.0, 1.0))  # Uターン
     assert seconds_and_kickoffs(("WC", "CE")) == pytest.approx((0.0, 0.0))  # 直進

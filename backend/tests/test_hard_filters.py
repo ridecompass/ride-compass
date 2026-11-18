@@ -17,6 +17,7 @@ from app.domain.road_classes import EMPTY_ROAD_CLASSES, class_material_id
 from app.domain.road_avoidance import level_multipliers
 from app.domain.wind_height import WindHeights
 from tests.profile_fixture import grade_profiles
+from tests.tuning_fixture import TUNED
 
 
 def edge(facts: dict[str, str] | None = None) -> EdgeMaterialColumns:
@@ -31,22 +32,22 @@ def edge(facts: dict[str, str] | None = None) -> EdgeMaterialColumns:
     )
 
 
-MULTIPLIERS = level_multipliers(4.0)
+MULTIPLIERS = level_multipliers(TUNED)
 
 
 @pytest.mark.parametrize(
-    ("levels", "excluded", "cost_scale"),
+    ("levels", "excluded", "scaled_by"),
     [
-        ({"kind.national": "pass"}, False, 1.0),
-        ({"kind.national": "avoid"}, False, 4.0),
-        ({"kind.national": "exclude"}, True, 1.0),
+        ({"kind.national": "pass"}, False, "pass"),
+        ({"kind.national": "avoid"}, False, "avoid"),
+        ({"kind.national": "exclude"}, True, "pass"),
         # 1つの道が2つの行に当たれば倍率の大きい方: 「通る」は何も指定していない扱いで、避ける側は好む側より大きい。
-        ({"kind.national": "pass", "surface.gravel": "prefer"}, False, 0.25),
-        ({"kind.national": "avoid", "surface.gravel": "prefer"}, False, 4.0),
-        ({"kind.national": "slight_prefer", "surface.gravel": "prefer"}, False, 0.5),
+        ({"kind.national": "pass", "surface.gravel": "prefer"}, False, "prefer"),
+        ({"kind.national": "avoid", "surface.gravel": "prefer"}, False, "avoid"),
+        ({"kind.national": "slight_prefer", "surface.gravel": "prefer"}, False, "slight_prefer"),
     ],
 )
-def test_the_largest_multiplier_of_the_rows_of_a_road_decides_how_its_segments_are_searched(levels, excluded, cost_scale):
+def test_the_largest_multiplier_of_the_rows_of_a_road_decides_how_its_segments_are_searched(levels, excluded, scaled_by):
     """「通らない」を選んでも国道を通る・「通る」を選んでも国道を避けると、選んだ避け方が探索に効かない。"""
     matrix = build_search_materials(
         edge(facts={class_material_id("kind"): "national", class_material_id("surface"): "gravel"}), {}, (),
@@ -54,7 +55,7 @@ def test_the_largest_multiplier_of_the_rows_of_a_road_decides_how_its_segments_a
 
     masks = compute_search_exclusion(matrix, {**levels, "kind.local": "exclude", "other.national": "exclude"}, MULTIPLIERS)
 
-    assert (masks.excluded.tolist(), masks.cost_scale.tolist()) == ([excluded], [cost_scale])
+    assert (masks.excluded.tolist(), masks.cost_scale.tolist()) == ([excluded], [MULTIPLIERS[scaled_by]])
 
 
 @pytest.mark.parametrize(("tags", "excluded"), [

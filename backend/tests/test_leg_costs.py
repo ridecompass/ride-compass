@@ -33,7 +33,10 @@ from app.domain.road_classes import EMPTY_ROAD_CLASSES
 from app.domain.cycling_speed import STANDARD_TEMPERATURE_C
 from app.domain.wind import WindForecastSeries
 from app.domain.wind_height import WindHeights
-from tests.cost_axes_fixture import cost_axes
+from app.domain.material_catalog import MATERIAL_CATALOG
+from app.domain.route import AxisFact
+from tests.cost_axes_fixture import BAD_AXIS, cost_axes
+from tests.route_world import BAD_MATERIAL
 from tests.profile_fixture import grade_profiles, profiles
 from tests.tuning_fixture import TUNED
 
@@ -44,13 +47,25 @@ COST_SCALE = 3.0
 SURFACE = "class:rolling"
 STOP_DENSITY = dict(zip(leg_costs.POI_COUNT_KINDS, leg_costs.stop_count_material_ids(), strict=True))
 NORTH, SOUTH = 0.0, 180.0
-#: 費目の帳簿の式の係数。`effective_strength`は代償の全体に掛ける強さ。つまみを無効にすると、どの軸も数えず費用は所要時間そのもの。
-STRENGTH = LedgerParameters(effective_strength=0.5, multipliers={}, effort_alpha=1.0, burden_seconds_per_km=100.0,
+#: 費目の帳簿の式の係数。`strength`は代償の全体に掛ける強さ。つまみを無効にすると、どの軸も数えず費用は所要時間そのもの。
+STRENGTH = LedgerParameters(strength=0.5, multipliers={}, effort_alpha=1.0, burden_seconds_per_km=100.0,
                             effort_weight_exponent=0.0, counts=CostPreference().counts)
-NO_PENALTY = dataclasses.replace(STRENGTH, effective_strength=0.0, counts=CostPreference(strength=0.0).counts)
+NO_PENALTY = dataclasses.replace(STRENGTH, strength=0.0, counts=CostPreference(strength=0.0).counts)
 
 #: 取込の範囲全体の分布を持たない（欠けた材料は今までどおり0の扱い）。
-NO_FILLS = MaterialFills(numeric_means={}, class_shares={})
+NO_FILLS = MaterialFills(numeric_means={})
+#: 道のストレスの軸の材料の欠けを埋める重さ（`VIBRATION_AXES`の軸。材料の無い道は無い）。
+NO_BURDEN_FILLS = {"vibration": 0.0}
+
+_LENS = {"thresholds": [1.0], "band_labels": ["a", "b"]}
+_PRESENTATION = {"label": "x", "description": "", "icon_id": "i", "lens": _LENS}
+#: 路面の区分の砂利を1kmあたり重さ1と数える道のストレスの軸`vibration`。
+VIBRATION_AXES = CostAxisDefinitions.model_validate({
+    "effort": {axis_id: _PRESENTATION for axis_id in EFFORT_AXES},
+    "burden": {"vibration": {**_PRESENTATION, "burden": {
+        "kind": "categorical", "material": "class:surface_estimate", "per_km": {"paved": 0.0, "gravel": 1.0}}}},
+    "total_lens": _PRESENTATION,
+})
 
 def _column(values, n: int) -> np.ndarray:
     return np.asarray(values if isinstance(values, (list, tuple, np.ndarray)) else [values] * n, dtype=float)
@@ -92,7 +107,8 @@ CALM_SERIES = _series([0.0, 0.0])
 
 
 def _composer(matrix: SearchMaterials, *, excluded=None, cost_scale=None, series=CALM_SERIES, lazy=None,
-              fills=NO_FILLS, axes: CostAxisDefinitions | None = None, parameters=NO_PENALTY) -> LegCostComposer:
+              fills=NO_FILLS, burden_fills=NO_BURDEN_FILLS, axes: CostAxisDefinitions | None = None,
+              parameters=NO_PENALTY) -> LegCostComposer:
     n = len(matrix.distance_m)
     masks = RoadAvoidanceMasks(
         excluded=np.zeros(n, dtype=bool) if excluded is None else np.asarray(excluded, dtype=bool),
@@ -100,7 +116,7 @@ def _composer(matrix: SearchMaterials, *, excluded=None, cost_scale=None, series
     )
     return LegCostComposer(
         matrix, masks, series, START, CRUISE_KMH,
-        np.arange(n) if lazy is None else np.asarray(lazy), detour_ratio=1.3, material_fills=fills,
+        np.arange(n) if lazy is None else np.asarray(lazy), detour_ratio=1.3, material_fills=fills, burden_fills=burden_fills,
         settings=ModelSettings(TUNED, EMPTY_ROAD_CLASSES, cost_axes() if axes is None else axes), parameters=parameters,
     )
 
@@ -132,18 +148,10 @@ def test_the_travel_time_runs_the_points_of_the_road_profile_not_its_average_gra
 def test_the_ledger_formula_adds_the_penalty_of_each_road_to_its_travel_time():
     """費用 ＝ 所要時間 ＋ つまみ × 代償（平らな舗装の道は代償0、砂利の道は道のストレスの分だけ高い）。所要時間は強さに
     依らない。"""
-    lens = {"thresholds": [1.0], "band_labels": ["a", "b"]}
-    presentation = {"label": "x", "description": "", "icon_id": "i", "lens": lens}
-    axes = CostAxisDefinitions.model_validate({
-        "effort": {axis_id: presentation for axis_id in EFFORT_AXES},
-        "burden": {"vibration": {**presentation, "burden": {
-            "kind": "categorical", "material": "class:surface_estimate", "per_km": {"paved": 0.0, "gravel": 1.0}}}},
-        "total_lens": presentation,
-    })
     matrix = _matrix(2, distance=1000.0, categories={"class:surface_estimate": ["paved", "gravel"]})
 
-    leg = _snapshot(matrix, axes=axes, parameters=STRENGTH)
-    plain = _snapshot(matrix, axes=axes)
+    leg = _snapshot(matrix, axes=VIBRATION_AXES, parameters=STRENGTH)
+    plain = _snapshot(matrix, axes=VIBRATION_AXES)
 
     assert leg.travel_seconds_lazy.tolist() == pytest.approx(plain.travel_seconds_lazy.tolist())
     assert (leg.cost_lazy - leg.travel_seconds_lazy).tolist() == pytest.approx([0.0, 0.5 * 100.0 * 1.0 * 1.0])
@@ -151,7 +159,7 @@ def test_the_ledger_formula_adds_the_penalty_of_each_road_to_its_travel_time():
 
 def test_a_segment_without_a_stop_count_waits_the_mean_of_the_whole_network():
     """停止要因の数の無い区間は、取込の範囲全体の平均の密度で待つ（0とみなすと、数の無い道が止まらない速い道に見える）。"""
-    fills = MaterialFills(numeric_means={STOP_DENSITY["signal"]: 2.0}, class_shares={})
+    fills = MaterialFills(numeric_means={STOP_DENSITY["signal"]: 2.0})
     leg = _snapshot(_matrix(3, distance=500.0, materials={STOP_DENSITY["signal"]: [2.0, np.nan, 0.0]}), fills=fills)
 
     assert leg.travel_seconds_lazy[1] == pytest.approx(leg.travel_seconds_lazy[0])
@@ -174,13 +182,39 @@ def test_an_excluded_segment_cannot_be_passed():
     assert np.isfinite(leg.cost_lazy[1])
 
 
-def test_a_segment_to_avoid_costs_more_and_one_to_prefer_costs_less_but_both_take_the_same_time():
-    """避け方の倍率は費用にだけ掛かる。倍率が所要時間へ混ざると、避けた道・好む道を通った候補の所要時間と到着の予想が延び縮みする。"""
-    leg = _snapshot(_matrix(3), cost_scale=[COST_SCALE, 1.0, 1.0 / COST_SCALE])
+def test_the_avoidance_multiplier_scales_only_the_travel_time_in_the_cost():
+    """避け方の倍率は費用の中の所要時間にだけ掛かり、代償（道のストレス）にも予想の所要時間にも掛からない。代償に掛かると、
+    負担の重い道ほど「好む」で大きく割り引かれ、避ける・好むの強さが道の負担で変わる。所要時間に混ざると、避けた道・好む道を
+    通った候補の所要時間と到着の予想が延び縮みする。区間の内訳の避け方の秒も、所要時間に倍率を掛けた分だけ。"""
+    matrix = _matrix(3, categories={"class:surface_estimate": ["gravel"] * 3})
+    scales = [COST_SCALE, 1.0, 1.0 / COST_SCALE]
 
-    assert leg.cost_lazy[0] == pytest.approx(COST_SCALE * leg.cost_lazy[1])
-    assert leg.cost_lazy[2] == pytest.approx(leg.cost_lazy[1] / COST_SCALE)
-    assert leg.travel_seconds_lazy.tolist() == pytest.approx([leg.travel_seconds_lazy[1]] * 3)
+    leg, shown = _shown(matrix, cost_scale=scales, axes=VIBRATION_AXES, parameters=STRENGTH)
+
+    travel = leg.travel_seconds_lazy[1]
+    penalty = 0.5 * 100.0 * 1.0  # つまみ × β × 重さ × km
+    assert leg.travel_seconds_lazy.tolist() == pytest.approx([travel] * 3)
+    assert leg.cost_lazy.tolist() == pytest.approx([scale * travel + penalty for scale in scales])
+    assert shown.avoided_seconds.tolist() == pytest.approx([(COST_SCALE - 1.0) * travel, 0.0, 0.0])
+    assert shown.preferred_seconds.tolist() == pytest.approx([0.0, 0.0, (1.0 / COST_SCALE - 1.0) * travel])
+
+
+@pytest.mark.parametrize(("values", "expected"), [([np.nan, 0.5], 0.5), ([np.nan, 0.0], None)])
+def test_the_fact_of_a_numeric_axis_is_the_value_of_the_road_that_has_it_and_weighs_most(values, expected):
+    """数の材料の軸の事実は、材料の値のある区間のうち、その軸の秒に一番効いた区間の値。材料の無い区間の秒は取込の範囲全体の重さの
+    平均から出て、その区間に値が無いので、事実にすると負担の秒を説明しない値（材料の値の平均等）を見せる。値のある区間の秒が
+    どれも0なら、事実を出さない。"""
+    matrix = _matrix(2, materials={BAD_MATERIAL: values})
+    composer = _composer(matrix, axes=cost_axes(BAD_MATERIAL), parameters=STRENGTH, burden_fills={BAD_AXIS: 2.0})
+    leg = composer.compose("leg", 0.0, +1)
+    rows = np.arange(2)
+    shown = composer.values_at_rows(rows, leg.bin_times[0])
+    assert shown.penalty_by_axis[BAD_AXIS][0] > shown.penalty_by_axis[BAD_AXIS][1]  # 材料の無い区間のほうが重い
+
+    facts = composer.axis_facts(rows, shown.penalty_by_axis, None, shown.headwind_ms, 0.0)
+
+    bad = MATERIAL_CATALOG[BAD_MATERIAL]
+    assert facts.get(BAD_AXIS) == (None if expected is None else AxisFact(label=bad.label, value=expected, unit=bad.unit))
 
 
 # --- 探索の行順 ---------------------------------------------------------------

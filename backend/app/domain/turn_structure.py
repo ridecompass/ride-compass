@@ -11,7 +11,7 @@ import numpy as np
 
 from app.domain.geo import LatLonPoint, bearing_between
 from app.domain.search_graph import EDGE_VALUE_DTYPE, SEARCH_INDEX_DTYPE, CsrGraphStructure, LazyRoadGraph
-from app.domain.traffic import MAJOR_CROSSING_MIN_RANK, NO_EVENT, StopEvent, stop_event
+from app.domain.traffic import INTERSECTION_DEGREE_THRESHOLD, MAJOR_CROSSING_MIN_RANK, NO_EVENT, StopEvent, stop_event
 from app.domain.tuning import Tuning
 
 
@@ -62,7 +62,8 @@ class TurnExpandedStructure:
     indptr: np.ndarray
     # 遷移先の状態（区間の番号）。
     target_state: np.ndarray
-    # 遷移ごとの曲がる所の時間（秒。割合 × 待ちの和）。予想時間と時刻の通過が読み、利用者の好みで変わらない。
+    # 遷移ごとの曲がる所の時間（秒。割合 × 待ちの和）。予想時間と時刻の通過が読み、利用者の好みで変わらない。罰
+    # （`PENALTY_TURNS`）は実際に失う時間ではないので入れず、遷移の費用を組む所が種類から足す（`turn_search_seconds`）。
     turn_seconds: np.ndarray
     # 遷移ごとの漕ぎ出しを、止まる出来事の回数に換えた期待値（体力の慣性の費目）。構造は利用者に依らない値だけを持ち、
     # 費用は探索の呼び手が遷移ごとの配列として渡す（`domain/routing.py`の`transition_cost`）。
@@ -158,12 +159,13 @@ def build_turn_expanded_structure(
 
     状態`e`の遷移先は「`e`の終点Nodeから出る有向Edge」で、遷移の数は
     Σ(入次数×出次数)。`e`の始点へ戻る遷移はUターンとして扱う（禁止はしない——袋小路からの
-    折り返しに必要なため、費用で抑える）。
+    折り返しに必要なため、罰（`PENALTY_TURNS`）で抑える）。
 
     曲がりは、入る区間の終点のそばの向き`end_bearing_deg`と出る区間の始点のそばの向き`start_bearing_deg`
     （どちらも区間の番号順）の差で測る。区間の端から端の向きで測ると、交差点から離れた所のカーブが
-    交差点の曲がりに混ざる。曲がりの待ちと上位の道の待ちは、3本以上の道が集まる点（分かれ道。本数は
-    `node_branch_count`）でだけ足す——分かれ道でない点は道のデータの継ぎ目で、道を選ばない。本数は進めない道
+    交差点の曲がりに混ざる。曲がりの待ちと上位の道の待ちは、交差点とみなす本数
+    （`domain/traffic.py: INTERSECTION_DEGREE_THRESHOLD`）以上の道が集まる点（分かれ道。本数は`node_branch_count`）でだけ
+    足す——分かれ道でない点は道のデータの継ぎ目で、道を選ばない。本数は進めない道
     （向こうから来る一方通行）も、部分グラフの外へ出る道も数える。進める道だけで数えると、進めない道のある交差点の
     曲がりが継ぎ目に見え、待ちも案内も消える。
 
@@ -189,7 +191,7 @@ def build_turn_expanded_structure(
     target_state = csr.entry_edge_index[entry_index].astype(np.int64)
     is_uturn = csr.indices[entry_index].astype(np.int64) == edge_from[source]
     delta = (start_bearing_deg[target_state] - end_bearing_deg[source] + 180.0) % 360.0 - 180.0
-    branch = node_branch_count[edge_to[source]] >= 3
+    branch = node_branch_count[edge_to[source]] >= INTERSECTION_DEGREE_THRESHOLD
     wait_kind = _turn_kinds(delta, is_uturn, branch, spec)
     straight = wait_kind == TurnKind.STRAIGHT
 
@@ -225,16 +227,48 @@ def build_turn_expanded_structure(
     )
 
 
+#: 実際に時間を失う出来事ではなく、選ばせないための罰の曲がり。秒は探索の重みにだけ足し、予想の所要時間には入れない
+#: （Uターンは、禁じると行き止まりから出られないので、罰で行き止まりのほかでは選ばせない）。
+PENALTY_TURNS = frozenset({TurnKind.UTURN})
+#: 罰の曲がりの扱いを、利用者に言う文（罰は候補の負担に入る）。罰の曲がりを変えたら、ここも変える。
+TURN_PENALTY_WORDING = "折り返し[Uターン]は、選ばれにくくするための分を所要時間に入れず、負担に入れます"
+
+
+def _turn_events(spec: TurnCostSpec) -> tuple[StopEvent, ...]:
+    """曲がり方ごとの出来事（`TurnKind`の順。直進は出来事が無い）。"""
+    return (NO_EVENT, spec.left, spec.right, spec.uturn)
+
+
+def _penalty_table(spec: TurnCostSpec) -> np.ndarray:
+    """曲がり方（`TurnKind`の値）を添字にした、罰の秒（罰の曲がりでなければ0）。"""
+    return np.array([event.expected_seconds if kind in PENALTY_TURNS else 0.0
+                     for kind, event in zip(TurnKind, _turn_events(spec), strict=True)], dtype=EDGE_VALUE_DTYPE)
+
+
 def _turn_tables(spec: TurnCostSpec) -> tuple[np.ndarray, np.ndarray]:
-    """曲がり方（`TurnKind`の値）＋ 4 ×上位の道（0＝無し・1＝横断・2＝右左折）を添字にした、遷移の時間（秒）と漕ぎ出しの
-    回数の表。上位の道の待ちは曲がりの待ちに足し、漕ぎ出しは同じ所で1回しか起きないので重なる出来事の大きい方だけを数える。"""
-    turning = (NO_EVENT, spec.left, spec.right, spec.uturn)  # `TurnKind`の順。直進は出来事が無い
+    """曲がり方（`TurnKind`の値）＋ 4 ×上位の道（0＝無し・1＝横断・2＝右左折）を添字にした、遷移の時間（秒。罰の曲がりの罰は
+    入れない）と漕ぎ出しの回数の表。上位の道の待ちは曲がりの待ちに足し、漕ぎ出しは同じ所で1回しか起きないので重なる出来事の
+    大きい方だけを数える。"""
+    penalties = _penalty_table(spec)
     seconds, kickoffs = [], []
     for major in (NO_EVENT, spec.major_crossing, spec.major_turn):
-        for event in turning:
-            seconds.append(event.expected_seconds + major.expected_seconds)
+        for kind, event in zip(TurnKind, _turn_events(spec), strict=True):
+            seconds.append(event.expected_seconds - float(penalties[kind]) + major.expected_seconds)
             kickoffs.append(max(event.kickoffs, major.kickoffs))
     return np.array(seconds, dtype=EDGE_VALUE_DTYPE), np.array(kickoffs, dtype=EDGE_VALUE_DTYPE)
+
+
+def turn_search_seconds(structure: TurnExpandedStructure, spec: TurnCostSpec) -> np.ndarray:
+    """遷移ごとの探索の重み（秒、`structure`の遷移の並び）: 時間に、罰の曲がり（`PENALTY_TURNS`。曲がりの種類
+    `TurnExpandedStructure.turn_kind`で見分ける）の罰を足したもの。所要時間だけで選ぶ経路はこれを遷移の費用にし、費用で選ぶ経路は
+    これに漕ぎ出しの代償を足す（`domain/ledger_costs.py: LedgerCosts.transition_costs`）。探索ごとに組み、構造には持たない。"""
+    return structure.turn_seconds + _penalty_table(spec)[structure.turn_kind]
+
+
+def turn_penalties_along(structure: TurnExpandedStructure, entries: Sequence[int | None], spec: TurnCostSpec) -> list[float]:
+    """経路に沿った遷移ごとの罰の秒（`entries`は`TurnExpandedStructure.entries_along`。遷移が無ければ0）。"""
+    penalties = _penalty_table(spec)
+    return [0.0 if entry is None else float(penalties[structure.turn_kind[entry]]) for entry in entries]
 
 
 def _guided_turn_kinds(

@@ -62,6 +62,7 @@ describe("RouteProfile", () => {
             axis_seconds: { ascent: 300, vibration: 60, stopping: 120 },
             preferred_seconds: 0,
             avoided_seconds: 120,
+            turn_penalty_seconds: 0,
             total_seconds: 600,
           },
           // 区分の事実は値を持たず、区分の名前だけを出す。

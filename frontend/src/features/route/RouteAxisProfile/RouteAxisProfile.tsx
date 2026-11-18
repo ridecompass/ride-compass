@@ -11,7 +11,7 @@ import routeGenerateConfig from "@/types/generated/route-generate-config.json";
 import type { PenaltyBreakdown as PenaltyValues } from "@/types/route";
 
 interface RouteAxisProfileProps {
-  /** RouteCandidate.penalty（軸ごとの代償の秒と、好む道・避ける道で増減した秒）。 */
+  /** RouteCandidate.penalty（軸ごとの代償の秒と、好む道・避ける道で増減した秒と、曲がる所の罰の秒）。 */
   penalty: PenaltyValues;
   /** RouteCandidate.estimated_duration_seconds（走行＋停止＋ターンの見積もり）。 */
   estimatedDurationSeconds: number | null;
@@ -53,7 +53,8 @@ export default function RouteAxisProfile({
                 `候補は、最速の1本を比べる基準として先頭に置き、残りを${routeGenerateConfig.candidate_order_wording}に並べます。` +
                 `グラフの右上の一覧は、負担を種類ごとに分けたものです${turnKickoffNote}。` +
                 `${ROAD_SETTINGS_TAB_NAME}のタブで好むとした道を通って減った分[−]と、避けるとした道を通って増えた分も、` +
-                "この負担に入ります。その区間は、地図のルートの線の両脇の線で示します。"}
+                "この負担に入ります。その区間は、地図のルートの線の両脇の線で示します。" +
+                `${routeGenerateConfig.turn_penalty_wording}。`}
             </p>
           </InfoPopover>
         </span>

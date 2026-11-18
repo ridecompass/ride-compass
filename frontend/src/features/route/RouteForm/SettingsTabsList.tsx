@@ -20,7 +20,7 @@ const settingsTabs = (axisNames: string): readonly { value: SettingsTab; label: 
   {
     value: "exclusions",
     label: ROAD_SETTINGS_TAB_NAME,
-    usage: "道路の種類ごとに、区間の費用に掛ける倍率を選びます。",
+    usage: "道路の種類ごとに、区間の所要時間に掛けて費用にする倍率を選びます。",
   },
   { value: "saved", label: "保存済み", usage: "名前を付けて保存した地点とプリセット[設定]を並べ、呼び出します。" },
 ];

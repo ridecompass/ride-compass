@@ -14,6 +14,7 @@ from hypothesis import given
 from hypothesis import strategies as st
 
 from app.domain import route_diversity, routing, tree_paths
+from app.domain.turn_structure import turn_search_seconds
 from tests.search_graph_world import (
     LINE_EDGES,
     LINE_NODES,
@@ -78,18 +79,19 @@ def test_junction_includes_the_turn_cost_at_the_meeting_node():
     lazy, statics, structure = build_all(graph, spec=TURN_SPEC)
     states = state_index(lazy)
     cost = np.ones(structure.state_count)
+    transition = turn_search_seconds(structure, TURN_SPEC)
     forward = routing.build_turn_expanded_tree(
         structure, cost, statics.edge_length_m, np.array([states["WC"]], dtype=np.int64),
         lazy.node_count,
-        edge_seconds=np.ones(structure.state_count), transition_cost=structure.turn_seconds
+        edge_seconds=np.ones(structure.state_count), transition_cost=transition
     )
     backward = routing.build_turn_expanded_tree(
         structure, cost, statics.edge_length_m, np.array([states["CN"]], dtype=np.int64),
         lazy.node_count, reverse=True,
-        edge_seconds=np.ones(structure.state_count), transition_cost=structure.turn_seconds
+        edge_seconds=np.ones(structure.state_count), transition_cost=transition
     )
     junction = tree_paths.combine_forward_backward_at_nodes(
-        structure, forward, backward, lazy.node_count, transition_cost=structure.turn_seconds
+        structure, forward, backward, lazy.node_count, transition_cost=transition
     )
     center = lazy.node_id_to_index["C"]
     assert junction.cost[center] == pytest.approx(1.0 + TURN_SPEC.left.expected_seconds + 1.0)
