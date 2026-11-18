@@ -220,13 +220,21 @@ def test_retracing_a_preferred_road_is_penalized_as_much_as_a_plain_road_of_the_
     assert added[0] == added[1] > 0
 
 
-def test_loops_are_ordered_by_the_penalty_per_km_and_destinations_by_the_cost():
-    """長い周回（20km・代償400秒）は短い周回（5km・代償200秒）より代償の総量が多いが、1kmあたりでは少ない。周回の一覧は
+def test_loops_are_ordered_by_the_cost_per_km_and_destinations_by_the_cost():
+    """長い周回（20km・費用4000秒）は短い周回（5km・費用1100秒）より費用の総量が多いが、1kmあたりでは少ない。周回の一覧は
     距離の違う候補を並べるので、総量で並べると短い周回が常に先頭になる。目的地は同じ所へ着く候補どうしなので費用で並べる。"""
     long_loop, short_loop = draft(20.0, 3600.0, 4000.0), draft(5.0, 900.0, 1100.0)
 
     assert sorted([short_loop, long_loop], key=lambda c: candidate_order(c, loop=True)) == [long_loop, short_loop]
     assert sorted([long_loop, short_loop], key=lambda c: candidate_order(c, loop=False)) == [short_loop, long_loop]
+
+
+def test_loops_count_the_time_as_well_as_the_penalty():
+    """周回は1kmあたりの代償だけでなく、所要時間も入れた1kmあたりの費用で並べる（探索が最小にした費用と同じ考え方）。
+    遅い周回（10km・所要時間3000秒・代償100秒）は代償が少ないが、速い周回（10km・1800秒・代償300秒）より費用が多い。"""
+    slow, quick = draft(10.0, 3000.0, 3100.0), draft(10.0, 1800.0, 2100.0)
+
+    assert sorted([slow, quick], key=lambda c: candidate_order(c, loop=True)) == [quick, slow]
 
 
 def test_a_loop_without_a_duration_goes_last():

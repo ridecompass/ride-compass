@@ -24,7 +24,7 @@ interface RouteListEntry<T> {
   label: string;
 }
 
-/** 一覧の先頭に置く、所要時間だけで探した候補の名前。 */
+/** 一覧の先頭に置く、backendが最速の印を付けた候補の名前。 */
 const FASTEST_ROUTE_NAME = "最速";
 
 type ListedRoute = Pick<RouteCandidate, "id" | "is_fastest">;
@@ -58,8 +58,8 @@ type TimedRoute = Pick<RouteCandidate, "id" | "estimated_duration_seconds" | "is
 
 /**
  * 時間の列の基準線（そのidと所要時間）。最速の印の付いた1本があればそれ（一覧の「最速」と同じ1本と比べる）、
- * 無ければ一覧の中で最も所要時間が短い候補（同着は先に来た方）。候補が1件以下・基準線の所要時間が無いならnull
- * （比べる相手が無い）。
+ * 無ければ一覧の中で最も所要時間が短い候補（同着は先に来た方。生成した候補が1本だけで合成を足したとき等、backendが印を
+ * 付けない一覧）。候補が1件以下・基準線の所要時間が無いならnull（比べる相手が無い）。
  */
 export function durationBaseline(routes: readonly TimedRoute[]): { id: string; seconds: number } | null {
   if (routes.length < 2) return null;
