@@ -1,5 +1,6 @@
 "use client";
 
+import { Spinner } from "@/components/ui/Spinner/Spinner";
 import { textVariants } from "@/components/ui/Text/Text";
 import { cn } from "@/lib/cn";
 
@@ -12,7 +13,7 @@ export default function MapLoadStatus({ loading, failed }: { loading: boolean; f
           className="pointer-events-none absolute inset-0 z-5 flex flex-col items-center justify-center gap-2.5 bg-[var(--color-surface-2)]"
           aria-hidden="true"
         >
-          <span className="size-7 animate-spin rounded-full border-3 border-[var(--color-border-strong)] border-t-[var(--color-accent)] motion-reduce:animate-none" />
+          <Spinner className="size-7 border-3" />
           <span className={cn(textVariants({ variant: "hint" }), "text-[var(--color-muted-strong)]")}>
             地図を読み込み中…
           </span>

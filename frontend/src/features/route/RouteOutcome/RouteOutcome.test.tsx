@@ -72,6 +72,14 @@ describe("候補の上の知らせ", () => {
     }
   });
 
+  it("作り直している間は、並んでいる候補の上に進み方を出す", () => {
+    renderOutcome({
+      generation: generationOf({ running: true, progressLabel: "生成中...(3秒経過)" }),
+      results: resultsOf({ generated: [FAST, SLOW] }),
+    });
+    expect(screen.getByText("生成中...(3秒経過)")).toBeInTheDocument();
+  });
+
   it.each([
     ["2026-11-16T15:00", "11/16 15:00から先の風は、前の予報の値です。"],
     [null, null],

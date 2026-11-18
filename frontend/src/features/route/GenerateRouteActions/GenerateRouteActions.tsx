@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/Button/Button";
 import { dotVariants } from "@/components/ui/Dot/Dot";
 import { GenerateRoutesIcon } from "@/components/ui/icons/lucideIcons";
 import InfoPopover from "@/components/ui/InfoPopover/InfoPopover";
+import { Spinner } from "@/components/ui/Spinner/Spinner";
 import type { useRouteGeneration } from "@/features/route/useRouteGeneration";
 import { ROAD_SETTINGS_TAB_NAME } from "@/lib/screenNames";
 
@@ -29,9 +30,15 @@ export default function GenerateRouteActions({ generation }: GenerateRouteAction
         size="panelIcon"
         onClick={() => void generation.submit()}
         aria-label={generation.running ? generation.progressLabel : "ルート生成"}
+        aria-busy={generation.running}
         usage={`いまの条件・負担・${ROAD_SETTINGS_TAB_NAME}でルートの候補を作ります。候補は「ルート結果」に並び、地図に線が出ます。`}
       >
-        <GenerateRoutesIcon size={18} />
+        {/* 押したことが分かるよう、作っている間は形を回る輪に替える（結果は別の画面に出るので、押した所で知らせる）。 */}
+        {generation.running ? (
+          <Spinner className="size-[18px] border-2 border-current border-t-transparent" />
+        ) : (
+          <GenerateRoutesIcon size={18} />
+        )}
       </Button>
     </div>
   );
