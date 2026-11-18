@@ -679,7 +679,7 @@ HILLSHADE_HIGHLIGHT_COLOR = f"rgba(255, 252, 245, {AREA_OPACITY})"
 TERRAIN_EXAGGERATION = 5
 
 #: 気象の記号。風は速さで大きさを変え、`WIND_FULL_SCALE_MS`で上限に達する。
-WIND_ICON_SCALE_RANGE: tuple[float, float] = (0.9, 2.6)
+WIND_ICON_SCALE_RANGE: tuple[float, float] = (0.8, 1.4)
 WIND_FULL_SCALE_MS = 15
 LIGHTNING_ICON_SCALE = 0.8
 #: 記号を拡大する曲線（ズーム→倍率）。**気象の記号はどれも同じ曲線で拡大する**——家族ごとに別の曲線を使うと、

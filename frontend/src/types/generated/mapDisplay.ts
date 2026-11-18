@@ -802,8 +802,8 @@ export const mapDisplay = {
   },
   "weather": {
     "windIconScaleRange": [
-      0.9,
-      2.6
+      0.8,
+      1.4
     ],
     "windFullScaleMs": 15,
     "lightningIconScale": 0.8,
