@@ -145,7 +145,7 @@ class LedgerCosts:
 
     def transition_costs(self, turn_search_seconds: np.ndarray, turn_kickoffs: np.ndarray) -> np.ndarray:
         """曲がる所の費用（秒、遷移ごと。`turn_search_seconds`の型のまま）: 探索の重み（時間に罰を足したもの。
-        `domain/turn_structure.py: TurnExpandedStructure.turn_search_seconds`）に、漕ぎ出しの回数 × 漕ぎ出し1回の代償を足したもの。
+        `domain/turn_structure.py: turn_search_seconds`）に、漕ぎ出しの回数 × 漕ぎ出し1回の代償を足したもの。
         区間の止まる出来事と同じ換算。"""
         if self._kickoff_seconds == 0.0:
             return turn_search_seconds

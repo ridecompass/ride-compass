@@ -33,7 +33,10 @@ from app.domain.road_classes import EMPTY_ROAD_CLASSES
 from app.domain.cycling_speed import STANDARD_TEMPERATURE_C
 from app.domain.wind import WindForecastSeries
 from app.domain.wind_height import WindHeights
-from tests.cost_axes_fixture import cost_axes
+from app.domain.material_catalog import MATERIAL_CATALOG
+from app.domain.route import AxisFact
+from tests.cost_axes_fixture import BAD_AXIS, cost_axes
+from tests.route_world import BAD_MATERIAL
 from tests.profile_fixture import grade_profiles, profiles
 from tests.tuning_fixture import TUNED
 
@@ -50,7 +53,9 @@ STRENGTH = LedgerParameters(strength=0.5, multipliers={}, effort_alpha=1.0, burd
 NO_PENALTY = dataclasses.replace(STRENGTH, strength=0.0, counts=CostPreference(strength=0.0).counts)
 
 #: 取込の範囲全体の分布を持たない（欠けた材料は今までどおり0の扱い）。
-NO_FILLS = MaterialFills(numeric_means={}, burden_per_km={"vibration": 0.0})
+NO_FILLS = MaterialFills(numeric_means={})
+#: 道のストレスの軸の材料の欠けを埋める重さ（`VIBRATION_AXES`の軸。材料の無い道は無い）。
+NO_BURDEN_FILLS = {"vibration": 0.0}
 
 _LENS = {"thresholds": [1.0], "band_labels": ["a", "b"]}
 _PRESENTATION = {"label": "x", "description": "", "icon_id": "i", "lens": _LENS}
@@ -102,7 +107,8 @@ CALM_SERIES = _series([0.0, 0.0])
 
 
 def _composer(matrix: SearchMaterials, *, excluded=None, cost_scale=None, series=CALM_SERIES, lazy=None,
-              fills=NO_FILLS, axes: CostAxisDefinitions | None = None, parameters=NO_PENALTY) -> LegCostComposer:
+              fills=NO_FILLS, burden_fills=NO_BURDEN_FILLS, axes: CostAxisDefinitions | None = None,
+              parameters=NO_PENALTY) -> LegCostComposer:
     n = len(matrix.distance_m)
     masks = RoadAvoidanceMasks(
         excluded=np.zeros(n, dtype=bool) if excluded is None else np.asarray(excluded, dtype=bool),
@@ -110,7 +116,7 @@ def _composer(matrix: SearchMaterials, *, excluded=None, cost_scale=None, series
     )
     return LegCostComposer(
         matrix, masks, series, START, CRUISE_KMH,
-        np.arange(n) if lazy is None else np.asarray(lazy), detour_ratio=1.3, material_fills=fills,
+        np.arange(n) if lazy is None else np.asarray(lazy), detour_ratio=1.3, material_fills=fills, burden_fills=burden_fills,
         settings=ModelSettings(TUNED, EMPTY_ROAD_CLASSES, cost_axes() if axes is None else axes), parameters=parameters,
     )
 
@@ -153,7 +159,7 @@ def test_the_ledger_formula_adds_the_penalty_of_each_road_to_its_travel_time():
 
 def test_a_segment_without_a_stop_count_waits_the_mean_of_the_whole_network():
     """停止要因の数の無い区間は、取込の範囲全体の平均の密度で待つ（0とみなすと、数の無い道が止まらない速い道に見える）。"""
-    fills = MaterialFills(numeric_means={STOP_DENSITY["signal"]: 2.0}, burden_per_km={})
+    fills = MaterialFills(numeric_means={STOP_DENSITY["signal"]: 2.0})
     leg = _snapshot(_matrix(3, distance=500.0, materials={STOP_DENSITY["signal"]: [2.0, np.nan, 0.0]}), fills=fills)
 
     assert leg.travel_seconds_lazy[1] == pytest.approx(leg.travel_seconds_lazy[0])
@@ -191,6 +197,24 @@ def test_the_avoidance_multiplier_scales_only_the_travel_time_in_the_cost():
     assert leg.cost_lazy.tolist() == pytest.approx([scale * travel + penalty for scale in scales])
     assert shown.avoided_seconds.tolist() == pytest.approx([(COST_SCALE - 1.0) * travel, 0.0, 0.0])
     assert shown.preferred_seconds.tolist() == pytest.approx([0.0, 0.0, (1.0 / COST_SCALE - 1.0) * travel])
+
+
+@pytest.mark.parametrize(("values", "expected"), [([np.nan, 0.5], 0.5), ([np.nan, 0.0], None)])
+def test_the_fact_of_a_numeric_axis_is_the_value_of_the_road_that_has_it_and_weighs_most(values, expected):
+    """数の材料の軸の事実は、材料の値のある区間のうち、その軸の秒に一番効いた区間の値。材料の無い区間の秒は取込の範囲全体の重さの
+    平均から出て、その区間に値が無いので、事実にすると負担の秒を説明しない値（材料の値の平均等）を見せる。値のある区間の秒が
+    どれも0なら、事実を出さない。"""
+    matrix = _matrix(2, materials={BAD_MATERIAL: values})
+    composer = _composer(matrix, axes=cost_axes(BAD_MATERIAL), parameters=STRENGTH, burden_fills={BAD_AXIS: 2.0})
+    leg = composer.compose("leg", 0.0, +1)
+    rows = np.arange(2)
+    shown = composer.values_at_rows(rows, leg.bin_times[0])
+    assert shown.penalty_by_axis[BAD_AXIS][0] > shown.penalty_by_axis[BAD_AXIS][1]  # 材料の無い区間のほうが重い
+
+    facts = composer.axis_facts(rows, shown.penalty_by_axis, None, shown.headwind_ms, 0.0)
+
+    bad = MATERIAL_CATALOG[BAD_MATERIAL]
+    assert facts.get(BAD_AXIS) == (None if expected is None else AxisFact(label=bad.label, value=expected, unit=bad.unit))
 
 
 # --- 探索の行順 ---------------------------------------------------------------

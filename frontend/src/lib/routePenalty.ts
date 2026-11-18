@@ -1,5 +1,5 @@
-// ルートの応答の代償の内訳（`penalty`。軸ごとの秒と、避け方の倍率が好む道で下げた秒・避ける道で上乗せした秒と、その和）を、
-// 画面が読む形にする。候補・区間・編集の差が同じ形を読む。
+// ルートの応答の代償の内訳（`penalty`。軸ごとの秒と、避け方の倍率が好む道で下げた秒・避ける道で上乗せした秒と、曲がる所の罰の秒と、
+// その和）を、画面が読む形にする。候補・区間・編集の差が同じ形を読む。
 
 import { formatDurationShort, formatMinutes, roundedMinutes } from "@/lib/duration";
 import { formatLensNumber } from "@/lib/mapDisplay/costLensPaint";

@@ -32,7 +32,7 @@ from app.domain.route_search import (
 from app.domain.search_graph import LazyRoadGraph, SearchGraphStatics, edge_index_between
 from app.domain.node_spatial_index import NodeSpatialIndex, snap_to_accessible_node
 from app.domain.tuning import Tuning
-from app.domain.turn_structure import TurnExpandedStructure
+from app.domain.turn_structure import TurnCostSpec, TurnExpandedStructure
 from app.domain.route_diversity import lengths_by_physical_segment
 from app.domain.wind import (
     is_usable_detour_ratio,
@@ -76,8 +76,10 @@ class RoadGraphContext:
     # 状態＝有向Edge・辺＝ターンの遷移構造（`statics.csr`から導く。起点にもコストにも
     # 依存しないためリクエスト内で共有する）。
     turn_structure: TurnExpandedStructure
+    # 曲がる所の出来事（`turn_structure`を組んだのと同じもの）。罰の曲がりの罰の秒を、遷移の費用を組む所が種類から足す。
+    turn_spec: TurnCostSpec
     # 遷移ごとの曲がる所の費用（秒、`turn_structure`の遷移の並び）。区間の費用と同じく利用者ごとに変わりうる値なので、
-    # 構造ではなく文脈が持ち、探索・木の費用の上界・繋ぎ目へ値で渡す。漕ぎ出しの代償を費用に足すまでは時間そのもの。
+    # 構造ではなく文脈が持ち、探索・木の費用の上界・繋ぎ目へ値で渡す。時間に罰と漕ぎ出しの代償を足したもの。
     transition_cost: np.ndarray
     # 較正値（`composer`を組んだのと同じもの）。探索の選び方の値を読む。
     tuning: Tuning

@@ -4568,6 +4568,10 @@
             "type": "number",
             "title": "Avoided Seconds"
           },
+          "turn_penalty_seconds": {
+            "type": "number",
+            "title": "Turn Penalty Seconds"
+          },
           "total_seconds": {
             "type": "number",
             "title": "Total Seconds",
@@ -4580,6 +4584,7 @@
           "axis_seconds",
           "preferred_seconds",
           "avoided_seconds",
+          "turn_penalty_seconds",
           "total_seconds"
         ],
         "title": "PenaltyBreakdown"

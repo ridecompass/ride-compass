@@ -25,6 +25,7 @@ function renderProfile(props: Partial<Props> = {}) {
         axis_seconds: { ascent: 300, vibration: 0 },
         preferred_seconds: 0,
         avoided_seconds: 120,
+        turn_penalty_seconds: 0,
         total_seconds: 420,
       }}
       estimatedDurationSeconds={3720}

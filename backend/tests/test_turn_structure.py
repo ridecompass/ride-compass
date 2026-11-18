@@ -25,14 +25,15 @@ from tests.search_graph_world import (
 
 
 def transitions(lazy, structure):
-    """`(遷移元edge_id, 遷移先edge_id) -> (曲がりの種類, ターンの秒数, 探索の重みの秒数)`。"""
+    """`(遷移元edge_id, 遷移先edge_id) -> (曲がりの種類, ターンの秒数, 探索の重みの秒数)`。`structure`は`TURN_SPEC`で組んだもの。"""
+    search = turn_structure.turn_search_seconds(structure, TURN_SPEC)
     out = {}
     for source in range(structure.state_count):
         for entry in range(int(structure.indptr[source]), int(structure.indptr[source + 1])):
             target = int(structure.target_state[entry])
             out[(lazy.edge_ids[source], lazy.edge_ids[target])] = (
                 turn_structure.TurnKind(int(structure.turn_kind[entry])), float(structure.turn_seconds[entry]),
-                float(structure.turn_search_seconds[entry]))
+                float(search[entry]))
     return out
 
 

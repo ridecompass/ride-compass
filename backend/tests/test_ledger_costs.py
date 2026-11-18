@@ -13,14 +13,14 @@ import pytest
 from app.domain.attributes import CategoricalColumn
 from app.domain.cost_axes import EFFORT_AXES, CostAxisDefinitions
 from app.domain.cycling_speed import RiderProfile, SegmentRide, kickoff_extra_j, wheel_power_w
-from app.domain.leg_costs import burden_weights
+from app.domain.leg_costs import burden_fills, burden_weights
 from app.domain.cost_preference import CostPreference
 from app.domain.ledger_costs import LedgerCosts, LedgerParameters, ledger_parameters
 from app.domain.material_catalog import GRADIENT_PERCENT
-from app.domain.road_network import MaterialFills
 from tests.tuning_fixture import TUNED
 
-NO_FILLS = MaterialFills(numeric_means={}, burden_per_km={"vibration": 0.0})
+#: 道のストレスの軸の材料の欠けを埋める重さ（材料の無い道は無い）。
+NO_FILLS = {"vibration": 0.0}
 
 RIDER = RiderProfile.standard(20.0, TUNED)
 LENS = {"thresholds": [1.0], "band_labels": ["a", "b"]}
@@ -110,9 +110,29 @@ def test_a_turn_costs_its_search_seconds_and_the_kickoffs_like_a_stop_on_a_road(
     ({"kind": "linear", "material": GRADIENT_PERCENT, "points": [[0.0, 0.0], [10.0, 1.0]]}, np.array([20.0, np.nan, 0.0])),
 ])
 def test_a_road_without_the_material_carries_the_given_weight_and_the_others_read_their_material(burden, column):
-    """材料の無い道は取込の範囲全体の重さの平均（`domain/road_network.py: material_fills`）で、ほかの道は自分の材料の重さ
+    """材料の無い道は取込の範囲全体の重さの平均（`domain/leg_costs.py: burden_fills`）で、ほかの道は自分の材料の重さ
     （数値の材料は折れ線の範囲の外を端の重さ）で数える。"""
-    weights = burden_weights(_axes(axis=burden), _parameters(), {burden["material"]: column},
-                             MaterialFills(numeric_means={}, burden_per_km={"axis": 0.25}))
+    weights = burden_weights(_axes(axis=burden), _parameters(), {burden["material"]: column}, {"axis": 0.25})
 
     assert weights["axis"].tolist() == pytest.approx([1.0, 0.25, 0.0])
+
+
+def test_a_missing_material_is_filled_with_the_mean_weight_of_the_roads_that_have_it():
+    """欠けを埋める重さは、材料のある道の重さの距離で重みを付けた平均。材料の値を平均してから重さにしない——折れ線が頭打ちになる
+    所で、値の平均の重さは道の重さの平均を上回り、材料の無い道を重く見る。道路網に列の無い材料の軸は0。"""
+    axes = _axes(
+        by_class={"kind": "categorical", "material": VIBRATION, "per_km": {"paved": 0.0, "gravel": 1.0}},
+        by_value={"kind": "linear", "material": GRADIENT_PERCENT, "points": [[0.0, 0.0], [20.0, 1.0]]},
+        absent={"kind": "linear", "material": "num_absent", "points": [[0.0, 0.0], [1.0, 1.0]]},
+    )
+    columns = {
+        VIBRATION: CategoricalColumn.encode(["gravel", None, "paved", "paved"]),
+        # 重さは0.5・NaN・1・1（値の平均は32.5で、重さは1）。
+        GRADIENT_PERCENT: np.array([10.0, np.nan, 40.0, 40.0]),
+        "num_absent": None,
+    }
+
+    fills = burden_fills({axis_id: axis.burden for axis_id, axis in axes.burden.items()}, columns,
+                         np.array([100.0, 500.0, 100.0, 200.0]))
+
+    assert fills == pytest.approx({"by_class": 100.0 / 400.0, "by_value": (0.5 * 100.0 + 300.0) / 400.0, "absent": 0.0})

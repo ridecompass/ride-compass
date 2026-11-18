@@ -58,7 +58,8 @@ SQLと式の木の材料では作れない体力（走行の模型）を、backe
   条件を利用者に言う文（`domain/lens_equivalents.py: LENS_EQUIVALENTS_CONDITION_WORDING`）と、レンズの量の名前と単位
   （`domain/cost_axes.py: LENS_QUANTITY_LABEL`・`domain/cost_axes.py: LENS_UNIT`）は、生成物`route-generate-config.json`で画面へ配る。
 - **キャッシュしない**: 値は風の時刻・想定速度で変わり、タイル1枚の区間で走行の模型を1回解くだけ。欠けを埋める道のストレスの
-  重さの平均だけは全区間を数えるので、道の網・区分の列・費用の軸の定義の組ごとにプロセスに1つ持つ（`services/graph_service.py: network_fills`）。段の目安は
+  重さの平均だけは全区間を数えるので、道の網・区分の列・道のストレスの軸の費目の組ごとにプロセスに1つ持つ
+  （`services/graph_service.py: network_burden_fills`）。段の目安は
   利用者の値（つまみと倍率）で変わるので、要求ごとに求める。
 
 ## 道の窓（`services/region_service.py: RoadInspectorService`）

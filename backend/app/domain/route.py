@@ -61,25 +61,31 @@ class RoadClassStretch(StrictModel):
 
 
 class PenaltyBreakdown(StrictModel):
-    """代償の秒の内訳（費目の帳簿の式、`domain/ledger_costs.py`）。所要時間・軸ごとの代償・避け方の倍率が増減した秒の和が費用になる。
+    """代償の秒の内訳（費目の帳簿の式、`domain/ledger_costs.py`）。所要時間・軸ごとの代償・避け方の倍率が増減した秒・曲がる所の罰の
+    秒の和が費用になる。
 
     区間（ルートの線の一片）の内訳は通った道の分で、地図のレンズと同じ量。候補の内訳はルート全体の損で、区間の和に、通る道筋で
-    決まる曲がる所の漕ぎ出しを、その費目（慣性）を持つ軸の秒として足し、曲がる所の罰（Uターン）を避ける側の秒として足したもの。
-    軸の名前と帳簿は`GET /api/cost-axes`が持つ。
+    決まる曲がる所の漕ぎ出しを、その費目（慣性）を持つ軸の秒として足し、曲がる所の罰を足したもの。軸の名前と帳簿は
+    `GET /api/cost-axes`が持つ。
     """
 
     # 軸id→代償の秒（つまみ×倍率を掛けたもの）。数える軸だけを持ち（無効の軸は無い）、秒が0の軸も0として持つ。
     axis_seconds: dict[str, float]
     # 避け方の倍率（道の区分ごとの段）が、その道の所要時間から「好む」で下げた秒（0以下）と、「なるべく避ける」で
-    # 上乗せした秒（0以上。候補の内訳では、所要時間に入れない曲がる所の罰も含む）。
+    # 上乗せした秒（0以上）。
     preferred_seconds: float
     avoided_seconds: float
+    # 曲がる所の罰（選ばせないために置く秒。Uターン）の和（0以上）。実際に失う時間ではないので所要時間に入らず、道の負担でも
+    # ないので1kmあたりの代償にも入らない。区間（道1本の分）は曲がる所を持たないので0。
+    turn_penalty_seconds: float
 
     @computed_field  # type: ignore[prop-decorator]
     @property
     def total_seconds(self) -> float:
-        """代償の秒の和（軸ごとの秒と避け方の秒）。所要時間に足すと、候補を並べた費用になる。好む道を通ると負になりうる。"""
-        return round(sum(self.axis_seconds.values(), self.preferred_seconds + self.avoided_seconds), COST_SECONDS_DECIMALS)
+        """代償の秒の和（軸ごとの秒と避け方の秒と曲がる所の罰の秒）。所要時間に足すと、候補を並べた費用になる。好む道を通ると負に
+        なりうる。"""
+        return round(sum(self.axis_seconds.values(), self.preferred_seconds + self.avoided_seconds + self.turn_penalty_seconds),
+                     COST_SECONDS_DECIMALS)
 
 
 def penalty_seconds_per_km(cost: np.ndarray | float, seconds: np.ndarray | float, length_m: np.ndarray | float) -> np.ndarray:
@@ -110,8 +116,8 @@ class PenaltyParts(Protocol):
     def avoided_seconds(self) -> float: ...
 
 
-def merge_penalty_breakdowns(parts: Iterable[PenaltyParts]) -> PenaltyBreakdown:
-    """内訳を足し合わせる（秒は足せる）。"""
+def merge_penalty_breakdowns(parts: Iterable[PenaltyParts], turn_penalty_seconds: float) -> PenaltyBreakdown:
+    """内訳を足し合わせる（秒は足せる）。`turn_penalty_seconds`は、足し合わせる範囲の曲がる所の罰の秒。"""
     present = list(parts)
     totals: dict[str, float] = defaultdict(float)
     for part in present:
@@ -121,6 +127,7 @@ def merge_penalty_breakdowns(parts: Iterable[PenaltyParts]) -> PenaltyBreakdown:
         axis_seconds={axis_id: round(seconds, COST_SECONDS_DECIMALS) for axis_id, seconds in totals.items()},
         preferred_seconds=round(sum(part.preferred_seconds for part in present), COST_SECONDS_DECIMALS),
         avoided_seconds=round(sum(part.avoided_seconds for part in present), COST_SECONDS_DECIMALS),
+        turn_penalty_seconds=round(turn_penalty_seconds, COST_SECONDS_DECIMALS),
     )
 
 
@@ -246,12 +253,14 @@ class EvaluatedRoute(StrictModel):
     penalty: PenaltyBreakdown
 
     def penalty_per_km(self) -> float | None:
-        """候補全体の1kmあたりの代償の秒（曲がる所と避け方の秒を含むルート全体の損。`penalty_seconds_per_km`）。周回はこの値で
-        並べ（`domain/route_search.py: candidate_order`）、候補の帯は応答の`penalty_seconds_per_km`で塗る。所要時間か長さが
-        無ければNone。"""
+        """候補全体の1kmあたりの代償の秒（曲がる所の漕ぎ出しと避け方の秒を含むルート全体の損。`penalty_seconds_per_km`）。曲がる所の
+        罰は道の負担でないので入れない——入れると、地図のレンズの総合の段で塗る候補の帯が道の負担とずれ、短い候補ほど並びが動く。
+        周回はこの値で並べ（`domain/route_search.py: candidate_order`）、候補の帯は応答の`penalty_seconds_per_km`で塗る。所要時間か
+        長さが無ければNone。"""
         if self.estimated_duration_seconds is None or not self.distance_km > 0:
             return None
-        return float(penalty_seconds_per_km(self.cost_seconds, self.estimated_duration_seconds, self.distance_km * 1000.0))
+        return float(penalty_seconds_per_km(self.cost_seconds - self.penalty.turn_penalty_seconds, self.estimated_duration_seconds,
+                                            self.distance_km * 1000.0))
 
     @computed_field  # type: ignore[prop-decorator]
     @property
@@ -447,7 +456,8 @@ BIN_FIELD_MERGERS: dict[str, Callable[[list[EdgeSegment]], object]] = {
     "average_gradient_percent": _merge_average_gradients,
     "estimated_arrival_time": lambda segments: segments[0].estimated_arrival_time,
     "road_classes": _merge_road_classes,
-    "penalty": merge_penalty_breakdowns,
+    # 区間は道の分で、曲がる所の罰を持たない。
+    "penalty": lambda segments: merge_penalty_breakdowns(segments, 0.0),
 }
 
 

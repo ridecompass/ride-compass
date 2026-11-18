@@ -136,15 +136,19 @@ wayの長さ（0はNULL）になる——件数と長さは必ず同じ側から
 - **ルートの内訳**: 経路の区間の代償は、探索がその区間に使ったビンの風で、経路上の行だけを解き直して求める
   （`domain/leg_costs.py: LegCostComposer.values_at_rows`が`domain/ledger_costs.py: LedgerCosts.row_seconds`を呼び、走行の模型は
   `SegmentSpeedModel.ride`に行を渡すとその行の点の間だけを解く）。点の間ごとの計算は互いに依らないので、全部を解いた探索の
-  値と同じになり、所要時間と内訳の和が探索の費用に合う。避け方の秒は、避け方の倍率と1の差 × 区間の所要時間で、
+  値と同じになり、所要時間と内訳の和が探索の費用に合う。避け方の秒は、避け方の倍率と1の差 × 区間の所要時間
+  （`domain/leg_costs.py: avoidance_seconds`。探索の費用も同じ式を読む）で、
   負の分（好む側の段）と正の分（避ける側の段）を分けて持つ（`domain/route.py: PenaltyBreakdown`の`preferred_seconds`・`avoided_seconds`）。
   曲がる所の漕ぎ出しの代償（`domain/ledger_costs.py: LedgerCosts.turn_penalty_by_axis`。その費目を持つ軸の秒）は、区間には
   置かず、候補の内訳の軸の秒に足す（`services/road_graph_candidates.py`。区間の軸の秒は地図のレンズと同じ道の量）。
-- **欠けの埋め方**: 停止要因の密度と、道のストレスの軸の材料の欠けは、`domain/road_network.py: material_fills`の分布で埋める
-  （数値の材料の平均は`RoadNetwork.numeric_means`で道路網と同じ寿命で1回だけ、道のストレスは軸ごとに、材料のある道の1kmあたりの
-  重さの距離で重みを付けた平均を、道路網・区分の列・費用の軸の定義の組ごとに1回だけ求めて取っておく。
-  `services/graph_service.py: network_fills`）。道のストレスを材料の値の平均で埋めて折れ線に通すと、折れ線が曲がる所で道の重さの
-  平均と食い違うので、区分の材料も数値の材料も重さにしてから平均する（`domain/cost_axes.py: LinearBurden.weights`等）。
+- **欠けの埋め方**: 停止要因の密度の欠けは、取込範囲全体の数値の材料の平均（`RoadNetwork.numeric_means`。道路網と同じ寿命で1回
+  だけ求める）で埋める。道のストレスの軸の材料の欠けは、軸ごとに、取込範囲全体の材料のある道の1kmあたりの重さの距離で重みを
+  付けた平均（`domain/leg_costs.py: burden_fills`）で埋め、道路網・区分の列・道のストレスの軸の費目の組ごとに1回だけ求めて取っておく
+  （`services/graph_service.py: network_burden_fills`。軸の名前やレンズの段を直しても求め直さない）。道路網の層は材料ごとの値
+  （`domain/road_network.py: network_material_column`）だけを渡し、軸ごとの重さは費用の層が求める。道のストレスを材料の値の平均で
+  埋めて折れ線に通すと、折れ線が曲がる所で道の重さの平均と食い違うので、区分の材料も数値の材料も重さにしてから平均する
+  （`domain/cost_axes.py: LinearBurden.weights`等）。数の材料の軸の事実は、材料の値のある区間から選ぶ（材料の無い区間の秒は平均の
+  重さから出て、その区間の値で説明できない。`domain/leg_costs.py: axis_facts`）。
   停止要因の密度は所要時間（待ち）と体力（漕ぎ出し）の両方に同じ値を使う。
 
 ## 管理DBの定義（道の区分・費用の軸）

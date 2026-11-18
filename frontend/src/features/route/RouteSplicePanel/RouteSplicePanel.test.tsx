@@ -40,6 +40,7 @@ const penalty = (axisSeconds: Record<string, number>, totalSeconds: number): Rou
   axis_seconds: axisSeconds,
   preferred_seconds: 0,
   avoided_seconds: 0,
+  turn_penalty_seconds: 0,
   total_seconds: totalSeconds,
 });
 

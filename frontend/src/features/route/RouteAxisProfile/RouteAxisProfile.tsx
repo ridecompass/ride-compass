@@ -11,7 +11,7 @@ import routeGenerateConfig from "@/types/generated/route-generate-config.json";
 import type { PenaltyBreakdown as PenaltyValues } from "@/types/route";
 
 interface RouteAxisProfileProps {
-  /** RouteCandidate.penalty（軸ごとの代償の秒と、好む道・避ける道で増減した秒）。 */
+  /** RouteCandidate.penalty（軸ごとの代償の秒と、好む道・避ける道で増減した秒と、曲がる所の罰の秒）。 */
   penalty: PenaltyValues;
   /** RouteCandidate.estimated_duration_seconds（走行＋停止＋ターンの見積もり）。 */
   estimatedDurationSeconds: number | null;

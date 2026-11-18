@@ -42,7 +42,7 @@ from app.domain.geo import (
     compass_degrees,
 )
 from app.domain.region import BoundingBox, bbox_covering_points
-from app.domain.road_network import RoadSlice, material_arrays_of
+from app.domain.road_network import MaterialFills, RoadSlice, material_arrays_of
 from app.domain.route import (
     Coordinates,
     EvaluatedRoute,
@@ -69,6 +69,7 @@ from app.domain.turn_structure import (
     TurnExpandedStructure,
     build_turn_expanded_structure,
     edge_bearings,
+    turn_search_seconds,
 )
 from app.domain.connectivity import largest_strongly_connected_nodes, nodes_reached_without_retracing
 from app.domain.routing import (
@@ -84,7 +85,7 @@ from app.domain.wind import (
     detour_ratio_or_default,
 )
 from app.infrastructure import detour_ratio_cache
-from app.services.graph_service import GraphService, network_fills
+from app.services.graph_service import GraphService, network_burden_fills
 from app.domain.loop_routing import LoopTurnaround, TracedLoop
 from app.services.weather_service import WeatherService
 from app.services import road_graph_via_routes
@@ -266,7 +267,8 @@ class RoadGraphEngine:
                 materials, search_masks,
                 wind_series, start, self._assumed_speed_kmh, lazy_graph.edge_rows,
                 detour_ratio=detour_ratio_or_default(learned_detour_ratio),
-                material_fills=network_fills(road.network, cost_axes),
+                material_fills=MaterialFills(numeric_means=road.network.numeric_means),
+                burden_fills=network_burden_fills(road.network, cost_axes),
                 settings=self._settings,
                 parameters=ledger_parameters(self._cost_preference, self._settings.tuning),
             )
@@ -392,7 +394,9 @@ class RoadGraphEngine:
             node_lon=search.node_lon,
             statics=statics,
             turn_structure=turn_structure,
-            transition_cost=search.composer.transition_costs(turn_structure.turn_search_seconds, turn_structure.turn_kickoffs),
+            turn_spec=self._turn_cost,
+            transition_cost=search.composer.transition_costs(turn_search_seconds(turn_structure, self._turn_cost),
+                                                             turn_structure.turn_kickoffs),
             tuning=self._settings.tuning,
             tile_set=search.tile_set,
         )

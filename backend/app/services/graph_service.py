@@ -8,14 +8,14 @@ from app.domain.geo import LatLonPoint
 from app.domain.graph import LeanEdge, parse_edge_key
 from app.domain.region import BoundingBox, tiles_covering_bbox
 from app.domain.attributes import CategoricalColumn
-from app.domain.cost_axes import CostAxisDefinitions
+from app.domain.cost_axes import Burden, CostAxisDefinitions
+from app.domain.leg_costs import burden_fills
 from app.domain.road_classes import RoadClassDefinitions, current_road_classes
 from app.domain.road_network import (
-    MaterialFills,
     RoadNetwork,
     RoadSlice,
     edge_endpoint_points,
-    material_fills,
+    network_material_column,
     road_class_columns,
     slice_network,
 )
@@ -87,20 +87,23 @@ def network_classes(network: RoadNetwork) -> tuple[dict[str, CategoricalColumn],
     return columns
 
 
-#: 最後に求めた欠けを埋める平均と、求めたときの道路網・区分の列・費用の軸の定義。どれかが入れ替わったら求め直す。
-_fills: tuple[RoadNetwork, Mapping[str, CategoricalColumn], CostAxisDefinitions, MaterialFills] | None = None
+#: 最後に求めた道のストレスの重さの平均と、求めたときの道路網・区分の列・道のストレスの軸の費目（軸id→`burden`）。どれかが
+#: 入れ替わったら求め直す。費目だけを鍵にするので、軸の名前・色・レンズの段を直しても求め直さない。
+_burden_fills: tuple[RoadNetwork, Mapping[str, CategoricalColumn], dict[str, Burden], dict[str, float]] | None = None
 
 
-def network_fills(network: RoadNetwork, axes: CostAxisDefinitions) -> MaterialFills:
-    """取込範囲全体の欠けを埋める平均（`domain/road_network.py: material_fills`）。道のストレスの重さの平均は全区間を数えるので、
-    道路網・区分の列・費用の軸の定義の組ごとに1回だけ求める。"""
-    global _fills
+def network_burden_fills(network: RoadNetwork, axes: CostAxisDefinitions) -> dict[str, float]:
+    """道のストレスの軸id→材料の欠けた区間を埋める、取込範囲全体の重さの平均（`domain/leg_costs.py: burden_fills`）。全区間を
+    数えるので、道路網・区分の列・道のストレスの軸の費目の組ごとに1回だけ求める。"""
+    global _burden_fills
     classes = network_classes(network)[0]
-    cached = _fills
-    if cached is not None and cached[0] is network and cached[1] is classes and cached[2] == axes:
+    burdens = {axis_id: axis.burden for axis_id, axis in axes.burden.items()}
+    cached = _burden_fills
+    if cached is not None and cached[0] is network and cached[1] is classes and cached[2] == burdens:
         return cached[3]
-    fills = material_fills(network, classes, axes)
-    _fills = (network, classes, axes, fills)
+    columns = {burden.material: network_material_column(network, classes, burden.material) for burden in burdens.values()}
+    fills = burden_fills(burdens, columns, network.distance_m)
+    _burden_fills = (network, classes, burdens, fills)
     return fills
 
 

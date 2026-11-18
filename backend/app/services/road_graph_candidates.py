@@ -45,7 +45,13 @@ from app.domain.route_search import (
     transition_values_along,
 )
 from app.domain.stopwatch import add_elapsed_ms, start_timer
-from app.domain.turn_structure import TurnExpandedStructure, TurnKind, other_roads_at_turns, turns_along
+from app.domain.turn_structure import (
+    TurnExpandedStructure,
+    TurnKind,
+    other_roads_at_turns,
+    turn_penalties_along,
+    turns_along,
+)
 from app.services.graph_service import GraphService
 from app.domain.loop_routing import TracedLoop
 from app.services.road_graph_context import (
@@ -135,7 +141,7 @@ class _Traced:
     # 遷移ごとの曲がる所の漕ぎ出しの回数（`entries`と同じ並び）。費用と、候補の内訳の軸の秒・止まる回数が読む。
     turn_kickoffs: list[float]
     # 曲がる所の罰（`domain/turn_structure.py: PENALTY_TURNS`）の秒の和。費用に入り所要時間に入らないので、候補の内訳の
-    # 避ける側の秒が読む。
+    # 罰の欄が読む。
     turn_penalty_seconds: float
     passages: list[EdgePassage]
     # 経路の費用（`domain/route_search.py: route_cost`）。向きの比べと候補の並べ方が同じ値を読む。
@@ -163,11 +169,12 @@ def _trace(
     entries = context.turn_structure.entries_along(path)
     # 経路を探索と同じ規則でたどった区間ごとの時刻。区間の到達予想と候補の所要時間が同じ時計を使う。
     turn_waits = transition_values_along(context.turn_structure.turn_seconds, entries)
-    turn_search = transition_values_along(context.turn_structure.turn_search_seconds, entries)
+    penalties = turn_penalties_along(context.turn_structure, entries, context.turn_spec)
     turn_kickoffs = transition_values_along(context.turn_structure.turn_kickoffs, entries)
     passages = route_passages(context.legs, turn_waits, path, leg_of_edge)
+    turn_search = [wait + penalty for wait, penalty in zip(turn_waits, penalties, strict=True)]
     return _Traced(edges_in_path, path, leg_of_edge, waypoint_offsets, rows, entries, turn_kickoffs,
-                   sum(turn_search) - sum(turn_waits), passages, route_cost(passages, turn_search, turn_kickoffs, context.composer))
+                   sum(penalties), passages, route_cost(passages, turn_search, turn_kickoffs, context.composer))
 
 
 def _orientation(context: RoadGraphContext, traced: _Traced) -> _Orientation:
@@ -253,11 +260,11 @@ def _build_candidate(
     add_elapsed_ms(context.evaluate_steps_ms, "segments", segments_started)
     bins_started = start_timer()
     # 候補の内訳は丸める前の区間から足す（丸めたビンを足すと、丸めの分が候補の内訳へ積もる）。区間は通った道の分なので、通る道筋で
-    # 決まる曲がる所の漕ぎ出しを、その費目を持つ軸の秒として足し、曲がる所の罰を避ける側の秒として足す。
-    turn_penalty = PenaltyBreakdown.model_construct(
-        axis_seconds=context.composer.turn_penalty_by_axis(turn_kickoffs), preferred_seconds=0.0,
-        avoided_seconds=orientation.turn_penalty_seconds)
-    penalty = merge_penalty_breakdowns([*segments, turn_penalty])
+    # 決まる曲がる所の漕ぎ出しを、その費目を持つ軸の秒として足し、曲がる所の罰を罰の欄に入れる。
+    turn_kickoff = PenaltyBreakdown.model_construct(
+        axis_seconds=context.composer.turn_penalty_by_axis(turn_kickoffs), preferred_seconds=0.0, avoided_seconds=0.0,
+        turn_penalty_seconds=0.0)
+    penalty = merge_penalty_breakdowns([*segments, turn_kickoff], orientation.turn_penalty_seconds)
     # 返すsegmentsは集約する。Edge単位のままだとペイロードとフロントの描画費用が嵩む。
     bins = aggregate_segments_into_bins(segments, orientation.bin_slices)
     add_elapsed_ms(context.evaluate_steps_ms, "bins", bins_started)

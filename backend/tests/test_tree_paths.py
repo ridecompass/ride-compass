@@ -14,6 +14,7 @@ from hypothesis import given
 from hypothesis import strategies as st
 
 from app.domain import route_diversity, routing, tree_paths
+from app.domain.turn_structure import turn_search_seconds
 from tests.search_graph_world import (
     LINE_EDGES,
     LINE_NODES,
@@ -38,7 +39,7 @@ def test_forward_path_runs_from_the_tree_source_to_the_state():
     tree = routing.build_turn_expanded_tree(
         structure, np.ones(structure.state_count), statics.edge_length_m,
         np.array([states["AB"]], dtype=np.int64), lazy.node_count,
-        edge_seconds=np.ones(structure.state_count), transition_cost=structure.turn_search_seconds
+        edge_seconds=np.ones(structure.state_count), transition_cost=structure.turn_seconds
     )
     assert tree_paths.turn_expanded_path_from_state(tree, states["BC"]) == [states["AB"], states["BC"]]
     assert tree_paths.turn_expanded_path_edge_indices(tree, lazy.node_id_to_index["C"]) == [
@@ -56,7 +57,7 @@ def test_tree_path_overlap_measures_what_the_edge_sets_of_the_paths_share(costs,
     lazy, statics, structure = build_all(make_grid(4))
     cost = np.resize(np.asarray(costs), structure.state_count)
     tree = routing.build_turn_expanded_tree(
-        structure, cost, cost * 100.0, out_states(lazy, "n1_1"), lazy.node_count, edge_seconds=cost, transition_cost=structure.turn_search_seconds
+        structure, cost, cost * 100.0, out_states(lazy, "n1_1"), lazy.node_count, edge_seconds=cost, transition_cost=structure.turn_seconds
     )
     overlap = tree_paths.TreePathOverlap(tree)
     accepted_paths = []
@@ -78,18 +79,19 @@ def test_junction_includes_the_turn_cost_at_the_meeting_node():
     lazy, statics, structure = build_all(graph, spec=TURN_SPEC)
     states = state_index(lazy)
     cost = np.ones(structure.state_count)
+    transition = turn_search_seconds(structure, TURN_SPEC)
     forward = routing.build_turn_expanded_tree(
         structure, cost, statics.edge_length_m, np.array([states["WC"]], dtype=np.int64),
         lazy.node_count,
-        edge_seconds=np.ones(structure.state_count), transition_cost=structure.turn_search_seconds
+        edge_seconds=np.ones(structure.state_count), transition_cost=transition
     )
     backward = routing.build_turn_expanded_tree(
         structure, cost, statics.edge_length_m, np.array([states["CN"]], dtype=np.int64),
         lazy.node_count, reverse=True,
-        edge_seconds=np.ones(structure.state_count), transition_cost=structure.turn_search_seconds
+        edge_seconds=np.ones(structure.state_count), transition_cost=transition
     )
     junction = tree_paths.combine_forward_backward_at_nodes(
-        structure, forward, backward, lazy.node_count, transition_cost=structure.turn_search_seconds
+        structure, forward, backward, lazy.node_count, transition_cost=transition
     )
     center = lazy.node_id_to_index["C"]
     assert junction.cost[center] == pytest.approx(1.0 + TURN_SPEC.left.expected_seconds + 1.0)
@@ -106,14 +108,14 @@ def test_junction_leaves_unreachable_nodes_empty():
     node_count = lazy.node_count
     forward = routing.build_turn_expanded_tree(
         structure, cost, statics.edge_length_m, np.array([states["AB"]], dtype=np.int64), node_count,
-        edge_seconds=np.ones(structure.state_count), transition_cost=structure.turn_search_seconds
+        edge_seconds=np.ones(structure.state_count), transition_cost=structure.turn_seconds
     )
     backward = routing.build_turn_expanded_tree(
         structure, cost, statics.edge_length_m, np.array([states["BC"]], dtype=np.int64),
         node_count, reverse=True,
-        edge_seconds=np.ones(structure.state_count), transition_cost=structure.turn_search_seconds
+        edge_seconds=np.ones(structure.state_count), transition_cost=structure.turn_seconds
     )
-    junction = tree_paths.combine_forward_backward_at_nodes(structure, forward, backward, node_count, transition_cost=structure.turn_search_seconds)
+    junction = tree_paths.combine_forward_backward_at_nodes(structure, forward, backward, node_count, transition_cost=structure.turn_seconds)
     isolated = lazy.node_id_to_index["Z"]
     assert junction.cost[isolated] == math.inf
     assert np.isnan(junction.length_m[isolated])
@@ -219,14 +221,14 @@ def _junction_selection(costs):
     destination = lazy.node_id_to_index["n3_3"]
     forward = routing.build_turn_expanded_tree(
         structure, cost, edge_length_m, out_states(lazy, "n0_0"), lazy.node_count, edge_seconds=cost,
-        transition_cost=structure.turn_search_seconds,
+        transition_cost=structure.turn_seconds,
     )
     backward = routing.build_turn_expanded_tree(
         structure, cost, edge_length_m, np.flatnonzero(lazy.graph.edge_to == destination), lazy.node_count,
-        reverse=True, edge_seconds=cost, transition_cost=structure.turn_search_seconds,
+        reverse=True, edge_seconds=cost, transition_cost=structure.turn_seconds,
     )
     junction = tree_paths.combine_forward_backward_at_nodes(
-        structure, forward, backward, lazy.node_count, transition_cost=structure.turn_search_seconds,
+        structure, forward, backward, lazy.node_count, transition_cost=structure.turn_seconds,
     )
     tree_paths.add_terminal_candidate(junction, forward, destination)
     paths = tree_paths.JunctionPaths(junction, forward, backward, lazy.graph.edge_from, lazy.graph.edge_to)

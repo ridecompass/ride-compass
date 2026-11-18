@@ -50,15 +50,15 @@ def test_searches_compile_nothing_after_baking_whatever_arrays_the_caller_passes
         for cost in costs:
             routing.build_turn_expanded_tree(
                 structure, cost, statics.edge_length_m.astype(np.float32), origin_states, lazy.node_count,
-                edge_seconds=cost, bin_seconds=3600.0, transition_cost=structure.turn_search_seconds
+                edge_seconds=cost, bin_seconds=3600.0, transition_cost=structure.turn_seconds
             )
             routing.turn_expanded_shortest_path(
                 structure, cost, np.zeros(lazy.node_count, dtype=np.float32), origin_states,
-                lazy.node_id_to_index["n2_2"], edge_seconds=cost, bin_seconds=3600.0, transition_cost=structure.turn_search_seconds
+                lazy.node_id_to_index["n2_2"], edge_seconds=cost, bin_seconds=3600.0, transition_cost=structure.turn_seconds
             )
         routing.build_turn_expanded_tree(
             structure, costs[0], statics.edge_length_m, origin_states, lazy.node_count,
-            reverse=True, edge_seconds=costs[0], transition_cost=structure.turn_search_seconds
+            reverse=True, edge_seconds=costs[0], transition_cost=structure.turn_seconds
         )
 
     assert compiled.buffer == []

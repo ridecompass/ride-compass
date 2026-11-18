@@ -89,7 +89,7 @@ _UNUSABLE = [
     ("search.pareto_distance_quantum_m", 0.0, _pareto),
     ("search.alternative_max_cost_stretch", 0.5,
      lambda: route_search.alternative_via_nodes(np.ones(1), np.ones(1, dtype=bool), current_tuning())),
-    ("avoidance.avoid_cost_multiplier", 0.0, lambda: level_multipliers(current_tuning())),
+    ("avoidance.avoid_cost_multiplier", 0.5, lambda: level_multipliers(current_tuning())),
     ("avoidance.prefer_cost_multiplier", 1.5, lambda: level_multipliers(current_tuning())),
 ]
 

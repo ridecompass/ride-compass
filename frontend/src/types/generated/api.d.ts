@@ -1380,6 +1380,8 @@ export interface components {
             preferred_seconds: number;
             /** Avoided Seconds */
             avoided_seconds: number;
+            /** Turn Penalty Seconds */
+            turn_penalty_seconds: number;
             /** Total Seconds */
             readonly total_seconds: number;
         };

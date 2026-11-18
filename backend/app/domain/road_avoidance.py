@@ -33,7 +33,7 @@ def level_multipliers(tuning: Tuning) -> dict[AvoidanceLevel, float]:
     「なるべく避ける」と「好む」はそれぞれの較正値（標準の人の好みの定義）で、「好む」は避ける側の逆数にしない——避けるのと
     好むのとで、道を選び替える強さが同じである理由は無い。「少し」の段はそれぞれの平方根（倍率の対数で「通る」との真ん中）。
     「通らない」は探索から除くので無限大。"""
-    avoid = tuning.checked("avoidance.avoid_cost_multiplier", lambda v: v > 0, "0より大きい")
+    avoid = tuning.checked("avoidance.avoid_cost_multiplier", lambda v: v >= 1, "1以上")
     prefer = tuning.checked("avoidance.prefer_cost_multiplier", lambda v: 0 < v <= 1, "0より大きく1以下")
     return {
         "pass": 1.0,

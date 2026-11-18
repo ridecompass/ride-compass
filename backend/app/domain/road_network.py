@@ -26,9 +26,8 @@ from app.domain.attributes import (
     ElevationAttribute,
     MaterialColumn,
 )
-from app.domain.cost_axes import CostAxisDefinitions
 from app.domain.elevation_profile import ElevationProfiles, GradeDistribution
-from app.domain.geo import LatLonPoint, length_weighted_mean
+from app.domain.geo import LatLonPoint
 from app.domain.material_catalog import GRADIENT_PERCENT
 from app.domain.msm import MsmGrid
 from app.domain.region import ROAD_TILE_MIN_ZOOM, tile_bounds_lonlat
@@ -173,7 +172,7 @@ class RoadNetwork:
             # 凍った型なので、`cached_property`と同じくインスタンスの辞書へ直に持つ。
             cached = self.__dict__.get("_wind_heights")
             if cached is None or cached[0] != grid:
-                fills = MaterialFills(numeric_means=self.numeric_means, burden_per_km={})
+                fills = MaterialFills(numeric_means=self.numeric_means)
                 percent = {field: fills.fill(field, self.numeric_values[:, self.numeric_ids.index(field)])
                            for field in ROUGHNESS_LENGTH_M}
                 started = start_timer()
@@ -220,11 +219,9 @@ class RoadSlice:
 @dataclass(frozen=True)
 class MaterialFills:
     """取込範囲全体の材料の分布で、欠けた材料を埋める（探索の範囲で埋めると、同じ道の費用が探索の範囲で変わる）。
-    `numeric_means`は数値の材料の距離で重みを付けた平均（所要時間の材料を埋める）、`burden_per_km`は道のストレスの軸id→材料の
-    ある道の1kmあたりの重さの、距離で重みを付けた平均（材料のある道が無ければ0）。"""
+    `numeric_means`は数値の材料の距離で重みを付けた平均。"""
 
     numeric_means: Mapping[str, float]
-    burden_per_km: Mapping[str, float]
 
     def fill(self, material_id: str, values: np.ndarray) -> np.ndarray:
         """数値の材料`material_id`の値の欠けを平均で埋める（平均を持たない材料はNaNのまま）。"""
@@ -232,20 +229,13 @@ class MaterialFills:
         return np.where(np.isnan(values), self.numeric_means.get(material_id, np.nan), values)
 
 
-def material_fills(network: RoadNetwork, classes: Mapping[str, CategoricalColumn],
-                   axes: CostAxisDefinitions) -> MaterialFills:
-    """取込範囲全体の材料の分布。数値の材料の平均は全部（`RoadNetwork.numeric_means`）、道のストレスの重さの平均は`axes`の
-    道のストレスの軸ごとに、取込範囲全体の材料の列（区分の材料は`classes`。`road_class_columns`）から求める。道路網に列の無い
-    材料の軸は、材料のある道が無いので0。"""
-    fills: dict[str, float] = {}
-    for axis_id, axis in axes.burden.items():
-        material = axis.burden.material
-        column: MaterialColumn | None = (
-            classes.get(material) if material not in network.numeric_ids
-            else network.numeric_values[:, network.numeric_ids.index(material)])
-        mean = None if column is None else length_weighted_mean(axis.burden.weights({material: column}), network.distance_m)
-        fills[axis_id] = 0.0 if mean is None else mean
-    return MaterialFills(numeric_means=network.numeric_means, burden_per_km=fills)
+def network_material_column(network: RoadNetwork, classes: Mapping[str, CategoricalColumn],
+                            material_id: str) -> MaterialColumn | None:
+    """取込範囲全体の、材料`material_id`の区間ごとの列（数値の材料は道路網の列をそのまま指し、区分の材料は`classes`。
+    `road_class_columns`）。道路網に無い材料はNone。"""
+    if material_id in network.numeric_ids:
+        return network.numeric_values[:, network.numeric_ids.index(material_id)]
+    return classes.get(material_id)
 
 
 def road_class_columns(

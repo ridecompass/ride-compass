@@ -63,11 +63,8 @@ class TurnExpandedStructure:
     # 遷移先の状態（区間の番号）。
     target_state: np.ndarray
     # 遷移ごとの曲がる所の時間（秒。割合 × 待ちの和）。予想時間と時刻の通過が読み、利用者の好みで変わらない。罰
-    # （`PENALTY_TURNS`）は実際に失う時間ではないので入れない。
+    # （`PENALTY_TURNS`）は実際に失う時間ではないので入れず、遷移の費用を組む所が種類から足す（`turn_search_seconds`）。
     turn_seconds: np.ndarray
-    # 遷移ごとの探索の重み（秒）: 時間に、費用にだけ入る罰を足したもの。所要時間だけで選ぶ経路はこれを遷移の費用にし、
-    # 費用で選ぶ経路はこれに漕ぎ出しの代償を足す（`domain/ledger_costs.py: LedgerCosts.transition_costs`）。
-    turn_search_seconds: np.ndarray
     # 遷移ごとの漕ぎ出しを、止まる出来事の回数に換えた期待値（体力の慣性の費目）。構造は利用者に依らない値だけを持ち、
     # 費用は探索の呼び手が遷移ごとの配列として渡す（`domain/routing.py`の`transition_cost`）。
     turn_kickoffs: np.ndarray
@@ -217,13 +214,13 @@ def build_turn_expanded_structure(
     # ——遷移の数（探索の範囲で約200万）の配列を組み直さない。
     major = crosses_major & ~is_uturn & branch
     major_kind = np.where(major, np.where(straight, 1, 2), 0)
-    seconds_table, search_table, kickoffs_table = _turn_tables(spec)
+    seconds_table, kickoffs_table = _turn_tables(spec)
     code = (wait_kind + len(TurnKind) * major_kind).astype(np.intp)
 
     return TurnExpandedStructure(
         state_count=state_count, indptr=new_indptr.astype(SEARCH_INDEX_DTYPE),
         target_state=target_state.astype(SEARCH_INDEX_DTYPE),
-        turn_seconds=seconds_table[code], turn_search_seconds=search_table[code], turn_kickoffs=kickoffs_table[code],
+        turn_seconds=seconds_table[code], turn_kickoffs=kickoffs_table[code],
         turn_kind=_guided_turn_kinds(wait_kind, delta, is_uturn, branch, source, state_count),
         edge_from=edge_from, edge_to=edge_to,
         start_bearing_deg=start_bearing_deg, end_bearing_deg=end_bearing_deg,
@@ -237,20 +234,41 @@ PENALTY_TURNS = frozenset({TurnKind.UTURN})
 TURN_PENALTY_WORDING = "折り返し[Uターン]は、選ばれにくくするための分を所要時間に入れず、負担に入れます"
 
 
-def _turn_tables(spec: TurnCostSpec) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """曲がり方（`TurnKind`の値）＋ 4 ×上位の道（0＝無し・1＝横断・2＝右左折）を添字にした、遷移の時間（秒）・探索の重み（秒。
-    時間に罰を足したもの）・漕ぎ出しの回数の表。上位の道の待ちは曲がりの待ちに足し、漕ぎ出しは同じ所で1回しか起きないので
-    重なる出来事の大きい方だけを数える。"""
-    turning = (NO_EVENT, spec.left, spec.right, spec.uturn)  # `TurnKind`の順。直進は出来事が無い
-    seconds, search, kickoffs = [], [], []
+def _turn_events(spec: TurnCostSpec) -> tuple[StopEvent, ...]:
+    """曲がり方ごとの出来事（`TurnKind`の順。直進は出来事が無い）。"""
+    return (NO_EVENT, spec.left, spec.right, spec.uturn)
+
+
+def _penalty_table(spec: TurnCostSpec) -> np.ndarray:
+    """曲がり方（`TurnKind`の値）を添字にした、罰の秒（罰の曲がりでなければ0）。"""
+    return np.array([event.expected_seconds if kind in PENALTY_TURNS else 0.0
+                     for kind, event in zip(TurnKind, _turn_events(spec), strict=True)], dtype=EDGE_VALUE_DTYPE)
+
+
+def _turn_tables(spec: TurnCostSpec) -> tuple[np.ndarray, np.ndarray]:
+    """曲がり方（`TurnKind`の値）＋ 4 ×上位の道（0＝無し・1＝横断・2＝右左折）を添字にした、遷移の時間（秒。罰の曲がりの罰は
+    入れない）と漕ぎ出しの回数の表。上位の道の待ちは曲がりの待ちに足し、漕ぎ出しは同じ所で1回しか起きないので重なる出来事の
+    大きい方だけを数える。"""
+    penalties = _penalty_table(spec)
+    seconds, kickoffs = [], []
     for major in (NO_EVENT, spec.major_crossing, spec.major_turn):
-        for kind, event in zip(TurnKind, turning, strict=True):
-            penalty = event.expected_seconds if kind in PENALTY_TURNS else 0.0
-            seconds.append(event.expected_seconds - penalty + major.expected_seconds)
-            search.append(event.expected_seconds + major.expected_seconds)
+        for kind, event in zip(TurnKind, _turn_events(spec), strict=True):
+            seconds.append(event.expected_seconds - float(penalties[kind]) + major.expected_seconds)
             kickoffs.append(max(event.kickoffs, major.kickoffs))
-    return (np.array(seconds, dtype=EDGE_VALUE_DTYPE), np.array(search, dtype=EDGE_VALUE_DTYPE),
-            np.array(kickoffs, dtype=EDGE_VALUE_DTYPE))
+    return np.array(seconds, dtype=EDGE_VALUE_DTYPE), np.array(kickoffs, dtype=EDGE_VALUE_DTYPE)
+
+
+def turn_search_seconds(structure: TurnExpandedStructure, spec: TurnCostSpec) -> np.ndarray:
+    """遷移ごとの探索の重み（秒、`structure`の遷移の並び）: 時間に、罰の曲がり（`PENALTY_TURNS`。曲がりの種類
+    `TurnExpandedStructure.turn_kind`で見分ける）の罰を足したもの。所要時間だけで選ぶ経路はこれを遷移の費用にし、費用で選ぶ経路は
+    これに漕ぎ出しの代償を足す（`domain/ledger_costs.py: LedgerCosts.transition_costs`）。探索ごとに組み、構造には持たない。"""
+    return structure.turn_seconds + _penalty_table(spec)[structure.turn_kind]
+
+
+def turn_penalties_along(structure: TurnExpandedStructure, entries: Sequence[int | None], spec: TurnCostSpec) -> list[float]:
+    """経路に沿った遷移ごとの罰の秒（`entries`は`TurnExpandedStructure.entries_along`。遷移が無ければ0）。"""
+    penalties = _penalty_table(spec)
+    return [0.0 if entry is None else float(penalties[structure.turn_kind[entry]]) for entry in entries]
 
 
 def _guided_turn_kinds(

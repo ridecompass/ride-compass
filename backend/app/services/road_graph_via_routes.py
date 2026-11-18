@@ -16,6 +16,7 @@ from app.domain.route_search import (
 )
 from app.domain.routing import build_turn_expanded_tree, turn_expanded_shortest_path
 from app.domain.tree_paths import JunctionPaths, add_terminal_candidate, combine_forward_backward_at_nodes
+from app.domain.turn_structure import turn_search_seconds
 from app.domain.route_diversity import EdgeSetOverlap, select_diverse_by_overlap
 from app.domain.wind import (
     cruise_hours,
@@ -163,7 +164,7 @@ async def select_via_nodes(
     best_index, candidates = alternative_via_nodes(junction.cost, reachable, context.tuning)
     best_length_m = float(junction.length_m[best_index])
     # 周回の折返し点選定と同じく、経路長・1kmあたりの代償の秒のパレート非劣解を先に並べる
-    # （目的地ルートは目標距離を持たず代わりの道の長さの上限（較正値）以内という上限だけが効くぶん、
+    # （目的地ルートは目標距離を持たず代わりの道の費用の伸び率の上限（較正値）以内という上限だけが効くぶん、
     # 1kmあたりの代償だけで並べると伸び率上限いっぱいの遠回りが上位を占めやすい）。
     ranking = rank_by_pareto_layers(
         candidates, junction.length_m[candidates], junction.cost[candidates], junction.seconds[candidates],
@@ -228,6 +229,8 @@ async def select_fastest_route(context: RoadGraphContext, fixed: FixedLegs) -> T
     path: list[int] = []
     leg_of_edge: list[int] = []
     waypoint_offsets: list[int] = []
+    # 所要時間で選ぶが、罰の曲がりは越えない（罰は好みではなく、選ばせないための重み）。
+    transition_cost = turn_search_seconds(context.turn_structure, context.turn_spec)
     for leg_index, (from_node, to_node) in enumerate(zip(stops, stops[1:])):
         leg = context.legs[leg_index]
         time_bins = leg.travel_bins_lazy
@@ -235,7 +238,7 @@ async def select_fastest_route(context: RoadGraphContext, fixed: FixedLegs) -> T
             turn_expanded_shortest_path,
             context.turn_structure, time_bins, heuristic_to(context, to_node),
             origin_states(context.statics, from_node), to_node,
-            time_bins, leg.bin_seconds, transition_cost=context.turn_structure.turn_search_seconds,
+            time_bins, leg.bin_seconds, transition_cost=transition_cost,
         )
         if not edges:
             logger.debug("select_fastest_route to_node=%s", node_key_of(context.road, to_node))

@@ -523,7 +523,8 @@ def turn_expanded_shortest_path(
     Edge index列（進行順）で返す。到達不能ならNone。
 
     **コストの単位は秒**（`edge_cost`は区間ごとの体感所要時間、遷移ごとの費用`transition_cost`も秒）。素の所要時間で
-    選ぶなら、`edge_cost`に所要時間、`transition_cost`にターンの時間（`TurnExpandedStructure.turn_seconds`）を渡す。
+    選ぶなら、`edge_cost`に所要時間、`transition_cost`にターンの時間に罰を足した探索の重み
+    （`domain/turn_structure.py: turn_search_seconds`。罰は所要時間で選ぶ経路も越えない）を渡す。
     `node_heuristic`はNodeごとの目的地までの費用（`edge_cost`と`transition_cost`の和）の下界（秒）で、呼び出し元が
     作る（`domain/route_search.py: heuristic_seconds`）。
 

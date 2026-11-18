@@ -107,7 +107,7 @@ def draft(distance_km, duration_seconds, cost_seconds):
         direction_label="", distance_km=distance_km, geometry={"type": "LineString", "coordinates": []},
         point_distances_m=[], elevation_gain_m=None, segments=[], estimated_duration_seconds=duration_seconds, wind_previous_run_from=None,
         cost_seconds=cost_seconds,
-        penalty=PenaltyBreakdown(axis_seconds={}, preferred_seconds=0.0, avoided_seconds=0.0),
+        penalty=PenaltyBreakdown(axis_seconds={}, preferred_seconds=0.0, avoided_seconds=0.0, turn_penalty_seconds=0.0),
         facts=RouteFacts(axes={}),
         missing_travel_data_share=None,
         edge_ids=[], edge_point_offsets=[], node_ids=[], turns=[], waypoint_distances_km=[],
