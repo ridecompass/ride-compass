@@ -8,6 +8,10 @@ import { LANDCOVER_PAINTED_CLASSES } from "@/lib/mapDisplay/landcoverClasses";
 import { PRECIPITATION_INTENSITY_LEVELS, PRECIPITATION_LEGEND_HEADING } from "./precipitationNowcast";
 import { WIND_SPEED_LEGEND_LEVELS } from "./windLayer";
 import { DISASTER_ELEMENTS } from "./dynamicWeather";
+import { hazardBadgeOf } from "@/features/map/scene/groups/weatherDrawings";
+
+/** 危険度の段の「平常（危険度なし）」の番号。配信元のタイルは描かない（透明）。 */
+const NO_RISK_LEVEL = 0;
 
 /** 表示専用の凡例の1ブロック。 */
 export interface ReadOnlyLegendBlock {
@@ -26,9 +30,12 @@ function labelList(elements: readonly WeatherElementDeclaration[]): string {
 /** 災害の凡例。同じ段で塗る要素の名前を見出しにして、段を並べる（並びは要素が最初に現れた順）。 */
 function disasterLegendBlocks(): ReadOnlyLegendBlock[] {
   const scales = [...new Set(DISASTER_ELEMENTS.flatMap((element) => element.levelScale ?? []))];
+  // 地図に範囲の印が出る段は、印の背景（注意報は三角・警報は八角）を段の色で見せる。危険度の無い段（配信元が描かない）は色の見本のまま。
   return scales.map((scale) => ({
     label: labelList(DISASTER_ELEMENTS.filter((element) => element.levelScale === scale)),
-    legend: weatherScales[scale],
+    legend: weatherScales[scale].map((level) =>
+      "level" in level && level.level === NO_RISK_LEVEL ? level : { ...level, badge: hazardBadgeOf(level) },
+    ),
   }));
 }
 

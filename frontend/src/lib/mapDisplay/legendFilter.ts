@@ -2,7 +2,7 @@
 // 絞り込みの仕組みを共有するため、両方が読むこの層に置く。
 
 import type { primaryAttributes } from "@/types/generated/primaryAttributes";
-import type { WeatherMark } from "./weatherMarks";
+import type { HazardBadge, WeatherMark } from "./weatherMarks";
 
 type DisplayCategory = (typeof primaryAttributes)[number]["display_axes"][number]["categories"][number];
 
@@ -25,6 +25,8 @@ export interface LegendEntry {
   glyph?: PointGlyph;
   /** 地図でこの天気の印（行の色の線）で描く行。見本も同じ印で見せる。 */
   mark?: WeatherMark;
+  /** 災害の範囲の印の背景（注意報・警報）。持つ行は、行の色で背景を塗り、`mark`があれば中に載せた印で見せる。 */
+  badge?: HazardBadge;
   /** この地物がカテゴリに属するときtrueになるMapLibre式（凡例フィルタ用の述語）。
    * 絞り込みを自分で持つレイヤー（scene のグループが宣言するもの）は持たない。 */
   filter?: unknown[];

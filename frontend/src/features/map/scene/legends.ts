@@ -13,6 +13,7 @@ import palette from "@/types/generated/palette.json";
 import weatherScales from "@/types/generated/weather-scales.json";
 
 import { pointAxisKey } from "@/features/map/scene/groups/points";
+import { hazardLegendSwatch } from "@/features/map/scene/groups/weatherDrawings";
 import { POINT_LAYERS, pointIconScales, type PointAxis } from "@/lib/mapDisplay/pointLayers";
 import { DISASTER_ELEMENTS, DISASTER_LAYER_ID, type DisasterElement } from "@/features/map/layers/dynamicWeather";
 
@@ -108,10 +109,13 @@ const UNSCALED_SOURCE_SWATCH: Record<
   liden: { color: palette.semantic.mark_ink, mark: "liden" },
 };
 
-function disasterSwatch(element: DisasterElement): Pick<LegendEntry, "color" | "mark"> {
-  return element.levelScale === null
-    ? UNSCALED_SOURCE_SWATCH[element.source]
-    : { color: levelColor(weatherScales[element.levelScale], SWATCH_LEVEL_KEY[element.levelScale]) };
+function disasterSwatch(element: DisasterElement): Pick<LegendEntry, "color" | "mark" | "badge"> {
+  if (element.levelScale === null) return UNSCALED_SOURCE_SWATCH[element.source];
+  return (
+    hazardLegendSwatch(element.source) ?? {
+      color: levelColor(weatherScales[element.levelScale], SWATCH_LEVEL_KEY[element.levelScale]),
+    }
+  );
 }
 
 /** 災害チップの要素ごとの表示切替。隠した要素は取りに行かない（地図の絞り込みではなく取得を止める）。

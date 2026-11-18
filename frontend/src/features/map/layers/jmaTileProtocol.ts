@@ -12,6 +12,7 @@ import { debugLog } from "@/lib/debugLog";
 
 import { readJmaTileUrl, type JmaTileRef } from "@/features/map/layers/jmaDelivery";
 import { buildJmaTileIndexLookup, isKnownEmptyTile, type JmaTileIndexLookup } from "@/features/map/layers/jmaTileIndex";
+import { rememberJmaTileMask } from "@/features/map/layers/jmaTileMasks";
 import type { JmaTileIndexResponse } from "@/types/route";
 
 /** タイルURLへ付けるスキーム。`jmatile://https://host/...`の形になる。 */
@@ -136,7 +137,11 @@ async function handleJmaTileRequest(
     return { data: emptyTileBytes(realUrl) };
   }
   markDeliveryHealthy(ref);
-  return { data: response.ok ? await response.arrayBuffer() : emptyTileBytes(realUrl) };
+  if (!response.ok) return { data: emptyTileBytes(realUrl) };
+  const data = await response.arrayBuffer();
+  // 地図へ渡すと中身はWorkerへ移って読めなくなるので、写しから範囲の印を作る。
+  void rememberJmaTileMask(ref, data.slice(0));
+  return { data };
 }
 
 /** MapLibreへプロトコルを登録する（多重登録は無害だが1回で足りる）。 */

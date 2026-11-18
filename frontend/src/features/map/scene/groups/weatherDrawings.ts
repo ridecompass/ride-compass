@@ -5,7 +5,10 @@ import weatherScales from "@/types/generated/weather-scales.json";
 import type { FilterSpecification } from "maplibre-gl";
 
 import { PRECIPITATION_COLOR_STOPS, PRECIPITATION_PAINTED_FROM_MM } from "@/features/map/layers/precipitationNowcast";
+import type { IconPart } from "@/components/PointIconSwatch/PointIconSwatch";
+import { hazardBadgeParts, weatherMarkParts } from "@/components/WeatherMarkSwatch/WeatherMarkSwatch";
 import { drawWeatherMarkIcon, weatherMarkIconSizePx } from "@/features/map/layers/weatherMarkIcon";
+import type { HazardBadge, WeatherMark } from "@/lib/mapDisplay/weatherMarks";
 import { WIND_CALM_THRESHOLD_MS, WIND_SPEED_COLOR_STOPS } from "@/features/map/layers/windLayer";
 
 import type { MapSceneImage } from "@/features/map/scene/mapScene";
@@ -112,8 +115,8 @@ function markScaleAt(scale: MarkScale, properties: Readonly<Record<string, unkno
 const MARK_FRAME_PX = 32;
 const MARK_ICON_SIZE_PX = weatherMarkIconSizePx(MARK_FRAME_PX);
 
-function markImage(id: string, mark: Parameters<typeof drawWeatherMarkIcon>[0], color: string): MapSceneImage {
-  return { id, draw: () => drawWeatherMarkIcon(mark, color, MARK_FRAME_PX) };
+function markImage(id: string, parts: readonly IconPart[], framePx = MARK_FRAME_PX): MapSceneImage {
+  return { id, draw: () => drawWeatherMarkIcon(parts, framePx) };
 }
 
 function markDrawing(options: {
@@ -146,7 +149,7 @@ function markDrawing(options: {
 
 /** 風速の段ごとの風の矢印の絵（線の色が段の色）。 */
 const WIND_ARROW_ICONS = WIND_SPEED_COLOR_STOPS.map((stop, index) =>
-  markImage(`weather-wind-arrow-${index}`, "windArrow", stop.color),
+  markImage(`weather-wind-arrow-${index}`, weatherMarkParts("windArrow", stop.color)),
 );
 
 /** 配信元のラスタ以外の要素の見た目。**源泉に要素が増えて見た目が無ければ型検査が落ちる**
@@ -191,7 +194,7 @@ const DRAWINGS: { readonly [K in DrawnKey]: Drawing } = {
   "precipitationNowcast/linearRainbandArea/outline": RAINBAND_OUTLINE_DRAWING,
   "precipitationNowcast/linearRainbandAreaForecast/outline": RAINBAND_OUTLINE_DRAWING,
   "disaster/liden/gridMark": markDrawing({
-    icons: [markImage("weather-liden", "liden", palette.semantic.mark_ink)],
+    icons: [markImage("weather-liden", weatherMarkParts("liden", palette.semantic.mark_ink))],
     iconImage: "weather-liden",
     // 落雷の強弱を配信元が持たないため、大きさはズームだけで決まる。
     scale: WEATHER.lightningIconScale,
@@ -202,3 +205,103 @@ export function drawingOf(element: DeclaredElement): Drawing {
   if (element.kind === "rasterTile") return RASTER_DRAWING;
   return DRAWINGS[`${element.group}/${element.source}/${element.kind}` as DrawnKey];
 }
+
+/** 範囲の印と縁取りを描く、段で塗る災害の要素（配信元のラスタ）。 */
+type HazardElement = Extract<DeclaredElement, { kind: "rasterTile"; levelScale: string }>;
+export type HazardSource = HazardElement["source"];
+
+export const HAZARD_ELEMENTS: readonly HazardElement[] = mapDisplay.weatherElements.filter(
+  (element): element is HazardElement => element.kind === "rasterTile" && element.levelScale !== null,
+);
+
+/** 要素ごとの範囲の印の絵。要素が増えて絵が無ければ型検査が落ちる。 */
+const HAZARD_MARK: { readonly [S in HazardSource]: WeatherMark } = {
+  heavyRain: "heavyRain",
+  landslide: "landslide",
+  inundation: "inundation",
+  thunder: "thunder",
+  tornado: "tornado",
+};
+
+/** 範囲の印の形の線の座標の一辺を描く大きさ（ズーム13・倍率1のときの画面のpx）。風の矢印より少し大きくし、絵の中が詰まらない
+ * 大きさにする。 */
+const HAZARD_MARK_FRAME_PX = 35;
+const HAZARD_MARK_ICON_SIZE_PX = weatherMarkIconSizePx(HAZARD_MARK_FRAME_PX);
+
+/** ズーム`zoom`での範囲の印の1辺（画面のpx）。 */
+export function hazardMarkSizePx(zoom: number): number {
+  return HAZARD_MARK_ICON_SIZE_PX * linearAt(WEATHER.markSizeByZoom, zoom);
+}
+
+/** 範囲の印の背景。塗る段は警報、塗らない段は注意報。 */
+export function hazardBadgeOf(level: { readonly painted: boolean }): HazardBadge {
+  return level.painted ? "warning" : "attention";
+}
+
+/** 要素`source`の段`levelKey`の範囲の印の絵のid。 */
+export function hazardMarkImageId(source: string, levelKey: string): string {
+  return `hazard-${source}-${levelKey}`;
+}
+
+/** 要素ごと・段ごとの範囲の印の絵。背景を段の色で塗り、中に要素の絵を載せる。 */
+export const HAZARD_MARK_IMAGES: readonly MapSceneImage[] = HAZARD_ELEMENTS.flatMap((element) =>
+  weatherScales[element.levelScale].map((level) =>
+    markImage(
+      hazardMarkImageId(element.source, level.key),
+      hazardBadgeParts(hazardBadgeOf(level), level.color, HAZARD_MARK[element.source]),
+      HAZARD_MARK_FRAME_PX,
+    ),
+  ),
+);
+
+/** 要素の注意の段（塗らない段のうち一番上）。 */
+function attentionLevel(element: HazardElement): { readonly key: string; readonly color: string } {
+  const attention = weatherScales[element.levelScale].filter((level) => !level.painted).at(-1);
+  if (attention === undefined) throw new Error(`塗らない段が無い: ${element.levelScale}`);
+  return attention;
+}
+
+/** 範囲の縁取りの色。注意の段の色を半分の明るさにする——注意の段は地図にごく薄くしか出ないので、縁取りで範囲と災害の種類を
+ * 読ませる。黄の縁取りが基礎地図の黄〜橙の道と紛れないよう暗くする。 */
+function hazardOutlineColor(element: HazardElement): string {
+  const [r, g, b] = [1, 3, 5].map((i) => Math.round(parseInt(attentionLevel(element).color.slice(i, i + 2), 16) / 2));
+  return `rgb(${r}, ${g}, ${b})`;
+}
+
+/** 要素の行の凡例の見本。地図の範囲の印の中の絵だけを見せる（背景の形と色は段の行が見せる）。 */
+export function hazardLegendSwatch(source: string): { color: string; mark: WeatherMark } | null {
+  const element = HAZARD_ELEMENTS.find((candidate) => candidate.source === source);
+  if (element === undefined) return null;
+  return { color: palette.semantic.mark_ink, mark: HAZARD_MARK[element.source] };
+}
+
+/** 範囲の縁取りと印の見た目。地物は要素の名前付きソース（`source`）と、縁取り（`outline`）か印（`mark`）かの種類（`kind`）を持ち、
+ * 印は絵のid（`image`。`hazardMarkImageId`）を持つ。 */
+export const HAZARD_RANGE_DRAWING = {
+  outline: {
+    filter: ["==", ["get", "kind"], "outline"] as unknown as FilterSpecification,
+    layout: { "line-join": "round", "line-cap": "butt" },
+    paint: {
+      "line-color": [
+        "match",
+        ["get", "source"],
+        ...HAZARD_ELEMENTS.flatMap((element) => [element.source, hazardOutlineColor(element)]),
+        palette.semantic.mark_ink,
+      ],
+      "line-width": WEATHER.hazardOutlineWidthPx,
+      "line-dasharray": WEATHER.hazardOutlineDash,
+    },
+  },
+  mark: {
+    filter: ["==", ["get", "kind"], "mark"] as unknown as FilterSpecification,
+    layout: {
+      "icon-image": ["get", "image"],
+      "icon-rotation-alignment": "viewport",
+      // 範囲の印は必ず出し、近くの風の矢印・落雷の印（下の段）を間引かせる。
+      "icon-allow-overlap": true,
+      "icon-ignore-placement": false,
+      "icon-size": zoomScaleExpression(1, WEATHER.markSizeByZoom),
+    },
+    paint: { "icon-opacity": 1 },
+  },
+} as const;

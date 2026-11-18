@@ -63,6 +63,8 @@ export type HiddenLegendKeys = Readonly<Record<string, readonly string[]>>;
 export interface SceneLook {
   readonly layerVisibility: MapLayerVisibility;
   readonly dynamicWeather: Partial<Record<DynamicWeatherLayerId, DynamicWeatherGroupState>>;
+  /** 段で塗る災害の範囲の縁取りと印の地物（`useHazardRanges.ts`）。 */
+  readonly hazardRanges?: GeoJSON.FeatureCollection;
   /** ルート線の色分けのモード。 */
   readonly lens: LensId;
   /** 負担を数える軸があるか。無ければルートの線を負担で塗らず、中立色の1色にする。 */
@@ -186,7 +188,10 @@ function axisStateFrom(props: SceneWiringProps, sourceLayer: string): AxisLineSt
 }
 
 /** 届いている中身を、要素の鍵（`groups/weather.ts: weatherElementKey`）で引ける形へ移す。 */
-export function weatherStateFrom(dynamicWeather: SceneLook["dynamicWeather"]): WeatherState {
+export function weatherStateFrom(
+  dynamicWeather: SceneLook["dynamicWeather"],
+  hazardRanges?: GeoJSON.FeatureCollection,
+): WeatherState {
   const shown = new Map<string, { visible: boolean; payload?: DynamicWeatherRenderPayload }>();
   for (const [groupId, group] of Object.entries(dynamicWeather)) {
     if (group === undefined) continue;
@@ -198,7 +203,7 @@ export function weatherStateFrom(dynamicWeather: SceneLook["dynamicWeather"]): W
       });
     }
   }
-  return { shown };
+  return { shown, ...(hazardRanges === undefined ? {} : { hazardRanges }) };
 }
 
 /** 点のタイルごとのURL。 */
@@ -240,7 +245,7 @@ export function sceneInputsFrom(props: SceneWiringProps): SceneInputs {
       hiddenKeys,
       nearPath: props.look.surroundingsShown ? null : (props.splicedRoute ?? props.routePath),
     },
-    weather: weatherStateFrom(props.look.dynamicWeather),
+    weather: weatherStateFrom(props.look.dynamicWeather, props.look.hazardRanges),
     route: routeStateFrom(props),
   };
 }

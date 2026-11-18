@@ -232,7 +232,7 @@ export function overviewBasemapEdits(layers: readonly LayerSpecification[]): {
 
 // 気象の層のうち、pxで決まる見た目の値。俯瞰図では`OVERVIEW_RENDER_SCALE`倍にする。
 const WEATHER_PX_LAYOUT = ["icon-size"];
-const WEATHER_PX_PAINT = ["icon-halo-width", "line-width"];
+const WEATHER_PX_PAINT = ["line-width"];
 
 /** ズームで決まる値を、`OVERVIEW_RENDER_SCALE`倍で描いた地図の上で同じ見た目にする。ズームの段は描く地図のズームへずらし、値は倍にする。 */
 function renderScaled(value: unknown): unknown {

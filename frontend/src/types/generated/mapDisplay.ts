@@ -801,7 +801,6 @@ export const mapDisplay = {
     "terrainExaggeration": 5
   },
   "weather": {
-    "markHaloWidthPx": 1.5,
     "windIconScaleRange": [
       0.9,
       2.6
@@ -842,6 +841,11 @@ export const mapDisplay = {
     ],
     "rainbandOutlineWidthPx": 4,
     "rainbandOutlineCasingWidthPx": 6,
+    "hazardOutlineWidthPx": 2.5,
+    "hazardOutlineDash": [
+      2.0,
+      1.5
+    ],
     "msmForecastHours": 48
   },
   "route": {
