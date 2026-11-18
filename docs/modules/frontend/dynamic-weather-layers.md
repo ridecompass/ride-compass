@@ -212,7 +212,7 @@ MapLibreはレイヤーの上から順にシンボルを配置するため、同
 「表示する情報」でソースを個別に間引ける——行（要素の呼び名）は源泉の要素の宣言
 （backend `domain/weather_elements.py: WEATHER_ELEMENTS`の`label`）から`scene/legends.ts:
 disasterSourceLegendAxis`が作り、隠したソースは他の凡例絞り込みと同じ保存先
-（`useMapView`が持つ。チップidを鍵にする）へ入って、`hiddenSources`としてこのフックへ渡る。
+（`useMapView`が持つ。チップidを鍵にする）へ入って、`hiddenSources`としてこのフックへ渡る。源泉が最初は隠すとした要素（`WEATHER_ELEMENTS`の`initially_hidden`。浸水キキクルと同じ範囲に同じ段を重ねる大雨キキクル）は、凡例の最初に隠す行（`scene/legends.ts: initiallyHiddenLegendKeys`）に入り、隠した状態で始まる。
 ソースごとの`visible`だけでなく、非表示のソースが読む配信要素は、同じ配信要素を読む表示中の
 ソースが無ければ取りに行かない（「表示中のものだけ叩く」方針）。取りに行く単位は配信要素
 そのもので、画面は単位の対応表を持たない。時刻一覧を取る単位はファイルで、同じファイルを読む

@@ -278,6 +278,7 @@ def _weather_element_entry(element: WeatherElement) -> dict:
         "levelScale": element.level_scale,
         "description": element.description,
         "legendColor": element.legend_color,
+        "initiallyHidden": element.initially_hidden,
         # 時刻の段の順（近い時刻から）。画面のデータ層は、時刻一覧をそのパスから取り、行を読み方に従って
         # コマにし、コマの時刻と系列でパスのテンプレートを埋めて取りに行く。
         "jmaElements": [

@@ -325,6 +325,7 @@ export const mapDisplay = {
       "levelScale": null,
       "description": null,
       "legendColor": null,
+      "initiallyHidden": false,
       "jmaElements": [
         {
           "id": "hrpns",
@@ -369,6 +370,7 @@ export const mapDisplay = {
       "levelScale": null,
       "description": null,
       "legendColor": null,
+      "initiallyHidden": false,
       "jmaElements": [],
       "tile": null
     },
@@ -385,6 +387,7 @@ export const mapDisplay = {
       "levelScale": null,
       "description": "今後3時間以内に大雨のおそれ[矩形の予測領域。現在〜3時間先のみ]",
       "legendColor": "#ff2800",
+      "initiallyHidden": false,
       "jmaElements": [
         {
           "id": "sjfcstmap",
@@ -417,6 +420,7 @@ export const mapDisplay = {
       "levelScale": null,
       "description": "大雨災害発生の危険度が急激に高まっている線状降水帯の雨域[赤い輪郭線。実況〜30分先のみ]",
       "legendColor": "#ff0000",
+      "initiallyHidden": false,
       "jmaElements": [
         {
           "id": "slmcs_unify",
@@ -445,6 +449,7 @@ export const mapDisplay = {
       "levelScale": null,
       "description": "大雨災害発生の危険度が急激に高まっている線状降水帯の雨域[赤い輪郭線。実況〜30分先のみ]",
       "legendColor": "#ff0000",
+      "initiallyHidden": false,
       "jmaElements": [
         {
           "id": "slmcs_unifyfcst",
@@ -473,6 +478,7 @@ export const mapDisplay = {
       "levelScale": null,
       "description": null,
       "legendColor": null,
+      "initiallyHidden": false,
       "jmaElements": [],
       "tile": null
     },
@@ -487,8 +493,9 @@ export const mapDisplay = {
       },
       "gridValue": null,
       "levelScale": "risk_levels",
-      "description": "大雨による土砂災害と浸水害の危険度の高まりを、まとめて段階で示す気象庁の情報。",
+      "description": "浸水キキクルと洪水キキクル[河川]のうち、危険度の高い方を段階で示す気象庁の情報。",
       "legendColor": null,
+      "initiallyHidden": true,
       "jmaElements": [
         {
           "id": "rain_mesh",
@@ -521,6 +528,7 @@ export const mapDisplay = {
       "levelScale": "risk_levels",
       "description": "大雨による土砂災害[がけ崩れ・土石流など]の危険度の高まりを段階で示す気象庁の情報。",
       "legendColor": null,
+      "initiallyHidden": false,
       "jmaElements": [
         {
           "id": "land",
@@ -553,6 +561,7 @@ export const mapDisplay = {
       "levelScale": "risk_levels",
       "description": "短い時間の強い雨で、道路や低い土地が水につかる危険度の高まりを段階で示す気象庁の情報。",
       "legendColor": null,
+      "initiallyHidden": false,
       "jmaElements": [
         {
           "id": "inund",
@@ -585,6 +594,7 @@ export const mapDisplay = {
       "levelScale": "thunder_activity",
       "description": "雷の激しさと雷が起こる可能性を、活動度の段階で示す気象庁の実況と60分先までの予測。",
       "legendColor": null,
+      "initiallyHidden": false,
       "jmaElements": [
         {
           "id": "thns",
@@ -617,6 +627,7 @@ export const mapDisplay = {
       "levelScale": "tornado_potential",
       "description": "竜巻などの激しい突風が起こりやすい所を、確度の段階で示す気象庁の実況と60分先までの予測。",
       "legendColor": null,
+      "initiallyHidden": false,
       "jmaElements": [
         {
           "id": "trns",
@@ -649,6 +660,7 @@ export const mapDisplay = {
       "levelScale": "risk_levels",
       "description": "大雨で川があふれる危険度の高まりを、川に沿った色で示す気象庁の情報。",
       "legendColor": null,
+      "initiallyHidden": false,
       "jmaElements": [
         {
           "id": "flood",
@@ -681,6 +693,7 @@ export const mapDisplay = {
       "levelScale": null,
       "description": "気象庁の雷の観測が捉えた、直近の雷の発生地点。",
       "legendColor": null,
+      "initiallyHidden": false,
       "jmaElements": [
         {
           "id": "liden",

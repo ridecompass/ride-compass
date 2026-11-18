@@ -88,31 +88,41 @@
       "level": 0,
       "key": "level0",
       "label": "平常[危険度なし]",
-      "color": "#ffffff"
+      "color": "#ffffff",
+      "painted": false,
+      "tile_color": null
     },
     {
       "level": 1,
       "key": "level1",
       "label": "注意[黄]",
-      "color": "#f2e700"
+      "color": "#f2e700",
+      "painted": false,
+      "tile_color": "#f2e700"
     },
     {
       "level": 2,
       "key": "level2",
       "label": "警戒[赤]",
-      "color": "#ff2800"
+      "color": "#ff2800",
+      "painted": true,
+      "tile_color": null
     },
     {
       "level": 3,
       "key": "level3",
       "label": "危険[紫]",
-      "color": "#aa00aa"
+      "color": "#aa00aa",
+      "painted": true,
+      "tile_color": null
     },
     {
       "level": 4,
       "key": "level4",
       "label": "災害切迫[黒]",
-      "color": "#0c000c"
+      "color": "#0c000c",
+      "painted": true,
+      "tile_color": null
     }
   ],
   "linear_rainband_outline_color": "#ff0000",
@@ -121,34 +131,46 @@
     {
       "key": "level1",
       "label": "活動度1: 雷雲発達の可能性[1時間以内に発雷のおそれ]",
-      "color": "#fde047"
+      "color": "#fde047",
+      "painted": false,
+      "tile_color": "#faf500"
     },
     {
       "key": "level2",
       "label": "活動度2: 雷雲発生、落雷の可能性",
-      "color": "#fb923c"
+      "color": "#fb923c",
+      "painted": true,
+      "tile_color": "#ffaa00"
     },
     {
       "key": "level3",
       "label": "活動度3: 落雷が発生中",
-      "color": "#ef4444"
+      "color": "#ef4444",
+      "painted": true,
+      "tile_color": "#ff2800"
     },
     {
       "key": "level4",
       "label": "活動度4: 激しい雷[雹に注意]",
-      "color": "#9333ea"
+      "color": "#9333ea",
+      "painted": true,
+      "tile_color": null
     }
   ],
   "tornado_potential": [
     {
       "key": "potential1",
       "label": "発生確度1: 広く注意[見逃しを減らす、的中率1〜7%]",
-      "color": "#38bdf8"
+      "color": "#38bdf8",
+      "painted": false,
+      "tile_color": null
     },
     {
       "key": "potential2",
       "label": "発生確度2: 重点警戒[気象庁「竜巻注意」相当、的中率7〜14%]",
-      "color": "#1d4ed8"
+      "color": "#1d4ed8",
+      "painted": true,
+      "tile_color": null
     }
   ],
   "wind_calm_below_ms": 0.3,
