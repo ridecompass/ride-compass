@@ -142,6 +142,8 @@ export default function RouteOutcome({ results, generation, splice, profileLayer
 
   return (
     <>
+      {/* 作り直している間も、並んでいる候補が前のものだと分かるよう進み方を出す。 */}
+      {generation.running && <p className={cn(textVariants({ variant: "hint" }), "m-0")}>{generation.progressLabel}</p>}
       {generation.conditionsDirty && <WarningText>生成条件が変更されています</WarningText>}
       {generation.destinationCorrected && (
         <WarningText>指定した地点は自転車で行けない場所だったため、近くの自転車で行ける地点へ移しました。</WarningText>
