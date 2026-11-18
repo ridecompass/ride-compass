@@ -7,6 +7,7 @@ import {
   HAZARD_BADGES,
   HAZARD_GLYPH_STROKE,
   type HazardBadge,
+  WEATHER_MARK_BARE_EDGE_EXTRA,
   WEATHER_MARK_EDGE_EXTRA,
   WEATHER_MARK_FRAME,
   WEATHER_MARK_HALO_EXTRA,
@@ -20,15 +21,19 @@ import palette from "@/types/generated/palette.json";
 /** 余白を含めた、絵の座標の一辺。 */
 export const WEATHER_MARK_CANVAS = WEATHER_MARK_FRAME + 2 * WEATHER_MARK_PAD;
 
-/** 印`mark`を線の色`color`で描く部品。外の暗い細線・白い縁・線の順に重ねる（座標は余白の分だけずらしてある）。 */
+/** 印`mark`を線の色`color`で描く部品。外の暗い細線・白い縁（付ける印だけ）・線の順に重ねる（座標は余白の分だけずらしてある）。 */
 export function weatherMarkParts(mark: WeatherMark, color: string): readonly IconPart[] {
-  const { lines, width } = WEATHER_MARKS[mark];
+  const shape: { lines: readonly string[]; width: number; whiteHalo?: boolean } = WEATHER_MARKS[mark];
+  const { lines, width } = shape;
   const at = [WEATHER_MARK_PAD, WEATHER_MARK_PAD, 1] as const;
-  return [
-    { stroke: palette.semantic.mark_halo, width: width + WEATHER_MARK_EDGE_EXTRA },
-    { stroke: palette.semantic.mark_stroke, width: width + WEATHER_MARK_HALO_EXTRA },
-    { stroke: color, width },
-  ].flatMap((layer) => lines.map((d) => ({ d, ...layer, at })));
+  const rims =
+    shape.whiteHalo === false
+      ? [{ stroke: palette.semantic.mark_halo, width: width + WEATHER_MARK_BARE_EDGE_EXTRA }]
+      : [
+          { stroke: palette.semantic.mark_halo, width: width + WEATHER_MARK_EDGE_EXTRA },
+          { stroke: palette.semantic.mark_stroke, width: width + WEATHER_MARK_HALO_EXTRA },
+        ];
+  return [...rims, { stroke: color, width }].flatMap((layer) => lines.map((d) => ({ d, ...layer, at })));
 }
 
 /** 災害の範囲の印の部品。背景の形`badge`を段の色`fill`で塗って太い輪郭を引き、中に災害の絵`mark`を載せる。暗い塗りの上の

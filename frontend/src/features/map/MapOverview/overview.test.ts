@@ -15,6 +15,7 @@ import { groundMetersPerPixel, pixelsPerLongitudeDegree } from "@/lib/mapScale";
 import { lineLayer, scene } from "@/testing/mapSceneDeclarations";
 
 import {
+  OVERVIEW_MARK_SCALE,
   OVERVIEW_MIN_ZOOM,
   OVERVIEW_SIZE_PX,
   anyWeatherShown,
@@ -99,7 +100,10 @@ describe("overviewWeather", () => {
       },
     },
   };
-  const arrowSizePx = weatherMarkSizePx({ group: "windVector", source: "arrow" })!;
+  const mainArrowSizePx = weatherMarkSizePx({ group: "windVector", source: "arrow" })!;
+  // 俯瞰図の矢印は本体の地図より小さく描く。
+  const arrowSizePx = (zoom: number, properties: Readonly<Record<string, unknown>>) =>
+    mainArrowSizePx(zoom, properties) * OVERVIEW_MARK_SCALE;
   const keptOf = (zoom: number) => {
     const payload = overviewWeather(weather, zoom, center).windVector?.arrow?.payload;
     return new Set(payload !== undefined && "geojson" in payload ? payload.geojson.features : []);
@@ -114,7 +118,7 @@ describe("overviewWeather", () => {
 
   // 本体の倍率12では弱い風の矢印も格子点の間隔より大きく、14では強い風の矢印だけが格子点の間隔より大きい。
   it.each([12, 14])(
-    "本体の倍率%sで、俯瞰図の矢印はどの2本も大きい方の1辺以上離れ、丸の中で落とした矢印はどれも残した矢印のどれかと重なる",
+    "本体の倍率%sで、俯瞰図の矢印はどの2本も大きい方の1辺以上離れ、丸の縁から矢印1つ分より内側で落とした矢印はどれも残した矢印のどれかと重なる",
     (mainZoom) => {
       const zoom = overviewZoom(latitude, mainZoom);
       const kept = keptOf(zoom);
@@ -126,10 +130,15 @@ describe("overviewWeather", () => {
 
       expect(keptFeatures.length).toBeGreaterThanOrEqual(4);
       expect(keptFeatures.filter((a) => keptFeatures.some((b) => a !== b && overlap(a, b)))).toEqual([]);
+      // 間引いてから丸で絞るので、丸の縁の近くの矢印は丸のすぐ外の（描かない）矢印に押されて落ちうる。縁から矢印1つ分より
+      // 内側の矢印だけを見る。
+      const largestPx = Math.max(...features.map((feature) => arrowSizePx(zoom, feature.properties)));
       expect(
         features.filter(
           (a) =>
-            pxFromCenter(zoom, a) <= OVERVIEW_SIZE_PX / 2 && !kept.has(a) && !keptFeatures.some((b) => overlap(a, b)),
+            pxFromCenter(zoom, a) <= OVERVIEW_SIZE_PX / 2 - largestPx &&
+            !kept.has(a) &&
+            !keptFeatures.some((b) => overlap(a, b)),
         ),
       ).toEqual([]);
     },
@@ -209,7 +218,7 @@ describe("overviewScene", () => {
     );
   const specsOf = (drawn: MapScene) => drawn.layers.map((layer) => layer.spec);
 
-  it("記号の大きさ・線の幅を、描く地図のズームで2倍にし、記号に地名の場所を取らせない", () => {
+  it("線の幅を描く地図のズームで2倍に、記号の大きさは小さめ（2倍のさらに`OVERVIEW_MARK_SCALE`倍）にし、記号に地名の場所を取らせない", () => {
     const byZoom = ["interpolate", ["linear"], ["zoom"], 10, ["*", ["get", "s"], 0.5], 14, 1];
     const input = sceneOf(
       {
@@ -234,7 +243,15 @@ describe("overviewScene", () => {
         type: "symbol",
         source: "s",
         layout: {
-          "icon-size": ["interpolate", ["linear"], ["zoom"], 11, ["*", ["*", ["get", "s"], 0.5], 2], 15, 2],
+          "icon-size": [
+            "interpolate",
+            ["linear"],
+            ["zoom"],
+            11,
+            ["*", ["*", ["get", "s"], 0.5], 2 * OVERVIEW_MARK_SCALE],
+            15,
+            2 * OVERVIEW_MARK_SCALE,
+          ],
           "icon-rotate": 30,
           "icon-ignore-placement": true,
         },

@@ -111,17 +111,19 @@ function markScaleAt(scale: MarkScale, properties: Readonly<Record<string, unkno
   return linearAt(markScaleStops(scale), Number(properties[scale.property] ?? 0));
 }
 
-/** 天気の印の形の線の座標の一辺を描く大きさ（ズーム13・倍率1のときの画面のpx）。 */
+/** 天気の印の形の線の座標の一辺を描く大きさ（ズーム13・倍率1のときの画面のpx）。風の矢羽根は線が細く羽根がつぶれやすいので
+ * 大きめにする。 */
 const MARK_FRAME_PX = 32;
-const MARK_ICON_SIZE_PX = weatherMarkIconSizePx(MARK_FRAME_PX);
+const WIND_MARK_FRAME_PX = 38;
 
 function markImage(id: string, parts: readonly IconPart[], framePx = MARK_FRAME_PX): MapSceneImage {
   return { id, draw: () => drawWeatherMarkIcon(parts, framePx) };
 }
 
 function markDrawing(options: {
-  /** 描く絵。縁まで色を描き込んだ絵（`weatherMarkIcon.ts`）で、どれも同じ大きさ。 */
+  /** 描く絵。縁まで色を描き込んだ絵（`weatherMarkIcon.ts`）で、どれも形の線の座標の一辺を`framePx`で描いたもの。 */
   readonly icons: readonly MapSceneImage[];
+  readonly framePx: number;
   /** 地物に描く絵の id か、それを地物の値から選ぶ式。 */
   readonly iconImage: unknown;
   readonly scale: MarkScale;
@@ -132,7 +134,9 @@ function markDrawing(options: {
   return {
     icons: options.icons,
     markSizePx: (zoom, properties) =>
-      MARK_ICON_SIZE_PX * markScaleAt(options.scale, properties) * linearAt(WEATHER.markSizeByZoom, zoom),
+      weatherMarkIconSizePx(options.framePx) *
+      markScaleAt(options.scale, properties) *
+      linearAt(WEATHER.markSizeByZoom, zoom),
     layout: {
       "icon-image": options.iconImage,
       "icon-rotate": options.rotateProperty === undefined ? 0 : ["to-number", ["get", options.rotateProperty]],
@@ -149,7 +153,7 @@ function markDrawing(options: {
 
 /** 風速の段ごとの風の矢印の絵（線の色が段の色）。 */
 const WIND_ARROW_ICONS = WIND_SPEED_COLOR_STOPS.map((stop, index) =>
-  markImage(`weather-wind-arrow-${index}`, weatherMarkParts("windArrow", stop.color)),
+  markImage(`weather-wind-arrow-${index}`, weatherMarkParts("windArrow", stop.color), WIND_MARK_FRAME_PX),
 );
 
 /** 配信元のラスタ以外の要素の見た目。**源泉に要素が増えて見た目が無ければ型検査が落ちる**
@@ -168,6 +172,7 @@ const DRAWINGS: { readonly [K in DrawnKey]: Drawing } = {
   },
   "windVector/arrow/gridMark": markDrawing({
     icons: WIND_ARROW_ICONS,
+    framePx: WIND_MARK_FRAME_PX,
     iconImage: bandExpression(
       ["get", "speed"],
       WIND_SPEED_COLOR_STOPS.map((stop, index) => ({ from: stop.speedMs, value: WIND_ARROW_ICONS[index].id })),
@@ -195,6 +200,7 @@ const DRAWINGS: { readonly [K in DrawnKey]: Drawing } = {
   "precipitationNowcast/linearRainbandAreaForecast/outline": RAINBAND_OUTLINE_DRAWING,
   "disaster/liden/gridMark": markDrawing({
     icons: [markImage("weather-liden", weatherMarkParts("liden", palette.semantic.mark_ink))],
+    framePx: MARK_FRAME_PX,
     iconImage: "weather-liden",
     // 落雷の強弱を配信元が持たないため、大きさはズームだけで決まる。
     scale: WEATHER.lightningIconScale,

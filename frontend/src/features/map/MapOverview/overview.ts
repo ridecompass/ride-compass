@@ -24,6 +24,8 @@ export const OVERVIEW_SIZE_PX = 130;
 /** 俯瞰図の地図を描く倍率。俯瞰図をこの倍の大きさの地図として描いて縮めると、地図は1段細かいタイルで描かれる
  * （約20km四方を映す粗い段のタイルには区の名前が無く、1段細かい段から載る）。px で決まる見た目は、この倍にして見た目の大きさを保つ。 */
 export const OVERVIEW_RENDER_SCALE = 2;
+/** 俯瞰図の記号の大きさ（本体の地図の記号に対する倍率）。俯瞰図は小さな丸なので、本体と同じ大きさでは記号が丸を埋める。 */
+export const OVERVIEW_MARK_SCALE = 0.8;
 const RENDER_ZOOM_OFFSET = Math.log2(OVERVIEW_RENDER_SCALE);
 /** 本体の地図がこのズーム以上の間だけ俯瞰図を出す（これより引くと、本体の地図が俯瞰図と同じほど広く映す）。 */
 export const OVERVIEW_MIN_ZOOM = 11;
@@ -93,7 +95,7 @@ function thinnedGridMarks(
         y: pointLatitude * pxPerLatitudeDeg,
         row: Math.round(pointLatitude / latitudeStep),
         column: Math.round(longitude / longitudeStep),
-        sizePx: markSizePx(zoom, feature.properties ?? {}),
+        sizePx: markSizePx(zoom, feature.properties ?? {}) * OVERVIEW_MARK_SCALE,
       },
     ];
   });
@@ -230,34 +232,39 @@ export function overviewBasemapEdits(layers: readonly LayerSpecification[]): {
   return { hidden, places, motorways };
 }
 
-// 気象の層のうち、pxで決まる見た目の値。俯瞰図では`OVERVIEW_RENDER_SCALE`倍にする。
-const WEATHER_PX_LAYOUT = ["icon-size"];
-const WEATHER_PX_PAINT = ["line-width"];
+// 気象の層のうち、pxで決まる見た目の値と、俯瞰図で掛ける倍率。線は`OVERVIEW_RENDER_SCALE`倍にして本体と同じ見た目にし、記号は
+// さらに`OVERVIEW_MARK_SCALE`倍に縮める。
+const WEATHER_PX_LAYOUT = { "icon-size": OVERVIEW_RENDER_SCALE * OVERVIEW_MARK_SCALE };
+const WEATHER_PX_PAINT = { "line-width": OVERVIEW_RENDER_SCALE };
 
-/** ズームで決まる値を、`OVERVIEW_RENDER_SCALE`倍で描いた地図の上で同じ見た目にする。ズームの段は描く地図のズームへずらし、値は倍にする。 */
-function renderScaled(value: unknown): unknown {
-  if (typeof value === "number") return value * OVERVIEW_RENDER_SCALE;
-  if (!Array.isArray(value)) return ["*", value, OVERVIEW_RENDER_SCALE];
+/** ズームで決まる値を、`OVERVIEW_RENDER_SCALE`倍で描いた地図の上へ移す。ズームの段は描く地図のズームへずらし、値は`factor`倍にする。 */
+function renderScaled(value: unknown, factor: number): unknown {
+  if (typeof value === "number") return value * factor;
+  if (!Array.isArray(value)) return ["*", value, factor];
   const isZoom = (input: unknown) => Array.isArray(input) && input.length === 1 && input[0] === "zoom";
   // ["interpolate", 補間, ["zoom"], ズーム, 値, ...]・["step", ["zoom"], 値, ズーム, 値, ...]
   const byZoom = (value[0] === "interpolate" && isZoom(value[2])) || (value[0] === "step" && isZoom(value[1]));
-  if (!byZoom) return ["*", value, OVERVIEW_RENDER_SCALE];
+  if (!byZoom) return ["*", value, factor];
   const stopsFrom = 3;
   const scaled: unknown[] = value.slice(0, stopsFrom);
-  if (value[0] === "step") scaled[2] = renderScaled(value[2]);
+  if (value[0] === "step") scaled[2] = renderScaled(value[2], factor);
   for (let i = stopsFrom; i + 1 < value.length; i += 2)
-    scaled.push((value[i] as number) + RENDER_ZOOM_OFFSET, renderScaled(value[i + 1]));
+    scaled.push((value[i] as number) + RENDER_ZOOM_OFFSET, renderScaled(value[i + 1], factor));
   return scaled;
 }
 
-function scaledProperties(properties: object | undefined, keys: readonly string[]): object | undefined {
+function scaledProperties(
+  properties: object | undefined,
+  factors: Readonly<Record<string, number>>,
+): object | undefined {
   if (properties === undefined) return undefined;
   const scaled: Record<string, unknown> = { ...properties };
-  for (const key of keys) if (key in scaled) scaled[key] = renderScaled(scaled[key]);
+  for (const [key, factor] of Object.entries(factors))
+    if (key in scaled) scaled[key] = renderScaled(scaled[key], factor);
   return scaled;
 }
 
-/** 気象の家族の scene を、俯瞰図の地図（`OVERVIEW_RENDER_SCALE`倍で描いて縮める）に載せる形にする。pxで決まる見た目を倍にし、
+/** 気象の家族の scene を、俯瞰図の地図（`OVERVIEW_RENDER_SCALE`倍で描いて縮める）に載せる形にする。pxで決まる見た目を倍にし（記号は小さめに）、
  * 記号は地名の場所を取らないようにする（取ると地名が衝突で押し出される）。場所を取らない記号は記号どうしでも間引かれないので、
  * 格子点の記号は`overviewWeather`で間引いておく。 */
 export function overviewScene(scene: MapScene): MapScene {

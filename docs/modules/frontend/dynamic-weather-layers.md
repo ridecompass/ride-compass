@@ -181,9 +181,10 @@ JMAタイル系ソースの`minzoom`/`maxzoom`・ベクタのレイヤー名は�
 配信元は要素ごとに実データを持つズームが異なり、上限を超えると空タイルが返って地図から色が
 消えるため、この値を画面側へ書かない。
 
-`gridMark`（`scene/groups/weatherDrawings.ts: markDrawing`）の縁取り（線の外の白い縁と、その外の暗い細線）は、主層と別の
-symbolレイヤーではなく、記号の絵に描き込んで1層にまとめる（`features/map/layers/weatherMarkIcon.ts`。SDFの`icon-halo-*`は縁を
-1色しか持てない）。色で段を示す記号（風の矢印）は、段ごとに線の色を描き込んだ絵を作り、`icon-image`を値の段で選ぶ。
+`gridMark`（`scene/groups/weatherDrawings.ts: markDrawing`）の縁取り（線の外の白い縁と、その外の暗い細線。風の矢羽根は暗い細線だけ）は、
+主層と別のsymbolレイヤーではなく、記号の絵に描き込んで1層にまとめる（`features/map/layers/weatherMarkIcon.ts`。SDFの`icon-halo-*`は縁を
+1色しか持てない）。色で段を示す記号（風の矢羽根）は、段ごとに線の色を描き込んだ絵を作り、`icon-image`を値の段で選ぶ。絵は見ている
+端末の画面の細かさ（`devicePixelRatio`）で描く——細かく描いて地図で大きく縮めると、MapLibreの縮め方が粗いので細い縁がジグザグになる。
 MapLibreはレイヤーの上から順にシンボルを配置するため、同位置・大きめのシンボルを別レイヤー（下）で重ねると
 `icon-allow-overlap: false`下では常に「衝突」として全て落ちる——1層にまとめれば衝突判定は主層自身の1回だけになり、
 縁取りは常に主層と同じ地点に出る。
@@ -447,7 +448,8 @@ basetime・validtimeを含む）で持つため、フレームが進んで取得
   格子点の間隔は応答の`latitude_step_deg`・`longitude_step_deg`を中身に持たせたもの。行・列の番号は緯度・経度0から数えるので、地図を動かしても粗い刻みの格子点は同じ所に残る。
 - **倍で描いて縮める**: 俯瞰図の地図は`features/map/MapOverview/overview.ts: OVERVIEW_RENDER_SCALE`倍の大きさの地図として描いてCSSで縮める。
   約20km四方を映す粗い段の基礎地図のタイルには区の名前が無く、1段細かい段から載るため。pxで決まる見た目（地名の字・気象の記号の大きさ等）は
-  その倍にして見た目の大きさを保つ。基礎地図と配信元のタイルは1段細かい段のものを取る。
+  その倍にして見た目の大きさを保つ。ただし気象の記号は、小さな丸を埋めないよう本体の地図より小さく描く（`features/map/MapOverview/overview.ts:
+  OVERVIEW_MARK_SCALE`倍。間引きもその大きさで数える）。基礎地図と配信元のタイルは1段細かい段のものを取る。
 - **範囲**: 中心と向きは本体の地図に合わせ、ズームは本体の地図より4段引いた値（今の画面の16倍の幅）で、丸の径が約20kmより狭くならないようにする
   （`features/map/MapOverview/overview.ts: overviewZoom`）。ズーム13あたりまでは今の画面の枠がいつも同じ大きさで、それより寄せると下限に当たり枠が小さくなる。
   下限は、約5kmおきのMSMの格子点の風の矢印が俯瞰図に数本は入る広さ。今の画面の範囲は真ん中の枠で示す。俯瞰図は操作を受けない（`features/map/baseMap.ts: createBaseMap`の`inset`）。

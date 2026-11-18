@@ -9,8 +9,11 @@ import { drawCanvasIcon } from "@/features/map/layers/sdfIcon";
 import { WEATHER_MARK_FRAME } from "@/lib/mapDisplay/weatherMarks";
 import type { MapSceneImageOptions } from "@/features/map/scene/mapScene";
 
-/** 地図へ登録する画素の細かさ（画面の1pxあたり）。印はズームと風速で2倍を超えて大きく描くので、引き伸ばしてもにじまない細かさにする。 */
-const PIXEL_RATIO = 4;
+/** 地図へ登録する画素の細かさ（画面の1pxあたり）。画面の細かさに合わせる——細かく描いて地図で大きく縮めると、地図ライブラリの縮め方が
+ * 粗いので線の縁がジグザグになる。 */
+function pixelRatio(): number {
+  return Math.max(1, Math.round(globalThis.devicePixelRatio ?? 1));
+}
 
 /** 形の線の座標の一辺（`WEATHER_MARK_FRAME`）を`framePx`で描いたときの、余白を含めた絵の一辺（画面のpx）。 */
 export function weatherMarkIconSizePx(framePx: number): number {
@@ -23,12 +26,13 @@ export function drawWeatherMarkIcon(
   parts: readonly IconPart[],
   framePx: number,
 ): { readonly data: ImageData; readonly options: MapSceneImageOptions } {
-  const sizePx = Math.round(weatherMarkIconSizePx(framePx) * PIXEL_RATIO);
+  const ratio = pixelRatio();
+  const sizePx = Math.round(weatherMarkIconSizePx(framePx) * ratio);
   const data = drawCanvasIcon(sizePx, (ctx) => {
     ctx.scale(sizePx / WEATHER_MARK_CANVAS, sizePx / WEATHER_MARK_CANVAS);
     ctx.lineCap = "round";
     ctx.lineJoin = "round";
     for (const part of parts) drawIconPart(ctx, part);
   });
-  return { data, options: { pixelRatio: PIXEL_RATIO } };
+  return { data, options: { pixelRatio: ratio } };
 }
