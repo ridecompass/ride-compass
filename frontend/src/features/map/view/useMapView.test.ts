@@ -189,6 +189,8 @@ describe("useMapView", () => {
     const { result } = renderMapView();
     await waitFor(() => expect(result.current.lensControl.axisOptions).toHaveLength(LENS_COUNT));
     act(() => result.current.lensControl.onLensChange("ascent"));
+    // チップの凡例で隠した行（最初に隠す行を含む）が無い状態から始める。
+    act(() => result.current.overlayControls.onShowAllLegendRows());
     const key = result.current.lensControl.legend[0].key;
     vi.useFakeTimers();
 
@@ -204,7 +206,7 @@ describe("useMapView", () => {
     act(() => result.current.lensControl.onSetHiddenLegendKeys(allKeys));
     expect(result.current.lensControl.hiddenLegendKeys).toEqual(allKeys);
 
-    act(() => result.current.overlayControls.onLegendEntryToggle("disaster", "heavyRain"));
+    act(() => result.current.overlayControls.onLegendEntryToggle("disaster", "landslide"));
     act(() => result.current.overlayControls.onShowAllLegendRows());
     expect(result.current.overlayControls.anyLegendHidden).toBe(false);
     expect(result.current.lensControl.hiddenLegendKeys).toEqual(allKeys);
@@ -219,6 +221,8 @@ describe("useMapView", () => {
     serve();
     const { result } = renderMapView();
     await waitFor(() => expect(chip(result, "surface")).toBeDefined());
+    // 最初から出ていて最初に隠す行を持つ災害のチップを消し、最初に隠す行を持つチップをどれも出していない状態にする。
+    act(() => result.current.overlayControls.onToggle("disaster", false));
     expect(chip(result, "surface")).toMatchObject({ on: false, legendDetails: [{ hiddenKeys: [LEGEND_NO_DATA_KEY] }] });
     expect(result.current.overlayControls.anyLegendHidden).toBe(false);
 
@@ -245,16 +249,18 @@ describe("useMapView", () => {
     await waitFor(() => expect(hiddenOf(result)).toEqual({ legend: [], map: [] }));
   });
 
-  it("災害のチップの凡例で隠した情報は描かず、絞り込み中に数える", () => {
+  it("災害のチップは、浸水キキクルと同じ範囲に同じ段を重ねる大雨キキクルを隠して始め、凡例で隠した情報は描かず、絞り込み中に数える", () => {
     serve();
     const { result } = renderMapView();
-
-    act(() => result.current.overlayControls.onLegendEntryToggle("disaster", "heavyRain"));
-
     expect(result.current.look.dynamicWeather.disaster?.heavyRain?.visible).toBe(false);
-    expect(result.current.look.dynamicWeather.disaster?.landslide?.visible).toBe(true);
-    expect(result.current.overlayControls.anyLegendHidden).toBe(true);
     expect(chip(result, "disaster")?.legendDetails?.[0].hiddenKeys).toEqual(["heavyRain"]);
+
+    act(() => result.current.overlayControls.onLegendEntryToggle("disaster", "landslide"));
+
+    expect(result.current.look.dynamicWeather.disaster?.landslide?.visible).toBe(false);
+    expect(result.current.look.dynamicWeather.disaster?.inundation?.visible).toBe(true);
+    expect(result.current.overlayControls.anyLegendHidden).toBe(true);
+    expect(chip(result, "disaster")?.legendDetails?.[0].hiddenKeys).toEqual(["heavyRain", "landslide"]);
   });
 
   it("表示・レンズ・表示する範囲・地図の色・隠した行は、次に開いたときも残る", async () => {
@@ -265,7 +271,7 @@ describe("useMapView", () => {
     act(() => first.result.current.lensControl.onLensChange("ascent"));
     act(() => first.result.current.overlayControls.range.onChange(false));
     act(() => first.result.current.overlayControls.mapTheme.onChange("dark"));
-    act(() => first.result.current.overlayControls.onLegendEntryToggle("disaster", "heavyRain"));
+    act(() => first.result.current.overlayControls.onLegendEntryToggle("disaster", "landslide"));
     first.unmount();
 
     const { result } = renderMapView({ hasDetail: true });
@@ -274,7 +280,7 @@ describe("useMapView", () => {
     expect(result.current.look.layerVisibility.hillshade).toBe(true);
     expect(result.current.overlayControls.range.routeOnly).toBe(false);
     expect(result.current.look.mapTheme).toBe("dark");
-    expect(chip(result, "disaster")?.legendDetails?.[0].hiddenKeys).toEqual(["heavyRain"]);
+    expect(chip(result, "disaster")?.legendDetails?.[0].hiddenKeys).toEqual(["heavyRain", "landslide"]);
   });
 
   it.each([

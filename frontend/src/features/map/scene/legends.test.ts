@@ -120,7 +120,10 @@ describe("道の線の凡例の受け皿", () => {
 describe("最初に隠す行", () => {
   it("区分の外の道を隠す層だけが、値の無い道の行を隠す", () => {
     const hiding = (layer: RoadMapLayerView) => ({ ...layer, hide_missing_rows: true });
-    expect(initiallyHiddenLegendKeys([hiding(SURFACE_LAYER), TUNNEL_LAYER, roadMapLayer("shown")])).toEqual({
+    const layers = [hiding(SURFACE_LAYER), TUNNEL_LAYER, roadMapLayer("shown")];
+    const hidden = initiallyHiddenLegendKeys(layers);
+    const roadIds = new Set(layers.map((layer) => layer.id));
+    expect(Object.fromEntries(Object.entries(hidden).filter(([id]) => roadIds.has(id)))).toEqual({
       surface: [LEGEND_NO_DATA_KEY],
       tunnel: [ROAD_OTHER_KEY],
     });

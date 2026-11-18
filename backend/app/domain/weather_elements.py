@@ -3,6 +3,13 @@
 from collections.abc import Sequence
 from typing import Literal, NamedTuple
 
+from app.domain.weather_display import (
+    RISK_LEVEL_COLORS,
+    THUNDER_ACTIVITY_LEVELS,
+    TORNADO_POTENTIAL_LEVELS,
+    LevelColor,
+    RiskLevel,
+)
 from app.domain.jma_tile_specs import (
     JMA_ELEMENTS,
     JMA_REFRESH_INTERVAL_SECONDS,
@@ -40,6 +47,13 @@ GridValue = Literal["precipitation", "wind"]
 #: 配信元が値の段ごとに色を焼き込んで配る要素の、その段の宣言（`domain/weather_display.py`。生成物
 #: `weather-scales.json`の同じ名前の鍵）。
 LevelScale = Literal["risk_levels", "thunder_activity", "tornado_potential"]
+
+#: 段の名前ごとの段の並び。
+LEVELS_OF_SCALE: dict[LevelScale, tuple[LevelColor | RiskLevel, ...]] = {
+    "risk_levels": RISK_LEVEL_COLORS,
+    "thunder_activity": THUNDER_ACTIVITY_LEVELS,
+    "tornado_potential": TORNADO_POTENTIAL_LEVELS,
+}
 
 
 class FrameRule(NamedTuple):
@@ -97,6 +111,9 @@ class WeatherElement(NamedTuple):
     #: 説明を凡例の行に出す要素の、行の色（配信元が地図に塗る色そのもの）。説明を持つ要素だけが持てる。
     #: 同じ名前付きソースの要素は同じ色を持つ。
     legend_color: str | None = None
+    #: チップを出したとき、この要素を隠した状態で始めるか（▶パネルの要素の行から出せる）。ほかの要素と同じ範囲に
+    #: 同じ段を重ねる要素に付ける。同じ名前付きソースの要素は同じ値を持つ。
+    initially_hidden: bool = False
 
 
 #: 線状降水帯予測を重ねる幅（分）。「今後3時間以内に大雨のおそれ」という予報なので、現在から3時間先の間だけ重ねる。
@@ -154,7 +171,9 @@ WEATHER_ELEMENTS: tuple[WeatherElement, ...] = (
         "大雨キキクル",
         FrameRule("current"),
         level_scale="risk_levels",
-        description="大雨による土砂災害と浸水害の危険度の高まりを、まとめて段階で示す気象庁の情報。",
+        description="浸水キキクルと洪水キキクル[河川]のうち、危険度の高い方を段階で示す気象庁の情報。",
+        # 浸水キキクルと同じ範囲に同じ段を重ねる（https://www.jma.go.jp/jma/kishou/know/bosai/riskmap_heavyrain.html）。
+        initially_hidden=True,
     ),
     WeatherElement(
         "disaster",
@@ -289,7 +308,7 @@ def check_weather_elements(elements: Sequence[WeatherElement]) -> None:
 
     画面は（チップ, 名前付きソース, 描き方）ごとに1つのレイヤーを作り、名前付きソース1つを1行として呼び、
     その時刻の段を1本の時系列へつなぎ、配信元から取るものは（チップ, 名前付きソース）から配信要素を引く。"""
-    by_source: dict[tuple[str, str], tuple[str, FrameRule, str | None, str | None]] = {}
+    by_source: dict[tuple[str, str], tuple[str, FrameRule, str | None, str | None, bool]] = {}
     layers: set[tuple[str, str, str]] = set()
     fetched: set[tuple[str, str]] = set()
     for element in elements:
@@ -298,9 +317,9 @@ def check_weather_elements(elements: Sequence[WeatherElement]) -> None:
         if (*key, element.kind) in layers:
             raise ValueError(f"チップ・名前付きソース・描き方の組が重なる: {name} {element.kind}")
         layers.add((*key, element.kind))
-        shared = (element.label, element.frame_rule, element.description, element.legend_color)
+        shared = (element.label, element.frame_rule, element.description, element.legend_color, element.initially_hidden)
         if by_source.setdefault(key, shared) != shared:
-            raise ValueError(f"同じ名前付きソースの要素で、呼び名・コマの規則・説明・凡例の色が食い違う: {name}")
+            raise ValueError(f"同じ名前付きソースの要素で、呼び名・コマの規則・説明・凡例の色・既定で隠すかが食い違う: {name}")
         if element.legend_color is not None and element.description is None:
             raise ValueError(f"凡例の色を持つ要素に、凡例の行に出す説明が無い: {name}")
         if bool(element.jma_elements) == (element.grid_value is not None):

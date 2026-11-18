@@ -39,15 +39,21 @@ export function roadLegendAxes(layers: readonly RoadMapLayerView[]): readonly Sc
 }
 
 /** 最初に凡例で隠しておく行。区分の外の道を隠す層（`hide_missing_rows`）の、値の無い道の行（データなしを分ける層では
- * データなし、分けない層では該当なし）。 */
+ * データなし、分けない層では該当なし）と、源泉が最初は隠すとした天気の要素の行（チップidの軸の、名前付きソースの行）。 */
 export function initiallyHiddenLegendKeys(
   layers: readonly RoadMapLayerView[],
 ): Readonly<Record<string, readonly string[]>> {
-  return Object.fromEntries(
-    layers
+  const weatherSources = new Map<string, Set<string>>();
+  for (const element of mapDisplay.weatherElements) {
+    if (!element.initiallyHidden) continue;
+    weatherSources.set(element.group, (weatherSources.get(element.group) ?? new Set()).add(element.source));
+  }
+  return Object.fromEntries([
+    ...layers
       .filter((layer) => layer.hide_missing_rows)
       .map((layer) => [layer.id, [layer.has_no_data ? NO_DATA_LEGEND_BAND.key : ROAD_OTHER_KEY]]),
-  );
+    ...[...weatherSources].map(([group, sources]) => [group, [...sources]]),
+  ]);
 }
 
 /** 点の凡例。**色見本を出すのは、地図の色式が読む先頭の軸だけ**で、見本は地図と同じ絵にする。2本目以降（重大度）は

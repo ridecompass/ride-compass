@@ -23,6 +23,13 @@ def palette_tile(colors: list[str]) -> bytes:
     return encode(image, transparency=0)
 
 
+def rgba_tile(colors: list[str]) -> bytes:
+    """1列目を透明にし、2列目から`colors`を不透明で1画素ずつ並べたRGBAのPNG（気象庁の雷・竜巻のタイルと同じ形式）。"""
+    image = Image.new("RGBA", (len(colors) + 1, 1), (0, 0, 0, 0))
+    image.putdata([(0, 0, 0, 0), *(rgba(color) for color in colors)])
+    return encode(image)
+
+
 def pixels(content: bytes) -> list[tuple[int, int, int, int]]:
     """PNGのバイト列の画素を、左上から行ごとにRGBAで並べる。"""
     with Image.open(io.BytesIO(content)) as image:

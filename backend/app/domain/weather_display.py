@@ -33,6 +33,11 @@ class LevelColor(NamedTuple):
     key: str
     label: str
     color: str
+    #: 塗る段か。出どころ（気象庁）がすぐに身を守る行動・避難を求める段だけを塗り、それより下の注意の段は、地図で
+    #: ごく薄く（`ATTENTION_LEVEL_OPACITY`）見せる。境は気象庁が段ごとに求める行動の説明から決めた。
+    painted: bool
+    #: 配信元のタイルがこの段を塗る色（実物の画素を数えて取った値）。測れていない段はNoneで、その段の画素は塗り替えない。
+    tile_color: str | None
 
 
 class RiskLevel(NamedTuple):
@@ -43,6 +48,10 @@ class RiskLevel(NamedTuple):
     key: str
     label: str
     color: str
+    #: `LevelColor.painted`と同じ。
+    painted: bool
+    #: `LevelColor.tile_color`と同じ。
+    tile_color: str | None
 
 
 #: 降水の強さ（mm/h）で、塗る段だけを持つ。段の区切りは気象庁の降水のタイルと同じで、気象庁のタイルもここの色へ
@@ -89,29 +98,45 @@ LINEAR_RAINBAND_OUTLINE_CASING_COLOR = "#ffffff"
 #: 危険度分布。白→黄→赤→紫→黒と上がる。色は内閣府（防災担当）が警戒レベルの画面上の推奨配色として公表したRGB値
 #: （「大雨の警戒レベルをわかりやすく伝えるために５色の配色を定めました」令和2年5月29日
 #: https://www.bousai.go.jp/pdf/200529_haishoku.pdf。白255,255,255・黄242,231,0・赤255,40,0・紫170,0,170・黒12,0,12）。
+#: 赤（警戒・警戒レベル3相当。高齢者等は避難、ほかの人も普段の行動を見合わせ始める）から塗る。タイルの黄は、
+#: 2026-09-07 に東京湾岸で大雨キキクルの黄・赤が出ていた時刻のタイルの画素で`rgb(242,231,0)`だった。
 RISK_LEVEL_COLORS: tuple[RiskLevel, ...] = (
-    RiskLevel(0, "level0", "平常[危険度なし]", "#ffffff"),
-    RiskLevel(1, "level1", "注意[黄]", "#f2e700"),
-    RiskLevel(2, "level2", "警戒[赤]", "#ff2800"),
-    RiskLevel(3, "level3", "危険[紫]", "#aa00aa"),
-    RiskLevel(4, "level4", "災害切迫[黒]", "#0c000c"),
+    RiskLevel(0, "level0", "平常[危険度なし]", "#ffffff", painted=False, tile_color=None),
+    RiskLevel(1, "level1", "注意[黄]", "#f2e700", painted=False, tile_color="#f2e700"),
+    RiskLevel(2, "level2", "警戒[赤]", "#ff2800", painted=True, tile_color=None),
+    RiskLevel(3, "level3", "危険[紫]", "#aa00aa", painted=True, tile_color=None),
+    RiskLevel(4, "level4", "災害切迫[黒]", "#0c000c", painted=True, tile_color=None),
 )
 
 #: 雷の活動度。弱い＝黄→強い＝紫というナウキャスト系の配色慣習に沿う。気象庁はタイルの配色の
 #: カラーコードを公開していないため、雷・竜巻の色は近似値で、実際のタイル画像の色とは厳密には一致しない。
+#: 活動度2（いつ落雷があってもおかしくない）から塗る。タイルの色は、2026-11-18 の日本を覆うズーム4のタイルの画素で数えた。
 THUNDER_ACTIVITY_LEVELS: tuple[LevelColor, ...] = (
-    LevelColor("level1", "活動度1: 雷雲発達の可能性[1時間以内に発雷のおそれ]", "#fde047"),
-    LevelColor("level2", "活動度2: 雷雲発生、落雷の可能性", "#fb923c"),
-    LevelColor("level3", "活動度3: 落雷が発生中", "#ef4444"),
-    LevelColor("level4", "活動度4: 激しい雷[雹に注意]", "#9333ea"),
+    LevelColor("level1", "活動度1: 雷雲発達の可能性[1時間以内に発雷のおそれ]", "#fde047", painted=False, tile_color="#faf500"),
+    LevelColor("level2", "活動度2: 雷雲発生、落雷の可能性", "#fb923c", painted=True, tile_color="#ffaa00"),
+    LevelColor("level3", "活動度3: 落雷が発生中", "#ef4444", painted=True, tile_color="#ff2800"),
+    LevelColor("level4", "活動度4: 激しい雷[雹に注意]", "#9333ea", painted=True, tile_color=None),
 )
 
 #: 竜巻発生確度。数字は切迫度ではなく「可能性の程度」の違い（気象庁の注記どおり）。
 #: 雷と区別できる寒色系にする。
+#: 発生確度2（竜巻注意が出る段。頑丈な建物内へ移動するなど身の安全確保を求める）を塗る。タイルの色はまだ測れていない。
 TORNADO_POTENTIAL_LEVELS: tuple[LevelColor, ...] = (
-    LevelColor("potential1", "発生確度1: 広く注意[見逃しを減らす、的中率1〜7%]", "#38bdf8"),
-    LevelColor("potential2", "発生確度2: 重点警戒[気象庁「竜巻注意」相当、的中率7〜14%]", "#1d4ed8"),
+    LevelColor(
+        "potential1", "発生確度1: 広く注意[見逃しを減らす、的中率1〜7%]", "#38bdf8", painted=False, tile_color=None
+    ),
+    LevelColor(
+        "potential2",
+        "発生確度2: 重点警戒[気象庁「竜巻注意」相当、的中率7〜14%]",
+        "#1d4ed8",
+        painted=True,
+        tile_color=None,
+    ),
 )
+
+#: 注意の段（`painted`がFalseの段）を地図で見せる濃さ。塗る段（地図の面の濃さ`map_display.py: AREA_OPACITY`）より
+#: ずっと薄くし、範囲は分かるが下の道と地名が読めるようにする。
+ATTENTION_LEVEL_OPACITY = 0.12
 
 
 class WeatherCategory(NamedTuple):
