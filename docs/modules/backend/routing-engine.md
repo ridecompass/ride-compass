@@ -962,7 +962,8 @@ numbaでJITする探索と、探索の中へ展開する部品を置く。JITの
 
 ### `domain/route.py`
 
-- `Coordinates`・`RouteSegmentDetail`（`road_classes`は道の区分のレイヤごとに、区間の中で値が同じまま続く部分を並べる）・`EvaluatedRoute`（エンジンが評価した経路。費用・代償の内訳・事実の量を持つ）・`RouteCandidate`（`EvaluatedRoute`に
+- `Coordinates`・`RouteSegmentDetail`（`road_classes`は道の区分のレイヤごとに、区間の中で値が同じまま続く部分を並べる。`avoidance_stretches`は避け方の倍率を決めた行ごとに、
+  区間の中の長さと足し引きした秒を、区間で最初に通る順に並べる）・`EvaluatedRoute`（エンジンが評価した経路。費用・代償の内訳・事実の量を持つ）・`RouteCandidate`（`EvaluatedRoute`に
   応答のid・種類・最速の印を足したもの）・`PenaltyBreakdown`（代償の秒の内訳とその和。地図のレンズと同じ1kmあたりの量は区間と候補が内訳と距離から導く。区間とビンと候補が同じ形で持つ）・`RouteFacts`（軸ごとの事実。`domain/leg_costs.py: axis_facts`が作る）。
 - `aggregate_segments_into_bins`（Edge単位の区間`EdgeSegment`を500mのビンの`RouteSegmentDetail`へ畳む）・`_merge_segment_bin`・`merge_penalty_breakdowns`（代償の秒は足す）。
   **`RouteSegmentDetail`のフィールドは、ビンへの畳み方（`BIN_FIELD_MERGERS`）を必ず宣言する**。`_merge_segment_bin`は

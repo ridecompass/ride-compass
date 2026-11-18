@@ -46,7 +46,7 @@ from app.domain.elevation_profile import FLAT, ElevationProfiles, along_fraction
 from app.domain.search_materials import SearchMaterials
 from app.domain.ledger_costs import LedgerCosts, LedgerParameters
 from app.domain.road_network import MaterialFills
-from app.domain.road_avoidance import RoadAvoidanceMasks
+from app.domain.road_avoidance import AvoidanceLevel, RoadAvoidanceMasks
 from app.domain.search_graph import EDGE_VALUE_DTYPE, kernel_array
 from app.domain.traffic import POI_COUNT_KINDS, stop_count_material_ids, stop_event
 from app.domain.tuning import Tuning
@@ -101,6 +101,8 @@ class LegValues:
     penalty_by_axis: dict[str, np.ndarray]
     preferred_seconds: np.ndarray
     avoided_seconds: np.ndarray
+    # 区間ごとの、避け方の倍率を決めた行の鍵と段（`RoadAvoidanceMasks.deciding_at`。どの行にも当たらなければNone）。
+    deciding_rows: list[tuple[str, AvoidanceLevel] | None]
 
 
 class _ComposedBin(NamedTuple):
@@ -380,6 +382,7 @@ class LegCostComposer:
         # 代償には掛けない。
         self._excluded = search_masks.excluded
         self._cost_scale = search_masks.cost_scale
+        self._avoidance = search_masks
         #: 区間の費用が所要時間に対して下がる最小の倍率（好む側の段の区間があればその倍率、無ければ1）。探索の見込み
         #: （`domain/route_search.py: heuristic_seconds`）を、費用の下界に保つよう緩める。要求の間は変わらないので1回だけ求める。
         self.min_cost_scale = float(search_masks.cost_scale.min(initial=1.0))
@@ -529,7 +532,8 @@ class LegCostComposer:
         scaled = avoidance_seconds(self._cost_scale[rows].astype(np.float64),
                                    np.asarray(travel_seconds + inputs.wait_seconds[rows], dtype=np.float64))
         return LegValues(headwind_ms=headwind, penalty_by_axis=penalty_by_axis,
-                         preferred_seconds=np.minimum(scaled, 0.0), avoided_seconds=np.maximum(scaled, 0.0))
+                         preferred_seconds=np.minimum(scaled, 0.0), avoided_seconds=np.maximum(scaled, 0.0),
+                         deciding_rows=self._avoidance.deciding_at(rows))
 
     @property
     def distance_m(self) -> np.ndarray:

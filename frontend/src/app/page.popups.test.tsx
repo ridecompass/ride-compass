@@ -21,7 +21,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { POINT_TILE_SOURCES } from "@/features/map/scene/groups/points";
 import { sceneLayerId } from "@/features/map/scene/sceneBuilders";
 import { mapDisplay } from "@/types/generated/mapDisplay";
-import { onBackend, serveCostAxisCatalog } from "@/testing/backendServer";
+import { onBackend, serveClientConfig, serveCostAxisCatalog } from "@/testing/backendServer";
+import { AVOIDANCE_LEVELS, avoidanceRow, clientConfigResponse, roadClassCatalog } from "@/testing/clientConfig";
 import { installGeolocation } from "@/testing/geolocation";
 import {
   ELSEWHERE,
@@ -190,6 +191,49 @@ describe("地図の小窓", () => {
     expect(mapOnScreen().fits()).toHaveLength(fitsBefore);
     await user.click(screen.getByRole("button", { name: "地図をここへ寄せる" }));
     await waitFor(() => expect(mapOnScreen().fits()).toHaveLength(fitsBefore + 1));
+  });
+
+  it("ルートの脇の線のある区間の小窓は、避け方の倍率を決めた道ごとに、線と同じ印で道の名前と増えた・減った分、まとまり・長さ・段を出す", async () => {
+    serveClientConfig(
+      clientConfigResponse({
+        road_classes: roadClassCatalog({
+          avoidance: {
+            levels: AVOIDANCE_LEVELS,
+            sections: [{ key: "highway", label: "道路の種類" }],
+            rows: [
+              avoidanceRow("highway.secondary", "highway", { label: "一般県道" }),
+              avoidanceRow("highway.primary", "highway", { label: "主要地方道" }),
+              avoidanceRow("highway.cycleway", "highway", { label: "自転車の道" }),
+            ],
+          },
+        }),
+      }),
+    );
+    const segment = makeRouteSegment({
+      avoidance_stretches: [
+        { row_key: "highway.primary", level: "slight_avoid", distance_km: 0.3, seconds: 60 },
+        { row_key: "highway.cycleway", level: "slight_prefer", distance_km: 0.1, seconds: -60 },
+      ],
+      penalty: {
+        axis_seconds: {},
+        preferred_seconds: -60,
+        avoided_seconds: 60,
+        turn_penalty_seconds: 0,
+        total_seconds: 0,
+      },
+    });
+    const { user } = renderHome();
+    jobs.respond([route("one", { segments: [segment] })], LOOP_CONDITIONS);
+    await generate(user);
+    await waitFor(() => expect(candidateTabs()).toHaveLength(1));
+    await user.click(screen.getByRole("button", { name: "パネルを閉じる" }));
+
+    clickSegment(mapOnScreen().sourceFeatures("route-segments")[0], HERE);
+
+    // 行・まとまり・段の名前は道路タブと同じ画面の設定から引き、並びは応答のまま。
+    expect(await screen.findByRole("list", { name: "ルートの脇の線の理由" })).toHaveTextContent(
+      /^主要地方道\+1分道路の種類・300m・×1\.4自転車の道−1分道路の種類・100m・×0\.7$/,
+    );
   });
 
   it("どの小窓も右上のリンクで、小窓の地点の Street View を別のタブの Google マップで開き、区間ではルートの進む向きを渡す", async () => {

@@ -29,7 +29,8 @@ def _segments(distances: list[float], **fields_per_segment) -> list[EdgeSegment]
             distance_km=distance,
             **({"geometry": None, "point_distances_m": None, "sustained_gradient_percent": None,
                 "average_gradient_percent": None, "estimated_arrival_time": "2026-09-22T08:10:00+09:00",
-                "axis_seconds": {}, "preferred_seconds": 0.0, "avoided_seconds": 0.0, "road_classes": {}}
+                "axis_seconds": {}, "preferred_seconds": 0.0, "avoided_seconds": 0.0, "deciding_row": None,
+                "road_classes": {}}
                | {name: values[i] for name, values in fields_per_segment.items()}),
         ))
     return segments
@@ -38,6 +39,23 @@ def _segments(distances: list[float], **fields_per_segment) -> list[EdgeSegment]
 def _binned(segments: list[EdgeSegment]) -> list[RouteSegmentDetail]:
     """区間をビンへ束ねる。"""
     return route.aggregate_segments_into_bins(segments, route.route_bin_slices([s.distance_km for s in segments]))
+
+
+def test_a_bin_sums_the_length_and_the_seconds_of_the_roads_whose_avoidance_changed_the_cost_per_deciding_row():
+    """避け方の倍率が秒を足し引きした道だけを、倍率を決めた行ごとに、ビンで最初に通る順に並べる。倍率が秒を変えない道（行に当たらない・
+    足し引きが0）は出さない。"""
+    primary, cycleway = ("highway.primary", "slight_avoid"), ("highway.cycleway", "slight_prefer")
+    [bin_] = _binned(_segments(
+        [0.1, 0.1, 0.1, 0.1, 0.1],
+        deciding_row=[primary, None, cycleway, primary, primary],
+        avoided_seconds=[10.0, 0.0, 0.0, 5.0, 0.0],
+        preferred_seconds=[0.0, 0.0, -3.0, 0.0, 0.0],
+    ))
+
+    assert [(s.row_key, s.level, s.distance_km, s.seconds) for s in bin_.avoidance_stretches] == [
+        ("highway.primary", "slight_avoid", 0.2, 15.0),
+        ("highway.cycleway", "slight_prefer", 0.1, -3.0),
+    ]
 
 
 def test_a_bin_closes_as_soon_as_it_reaches_the_width_and_the_rest_stays():

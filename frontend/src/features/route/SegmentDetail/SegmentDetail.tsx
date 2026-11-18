@@ -21,6 +21,7 @@ import { formatPenalty, penaltyRows } from "@/lib/routePenalty";
 import type { RoadTrackRow } from "@/lib/mapDisplay/roadTracks";
 import { formatJstHourMinute } from "@/lib/time";
 import type { SelectedRouteSegment } from "@/types/route";
+import RailReason from "./RailReason";
 
 const isLineLayer = (layer: ProfileLayer): layer is LineLayer => layer.draw.kind === "line";
 
@@ -93,6 +94,7 @@ export default function SegmentDetail({
           </span>
         )}
       </PopupHeader>
+      <RailReason segment={segment} />
       {(lines.length > 0 || bands.length > 0) && (
         <div role="group" aria-label="グラフの層の値" className="flex flex-col gap-1">
           {lines.map(({ layer, mean, sustained }) => (

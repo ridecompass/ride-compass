@@ -13,6 +13,7 @@ from app.domain.msm_grid import ForecastTime
 from app.domain.geo import Latitude, Longitude, haversine_distance_km_pairs, length_weighted_mean
 from app.domain.gradient import GRADIENT_VALUE_DECIMALS
 from app.domain.graph import LeanEdge
+from app.domain.road_avoidance import AvoidanceLevel
 from app.domain.strict_model import StrictModel
 
 #: 応答の距離（km）の桁。区間・ビン・候補の距離をこの桁へ丸める。
@@ -147,6 +148,17 @@ class RouteFacts(StrictModel):
     axes: dict[str, AxisFact]
 
 
+class AvoidanceStretch(StrictModel):
+    """区間の中で、避け方の倍率を決めた行が同じ道をまとめたもの。"""
+
+    # 道の区分の行の鍵（要求の`road_avoidance`の鍵）と、使った段。
+    row_key: str
+    level: AvoidanceLevel
+    distance_km: float
+    # 倍率が所要時間から足し引きした秒（好む段は0以下、避ける段は0以上）。
+    seconds: float
+
+
 class RouteSegmentDetail(StrictModel):
     """ルートの1区間（Edge、応答では`SEGMENT_BIN_DISTANCE_KM`ごとのビン）の詳細。地図のルートの線の塗りと区間の小窓が読む。
 
@@ -181,6 +193,9 @@ class RouteSegmentDetail(StrictModel):
 
     # 分け方（地図の道の線の層のid）と「緑と水」の層のid→区間の始まりから並べた、区分が同じまま続く部分。部分の距離の和は区間の距離と丸めの分だけずれうる。
     road_classes: dict[str, list[RoadClassStretch]]
+    # 避け方の倍率が所要時間から足し引きした道を、倍率を決めた行ごとに（区間の中で最初に通る順）。秒の和は`penalty`の
+    # `preferred_seconds`と`avoided_seconds`の和。地図のルートの両脇の線の理由として、区間の小窓が出す。
+    avoidance_stretches: list[AvoidanceStretch]
 
 
 @dataclass(frozen=True, slots=True)
@@ -203,6 +218,8 @@ class EdgeSegment:
     axis_seconds: dict[str, float]
     preferred_seconds: float
     avoided_seconds: float
+    # 避け方の倍率を決めた行の鍵と段（どの行にも当たらなければNone）。ビンへは`_merge_avoidance_stretches`で畳む。
+    deciding_row: tuple[str, AvoidanceLevel] | None
     # 層のid→この道の区分の鍵（区分に入らない道はNone）。道1本の中で区分は変わらない。
     road_classes: dict[str, str | None]
 
@@ -423,6 +440,21 @@ def steepest_signed_percent(elevation: ElevationAttribute | None) -> float | Non
     return 0.0
 
 
+def _merge_avoidance_stretches(segments: Sequence[EdgeSegment]) -> list[AvoidanceStretch]:
+    """区間の並びの、避け方の倍率が秒を足し引きした道を、倍率を決めた行ごとに長さと秒を足して畳む（区間で最初に通る順）。"""
+    merged: dict[tuple[str, AvoidanceLevel], tuple[list[float], list[float]]] = {}
+    for segment in segments:
+        seconds = segment.preferred_seconds + segment.avoided_seconds
+        if segment.deciding_row is None or seconds == 0:
+            continue
+        distances, parts = merged.setdefault(segment.deciding_row, ([], []))
+        distances.append(segment.distance_km)
+        parts.append(seconds)
+    return [AvoidanceStretch(row_key=key, level=level, distance_km=_summed_km(distances),
+                             seconds=round(sum(parts), COST_SECONDS_DECIMALS))
+            for (key, level), (distances, parts) in merged.items()]
+
+
 def _merge_sustained_gradients(segments: Sequence[EdgeSegment]) -> float | None:
     """区間の続く坂の斜度をビンへ畳む。登りの区間があれば登りの最大、無ければ一番急な下り（最も負の値）。
     区間の値は「登りがあれば登り」で作ってあるので、区間の値だけから道全体で同じ決まりの値になる。値が無ければNone。"""
@@ -455,6 +487,7 @@ BIN_FIELD_MERGERS: dict[str, Callable[[list[EdgeSegment]], object]] = {
     "average_gradient_percent": _merge_average_gradients,
     "estimated_arrival_time": lambda segments: segments[0].estimated_arrival_time,
     "road_classes": _merge_road_classes,
+    "avoidance_stretches": _merge_avoidance_stretches,
     # 区間は道の分で、曲がる所の罰を持たない。
     "penalty": lambda segments: merge_penalty_breakdowns(segments, 0.0),
 }
