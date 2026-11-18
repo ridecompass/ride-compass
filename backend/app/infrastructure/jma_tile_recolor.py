@@ -129,10 +129,9 @@ def _thin_attention(element_id: str, content: bytes, known: frozenset[RGB], atte
             image.save(buffer, format="PNG", transparency=bytes(alphas))
         else:
             pixels = np.array(image.convert("RGBA"))
-            rgb = pixels[..., :3]
-            thin = np.zeros(rgb.shape[:2], dtype=bool)
+            thin = np.zeros(pixels.shape[:2], dtype=np.bool_)
             for color in attention:
-                thin |= np.all(rgb == np.array(color, dtype=pixels.dtype), axis=-1)
+                thin |= np.all(pixels[..., :3] == np.array(color, dtype=pixels.dtype), axis=-1)
             pixels[thin & (pixels[..., 3] > 0), 3] = _ATTENTION_ALPHA
             Image.fromarray(pixels).save(buffer, format="PNG")
     return buffer.getvalue()

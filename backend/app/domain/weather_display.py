@@ -34,7 +34,7 @@ class LevelColor(NamedTuple):
     label: str
     color: str
     #: 塗る段か。出どころ（気象庁）がすぐに身を守る行動・避難を求める段だけを塗り、それより下の注意の段は、地図で
-    #: ごく薄く（`ATTENTION_LEVEL_OPACITY`）見せる。境の根拠は ride-compass-tasks#1560 の経緯。
+    #: ごく薄く（`ATTENTION_LEVEL_OPACITY`）見せる。境は気象庁が段ごとに求める行動の説明から決めた。
     painted: bool
     #: 配信元のタイルがこの段を塗る色（実物の画素を数えて取った値）。測れていない段はNoneで、その段の画素は塗り替えない。
     tile_color: str | None
