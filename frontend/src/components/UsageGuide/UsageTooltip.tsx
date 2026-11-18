@@ -120,14 +120,17 @@ export default function UsageTooltip() {
         collisionPadding={POPOVER_COLLISION_PADDING_PX}
         // 出しても、フォーカスは部品に置いたままにする。
         onOpenAutoFocus={(event) => event.preventDefault()}
-        className="pointer-events-none flex max-w-64 flex-col gap-0.5 rounded-md bg-[var(--foreground)] px-2.5 py-1.5 text-[length:var(--font-size-sm)] leading-[1.4] text-[var(--background)] shadow-md"
+        className="pointer-events-none max-w-64"
       >
-        <p className="m-0 font-semibold">{target?.name}</p>
-        {target?.usage && (
-          <p className="m-0">
-            <GuideText text={target.usage} />
-          </p>
-        )}
+        {/* 素の枠（`bare`）の中で、面（地の色・余白・影）は中身が持つ。 */}
+        <div className="flex flex-col gap-0.5 rounded-md bg-[var(--foreground)] px-2.5 py-1.5 text-[var(--background)] shadow-md">
+          <p className="m-0 font-semibold">{target?.name}</p>
+          {target?.usage && (
+            <p className="m-0">
+              <GuideText text={target.usage} />
+            </p>
+          )}
+        </div>
       </PopoverContent>
     </Popover>
   );
