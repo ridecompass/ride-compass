@@ -89,7 +89,6 @@ from app.domain.map_display import (
     MARK_SIZE_BY_ZOOM,
     LIGHTNING_ICON_SCALE,
     TERRAIN_EXAGGERATION,
-    WEATHER_MARK_HALO_WIDTH_PX,
     WIND_FULL_SCALE_MS,
     WIND_ICON_SCALE_RANGE,
     POINT_OPACITY_BY_ATTR,
@@ -461,7 +460,6 @@ def main() -> None:
                 "terrainExaggeration": TERRAIN_EXAGGERATION,
             },
             "weather": {
-                "markHaloWidthPx": WEATHER_MARK_HALO_WIDTH_PX,
                 "windIconScaleRange": list(WIND_ICON_SCALE_RANGE),
                 "windFullScaleMs": WIND_FULL_SCALE_MS,
                 "lightningIconScale": LIGHTNING_ICON_SCALE,

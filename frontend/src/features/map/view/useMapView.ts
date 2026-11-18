@@ -48,6 +48,8 @@ import type { HiddenLegendKeys, MapLook } from "./mapLook";
 import { overlayChips } from "./overlayChips";
 import type { CostPreference } from "@/types/route";
 import { useLensEquivalents } from "@/features/map/useLensEquivalents";
+import { useHazardRanges } from "@/features/map/useHazardRanges";
+import { DISASTER_LAYER_ID } from "@/features/map/layers/dynamicWeather";
 
 /** 凡例のチェックを地図の絞り込みへ反映するまでの遅れ。連続で何行も外す操作を、描き直し
  * 1回へまとめる（チェックの見た目は即座に変わる）。 */
@@ -174,6 +176,7 @@ export function useMapView({
     at: ride.at,
     now,
   });
+  const hazardRanges = useHazardRanges(weather.dynamicWeather[DISASTER_LAYER_ID], viewport);
   // ルートを選んでいる間は、地図全体に出す設定のときだけ道に付く層（周りの道の塗り・点の層）を地図全体に出す。
   const surroundingsShown = !hasDetail || keepSurroundings;
   const painted = surroundingsShown ? lens : null;
@@ -210,6 +213,7 @@ export function useMapView({
     () => ({
       layerVisibility,
       dynamicWeather: weather.dynamicWeather,
+      hazardRanges,
       lens,
       costsCounted: totalCounted,
       surroundingsShown,
@@ -226,6 +230,7 @@ export function useMapView({
     [
       layerVisibility,
       weather.dynamicWeather,
+      hazardRanges,
       lens,
       totalCounted,
       surroundingsShown,

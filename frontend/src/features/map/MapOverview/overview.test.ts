@@ -209,7 +209,7 @@ describe("overviewScene", () => {
     );
   const specsOf = (drawn: MapScene) => drawn.layers.map((layer) => layer.spec);
 
-  it("記号の大きさ・縁取り・線の幅を、描く地図のズームで2倍にし、記号に地名の場所を取らせない", () => {
+  it("記号の大きさ・線の幅を、描く地図のズームで2倍にし、記号に地名の場所を取らせない", () => {
     const byZoom = ["interpolate", ["linear"], ["zoom"], 10, ["*", ["get", "s"], 0.5], 14, 1];
     const input = sceneOf(
       {
@@ -217,7 +217,7 @@ describe("overviewScene", () => {
         type: "symbol",
         source: "s",
         layout: { "icon-size": byZoom, "icon-rotate": 30, "icon-ignore-placement": false },
-        paint: { "icon-halo-width": 1.5, "icon-opacity": 1 },
+        paint: { "icon-opacity": 1 },
       },
       {
         id: "line",
@@ -238,7 +238,7 @@ describe("overviewScene", () => {
           "icon-rotate": 30,
           "icon-ignore-placement": true,
         },
-        paint: { "icon-halo-width": 3, "icon-opacity": 1 },
+        paint: { "icon-opacity": 1 },
       },
       {
         id: "line",

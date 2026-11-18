@@ -801,7 +801,6 @@ export const mapDisplay = {
     "terrainExaggeration": 5
   },
   "weather": {
-    "markHaloWidthPx": 1.5,
     "windIconScaleRange": [
       0.9,
       2.6

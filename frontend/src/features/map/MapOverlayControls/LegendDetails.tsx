@@ -6,7 +6,11 @@ import LegendRow from "@/features/map/LegendCheckboxList/LegendRow";
 import { cn } from "@/lib/cn";
 import { badgeVariants } from "@/components/ui/Badge/Badge";
 import { PointIconSwatch } from "@/components/PointIconSwatch/PointIconSwatch";
-import { WeatherMarkSwatch } from "@/components/WeatherMarkSwatch/WeatherMarkSwatch";
+import {
+  hazardBadgeParts,
+  WeatherMarkSwatch,
+  weatherMarkParts,
+} from "@/components/WeatherMarkSwatch/WeatherMarkSwatch";
 
 /** 色見本の点の直径と、線の見本の長さと太さ（px）。点は色が読める大きさにする。 */
 const SWATCH_DOT_PX = 12;
@@ -27,10 +31,16 @@ export interface LegendFilterSummaryAxis {
  * 白が色より目立ち、明るい色は台に溶ける。線の行は地図の線より太く、大きさで意味を示す行は地図の点と同じ形の外形を同じ大きさで出す。
  * 見本の枠の幅はそろえ、ラベルの位置を行ごとにずらさない。 */
 function renderSwatch(entry: LegendEntry) {
-  if (entry.mark !== undefined) {
+  const markParts =
+    entry.badge !== undefined
+      ? hazardBadgeParts(entry.badge, entry.color, entry.mark)
+      : entry.mark !== undefined
+        ? weatherMarkParts(entry.mark, entry.color)
+        : null;
+  if (markParts !== null) {
     return (
       <span aria-hidden="true" className="inline-flex w-6 flex-shrink-0 items-center justify-center">
-        <WeatherMarkSwatch mark={entry.mark} color={entry.color} />
+        <WeatherMarkSwatch parts={markParts} />
       </span>
     );
   }

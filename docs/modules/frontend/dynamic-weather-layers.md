@@ -23,7 +23,8 @@
 | `features/map/layers/jmaDelivery.ts` | 気象庁の配信の時刻一覧の取得と読み方・コマのタイルと地物（GeoJSON）のURL（源泉のパスのテンプレートをコマで埋める）（配信の遅れを持つ要素は、まだ配信されていないコマを前の`features/map/layers/jmaDelivery.ts: basetime`へずらして読む）・地物の取得・タイルのURLの読み戻し |
 | `features/map/layers/precipitationNowcast.ts` | 降水の色の段と凡例と、MSMの格子点を中心にした升目の降水の塗り（gridFill） |
 | `features/map/layers/windLayer.ts` | 風速の色の段と凡例と、MSMの格子点の風の矢印（gridMark） |
-| `features/map/layers/weatherMarkIcon.ts` | 天気の印（風の矢印・落雷の地点）の、地図へ登録する画素。形は`lib/mapDisplay/weatherMarks.ts`、部品の列は凡例の見本（`components/WeatherMarkSwatch/WeatherMarkSwatch.tsx`）と共有。**単体テストは持たない**（テスト環境のcanvasは2D描画を実装せず、形は座標の宣言そのもの） |
+| `features/map/layers/jmaTileMasks.ts`・`hazardRanges.ts`・`features/map/useHazardRanges.ts` | 段で塗る災害の範囲の印（下の「段で塗る災害の範囲の印」） |
+| `features/map/layers/weatherMarkIcon.ts` | 天気の印（風の矢印・落雷の地点・災害の範囲の印）の、地図へ登録する画素。形は`lib/mapDisplay/weatherMarks.ts`、部品の列は凡例の見本（`components/WeatherMarkSwatch/WeatherMarkSwatch.tsx`）と共有。**単体テストは持たない**（テスト環境のcanvasは2D描画を実装せず、形は座標の宣言そのもの） |
 | `features/map/layers/jmaTileIndex.ts` | 在否インデックスの解釈（「空だと確認済み」の判定、純ロジック） |
 | `features/map/layers/jmaTileProtocol.ts` | `jmatile://`スキームのMapLibreプロトコル。空と分かっているタイルをネットワークへ出さずに透明タイルで返し、配信の失敗を要素ごとに記録して購読できるようにする |
 | `features/map/useJmaTileIndex.ts` | 在否インデックスの定期取得 |
@@ -186,6 +187,22 @@ symbolレイヤーではなく、記号の絵に描き込んで1層にまとめ�
 MapLibreはレイヤーの上から順にシンボルを配置するため、同位置・大きめのシンボルを別レイヤー（下）で重ねると
 `icon-allow-overlap: false`下では常に「衝突」として全て落ちる——1層にまとめれば衝突判定は主層自身の1回だけになり、
 縁取りは常に主層と同じ地点に出る。
+
+## 段で塗る災害の範囲の印
+
+雷ナウキャスト・竜巻発生確度・大雨／土砂災害／浸水キキクル（段で塗るラスタ）は、注意の段を中継がごく薄くして配る
+（[気象・動的レイヤー](../backend/weather-dynamic-layers.md)「段で塗る災害のタイルの注意の段」）。災害の種類と段を読ませるため、範囲の中に印を描く。
+
+- **画素は地図が取ったタイルから読む**: タイルの口（`jmaTileProtocol.ts`）が地図へ返す中身の写しを`jmaTileMasks.ts`が画素へ読み、
+  画素ごとの段を覚える（コマのURLとタイルの座標で引く）。印のために配信元へ取りに行き直さない。段は、段の表（生成物
+  `weather-scales.json`）の色のいちばん近いものにする（配信元のタイルを測った色`tile_color`があればそれ、無ければ凡例の色）。
+- **印は地図に固定した格子点に置く**（`hazardRanges.ts`・`useHazardRanges.ts`）: 画面で一定の間隔の格子点（世界の座標で数えるので、
+  地図を動かしても印は動かない）のうち、範囲の中にある点に、その点の段の印を置く。範囲が画面を覆っても印は数個で済む。
+  災害ごとに格子を印1つ分ずつ横へずらすので、重なった災害の印は横に並ぶ。地図の倍率は512pxのタイルで数えるので、256pxの
+  配信元のタイルは倍率より1つ上のズームで取られる（そのズームのタイルを読む）。
+- **描き方**（`scene/groups/weather.ts`・`weatherDrawings.ts`）: 印は記号の段のいちばん上に積み、近くの風の矢印・落雷の印を間引かせる。
+  印は、背景の形が段の重さ（注意報＝塗らない段は三角、警報＝塗る段は八角）、背景の塗りが段の色、中の絵が災害の種類で、要素ごと・
+  段ごとに絵を作る。凡例は、災害ごとの行に中の絵、段ごとの行に背景の形と色を見せる。
 
 ## 1グループ=複数の名前付きソース
 

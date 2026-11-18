@@ -21,7 +21,13 @@ import { withJmaTileProtocol } from "@/features/map/layers/jmaTileProtocol";
 import type { MapSceneImage } from "@/features/map/scene/mapScene";
 import { declareGroup, type SceneLayerEntry, type SceneSourceEntry } from "@/features/map/scene/mapSceneGroups";
 import { sceneSourceId, type SceneSourceId } from "@/features/map/scene/sceneBuilders";
-import { drawingOf, type DeclaredElement, type Drawing } from "./weatherDrawings";
+import {
+  drawingOf,
+  HAZARD_MARK_IMAGES,
+  HAZARD_MARK_DRAWING,
+  type DeclaredElement,
+  type Drawing,
+} from "./weatherDrawings";
 
 type WeatherRenderKind = DeclaredElement["kind"];
 
@@ -91,7 +97,11 @@ const WEATHER_ELEMENTS: readonly WeatherElement[] = mapDisplay.weatherElements.m
 export type WeatherState = {
   /** 表示ON/OFFと中身。鍵は`weatherElementKey`が作る。 */
   readonly shown: ReadonlyMap<string, { readonly visible: boolean; readonly payload?: DynamicWeatherRenderPayload }>;
+  /** 段で塗る災害の範囲の印の地物（`useHazardRanges.ts`）。無い・空なら層を出さない。 */
+  readonly hazardRanges?: GeoJSON.FeatureCollection;
 };
+
+const HAZARD_RANGE_SOURCE = sceneSourceId("disaster-hazard-ranges");
 
 export function weatherElementKey(element: Pick<WeatherElement, "group" | "source">): string {
   return `${element.group}/${element.source}`;
@@ -104,7 +114,10 @@ export function weatherMarkSizePx(element: Pick<WeatherElement, "group" | "sourc
     ?.drawing.markSizePx;
 }
 
-const WEATHER_IMAGES: readonly MapSceneImage[] = WEATHER_ELEMENTS.flatMap((element) => element.drawing.icons ?? []);
+const WEATHER_IMAGES: readonly MapSceneImage[] = [
+  ...WEATHER_ELEMENTS.flatMap((element) => element.drawing.icons ?? []),
+  ...HAZARD_MARK_IMAGES,
+];
 
 /** 要素が持つソースの名前。**チップidは源泉の語をそのまま使う**——ここで別の呼び名を
  * 付け直すと、源泉が知っているものに画面だけの語彙が重なる。1要素＝1ソース（要素ごとに
@@ -151,6 +164,20 @@ export const weatherGroup = declareGroup<WeatherState>((state) => {
     if (drawing.casing !== undefined) layers.push(layerOf(`${element.kind}-casing`, drawing.casing.paint));
     layers.push(layerOf(element.kind, drawing.paint));
   }
+
+  // 範囲の印は記号の段のいちばん上に積む——記号は上の層から場所を取るので、印の近くの風の矢印・落雷の印（同じ段の下の層）は
+  // 描かれない。
+  const ranges = state.hazardRanges;
+  sources.push({ id: HAZARD_RANGE_SOURCE, spec: { type: "geojson" }, data: ranges ?? EMPTY_FEATURE_COLLECTION });
+  layers.push({
+    role: "hazard-mark",
+    tier: "weatherMark",
+    type: "symbol",
+    source: HAZARD_RANGE_SOURCE,
+    paint: HAZARD_MARK_DRAWING.paint,
+    layout: HAZARD_MARK_DRAWING.layout,
+    visible: (ranges?.features.length ?? 0) > 0,
+  });
 
   return { sources, layers, images: WEATHER_IMAGES };
 });
