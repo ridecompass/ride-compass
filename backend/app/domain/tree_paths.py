@@ -74,8 +74,6 @@ class NodeJunction:
     cost: np.ndarray
     # 同じ経路の実距離（m）。繋げないNodeはNaN。
     length_m: np.ndarray
-    # 同じ経路の所要時間（秒）。木が所要時間を積んでいなければNaN。
-    seconds: np.ndarray
     # 繋いだときの前向き側・後ろ向き側の状態（Edge index）。繋げないNodeは-1。
     forward_state: np.ndarray
     backward_state: np.ndarray
@@ -90,14 +88,13 @@ def add_terminal_candidate(
     そこで終わる経路は現れない。後ろ向きの区間が無いことは`backward_state=-1`で表す。
 
     **`NodeJunction`の全フィールドを揃えて書く**——1つでも繋ぎ目側の値が残ると、コストと
-    所要時間が別々の経路のものになり、費用から所要時間を引いた代償が別の経路のものになる。
+    実距離が別々の経路のものになり、1kmあたりの費用が別の経路のものになる。
     """
     state = int(forward.node_best_state[destination_index])
     if state < 0:
         return
     junction.cost[destination_index] = forward.node_cost[destination_index]
     junction.length_m[destination_index] = forward.node_length_m[destination_index]
-    junction.seconds[destination_index] = forward.node_seconds[destination_index]
     junction.forward_state[destination_index] = state
     junction.backward_state[destination_index] = -1
 
@@ -122,16 +119,13 @@ def combine_forward_backward_at_nodes(
     )
     backward_state = np.full(node_count, -1, dtype=np.int64)
     length_m = np.full(node_count, np.nan)
-    seconds = np.full(node_count, np.nan)
     joined = np.flatnonzero(transition >= 0)
     source, picked = forward_state[joined], transition[joined]
     target = structure.target_state[picked]
     backward_state[joined] = target
     length_m[joined] = forward.state_length_m[source] + backward.state_length_m[target]
-    # 繋ぎ目のターンも、費用には費用、所要時間には時間で入る。
-    seconds[joined] = forward.state_seconds[source] + structure.turn_seconds[picked] + backward.state_seconds[target]
     return NodeJunction(
-        cost=cost, length_m=length_m, seconds=seconds,
+        cost=cost, length_m=length_m,
         forward_state=forward_state, backward_state=backward_state,
     )
 
