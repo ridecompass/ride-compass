@@ -36,7 +36,8 @@ class LevelColor(NamedTuple):
     #: 塗る段か。出どころ（気象庁）がすぐに身を守る行動・避難を求める段だけを塗り、それより下の注意の段は、地図で
     #: ごく薄く（`ATTENTION_LEVEL_OPACITY`）見せる。境は気象庁が段ごとに求める行動の説明から決めた。
     painted: bool
-    #: 配信元のタイルがこの段を塗る色（実物の画素を数えて取った値）。測れていない段はNoneで、その段の画素は塗り替えない。
+    #: 配信元のタイルがこの段を塗る色（実物の画素を数えた値か、気象庁の「雨雲の動き」の画面の凡例の色）。分からない段は
+    #: Noneで、その段の画素は塗り替えない。
     tile_color: str | None
 
 
@@ -108,29 +109,31 @@ RISK_LEVEL_COLORS: tuple[RiskLevel, ...] = (
     RiskLevel(4, "level4", "災害切迫[黒]", "#0c000c", painted=True, tile_color=None),
 )
 
-#: 雷の活動度。弱い＝黄→強い＝紫というナウキャスト系の配色慣習に沿う。気象庁はタイルの配色の
-#: カラーコードを公開していないため、雷・竜巻の色は近似値で、実際のタイル画像の色とは厳密には一致しない。
-#: 活動度2（いつ落雷があってもおかしくない）から塗る。タイルの色は、2026-11-18 の日本を覆うズーム4のタイルの画素で数えた。
+#: 雷の活動度。弱い＝黄→強い＝紫というナウキャスト系の配色慣習に沿う。凡例の色は近似値で、実際のタイル画像の色とは厳密には
+#: 一致しない。活動度2（いつ落雷があってもおかしくない）から塗る。タイルの色は、活動度1〜3は 2026-11-18 の日本を覆うズーム4の
+#: タイルの画素で数え、活動度4は気象庁の「雨雲の動き」の画面の凡例（https://www.jma.go.jp/bosai/nowc/images/legend_jp_normal_thns.svg ）
+#: の色（凡例の活動度1は rgb(255,245,0) で、タイルの画素の rgb(250,245,0) と少し違う）。
 THUNDER_ACTIVITY_LEVELS: tuple[LevelColor, ...] = (
     LevelColor("level1", "活動度1: 雷雲発達の可能性[1時間以内に発雷のおそれ]", "#fde047", painted=False, tile_color="#faf500"),
     LevelColor("level2", "活動度2: 雷雲発生、落雷の可能性", "#fb923c", painted=True, tile_color="#ffaa00"),
     LevelColor("level3", "活動度3: 落雷が発生中", "#ef4444", painted=True, tile_color="#ff2800"),
-    LevelColor("level4", "活動度4: 激しい雷[雹に注意]", "#9333ea", painted=True, tile_color=None),
+    LevelColor("level4", "活動度4: 激しい雷[雹に注意]", "#9333ea", painted=True, tile_color="#c800ff"),
 )
 
 #: 竜巻発生確度。数字は切迫度ではなく「可能性の程度」の違い（気象庁の注記どおり）。
-#: 雷と区別できる寒色系にする。
-#: 発生確度2（竜巻注意が出る段。頑丈な建物内へ移動するなど身の安全確保を求める）を塗る。タイルの色はまだ測れていない。
+#: 地図は気象庁のタイルの色で塗るので、凡例も同じ色にする（気象庁の「雨雲の動き」の画面の凡例
+#: https://www.jma.go.jp/bosai/nowc/images/legend_jp_normal_trns.svg 。確度1の rgb(250,245,0) は 2026-11-18 のタイルの画素とも一致した）。
+#: 発生確度2（竜巻注意が出る段。頑丈な建物内へ移動するなど身の安全確保を求める）を塗る。
 TORNADO_POTENTIAL_LEVELS: tuple[LevelColor, ...] = (
     LevelColor(
-        "potential1", "発生確度1: 広く注意[見逃しを減らす、的中率1〜7%]", "#38bdf8", painted=False, tile_color=None
+        "potential1", "発生確度1: 広く注意[見逃しを減らす、的中率1〜7%]", "#faf500", painted=False, tile_color="#faf500"
     ),
     LevelColor(
         "potential2",
         "発生確度2: 重点警戒[気象庁「竜巻注意」相当、的中率7〜14%]",
-        "#1d4ed8",
+        "#ff2800",
         painted=True,
-        tile_color=None,
+        tile_color="#ff2800",
     ),
 )
 
