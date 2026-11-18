@@ -564,7 +564,8 @@ JSはその旗を読むだけで数値を写さない:
   同じ所へ並べると何と比べているのか読めなくなるため、**距離の「最短」は出さない**。中身の縦のスクロールはシート（デスクトップは
   サイドバー）の1つだけで、一覧もグラフも縦の動きを持たない（グラフは縦のなぞりをスクロールへ渡し、横のなぞりで地点を選ぶ。
   `features/route/ProfileChart/ProfileChart.tsx`）——一覧やグラフが縦の動きを取ると、指を置いた場所によって下へ送れなくなる。
-  「ルート結果」は候補が無い間、`features/route/RouteOutcome/RouteOutcome.tsx`が生成前・生成中を出し分ける。
+  「ルート結果」は候補が無い間、`features/route/RouteOutcome/RouteOutcome.tsx`が生成前・生成中を出し分ける。生成中の進み方は、候補が並んでいる間と編集の間も一番上に出す。
+  「ルート生成」のボタンは、作っている間は形を回る輪（`components/ui/Spinner/Spinner.tsx`）に替え、生成条件の変更の印を出さない。
   **押した「生成」が候補を出せなかった理由（`features/route/useRouteGeneration.ts`の`outcome`。候補0件の理由・入力の誤りか
   失敗）は、パネルの外の窓（`features/route/GenerationNotice/GenerationNotice.tsx`）で知らせる**——どれも利用者に条件か
   地点を変えさせる文で、パネルの中に出すと「ルート設定」の本文を押し下げ、補足の文では見落とす。「ルート生成」は見出し行の

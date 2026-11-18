@@ -13,7 +13,7 @@ export default function MapLoadStatus({ loading, failed }: { loading: boolean; f
           className="pointer-events-none absolute inset-0 z-5 flex flex-col items-center justify-center gap-2.5 bg-[var(--color-surface-2)]"
           aria-hidden="true"
         >
-          <Spinner className="size-7 border-3" />
+          <Spinner size={28} className="text-[var(--color-accent)]" />
           <span className={cn(textVariants({ variant: "hint" }), "text-[var(--color-muted-strong)]")}>
             地図を読み込み中…
           </span>

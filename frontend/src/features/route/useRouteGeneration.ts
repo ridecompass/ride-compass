@@ -68,7 +68,7 @@ export function useRouteGeneration({
   onGenerated,
   onOutcome,
 }: RouteGenerationInputs) {
-  // 実行中は順番待ちか実行中かと経過時間をボタンへ出し、終わった後は直近の案内を「ルート結果」欄に残す。
+  // 実行中は順番待ちか実行中かと経過時間を出し（ボタンの名前と「ルート結果」欄）、終わった後は直近の案内を「ルート結果」欄に残す。
   const [generation, setGeneration] = useState<Generation>(GENERATION_IDLE);
   const [generatedConditions, setGeneratedConditions] = useState<GeneratedConditions | null>(null);
   // 経過時間は問い合わせの応答に依らず、画面の時計で1秒ごとに数える

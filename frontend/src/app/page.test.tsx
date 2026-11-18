@@ -84,7 +84,7 @@ describe("ルートを作る", () => {
     const job = heldReplies();
     jobs.answerWith(job.reply);
     await generate(user);
-    expect(screen.getByRole("button", { name: /^生成中\.\.\.\(\d+秒経過\)$/ })).toHaveAttribute("aria-busy", "true");
+    expect(screen.getByRole("button", { name: /^生成中\.\.\.\(\d+秒経過\)$/ })).toBeInTheDocument();
 
     await job.answer(
       0,

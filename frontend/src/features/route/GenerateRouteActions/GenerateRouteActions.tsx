@@ -17,7 +17,8 @@ export default function GenerateRouteActions({ generation }: GenerateRouteAction
   return (
     <div className="flex items-center gap-1.5">
       {/* 条件を変えている本人は設定の側を見ているので、押すべきボタンの隣でも知らせる。 */}
-      {generation.conditionsDirty && (
+      {/* 作っている間は、押した新しい条件で作り直しているので知らせない。 */}
+      {generation.conditionsDirty && !generation.running && (
         <InfoPopover
           triggerAriaLabel="生成条件の変更"
           triggerContent={<span className={dotVariants({ tone: "warning" })} />}
@@ -30,15 +31,10 @@ export default function GenerateRouteActions({ generation }: GenerateRouteAction
         size="panelIcon"
         onClick={() => void generation.submit()}
         aria-label={generation.running ? generation.progressLabel : "ルート生成"}
-        aria-busy={generation.running}
         usage={`いまの条件・負担・${ROAD_SETTINGS_TAB_NAME}でルートの候補を作ります。候補は「ルート結果」に並び、地図に線が出ます。`}
       >
         {/* 押したことが分かるよう、作っている間は形を回る輪に替える（結果は別の画面に出るので、押した所で知らせる）。 */}
-        {generation.running ? (
-          <Spinner className="size-[18px] border-2 border-current border-t-transparent" />
-        ) : (
-          <GenerateRoutesIcon size={18} />
-        )}
+        {generation.running ? <Spinner size={18} /> : <GenerateRoutesIcon size={18} />}
       </Button>
     </div>
   );

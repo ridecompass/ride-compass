@@ -87,16 +87,18 @@ export default function RouteOutcome({ results, generation, splice, profileLayer
     else if (cardBox.right > visibleRight) list.scrollLeft += cardBox.right - visibleRight;
   }, [selectedRouteId, reusedRouteId]);
 
+  // 作っている間の進み方。候補が無い間も、並んだ候補を作り直している間も、編集の間も出す（押した手応えを結果の側でも見せる）。
+  const progress = generation.running && (
+    <p className={cn(textVariants({ variant: "hint" }), "m-0")}>{generation.progressLabel}</p>
+  );
   // 候補が無い間（生成前・生成中）の案内。候補0件の理由と失敗は、ここでなく窓で知らせる。
   if (routes.length === 0) {
     return (
-      <p className={textVariants({ variant: "hint" })}>
-        {generation.running ? (
-          generation.progressLabel
-        ) : (
+      progress || (
+        <p className={textVariants({ variant: "hint" })}>
           <GuideText text="「ルート設定」の「ルート生成」を押すと候補がここに並びます" />
-        )}
-      </p>
+        </p>
+      )
     );
   }
 
@@ -107,11 +109,14 @@ export default function RouteOutcome({ results, generation, splice, profileLayer
   if (splice.panel) {
     const { sameRouteId, ...panel } = splice.panel;
     return (
-      <RouteSplicePanel
-        {...panel}
-        catalog={costCatalog}
-        sameRouteName={sameRouteId === null ? null : nameOf(sameRouteId)}
-      />
+      <>
+        {progress}
+        <RouteSplicePanel
+          {...panel}
+          catalog={costCatalog}
+          sameRouteName={sameRouteId === null ? null : nameOf(sameRouteId)}
+        />
+      </>
     );
   }
 
@@ -142,9 +147,8 @@ export default function RouteOutcome({ results, generation, splice, profileLayer
 
   return (
     <>
-      {/* 作り直している間も、並んでいる候補が前のものだと分かるよう進み方を出す。 */}
-      {generation.running && <p className={cn(textVariants({ variant: "hint" }), "m-0")}>{generation.progressLabel}</p>}
-      {generation.conditionsDirty && <WarningText>生成条件が変更されています</WarningText>}
+      {progress}
+      {generation.conditionsDirty && !generation.running && <WarningText>生成条件が変更されています</WarningText>}
       {generation.destinationCorrected && (
         <WarningText>指定した地点は自転車で行けない場所だったため、近くの自転車で行ける地点へ移しました。</WarningText>
       )}
