@@ -255,7 +255,7 @@ class EvaluatedRoute(StrictModel):
     def penalty_per_km(self) -> float | None:
         """候補全体の1kmあたりの代償の秒（曲がる所の漕ぎ出しと避け方の秒を含むルート全体の損。`penalty_seconds_per_km`）。曲がる所の
         罰は道の負担でないので入れない——入れると、地図のレンズの総合の段で塗る候補の帯が道の負担とずれ、短い候補ほど並びが動く。
-        周回はこの値で並べ（`domain/route_search.py: candidate_order`）、候補の帯は応答の`penalty_seconds_per_km`で塗る。所要時間か
+        候補の帯は応答の`penalty_seconds_per_km`で塗る。所要時間か
         長さが無ければNone。"""
         if self.estimated_duration_seconds is None or not self.distance_km > 0:
             return None

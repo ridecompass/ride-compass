@@ -425,27 +425,28 @@ def prefers_reverse(forward_cost: float, reverse_cost: float) -> bool:
 
 
 #: `candidate_order`の並べ方を、利用者に言う文（代償を利用者には負担と呼ぶ）。並べ方を変えたら、ここも変える。
-CANDIDATE_ORDER_WORDING = "所要時間と負担の和が小さい順[周回は1kmあたりの負担が小さい順]"
+CANDIDATE_ORDER_WORDING = "所要時間と負担の和が小さい順[周回は1kmあたりの和が小さい順]"
 
 
 def candidate_order(candidate: EvaluatedRoute, *, loop: bool) -> float:
-    """候補を返す並びの鍵。目的地は費用の小さい順、周回（出発地へ戻る経路）は1kmあたりの代償の秒の小さい順で、先頭が
-    最も良い候補という契約で配る。代償は`PENALTY_PER_KM_QUANTUM`の刻みで同点になる。所要時間の無い候補は周回の末尾へ回す。"""
+    """候補を返す並びの鍵。どの形も探索が最小にした費用（所要時間と代償の和）で比べ、先頭が最も良い候補という契約で配る。
+    目的地は同じ所へ着くので費用の小さい順、周回（出発地へ戻る経路）は距離が目標の幅の中でばらつくので1kmあたりの費用の
+    小さい順（`PENALTY_PER_KM_QUANTUM`の刻みで同点）。所要時間か長さの無い候補は、費用に時間が入らず比べられないので周回の末尾へ回す。"""
     if not loop:
         return candidate.cost_seconds
-    per_km = candidate.penalty_per_km()
-    return float("inf") if per_km is None else float(_penalty_key(np.asarray(per_km)))
+    if candidate.estimated_duration_seconds is None or not candidate.distance_km > 0:
+        return float("inf")
+    return float(_penalty_key(np.asarray(candidate.cost_seconds / candidate.distance_km)))
 
 
 def keep_routes_with_baseline(
     candidates: list[EvaluatedRoute], baseline: EvaluatedRoute | None, max_routes: int, *, loop: bool
-) -> tuple[list[EvaluatedRoute], EvaluatedRoute | None]:
-    """候補を`candidate_order`で並べて`max_routes`件へ切り、残った候補と、印を付ける基準線（所要時間だけで選んだ経路）を返す。
+) -> list[EvaluatedRoute]:
+    """候補を`candidate_order`で並べて`max_routes`件へ切り、残った候補を返す。
 
     超えたぶんは並びの後ろから切るが、基準線は並びで最下位でも残す。ただし`max_routes`が1のときは
     残さない。基準線は**比べる相手があって初めて基準**であり、1本だけ返すなら比べる相手が無い。残すと返る
     唯一の候補が常に時間最短になり、軸の倍率が結果に一切現れない（利用者から見ると「設定が効かない」）。
-    印も同じ理由で、比べる相手が残ったときだけ付ける（1本だけなら何とも比べないので None を返す）。
     """
     ordered = sorted(candidates, key=lambda candidate: candidate_order(candidate, loop=loop))
     excess = len(ordered) - max_routes
@@ -454,7 +455,7 @@ def keep_routes_with_baseline(
         droppable = [i for i, c in enumerate(ordered) if not (keep_baseline and c is baseline)]
         dropped = set(droppable[-excess:])
         ordered = [c for i, c in enumerate(ordered) if i not in dropped]
-    return ordered, baseline if len(ordered) >= 2 else None
+    return ordered
 
 
 def fits_loop_distance(loop_km: float, target_km: float, tolerance_km: float) -> bool:

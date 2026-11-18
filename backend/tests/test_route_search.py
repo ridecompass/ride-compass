@@ -220,8 +220,8 @@ def test_retracing_a_preferred_road_is_penalized_as_much_as_a_plain_road_of_the_
     assert added[0] == added[1] > 0
 
 
-def test_loops_are_ordered_by_the_penalty_per_km_and_destinations_by_the_cost():
-    """長い周回（20km・代償400秒）は短い周回（5km・代償200秒）より代償の総量が多いが、1kmあたりでは少ない。周回の一覧は
+def test_loops_are_ordered_by_the_cost_per_km_and_destinations_by_the_cost():
+    """長い周回（20km・費用4000秒）は短い周回（5km・費用1100秒）より費用の総量が多いが、1kmあたりでは少ない。周回の一覧は
     距離の違う候補を並べるので、総量で並べると短い周回が常に先頭になる。目的地は同じ所へ着く候補どうしなので費用で並べる。"""
     long_loop, short_loop = draft(20.0, 3600.0, 4000.0), draft(5.0, 900.0, 1100.0)
 

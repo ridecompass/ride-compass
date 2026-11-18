@@ -59,7 +59,7 @@
   "job_wait_seconds": 10,
   "cruise_speed_label": "平地・無風で巡航する速さ",
   "duration_estimate_wording": "区間ごとの走行時間に、信号などで止まる時間と、交差点を曲がるのにかかる時間を足した見積もりです。走行時間は、想定した巡航速度と坂・風・気温・標高・路面から計算します。",
-  "candidate_order_wording": "所要時間と負担の和が小さい順[周回は1kmあたりの負担が小さい順]",
+  "candidate_order_wording": "所要時間と負担の和が小さい順[周回は1kmあたりの和が小さい順]",
   "turn_penalty_wording": "折り返し[Uターン]は、選ばれにくくするための分を所要時間に入れず、負担に入れます",
   "missing_travel_data_wording": "標高や止まる所の数、周りの土地被覆が無い区間は、道路網全体の坂の割合どおりの坂と、平均の止まる所の数と土地被覆で所要時間を計算しています[空気は海面の気圧とみなします]",
   "lens_quantity_label": "1kmあたりの負担",

@@ -459,8 +459,8 @@ async def test_routes_through_placed_points_keep_their_order_come_in_several_and
     engine_over, origin, waypoints, destination, distance,
 ):
     """経由地は置いた順に通り（夕食のあと銭湯、の順は利用者の意図）、終点は目的地か出発地。候補は1本に限らず
-    求めた数まで出て、距離を決めたときは全長が目標±許容に入る。所要時間が最短の1本（基準線）は、目的地へ距離を
-    決めずに向かうときだけ含む（距離を決めると、最短の1本は目標の距離と噛み合わない）。"""
+    求めた数まで出て、距離を決めたときは全長が目標±許容に入る。最速の印はどの形でもちょうど1本に付く（目的地へ距離を
+    決めずに向かうときは所要時間だけで選んだ基準線、ほかは返す候補のうち所要時間がいちばん短い1本）。"""
     generator = engine_over(LATTICE)
     start, stops = lattice_node(*origin), [lattice_node(*point) for point in waypoints]
     end = start if destination is None else lattice_node(*destination)
@@ -480,7 +480,7 @@ async def test_routes_through_placed_points_keep_their_order_come_in_several_and
         assert passes_in_order(candidate.node_ids, start, stops, end)
         if distance is not None:
             assert abs(candidate.distance_km - target) <= tolerance
-    assert sum(candidate.is_fastest for candidate in candidates) == (distance is None and destination is not None)
+    assert sum(candidate.is_fastest for candidate in candidates) == 1
 
 
 def physical_segments(candidate) -> list[frozenset[str]]:

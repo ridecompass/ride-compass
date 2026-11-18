@@ -292,6 +292,32 @@ async def test_loops_keep_only_routes_within_the_distance_tolerance():
     assert _keys((await _loops(engine)).candidates) == ["edge"]
 
 
+@pytest.mark.parametrize(
+    ("points", "durations", "fastest"),
+    [
+        # 周回は所要時間だけで選んだ基準線を持たないので、返す候補のうち所要時間がいちばん短い1本に印を付ける
+        (NO_POINTS, {"hard": 300.0, "easy": 200.0, "mid": 100.0}, ["mid"]),
+        # 距離を決めた目的地ルートも同じ
+        (FixedPoints(waypoints=[], destination=DESTINATION), {"hard": 300.0, "easy": 200.0, "mid": 100.0}, ["mid"]),
+        # 同着は並びの先の方
+        (NO_POINTS, {"hard": 100.0, "easy": 100.0, "mid": 100.0}, ["easy"]),
+        # 1本だけなら比べる相手が無いので付けない
+        (NO_POINTS, {"easy": 100.0}, []),
+    ],
+)
+async def test_distance_routes_mark_the_quickest_of_their_own_as_fastest(points, durations, fastest):
+    penalties = {"hard": 30.0, "easy": 10.0, "mid": 20.0}
+    engine = FakeEngine(
+        turnarounds=[_turnaround(_route(k)) for k in durations],
+        routes={
+            k: _candidate(k, penalties[k], estimated_duration_seconds=d, cost_seconds=d + penalties[k])
+            for k, d in durations.items()
+        },
+    )
+
+    assert _fastest((await _loops(engine, points=points)).candidates) == fastest
+
+
 async def test_loops_drop_a_route_too_similar_to_one_already_accepted():
     keys = ["a", "b", "c"]
     engine = FakeEngine(turnarounds=[_turnaround(_route(k)) for k in keys], similar={"b"},
@@ -343,8 +369,9 @@ async def test_distance_routes_through_placed_points_are_named_by_where_they_end
 
     result = (await _loops(engine, points=points)).candidates
 
-    # 距離を決めた生成は、所要時間が最短の1本を足さない（目標の距離と噛み合わない）
-    assert (_identities(result), _fastest(result)) == (identities, [])
+    # 距離を決めた生成は、所要時間が最短の1本を足さない（目標の距離と噛み合わない）。最速の印は返す候補の中で付ける
+    # （`test_distance_routes_mark_the_quickest_of_their_own_as_fastest`）
+    assert _identities(result) == identities
 
 
 async def test_distance_routes_through_placed_points_without_a_relay_say_so(caplog):
@@ -365,17 +392,21 @@ async def test_distance_routes_through_placed_points_without_a_relay_say_so(capl
     ("destination", "closes"),
     [(None, None), (DESTINATION, True)],  # 目的地を置かない・目的地が出発地へ寄った
 )
-async def test_waypoint_routes_back_to_the_origin_come_in_several_without_the_fastest(destination, closes):
+async def test_waypoint_routes_back_to_the_origin_mark_the_quickest_of_their_own_as_fastest(destination, closes):
+    """出発地へ戻るルートは所要時間だけで選んだ基準線を足さず、返す候補のうち所要時間がいちばん短い1本に最速の印を付ける
+    （一覧の先頭に「最速」として出る）。"""
     engine = FakeEngine(via=[_route(k, bearing=None) for k in ("hard", "easy", "mid")], closes=closes,
                         fastest=_route("fastest", bearing=None),
                         routes={"hard": _candidate("hard", 30.0), "easy": _candidate("easy", 10.0),
-                                "mid": _candidate("mid", 20.0), "fastest": _candidate("fastest", 5.0)})
+                                # 所要時間だけが短い（費用は時間の短い分だけ小さい）
+                                "mid": _candidate("mid", 20.0, estimated_duration_seconds=80.0, cost_seconds=100.0),
+                                "fastest": _candidate("fastest", 5.0)})
 
     result = (await _no_distance(engine, [WAYPOINT], destination, max_routes=2)).candidates
 
-    # 代償の大きい側から切る
+    # 1kmあたりの費用の小さい順に並べ、大きい側から切る
     assert _identities(result) == [("loop-00", "loop", "経由地ルート"), ("loop-01", "loop", "経由地ルート")]
-    assert (_keys(result), _fastest(result)) == (["easy", "mid"], [])
+    assert (_keys(result), _fastest(result)) == (["mid", "easy"], ["mid"])
 
 
 @pytest.mark.parametrize("failing", ["fixed_error", "via"])  # 置いた点どうし・最後の点から終点まで
@@ -395,8 +426,12 @@ async def test_waypoints_that_cannot_be_connected_give_no_candidates_and_say_why
 
 
 def _destination_engine(fastest: str | None, /, **penalties: float) -> FakeEngine:
-    """代替経路は`penalties`の順に返り、`fastest`は所要時間が最短の1本（代替経路と同じ鍵ならその経路）。"""
-    routes = {k: _candidate(k, d) for k, d in penalties.items()}
+    """代替経路は`penalties`の順に返り、`fastest`は所要時間だけで選んだ1本（代替経路と同じ鍵ならその経路）。鍵`fastest`の
+    経路は見積もりの所要時間もいちばん短い（費用は同じ代償のほかの候補と比べられるよう、時間の短い分を含めない）。"""
+    routes = {
+        k: _candidate(k, d, **({"estimated_duration_seconds": 80.0} if k == "fastest" else {}))
+        for k, d in penalties.items()
+    }
     return FakeEngine(via=[_route(k) for k in penalties if k != "fastest"],
                       fastest=None if fastest is None else _route(fastest), routes=routes)
 
@@ -427,16 +462,17 @@ async def test_destination_routes_cut_the_costliest_but_keep_the_fastest_unless_
 
 
 @pytest.mark.parametrize(
-    ("fastest", "penalties", "expected"),
+    ("fastest", "penalties", "expected", "marked"),
     [
-        ("a", {"a": 10.0}, ["a"]),  # 比べる相手が無いので、基準として印を付けない
-        (None, {"a": 10.0, "b": 10.0}, ["a", "b"]),  # 最速の経路が引けなければ、代替経路だけを返す
+        ("a", {"a": 10.0}, ["a"], []),  # 比べる相手が無いので、印を付けない
+        # 最速の経路が引けなければ代替経路だけを返し、その中で所要時間がいちばん短い1本（同着は並びの先）に印を付ける
+        (None, {"a": 10.0, "b": 10.0}, ["a", "b"], ["a"]),
     ],
 )
-async def test_destination_routes_without_another_route_to_compare_mark_no_fastest(fastest, penalties, expected):
+async def test_destination_routes_without_the_fastest_route_mark_the_quickest_returned(fastest, penalties, expected, marked):
     result = (await _no_distance(_destination_engine(fastest, **penalties), [], DESTINATION)).candidates
 
-    assert (_keys(result), _fastest(result)) == (expected, [])
+    assert (_keys(result), _fastest(result)) == (expected, marked)
 
 
 async def test_destination_without_alternatives_says_why(caplog):

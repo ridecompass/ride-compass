@@ -23,7 +23,7 @@ import logging
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING, Protocol, cast
 
 from app.domain.stopwatch import elapsed_ms, start_timer, steps_note
 from app.domain.errors import GENERATION_BUSY_MESSAGE, RoutingError, SearchAreaTooLargeError, SearchMemoryBusyError
@@ -71,17 +71,14 @@ def _pool_note(selected: int, pool_size: int) -> str:
     return f"pool={pool_size}" + (f" pool_unfilled={shortfall}" if shortfall > 0 else "")
 
 
-def _label(
-    drafts: list[EvaluatedRoute],
-    kind: RouteKind,
-    name: str | None = None,
-    fastest: EvaluatedRoute | None = None,
-) -> list[RouteCandidate]:
+def _label(drafts: list[EvaluatedRoute], kind: RouteKind, name: str | None = None) -> list[RouteCandidate]:
     """並べ終えた経路へ応答のid・種類・名前・最速の印を付けて候補にする。候補を返す経路はすべて最後にここを通る。
 
     idは種類と並びの位置から作り、応答の中で一意になる。`name`を渡さなければエンジンが方位から付けた名前のまま。
-    最速の印は`fastest`と同じオブジェクトの1本にだけ付く。
+    最速の印は、どの形でも返す候補のうち見積もりの所要時間がいちばん短い1本に付く（`_quickest`）——印と、画面の時間の列の
+    基準がいつも同じ1本になる。
     """
+    fastest = _quickest(drafts)
     return [
         RouteCandidate(**{
             **dict(draft),
@@ -92,6 +89,15 @@ def _label(
         })
         for rank, draft in enumerate(drafts)
     ]
+
+
+def _quickest(drafts: list[EvaluatedRoute]) -> EvaluatedRoute | None:
+    """最速の印を付ける1本。見積もりの所要時間がいちばん短い候補（同着は並びの先の方）。返す候補が1本だけ・所要時間のある
+    候補が無いなら、比べる相手が無いのでNone。"""
+    timed = [draft for draft in drafts if draft.estimated_duration_seconds is not None]
+    if len(drafts) < 2 or not timed:
+        return None
+    return min(timed, key=lambda draft: cast("float", draft.estimated_duration_seconds))
 
 
 def _origin_label(origin: Coordinates) -> str:
@@ -302,10 +308,10 @@ class _NoDistanceFinish:
     async def select(self, engine: "RoadGraphEngine", context: "RoadGraphContext", fixed: "FixedLegs") -> _Selection:
         """`select_via_nodes`が確定済みの経路だけを返すため、候補ごとの再探索・失敗スキップが無く「選定→評価」の2段で済む。
 
-        終点が出発地と違えば、所要時間が最短の経路を基準線として1本含め（件数を切るときも残す。ただし1本だけ返すときは比べる相手が
-        無いので残さず、印も付けない。`domain/route_search.py: keep_routes_with_baseline`）、最速の印を付ける。軸の重みを
-        すべて0にしたときの経路であり、軸設定に沿った候補が何分余計にかかるかを対価として
-        読めるようにするため。並びは周回なら1kmあたりの代償の秒、目的地なら費用の小さい順で、基準線もその位置に並ぶ。
+        終点が出発地と違えば、所要時間が最短の経路を基準線として1本含める（件数を切るときも残す。ただし1本だけ返すときは比べる
+        相手が無いので残さない。`domain/route_search.py: keep_routes_with_baseline`）。軸の重みをすべて0にしたときの経路であり、
+        軸設定に沿った候補が何分余計にかかるかを対価として読めるようにするため。並びは周回なら1kmあたりの費用、目的地なら費用の
+        小さい順で、基準線もその位置に並ぶ。最速の印は、ほかの形と同じく見積もりの所要時間で付ける（`_label`）。
         """
         if fixed.closes and not self.points.waypoints:
             return _Selection.empty(NOTHING_TO_GENERATE, "destination snapped to the origin")
@@ -320,13 +326,12 @@ class _NoDistanceFinish:
             return _Selection.empty(reason, f"no via-node candidates select_ms={select_ms}")
         if fixed.closes:
             def arrange_loops(drafts: list[EvaluatedRoute]) -> list[RouteCandidate]:
-                kept, _ = keep_routes_with_baseline(drafts, None, self.max_routes, loop=True)
-                return _label(kept, "loop", "経由地ルート")
+                return _label(keep_routes_with_baseline(drafts, None, self.max_routes, loop=True), "loop", "経由地ルート")
 
             return _Selection(traced, arrange_loops, f"select_ms={select_ms}")
 
         # 所要時間だけで選んだ経路を基準線として必ず1本含める。軸設定に沿った候補と
-        # 同じ経路になることもあるため、その場合は候補を増やさず既存の1本へ印を付ける。
+        # 同じ経路になることもあるため、その場合は候補を増やさない。
         fastest = await engine.select_fastest_route(context, fixed)
         fastest_index: int | None = None
         if fastest is not None:
@@ -336,10 +341,10 @@ class _NoDistanceFinish:
                 fastest_index = len(traced) - 1
 
         def arrange(drafts: list[EvaluatedRoute]) -> list[RouteCandidate]:
-            # 件数を切るときに残し、印を付けるために、基準線をオブジェクトの同一性で覚えておく。
+            # 件数を切るときに残すために、基準線をオブジェクトの同一性で覚えておく。
             baseline = drafts[fastest_index] if fastest_index is not None else None
-            kept, baseline = keep_routes_with_baseline(drafts, baseline, self.max_routes, loop=False)
-            return _label(kept, "destination", "目的地ルート", fastest=baseline)
+            kept = keep_routes_with_baseline(drafts, baseline, self.max_routes, loop=False)
+            return _label(kept, "destination", "目的地ルート")
 
         return _Selection(traced, arrange, f"select_ms={select_ms}")
 
