@@ -6,10 +6,16 @@
 export const WEATHER_MARK_FRAME = 24;
 export const WEATHER_MARK_PAD = 3;
 
-/** 印の形（北＝上を向けた線の並び）と線の太さ（`WEATHER_MARK_FRAME`の座標）。線の外に白い縁、その外に暗い細線を引く。
+/** 印の形（北＝上を向けた線の並び）と線の太さ（`WEATHER_MARK_FRAME`の座標）。線の外に白い縁、その外に暗い細線を引く（`whiteHalo`が false の印は暗い細線だけ）。
  * 風の矢印は凡例の明るい色（水色・黄緑・黄）が白い縁に溶けないよう、落雷より太い線にする。 */
 export const WEATHER_MARKS = {
-  windArrow: { lines: ["M12 19V5", "m7 10 5-5 5 5"], width: 3.4 },
+  // 風は矢羽根（天気図で風を示す形）。矢じりが風の吹いていく向き、羽根が風上の側で、ただの矢印と見分けられる。
+  // 輪郭は外の暗い細線だけにする（白い縁と重ねると、格子点に並ぶ矢羽根の輪郭がうるさい）。
+  windArrow: {
+    lines: ["M12 21V3", "m8.5 6.5 3.5-3.5 3.5 3.5", "M12 21l-5-3", "M12 17.5l-5-3"],
+    width: 3,
+    whiteHalo: false,
+  },
   // 落雷の地点は、稲妻と地面（落ちた所）。雷の範囲の印の中の稲妻（`thunder`）と凡例で見分けられる。
   liden: { lines: ["M14 2 7 12h5l-2.5 7 8-9.5h-5z", "M4 22h16"], width: 2.6 },
   // 災害の範囲の印の中の絵（`HAZARD_BADGES`の背景に載せる）。雷・竜巻・雨粒・波は lucide の zap・tornado・droplets・
@@ -42,7 +48,10 @@ export const WEATHER_MARKS = {
     ],
     width: 2.6,
   },
-} as const satisfies Record<string, { readonly lines: readonly string[]; readonly width: number }>;
+} as const satisfies Record<
+  string,
+  { readonly lines: readonly string[]; readonly width: number; readonly whiteHalo?: boolean }
+>;
 
 export type WeatherMark = keyof typeof WEATHER_MARKS;
 
@@ -62,6 +71,7 @@ export type HazardBadge = keyof typeof HAZARD_BADGES;
 export const HAZARD_BADGE_STROKE = 2.6;
 export const HAZARD_GLYPH_STROKE = 3.4;
 
-/** 白い縁と、その外の暗い細線の太さ（線の太さへの足し分）。 */
+/** 白い縁と、その外の暗い細線の太さ（線の太さへの足し分）と、白い縁を付けない印の暗い細線の太さ。 */
 export const WEATHER_MARK_HALO_EXTRA = 3.9;
 export const WEATHER_MARK_EDGE_EXTRA = 5.5;
+export const WEATHER_MARK_BARE_EDGE_EXTRA = 1.6;
