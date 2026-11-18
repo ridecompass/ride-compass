@@ -281,15 +281,15 @@ async def test_a_slow_cruise_on_roads_to_avoid_still_turns_at_the_far_side_of_th
     assert all(abs(c.distance_km - 12.0) <= 0.5 for c in candidates)
 
 
-#: 南西から南東へ、西・北・東の縁を回る道（6km）。南の縁を直に行く道（道100・101、2km）の3倍の長さ。
-AROUND_THE_EDGE = [200, 203, 104, 105, 205, 202]
+#: 南西から南東へ、格子の真ん中の横の道を回る道（4km）。南の縁を直に行く道（道100・101、2km）の2倍の長さ。
+THROUGH_THE_MIDDLE = [200, 102, 103, 202]
 
 
 async def test_a_detour_on_preferred_roads_is_taken_when_it_costs_less_than_the_direct_road(engine_over):
-    """「好む」の道の費用には「なるべく避ける」の倍率の逆数が、「なるべく避ける」の道には倍率が掛かる。テストの較正値の倍率2では、
-    回り道（6km×0.5）が直の道（2km×2）より安くなるので、置いた点どうしを回り道で結ぶ。A*の見込みが倍率で緩まないと、回り道の
-    入口が直の道より高く見えて探索が先に直の道で着き、安い回り道を取りこぼす（巡航を速さの上限と同じにして、緩めない見込みを
-    平地の所要時間に近づける）。"""
+    """「好む」の道の所要時間には「好む」の倍率が、「なるべく避ける」の道には「なるべく避ける」の倍率が掛かって費用になる。テストの
+    較正値（好む0.8・避ける2）では、回り道（4km×0.8）が、曲がる2回の分を足しても直の道（2km×2）より安くなるので、置いた点どうしを
+    回り道で結ぶ。A*の見込みが倍率で緩まないと、回り道の入口が直の道より高く見えて探索が先に直の道で着き、安い回り道を取りこぼす
+    （巡航を速さの上限と同じにして、緩めない見込みを平地の所要時間に近づける）。"""
     definitions = road_classes(
         {"tunnel": classification({
             "yes": [fact_is(TUNNEL, TRUE_FACT_VALUE)],
@@ -300,7 +300,7 @@ async def test_a_detour_on_preferred_roads_is_taken_when_it_costs_less_than_the_
     )
     with replaced_road_classes(definitions):
         candidates = (await engine_over(
-            grid_network(tunnel_ways=set(AROUND_THE_EDGE)), road_avoidance={"tunnel.yes": "prefer", "tunnel.no": "avoid"},
+            grid_network(tunnel_ways=set(THROUGH_THE_MIDDLE)), road_avoidance={"tunnel.yes": "prefer", "tunnel.no": "avoid"},
             assumed_speed_kmh=TUNING["speed.max_descent_kmh"],
         ).generate_via_waypoints(at(SOUTH_WEST), [at(SOUTH_EAST)], destination=at(CENTER), max_routes=3,
                                  start_time=DEPARTURE)).candidates
@@ -310,7 +310,7 @@ async def test_a_detour_on_preferred_roads_is_taken_when_it_costs_less_than_the_
     others = [candidate for candidate in candidates if candidate is not fastest]
     assert others
     for candidate in others:
-        assert ways_of(candidate)[:len(AROUND_THE_EDGE)] == AROUND_THE_EDGE
+        assert ways_of(candidate)[:len(THROUGH_THE_MIDDLE)] == THROUGH_THE_MIDDLE
 
 
 def _clustered_ring_network() -> tuple[RoadNetwork, Coordinates]:

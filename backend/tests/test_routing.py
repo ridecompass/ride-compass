@@ -46,7 +46,7 @@ def grid_tree(**kwargs):
     tree = routing.build_turn_expanded_tree(
         structure, cost, statics.edge_length_m, out_states(lazy, "n0_0"),
         lazy.node_count, **kwargs,
-        edge_seconds=np.ones(structure.state_count), transition_cost=structure.turn_seconds
+        edge_seconds=np.ones(structure.state_count), transition_cost=structure.turn_search_seconds
     )
     return lazy, statics, structure, tree
 
@@ -92,11 +92,11 @@ def test_tree_cost_bound_cuts_no_state_within_the_length(seed, length_m):
     def tree(**kwargs):
         return routing.build_turn_expanded_tree(
             structure, cost, edge_length_m, seeds, lazy.node_count,
-            edge_seconds=np.ones((2, states)), bin_seconds=30.0, **kwargs, transition_cost=structure.turn_seconds
+            edge_seconds=np.ones((2, states)), bin_seconds=30.0, **kwargs, transition_cost=structure.turn_search_seconds
         )
 
     full = tree()
-    bound = routing.tree_cost_bound(structure, cost, edge_length_m, length_m, transition_cost=structure.turn_seconds)
+    bound = routing.tree_cost_bound(structure, cost, edge_length_m, length_m, transition_cost=structure.turn_search_seconds)
     within = np.isfinite(full.state_cost) & (full.state_length_m <= length_m)
     assert (full.state_cost[within] <= bound).all()
     cut = tree(cost_limit=bound)
@@ -120,10 +120,10 @@ def test_tree_cost_bound_covers_the_waits_and_the_dearest_time_bin():
     cost = np.full((2, structure.state_count), 10.0)
     cost[:, [states["bx"], states["cx"], states["dx"]]] = np.inf
     cost[1, last] = 100.0
-    bound = routing.tree_cost_bound(structure, cost, statics.edge_length_m, 400.0, transition_cost=structure.turn_seconds)
+    bound = routing.tree_cost_bound(structure, cost, statics.edge_length_m, 400.0, transition_cost=structure.turn_search_seconds)
     tree = routing.build_turn_expanded_tree(
         structure, cost, statics.edge_length_m, out_states(lazy, "a"), lazy.node_count,
-        cost_limit=bound, edge_seconds=np.ones((2, structure.state_count)), bin_seconds=1.5, transition_cost=structure.turn_seconds
+        cost_limit=bound, edge_seconds=np.ones((2, structure.state_count)), bin_seconds=1.5, transition_cost=structure.turn_search_seconds
     )
     assert tree.state_cost[last] == pytest.approx(10.0 * 3 + 100.0 + 2 * TURN_SPEC.left.expected_seconds + TURN_SPEC.right.expected_seconds)
 
@@ -138,7 +138,7 @@ def test_tree_never_enters_a_non_finite_cost_edge():
     tree = routing.build_turn_expanded_tree(
         structure, cost, statics.edge_length_m, out_states(lazy, "n0_0"),
         lazy.node_count,
-        edge_seconds=np.ones(structure.state_count), transition_cost=structure.turn_seconds
+        edge_seconds=np.ones(structure.state_count), transition_cost=structure.turn_search_seconds
     )
     assert not np.isfinite(tree.state_cost[blocked])
     assert tree.node_cost[lazy.node_id_to_index["n0_1"]] == pytest.approx(3.0)
@@ -151,7 +151,7 @@ def test_tree_marks_unreachable_states_and_nodes():
     tree = routing.build_turn_expanded_tree(
         structure, cost, statics.edge_length_m, out_states(lazy, "A"),
         lazy.node_count,
-        edge_seconds=np.ones(structure.state_count), transition_cost=structure.turn_seconds
+        edge_seconds=np.ones(structure.state_count), transition_cost=structure.turn_search_seconds
     )
     isolated = lazy.node_id_to_index["Z"]
     assert tree.node_cost[isolated] == math.inf
@@ -199,7 +199,7 @@ def test_tree_picks_the_time_bin_by_elapsed_seconds(bin_seconds, expected):
     lazy, statics, structure, states, cost, seconds = _line_bins()
     tree = routing.build_turn_expanded_tree(
         structure, cost, statics.edge_length_m, np.array([states["AB"]], dtype=np.int64),
-        lazy.node_count, edge_seconds=seconds, bin_seconds=bin_seconds, transition_cost=structure.turn_seconds
+        lazy.node_count, edge_seconds=seconds, bin_seconds=bin_seconds, transition_cost=structure.turn_search_seconds
     )
     assert tree.state_cost[states["BC"]] == pytest.approx(expected)
 
@@ -212,7 +212,7 @@ def test_reverse_tree_measures_the_cost_from_each_state_to_the_destination():
     tree = routing.build_turn_expanded_tree(
         structure, np.ones(structure.state_count), statics.edge_length_m,
         np.array([states["BC"]], dtype=np.int64), lazy.node_count, reverse=True,
-        edge_seconds=np.ones(structure.state_count), transition_cost=structure.turn_seconds
+        edge_seconds=np.ones(structure.state_count), transition_cost=structure.turn_search_seconds
     )
     assert tree.state_cost[states["AB"]] == pytest.approx(2.0)
     assert tree.node_cost[lazy.node_id_to_index["A"]] == pytest.approx(2.0)
@@ -225,7 +225,7 @@ def test_reverse_tree_rejects_time_bins():
     with pytest.raises(ValueError):
         routing.build_turn_expanded_tree(
             structure, cost, statics.edge_length_m, np.array([states["BC"]], dtype=np.int64),
-            lazy.node_count, reverse=True, edge_seconds=seconds, bin_seconds=5.0, transition_cost=structure.turn_seconds
+            lazy.node_count, reverse=True, edge_seconds=seconds, bin_seconds=5.0, transition_cost=structure.turn_search_seconds
         )
 
 
@@ -275,7 +275,7 @@ def test_shortest_path_returns_edge_indices_in_travel_order():
         structure, np.ones(structure.state_count),
         np.zeros(lazy.node_count), out_states(lazy, "n0_0"),
         lazy.node_id_to_index[goal],
-        edge_seconds=np.ones(structure.state_count), transition_cost=structure.turn_seconds
+        edge_seconds=np.ones(structure.state_count), transition_cost=structure.turn_search_seconds
     )
     assert path is not None
     assert len(path) == last * 2
@@ -300,7 +300,7 @@ def test_shortest_path_ignores_non_finite_costs_among_seeds_and_successors():
     path = routing.turn_expanded_shortest_path(
         structure, cost, np.zeros(lazy.node_count), out_states(lazy, "C"),
         lazy.node_id_to_index["E"],
-        edge_seconds=np.ones(structure.state_count), transition_cost=structure.turn_seconds
+        edge_seconds=np.ones(structure.state_count), transition_cost=structure.turn_search_seconds
     )
     assert path == [states["CE"]]
 
@@ -312,7 +312,7 @@ def test_shortest_path_is_none_when_the_goal_cannot_be_reached():
     path = routing.turn_expanded_shortest_path(
         structure, np.ones(structure.state_count), np.zeros(lazy.node_count),
         np.array([states["AB"]], dtype=np.int64), lazy.node_id_to_index["Z"],
-        edge_seconds=np.ones(structure.state_count), transition_cost=structure.turn_seconds
+        edge_seconds=np.ones(structure.state_count), transition_cost=structure.turn_search_seconds
     )
     assert path is None
 
@@ -352,7 +352,7 @@ def test_shortest_path_pays_for_turns_not_only_for_edges():
     path = routing.turn_expanded_shortest_path(
         structure, cost, np.zeros(lazy.node_count),
         out_states(lazy, "A"), lazy.node_id_to_index["C"],
-        edge_seconds=np.ones(structure.state_count), transition_cost=structure.turn_seconds
+        edge_seconds=np.ones(structure.state_count), transition_cost=structure.turn_search_seconds
     )
     assert path == [states["AB"], states["BC"]]
 
@@ -369,7 +369,7 @@ def test_shortest_path_reads_the_cost_of_the_bin_it_arrives_in(bin_seconds, expe
     seconds = np.full((2, structure.state_count), 10.0)
     path = routing.turn_expanded_shortest_path(
         structure, cost, np.zeros(lazy.node_count), out_states(lazy, "A"),
-        lazy.node_id_to_index["C"], edge_seconds=seconds, bin_seconds=bin_seconds, transition_cost=structure.turn_seconds
+        lazy.node_id_to_index["C"], edge_seconds=seconds, bin_seconds=bin_seconds, transition_cost=structure.turn_search_seconds
     )
     assert path is not None
     assert graph.edges[lazy.edge_ids[path[0]]].to_node_id == expected_middle
@@ -439,6 +439,6 @@ def test_shortest_path_stays_exact_while_the_queue_grows():
     heuristic[lazy.node_id_to_index["L0"]] = 2.0
     path = routing.turn_expanded_shortest_path(
         structure, cost, heuristic, out_states(lazy, "O"), lazy.node_id_to_index["G"],
-        edge_seconds=np.ones(structure.state_count), transition_cost=structure.turn_seconds
+        edge_seconds=np.ones(structure.state_count), transition_cost=structure.turn_search_seconds
     )
     assert path == [states["OH"], states["HL0"], states["L0G"]]

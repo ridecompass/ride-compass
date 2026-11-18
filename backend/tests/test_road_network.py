@@ -24,6 +24,7 @@ import pytest
 from hypothesis import example, given
 from hypothesis import strategies as st
 
+from app.domain.cost_axes import EFFORT_AXES, CostAxisDefinitions
 from app.domain.material_catalog import GRADIENT_PERCENT
 from app.domain.region import ROAD_TILE_MAX_ZOOM, ROAD_TILE_MIN_ZOOM, tile_bounds_lonlat, tile_position
 from app.domain.road_classes import class_material_id
@@ -36,6 +37,7 @@ from app.domain.road_network import (
     rows_in_tile,
     slice_network,
 )
+from tests.cost_axes_fixture import PRESENTATION
 from tests.east_west_network import EDGES, NODES, network
 from tests.road_class_fixture import classification, fact_is, road_classes
 
@@ -123,13 +125,23 @@ def test_the_materials_and_road_classes_of_a_slice_follow_its_rows():
     assert [columns[class_material_id("k")].value_at(i) for i in range(2)] == ["is_y", None]
 
 
-def test_the_fills_are_the_distance_weighted_distributions_of_the_whole_network():
-    """欠けを埋める平均は取込範囲全体の距離で重みを付けたもの（値の無い区間を除く）。"""
+def test_the_fills_are_the_distance_weighted_means_of_the_whole_network():
+    """欠けを埋める平均は取込範囲全体の距離で重みを付けたもの（値の無い区間を除く）。道のストレスは、材料の値を平均してから重さに
+    するのでなく、道ごとの重さを平均する——折れ線が頭打ちになる所で、値の平均の重さは道の重さの平均を上回り、材料の無い道を重く見る。"""
     whole = network()
     rules = {"is_x": [fact_is("cat_a", "x")], "is_y": [fact_is("cat_a", "y")]}
     classes = road_class_columns(whole, road_classes({"k": classification(rules)}))
+    axes = CostAxisDefinitions.model_validate({
+        "effort": {axis_id: PRESENTATION for axis_id in EFFORT_AXES},
+        "burden": {
+            "by_class": {**PRESENTATION, "burden": {
+                "kind": "categorical", "material": class_material_id("k"), "per_km": {"is_x": 1.0, "is_y": 0.0}}},
+            "by_value": {**PRESENTATION, "burden": {"kind": "linear", "material": "num_a", "points": [[0.0, 0.0], [20.0, 1.0]]}},
+        },
+        "total_lens": PRESENTATION,
+    })
 
-    fills = material_fills(whole, classes[0], [class_material_id("k")])
+    fills = material_fills(whole, classes[0], axes)
 
     # 区間の長さは経度の差に比べて4:4:10:20:20（同じ緯度の上）。num_aは0〜40。勾配は道20と道30の1区間目、区分は道30の
     # 1区間目だけ値が無い。勾配を長さで重みづけた和は区間の登りの和で、道10の両向きは打ち消し合い、道30の2区間目の3mだけが残る。
@@ -137,7 +149,8 @@ def test_the_fills_are_the_distance_weighted_distributions_of_the_whole_network(
         "num_a": (10 * 4 + 20 * 10 + 30 * 20 + 40 * 20) / 58,
         GRADIENT_PERCENT: 3.0 * 100 / whole.distance_m[[0, 1, 4]].sum(),
     }, rel=1e-4)
-    assert fills.class_shares == {class_material_id("k"): pytest.approx({"is_x": 8 / 38, "is_y": 30 / 38}, rel=1e-4)}
+    # num_aの0・10・20・30・40の重さは0・0.5・1・1・1（値の平均28は1の重さ）。区分はis_xが8/38、is_yが30/38の長さ。
+    assert fills.burden_per_km == pytest.approx({"by_class": 8 / 38, "by_value": (0.5 * 4 + 1.0 * 50) / 58}, rel=1e-4)
 
 
 def test_the_elevation_attribute_reads_the_average_grade_from_the_material_and_the_steepest_slopes():

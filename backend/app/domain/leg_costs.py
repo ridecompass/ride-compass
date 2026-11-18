@@ -43,7 +43,7 @@ from app.domain.road_classes import material_spec
 from app.domain.route import STOP_COUNT_DECIMALS, WIND_MS_DECIMALS, AxisFact
 from app.domain.elevation_profile import FLAT, ElevationProfiles, along_fractions
 from app.domain.search_materials import SearchMaterials
-from app.domain.ledger_costs import LedgerCosts, LedgerParameters, burden_per_km
+from app.domain.ledger_costs import LedgerCosts, LedgerParameters
 from app.domain.road_network import MaterialFills
 from app.domain.road_avoidance import RoadAvoidanceMasks
 from app.domain.search_graph import EDGE_VALUE_DTYPE, kernel_array
@@ -58,11 +58,12 @@ from app.domain.wind_context import WindContext
 TIME_BIN_HOURS = 1.0
 MAX_TIME_BINS = 4
 
-#: 所要時間の計算が値の無い区間をどう数えるかを、利用者に言う文（`_travel_inputs`が標高の欠けを全体の坂の割合の平均で、
-#: 停止要因の件数の欠けを取込の範囲全体の平均の密度で置き換え、走行の模型が標高の無い区間の空気を海面のものとし、風の高さの倍率が
+#: 所要時間の計算が値の無い区間をどう数えるかを、利用者に言う文（走行の模型が標高の欠けを道路網全体の坂の分布どおりの坂で走り、
+#: `_travel_inputs`が停止要因の件数の欠けを取込の範囲全体の平均の密度で置き換え、走行の模型が標高の無い区間の空気を海面のものとし、風の高さの倍率が
 #: 土地被覆の割合の欠けを取込の範囲全体の平均の割合で埋める）。置き換え方を変えたら、ここも変える。
 MISSING_TRAVEL_DATA_WORDING = (
-    "標高や止まる所の数、周りの土地被覆が無い区間は、道路網全体の平均の坂と止まる所の数と土地被覆で所要時間を計算しています"
+    "標高や止まる所の数、周りの土地被覆が無い区間は、道路網全体の坂の割合どおりの坂と、平均の止まる所の数と土地被覆で所要時間を"
+    "計算しています"
     "[空気は海面の気圧とみなします]")
 
 #: 所要時間の見積もりが何を足したものかを、利用者に言う文（区間の走行時間・止まる出来事の待ち・曲がる所の時間）。
@@ -94,8 +95,8 @@ class LegValues:
 
     # 区間ごとの進行方向への向かい風成分（m/s、風が無ければ0）。
     headwind_ms: np.ndarray
-    # 軸id→区間ごとの代償の秒（`domain/ledger_costs.py: LedgerCosts.row_seconds`）と、避け方の倍率が区間の所要時間と
-    # 代償から下げた秒（0以下）と上乗せした秒（0以上）。
+    # 軸id→区間ごとの代償の秒（`domain/ledger_costs.py: LedgerCosts.row_seconds`）と、避け方の倍率が区間の所要時間から
+    # 下げた秒（0以下）と上乗せした秒（0以上）。
     penalty_by_axis: dict[str, np.ndarray]
     preferred_seconds: np.ndarray
     avoided_seconds: np.ndarray
@@ -197,10 +198,11 @@ def travel_inputs(materials: Mapping[str, MaterialColumn], distance_m: np.ndarra
 
 def burden_weights(axes: CostAxisDefinitions, parameters: LedgerParameters, materials: Mapping[str, MaterialColumn],
                    fills: MaterialFills) -> dict[str, np.ndarray]:
-    """数える道のストレスの軸id → 区間ごとの1kmあたりの重さ（`domain/ledger_costs.py: burden_per_km`）。無効の軸は組まない
+    """数える道のストレスの軸id → 区間ごとの1kmあたりの重さ（`materials`は材料id→区間の列）。材料の欠けた区間は、取込の範囲全体の
+    重さの平均（`domain/road_network.py: MaterialFills.burden_per_km`。探索の範囲に依らない）で埋める。無効の軸は組まない
     （費用・内訳・事実は、この組から道のストレスの軸を読む）。"""
-    return {axis_id: burden_per_km(axis.burden, materials, fills)
-            for axis_id, axis in axes.burden.items() if parameters.counts(axis_id)}
+    weights = {axis_id: axis.burden.weights(materials) for axis_id, axis in axes.burden.items() if parameters.counts(axis_id)}
+    return {axis_id: np.where(np.isnan(w), fills.burden_per_km[axis_id], w) for axis_id, w in weights.items()}
 
 
 def axis_facts(settings: ModelSettings, materials: Mapping[str, MaterialColumn], fills: MaterialFills,
@@ -274,8 +276,8 @@ def _bin_costs(
     """ビン1本の`(探索の行順の費用, 探索の行順の所要時間)`（どちらも`EDGE_VALUE_DTYPE`）。
 
     所要時間は走行時間に停止の待ちを足したもの。探索から除く区間は所要時間も費用も
-    無限大にする（探索から見た通行可否をコストの下地だけで表すため）。費用は所要時間に代償の秒
-    （`domain/ledger_costs.py: LedgerCosts.bin_seconds`）を足し、避け方の倍率を掛けたもの。計算はfloat64で行い、
+    無限大にする（探索から見た通行可否をコストの下地だけで表すため）。費用は所要時間に避け方の倍率を掛け、代償の秒
+    （`domain/ledger_costs.py: LedgerCosts.bin_seconds`）を足したもの。計算はfloat64で行い、
     最後に`EDGE_VALUE_DTYPE`へ丸める。`full_row_index`は切り出した区間の行→探索の行（載らない区間は-1）。
     """
     cost_lazy = np.empty(lazy_count, dtype=EDGE_VALUE_DTYPE)
@@ -289,7 +291,7 @@ def _bin_costs(
             cost = np.inf
         else:
             seconds = travel_seconds[row] + wait_seconds[row]
-            cost = cost_scale[row] * (seconds + added_seconds[row])
+            cost = cost_scale[row] * seconds + added_seconds[row]
         cost_lazy[lazy] = cost
         travel_lazy[lazy] = seconds
     return cost_lazy, travel_lazy
@@ -348,7 +350,8 @@ class LegCostComposer:
         self._categorical_material_arrays = dict(
             zip(search_materials.categorical_material_ids, search_materials.categorical_material_columns, strict=True)
         )
-        # 探索から除く区間（費用を無限大にする）と、避け方の倍率。倍率は探索の費用にだけ掛け、所要時間には掛けない。
+        # 探索から除く区間（費用を無限大にする）と、避け方の倍率。倍率は所要時間に掛けて探索の費用にし、予想の所要時間と
+        # 代償には掛けない。
         self._excluded = search_masks.excluded
         self._cost_scale = search_masks.cost_scale
         #: 区間の費用が所要時間に対して下がる最小の倍率（好む側の段の区間があればその倍率、無ければ1）。探索の見込み
@@ -496,8 +499,8 @@ class LegCostComposer:
         headwind, crosswind, temperature = self._wind.take(rows).components(time.take(rows).forecast)
         inputs = self._travel_inputs
         travel_seconds, penalty_by_axis = self._ledger.row_seconds(inputs.model, headwind, crosswind, temperature, rows)
-        # 探索の費用（`_bin_costs`）のうち、避け方の倍率が足し引きした分。探索と同じく倍率を掛けてから引き、float64で求める。
-        unscaled = travel_seconds + inputs.wait_seconds[rows] + sum(penalty_by_axis.values(), np.zeros(len(rows)))
+        # 探索の費用（`_bin_costs`）のうち、避け方の倍率が所要時間から足し引きした分。探索と同じく倍率を掛けてから引き、float64で求める。
+        unscaled = travel_seconds + inputs.wait_seconds[rows]
         scaled = self._cost_scale[rows].astype(np.float64) * unscaled - unscaled
         return LegValues(headwind_ms=headwind, penalty_by_axis=penalty_by_axis,
                          preferred_seconds=np.minimum(scaled, 0.0), avoided_seconds=np.maximum(scaled, 0.0))
@@ -557,9 +560,9 @@ class LegCostComposer:
         """曲がる所の漕ぎ出し`kickoffs`回の代償の秒（軸id → 秒。`LedgerCosts.turn_penalty_by_axis`）。"""
         return self._ledger.turn_penalty_by_axis(kickoffs)
 
-    def transition_costs(self, turn_seconds: np.ndarray, turn_kickoffs: np.ndarray) -> np.ndarray:
-        """曲がる所の費用（秒、遷移ごと）。時間に漕ぎ出しの代償を足したもの。"""
-        return self._ledger.transition_costs(turn_seconds, turn_kickoffs)
+    def transition_costs(self, turn_search_seconds: np.ndarray, turn_kickoffs: np.ndarray) -> np.ndarray:
+        """曲がる所の費用（秒、遷移ごと）。探索の重み（時間に罰を足したもの）に漕ぎ出しの代償を足したもの。"""
+        return self._ledger.transition_costs(turn_search_seconds, turn_kickoffs)
 
     def _compose_bin(self, time: BinTime, steps_ms: dict[str, int]) -> _ComposedBin:
         """時刻`time`で1本ぶん合成する。段ごとの時間を`steps_ms`へ足す。体力と道のストレスは風と気温だけで決まる。欠けは取込の範囲

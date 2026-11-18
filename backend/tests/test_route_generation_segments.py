@@ -45,10 +45,12 @@ from tests.route_world import (
     fastest_of,
     generator_for,
     grid_network,
+    node_point,
     nodes_of,
     road_network,
     ways_of,
 )
+from tests.tuning_fixture import TUNING
 
 
 @pytest.fixture
@@ -307,3 +309,28 @@ async def test_the_duration_and_the_penalty_of_each_axis_and_of_the_preferred_an
     assert facts[BAD_AXIS] == AxisFact(label=bad.label, value=1.0, unit=bad.unit)
     assert facts["friction"] == AxisFact(label=definitions.classifications["kind"].classes["local"].label, value=None, unit="")
     assert facts["stopping"].value > 0
+
+
+#: 南東の角から東へ1km延びる行き止まりの道と、その先のノード。
+DEAD_END_WAY, DEAD_END_NODE = 400, 95
+
+
+async def test_a_u_turn_penalty_goes_into_the_cost_and_the_avoided_seconds_but_not_into_the_duration(engine_over):
+    """行き止まりに置いた経由地では折り返すほかに道が無い。Uターンの秒は選ばせないための罰で、実際に失う時間ではないので、
+    費用と内訳の避ける側の秒にだけ入り、所要時間と到着の予想には入らない（入れると、折り返す候補の所要時間が罰の分だけ延びる）。
+    内訳の和と所要時間で費用になるので、所要時間に罰が入っていれば費用より罰の分だけ多くなる。"""
+    end_lat, end_lon = COORDINATES[SOUTH_EAST]
+    network = road_network({**WAYS, DEAD_END_WAY: (SOUTH_EAST, DEAD_END_NODE)},
+                           {**COORDINATES, DEAD_END_NODE: (end_lat, end_lon + LON_STEP)})
+
+    candidates = (await engine_over(network).generate_via_waypoints(
+        at(SOUTH_WEST), [node_point(network, DEAD_END_NODE)], destination=at(NORTH_EAST), max_routes=3,
+        start_time=DEPARTURE)).candidates
+
+    assert candidates
+    for candidate in candidates:
+        assert [turn.direction for turn in candidate.turns].count("uturn") == 1
+        penalty = candidate.penalty
+        assert penalty.avoided_seconds == pytest.approx(TUNING["turn.uturn_share"] * TUNING["turn.uturn_seconds"])
+        assert candidate.estimated_duration_seconds + sum(penalty.axis_seconds.values()) + penalty.preferred_seconds \
+            + penalty.avoided_seconds == pytest.approx(candidate.cost_seconds, abs=0.5)

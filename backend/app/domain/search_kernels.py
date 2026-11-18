@@ -36,9 +36,9 @@ def compile_search_kernels() -> None:
     origin_states = np.array([0])
     tree = build_turn_expanded_tree(
         structure, cost, statics.edge_length_m, origin_states, lazy_graph.node_count, edge_seconds=cost,
-        transition_cost=structure.turn_seconds,
+        transition_cost=structure.turn_search_seconds,
     )
-    junction = combine_forward_backward_at_nodes(structure, tree, tree, lazy_graph.node_count, structure.turn_seconds)
+    junction = combine_forward_backward_at_nodes(structure, tree, tree, lazy_graph.node_count, structure.turn_search_seconds)
     paths = JunctionPaths(junction, tree, tree, lazy_graph.edge_from, lazy_graph.edge_to)
     for node_index in range(lazy_graph.node_count):
         paths.edges(node_index)
@@ -49,5 +49,5 @@ def compile_search_kernels() -> None:
     edge_overlap.accept(0)
     edge_overlap.max_ratio(0)
     turn_expanded_shortest_path(structure, cost, np.zeros(2), origin_states, 0, edge_seconds=cost,
-                                transition_cost=structure.turn_seconds)
+                                transition_cost=structure.turn_search_seconds)
     compile_leg_cost_kernels(tuning)

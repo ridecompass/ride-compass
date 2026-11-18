@@ -8,6 +8,7 @@ from app.domain.geo import LatLonPoint
 from app.domain.graph import LeanEdge, parse_edge_key
 from app.domain.region import BoundingBox, tiles_covering_bbox
 from app.domain.attributes import CategoricalColumn
+from app.domain.cost_axes import CostAxisDefinitions
 from app.domain.road_classes import RoadClassDefinitions, current_road_classes
 from app.domain.road_network import (
     MaterialFills,
@@ -86,20 +87,20 @@ def network_classes(network: RoadNetwork) -> tuple[dict[str, CategoricalColumn],
     return columns
 
 
-#: 最後に求めた欠けを埋める平均と、求めたときの道路網・区分の列・材料。どれかが入れ替わったら求め直す。
-_fills: tuple[RoadNetwork, Mapping[str, CategoricalColumn], tuple[str, ...], MaterialFills] | None = None
+#: 最後に求めた欠けを埋める平均と、求めたときの道路網・区分の列・費用の軸の定義。どれかが入れ替わったら求め直す。
+_fills: tuple[RoadNetwork, Mapping[str, CategoricalColumn], CostAxisDefinitions, MaterialFills] | None = None
 
 
-def network_fills(network: RoadNetwork, material_ids: tuple[str, ...]) -> MaterialFills:
-    """取込範囲全体の欠けを埋める平均（`domain/road_network.py: material_fills`）。区分の材料の割合は全区間を数えるので、
-    道路網・区分の列・材料の組ごとに1回だけ求める。"""
+def network_fills(network: RoadNetwork, axes: CostAxisDefinitions) -> MaterialFills:
+    """取込範囲全体の欠けを埋める平均（`domain/road_network.py: material_fills`）。道のストレスの重さの平均は全区間を数えるので、
+    道路網・区分の列・費用の軸の定義の組ごとに1回だけ求める。"""
     global _fills
     classes = network_classes(network)[0]
     cached = _fills
-    if cached is not None and cached[0] is network and cached[1] is classes and cached[2] == material_ids:
+    if cached is not None and cached[0] is network and cached[1] is classes and cached[2] == axes:
         return cached[3]
-    fills = material_fills(network, classes, material_ids)
-    _fills = (network, classes, material_ids, fills)
+    fills = material_fills(network, classes, axes)
+    _fills = (network, classes, axes, fills)
     return fills
 
 

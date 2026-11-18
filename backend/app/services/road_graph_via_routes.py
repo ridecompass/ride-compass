@@ -60,7 +60,7 @@ async def select_via_nodes(
     両方の木で帰りと同じ罰を置く。
 
     1. 全Nodeについて経由路長`len_f+len_b`・合成コスト`cost_f+cost_b`をベクトル計算し、
-       合成コスト最小のNode（"最良路"）の長さの較正値`search.alternative_max_stretch`倍以内の
+       合成コスト最小のNode（"最良路"）の合成コストの較正値`search.alternative_max_cost_stretch`倍以内の
        Nodeだけを候補にする。
     2. 経由路長と1kmあたりの代償の秒`(合成コスト−所要時間)/経由路長`のパレート層の順に並べる。ただし最良路のNodeは
        常に先頭へ回す——合成コスト最小であっても、伸び率の許す範囲でより1kmあたりの代償の
@@ -160,7 +160,7 @@ async def select_via_nodes(
         )
         return []
 
-    best_index, candidates = alternative_via_nodes(junction.cost, junction.length_m, reachable, context.tuning)
+    best_index, candidates = alternative_via_nodes(junction.cost, reachable, context.tuning)
     best_length_m = float(junction.length_m[best_index])
     # 周回の折返し点選定と同じく、経路長・1kmあたりの代償の秒のパレート非劣解を先に並べる
     # （目的地ルートは目標距離を持たず代わりの道の長さの上限（較正値）以内という上限だけが効くぶん、
@@ -235,7 +235,7 @@ async def select_fastest_route(context: RoadGraphContext, fixed: FixedLegs) -> T
             turn_expanded_shortest_path,
             context.turn_structure, time_bins, heuristic_to(context, to_node),
             origin_states(context.statics, from_node), to_node,
-            time_bins, leg.bin_seconds, transition_cost=context.turn_structure.turn_seconds,
+            time_bins, leg.bin_seconds, transition_cost=context.turn_structure.turn_search_seconds,
         )
         if not edges:
             logger.debug("select_fastest_route to_node=%s", node_key_of(context.road, to_node))

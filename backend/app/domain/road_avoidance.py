@@ -20,7 +20,7 @@ from app.domain.road_classes import (
     class_material_id,
     published_map_layers,
 )
-from app.domain.tuning import require_tuning
+from app.domain.tuning import Tuning
 
 #: 避け方の段。1つの区間が複数の行に当たれば、倍率の大きい段を取る。「通る」は何も指定していない扱いで、ほかの行の段を
 #: 打ち消さない。
@@ -28,18 +28,19 @@ AvoidanceLevel = Literal["pass", "slight_prefer", "prefer", "slight_avoid", "avo
 AVOIDANCE_LEVELS: tuple[AvoidanceLevel, ...] = get_args(AvoidanceLevel)
 
 
-def level_multipliers(avoid_cost_multiplier: float) -> dict[AvoidanceLevel, float]:
-    """段→その段の区間の費用に掛ける倍率。「好む」は「なるべく避ける」の倍率（較正値`avoidance.avoid_cost_multiplier`）の
-    逆数で、逆向きに同じ強さで効く。「少し」の段はその平方根（倍率の対数で「通る」との真ん中）。「通らない」は探索から除くので
-    無限大。"""
-    require_tuning({"avoidance.avoid_cost_multiplier": avoid_cost_multiplier}, avoid_cost_multiplier > 0, "0より大きい")
-    slight = math.sqrt(avoid_cost_multiplier)
+def level_multipliers(tuning: Tuning) -> dict[AvoidanceLevel, float]:
+    """段→その段の区間の所要時間に掛けて探索の費用にする倍率（代償には掛けない。`domain/ledger_costs.py`の費用の式）。
+    「なるべく避ける」と「好む」はそれぞれの較正値（標準の人の好みの定義）で、「好む」は避ける側の逆数にしない——避けるのと
+    好むのとで、道を選び替える強さが同じである理由は無い。「少し」の段はそれぞれの平方根（倍率の対数で「通る」との真ん中）。
+    「通らない」は探索から除くので無限大。"""
+    avoid = tuning.checked("avoidance.avoid_cost_multiplier", lambda v: v > 0, "0より大きい")
+    prefer = tuning.checked("avoidance.prefer_cost_multiplier", lambda v: 0 < v <= 1, "0より大きく1以下")
     return {
         "pass": 1.0,
-        "slight_prefer": 1.0 / slight,
-        "prefer": 1.0 / avoid_cost_multiplier,
-        "slight_avoid": slight,
-        "avoid": avoid_cost_multiplier,
+        "slight_prefer": math.sqrt(prefer),
+        "prefer": prefer,
+        "slight_avoid": math.sqrt(avoid),
+        "avoid": avoid,
         "exclude": math.inf,
     }
 

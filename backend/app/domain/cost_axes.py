@@ -12,10 +12,14 @@
 軸の定義の全体（`CostAxisDefinitions`）は1つのJSONで読み、1つのJSONで書く（道の区分と同じ）。
 """
 
-from typing import Annotated, Literal
+from collections.abc import Mapping
+from typing import Annotated, Literal, cast
 
+import numpy as np
 from pydantic import Field, field_validator, model_validator
 
+from app.domain.attributes import CategoricalColumn, MaterialColumn
+from app.domain.axis_templates import evaluate_breakpoint_linear
 from app.domain.display_palette import cost_series_colors
 from app.domain.lens_total import TOTAL_LENS_ID
 from app.domain.material_catalog import MATERIAL_CATALOG
@@ -79,6 +83,10 @@ class CategoricalBurden(StrictModel):
     material: str
     per_km: dict[str, _NonNegative] = Field(min_length=1)
 
+    def weights(self, materials: Mapping[str, MaterialColumn]) -> np.ndarray:
+        """区間ごとの1kmあたりの重さ（`materials`は材料id→区間の列。区分の無い区間はNaN）。"""
+        return cast(CategoricalColumn, materials[self.material]).lookup(self.per_km)
+
 
 class LinearBurden(StrictModel):
     """数値の材料の値から、折れ線で1kmあたりの重さを引く。`points`は`(材料の値, 重さ)`で、材料の値は昇順。範囲の外は端の重さ。"""
@@ -93,6 +101,10 @@ class LinearBurden(StrictModel):
         if any(b[0] <= a[0] for a, b in zip(points, points[1:])):
             raise ValueError(f"折れ線の材料の値は昇順に並べる: {[x for x, _ in points]}")
         return points
+
+    def weights(self, materials: Mapping[str, MaterialColumn]) -> np.ndarray:
+        """区間ごとの1kmあたりの重さ（`materials`は材料id→区間の列。材料の値の無い区間はNaN）。"""
+        return evaluate_breakpoint_linear(np.asarray(materials[self.material], dtype=np.float64), self.points)
 
 
 Burden = Annotated[CategoricalBurden | LinearBurden, Field(discriminator="kind")]

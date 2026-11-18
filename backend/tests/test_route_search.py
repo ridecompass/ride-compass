@@ -352,12 +352,14 @@ def test_rank_treats_distances_within_the_calibrated_quantum_as_the_same():
     assert _ranked_ids([5, 7, 9], [0.0, near, near], [50.0, 10.0, 30.0], tie_by_distance=False) == [7, 9, 5]
 
 
-def test_alternative_routes_are_at_most_the_calibrated_stretch_of_the_best():
-    """目的地への代わりの道は、最良路（1km）の長さの較正値の倍まで（ちょうどを含む）を候補にする。"""
-    longest = 1000.0 * TUNING["search.alternative_max_stretch"]
+def test_alternative_routes_are_at_most_the_calibrated_stretch_of_the_cost_of_the_best():
+    """目的地への代わりの道は、最良路（費用1000秒）の費用の較正値の倍まで（ちょうどを含む）を候補にする。伸び率を長さで測ると、
+    最良路と同じ長さでも費用のずっと高い道（避ける道・負担の重い道）が候補に残り、遠い道でも費用の近い道が落ちる。届かない
+    経由Nodeは候補にしない。"""
+    highest = 1000.0 * TUNING["search.alternative_max_cost_stretch"]
 
     best, alternatives = alternative_via_nodes(
-        np.array([1.0, 2.0, 3.0]), np.array([1000.0, longest, longest + 1.0]), np.array([True, True, True]), TUNED)
+        np.array([1000.0, highest, highest + 1.0, 1100.0]), np.array([True, True, True, False]), TUNED)
     assert (best, alternatives.tolist()) == (0, [0, 1])
 
 
@@ -407,25 +409,27 @@ def test_turnaround_ring_center_lies_inside_the_ring():
 @pytest.mark.parametrize(
     ("outbound_m", "shortest_m", "in_band"),
     [
-        (3000.0, 5000.0, True),  # 見込み9.0〜11.0km: 両端がちょうど目標±許容
-        (2900.0, 5000.0, False),  # 下端8.9kmが目標−許容より短い
-        (3100.0, 5000.0, False),  # 上端11.1kmが目標＋許容より長い
-        # 見込みの幅（帰り7km×0.4）が許容の幅より広いので、全長を見込みの中央（帰り×1.0）の1点で見る。
-        # 中央9.5kmは入る（幅のままだと下端8.1kmで外れる）。中央11.5kmは、下端の10.1kmが入っても外れる
-        (500.0, 7000.0, True),
-        (2500.0, 7000.0, False),
+        (12000.0, 5000.0, True),  # 見込み19.0〜20.0km: 下端がちょうど目標−許容
+        (11900.0, 5000.0, False),  # 下端18.9kmが目標−許容より短い
+        (13000.0, 5000.0, True),  # 見込み20.0〜21.0km: 上端がちょうど目標＋許容
+        (13100.0, 5000.0, False),  # 上端21.1kmが目標＋許容より長い
+        # 見込みの幅（帰り12km×0.2）が許容の幅より広いので、全長を見込みの中央（帰り×1.1）の1点で見る。
+        # 中央19.2kmは入る（幅のままだと下端18.0kmで外れる）。中央21.2kmは、下端の20.0kmが入っても外れる
+        (4000.0, 12000.0, True),
+        (6000.0, 12000.0, False),
         (3000.0, np.nan, False),  # 終点へ届かない中継点
     ],
 )
 def test_relay_band_takes_relays_whose_whole_estimate_of_the_route_fits_the_distance(outbound_m, shortest_m, in_band):
-    """目標10km±1km、前段2km。テストの較正値の周回の見込み1.8〜2.2で、全長の見込みは前段＋往路＋帰りの最短×0.8〜1.2。
-    帯から外れた中継点を選ぶと、帰りを探したあとの距離フィルタで落ち、候補が減る。"""
-    (inside,), _ = relay_band(2000.0, np.array([outbound_m]), np.array([shortest_m]), 10.0, 1.0, TUNED)
+    """目標20km±1km、前段2km。テストの較正値の周回の見込み1.8〜2.2で、全長の見込みは前段＋往路＋帰りの最短×1.0〜1.2。
+    帯から外れた中継点を選ぶと、帰りを探したあとの距離フィルタで落ち、候補が減る。帰りの最短より短く見込むと、目標より短い
+    経路しか作れない中継点を帯に入れる。"""
+    (inside,), _ = relay_band(2000.0, np.array([outbound_m]), np.array([shortest_m]), 20.0, 1.0, TUNED)
     assert bool(inside) is in_band
 
 
 def test_relay_band_ranks_relays_by_how_far_the_middle_of_the_estimate_is_from_the_target():
-    """見込みの中央（テストの較正値の周回の見込み1.8〜2.2で、帰り×1.0）が目標から遠いほど後ろに並ぶ。短すぎる経路も
+    """見込みの中央（テストの較正値の周回の見込み1.8〜2.2で、帰り×1.1）が目標から遠いほど後ろに並ぶ。短すぎる経路も
     長すぎる経路も同じに扱う。"""
-    _, closeness_m = relay_band(2000.0, np.array([3000.0, 3000.0]), np.array([4000.0, 6000.0]), 10.0, 1.0, TUNED)
+    _, closeness_m = relay_band(2000.0, np.array([1500.0, 3500.0]), np.array([5000.0, 5000.0]), 10.0, 1.0, TUNED)
     assert closeness_m == pytest.approx([1000.0, 1000.0])

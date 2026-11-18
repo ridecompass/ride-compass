@@ -211,7 +211,7 @@ class RoadGraphEngine:
         # 較正値・道の区分・費用の軸の定義。1回の生成の間は、管理APIが全体を差し替えてもこの写しを読む。
         self._settings = settings
         # 避け方の段→区間の費用の倍率。
-        self._avoidance_multipliers = level_multipliers(settings.tuning.value("avoidance.avoid_cost_multiplier"))
+        self._avoidance_multipliers = level_multipliers(settings.tuning)
         # 交差点でのターンの費用（秒）。
         self._turn_cost = turn_cost(settings.tuning)
         self._cost_axes = settings.cost_axes
@@ -266,7 +266,7 @@ class RoadGraphEngine:
                 materials, search_masks,
                 wind_series, start, self._assumed_speed_kmh, lazy_graph.edge_rows,
                 detour_ratio=detour_ratio_or_default(learned_detour_ratio),
-                material_fills=network_fills(road.network, burden_material_ids(cost_axes)),
+                material_fills=network_fills(road.network, cost_axes),
                 settings=self._settings,
                 parameters=ledger_parameters(self._cost_preference, self._settings.tuning),
             )
@@ -392,7 +392,7 @@ class RoadGraphEngine:
             node_lon=search.node_lon,
             statics=statics,
             turn_structure=turn_structure,
-            transition_cost=search.composer.transition_costs(turn_structure.turn_seconds, turn_structure.turn_kickoffs),
+            transition_cost=search.composer.transition_costs(turn_structure.turn_search_seconds, turn_structure.turn_kickoffs),
             tuning=self._settings.tuning,
             tile_set=search.tile_set,
         )

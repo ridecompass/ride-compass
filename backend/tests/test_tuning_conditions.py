@@ -75,10 +75,9 @@ def _pareto() -> None:
 
 #: 使う所（入口が写した束を受ける計算）と、そこで計算が成り立たない値。
 _UNUSABLE = [
-    ("evaluation.penalty_strength", 0.0, lambda: ledger_costs.ledger_parameters(CostPreference(), current_tuning())),
     ("cost.effort_alpha", -1.0, lambda: ledger_costs.ledger_parameters(CostPreference(), current_tuning())),
     ("cost.burden_seconds_per_km", -1.0, lambda: ledger_costs.ledger_parameters(CostPreference(), current_tuning())),
-    ("stop.signal_share", -1.0, lambda: traffic.stop_event("stop", "signal", current_tuning())),
+    ("stop.signal_share", 1.5, lambda: traffic.stop_event("stop", "signal", current_tuning())),
     ("stop.signal_seconds", -1.0, lambda: traffic.stop_event("stop", "signal", current_tuning())),
     ("stop.slowed_speed_ratio", 1.5, lambda: traffic.stop_event("stop", "signal", current_tuning())),
     ("speed.mass_kg", 0.0, _speed_model),
@@ -88,6 +87,10 @@ _UNUSABLE = [
     ("speed.walking_kmh", 0.0, _speed_model),
     ("search.retrace_penalty_multiplier", 0.5, lambda: route_search.retrace_penalized(np.zeros(1), np.zeros(1), current_tuning())),
     ("search.pareto_distance_quantum_m", 0.0, _pareto),
+    ("search.alternative_max_cost_stretch", 0.5,
+     lambda: route_search.alternative_via_nodes(np.ones(1), np.ones(1, dtype=bool), current_tuning())),
+    ("avoidance.avoid_cost_multiplier", 0.0, lambda: level_multipliers(current_tuning())),
+    ("avoidance.prefer_cost_multiplier", 1.5, lambda: level_multipliers(current_tuning())),
 ]
 
 
@@ -98,12 +101,6 @@ async def test_a_search_stops_naming_a_value_it_cannot_compute_with(road_graph_s
 
     with pytest.raises(TuningValueError, match=param_id):
         use()
-
-
-def test_avoidance_stops_naming_a_multiplier_it_cannot_take_the_root_of():
-    """避け方の倍率は呼び手が読んで渡す。"""
-    with pytest.raises(TuningValueError, match="avoidance.avoid_cost_multiplier"):
-        level_multipliers(0.0)
 
 
 @_ON_DATABASE

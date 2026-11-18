@@ -11,7 +11,7 @@ from datetime import datetime
 
 import numpy as np
 
-from app.domain.cost_axes import CostAxisDefinitions, burden_material_ids, cost_axis_ids
+from app.domain.cost_axes import CostAxisDefinitions, cost_axis_ids
 from app.domain.lens_total import TOTAL_LENS_ID
 from app.domain.cost_preference import CostPreference
 from app.domain.wind_context import WindContext
@@ -125,7 +125,7 @@ def _prepare(network: RoadNetwork, z: int, x: int, y: int, axes: CostAxisDefinit
     if features is None:
         return None
     materials = material_arrays_of(slice_rows(network, network_classes(network), features.rows))
-    return (features, materials, network_fills(network, burden_material_ids(axes)),
+    return (features, materials, network_fills(network, axes),
             network.elevation_gain_m[features.rows])
 
 

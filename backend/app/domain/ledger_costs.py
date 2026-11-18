@@ -1,32 +1,26 @@
 """費目の帳簿から、道1本と曲がる所の費用（秒）を組む式。
 
-    費用 ＝ 避け方の倍率 ×［所要時間 ＋ つまみ ×（α × Σ 倍率 × 体力 ÷ 平地の出力 ＋ β × Σ 倍率 × 道のストレス）］
+    費用 ＝ 避け方の倍率 × 所要時間 ＋ つまみ ×（α × Σ 倍率 × 体力 ÷ 平地の出力 ＋ β × Σ 倍率 × 道のストレス）
 
 - 体力は、平地の出力を越えて踏んだJに、踏みたい出力（上限で切る前）と平地の出力の比の`γ`乗の重みを掛けたもの
   （`domain/cycling_speed.py: SegmentSpeedModel.ride`）。平地の出力で割ると「平地をその秒だけ走る体力」になる。
 - 道のストレスは、道のストレスの軸（`domain/cost_axes.py: BurdenAxis`）の1kmあたりの重さ × km（重さ1の道に換算したkm）。βは
   換算したkm1つを何秒とみなすか。
 - 倍率は軸ごと（費目と1対1）の利用者の値で、書いていない軸は標準の1。数えない軸（`LedgerParameters.counts`）は組まず、その費目は
-  費用にも内訳にも入らない。つまみは代償の全体に掛ける利用者の強さ。α・β・γは
-  全部の軸に共通の換算なので較正値。代償の項はどれも0以上で、費用が所要時間を下回るのは、避け方の倍率が1より小さい
+  費用にも内訳にも入らない。つまみは代償の全体に掛ける利用者の強さ。α・βは標準の人の好みの交換比（定義）、γは体力の
+  重みの曲がり方で、どれも全部の軸に共通なので較正値。避け方の倍率（`domain/road_avoidance.py: level_multipliers`）は
+  所要時間にだけ掛け、代償には掛けない。代償の項はどれも0以上で、費用が所要時間を下回るのは、避け方の倍率が1より小さい
   「好む」の区間だけ（探索の見込みはその倍率で緩める、`domain/route_search.py: heuristic_seconds`）。
-
-**欠けた材料は、取込の範囲全体の分布の平均で埋める**（`domain/road_network.py: MaterialFills`。探索の範囲には依らない）。区分の材料は区分ごとの
-距離の割合で重さを平均し、数値の材料は距離で重みを付けた平均の値で引く。
 """
 
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
-from typing import cast
 
 import numpy as np
 
-from app.domain.attributes import CategoricalColumn, MaterialColumn
-from app.domain.axis_templates import evaluate_breakpoint_linear
 from app.domain.cost_preference import STANDARD_COST_FACTOR, CostPreference
-from app.domain.cost_axes import EFFORT_AXES, Burden, CategoricalBurden, CostAxisDefinitions, EffortItem
+from app.domain.cost_axes import EFFORT_AXES, CostAxisDefinitions, EffortItem
 from app.domain.cycling_speed import SegmentRide, SegmentSpeedModel
-from app.domain.road_network import MaterialFills
 from app.domain.tuning import Tuning
 
 
@@ -53,8 +47,8 @@ _EFFORT_ITEM_J: dict[EffortItem, Callable[[SegmentRide], np.ndarray]] = {
 class LedgerParameters:
     """費用の式の利用者の値（つまみ・軸ごとの倍率・数える軸）と較正値（α・β・γ）。"""
 
-    #: 代償の全体に掛ける強さ（利用者のつまみの比 × 標準的な人の強さの較正値`evaluation.penalty_strength`）。
-    effective_strength: float
+    #: 代償の全体に掛ける利用者のつまみ（標準は1）。
+    strength: float
     multipliers: Mapping[str, float]
     effort_alpha: float
     burden_seconds_per_km: float
@@ -67,28 +61,15 @@ class LedgerParameters:
 
 
 def ledger_parameters(preference: CostPreference, tuning: Tuning) -> LedgerParameters:
-    """利用者の値`preference`と較正値`tuning`で組む。つまみは標準的な人の強さ（較正値）に掛ける比。標準の人の値は
-    `CostPreference()`で組む。"""
+    """利用者の値`preference`と較正値`tuning`で組む。標準の人の値は`CostPreference()`で組む。"""
     return LedgerParameters(
-        effective_strength=preference.strength * tuning.checked("evaluation.penalty_strength", lambda v: v > 0, "0より大きい"),
+        strength=preference.strength,
         multipliers=preference.multipliers,
         counts=preference.counts,
         effort_alpha=tuning.checked("cost.effort_alpha", lambda v: v >= 0, "0以上"),
         burden_seconds_per_km=tuning.checked("cost.burden_seconds_per_km", lambda v: v >= 0, "0以上"),
         effort_weight_exponent=tuning.value("cost.effort_weight_exponent"),
     )
-
-
-def burden_per_km(burden: Burden, materials: Mapping[str, MaterialColumn], fills: MaterialFills) -> np.ndarray:
-    """道のストレスの軸の費目`burden`の、区間ごとの1kmあたりの重さ。`materials`は材料id→区間の列（数値の配列か区分の列）。
-    材料の欠けた区間は取込の範囲全体の平均で埋める。"""
-    if isinstance(burden, CategoricalBurden):
-        weights = cast(CategoricalColumn, materials[burden.material]).lookup(burden.per_km)
-        shares = fills.class_shares.get(burden.material, {})
-        fill = sum(share * burden.per_km.get(value, 0.0) for value, share in shares.items())
-        return np.where(np.isnan(weights), fill, weights)
-    values = fills.fill(burden.material, cast(np.ndarray, materials[burden.material]))
-    return np.nan_to_num(evaluate_breakpoint_linear(values, burden.points))
 
 
 class LedgerCosts:
@@ -105,7 +86,7 @@ class LedgerCosts:
         self._effort_axes = {axis_id: item for axis_id, item in EFFORT_AXES.items() if parameters.counts(axis_id)}
         self._item_multipliers = {item: multiplier(axis_id) for axis_id, item in self._effort_axes.items()}
         #: 体力1J（重み付き）あたりの代償の秒。区間の体力と曲がる所の漕ぎ出しに同じ換算で掛ける。
-        self._seconds_per_j = parameters.effective_strength * parameters.effort_alpha / flat_power_w
+        self._seconds_per_j = parameters.strength * parameters.effort_alpha / flat_power_w
         #: 漕ぎ出しの費目（慣性）を持つ軸。無効ならNoneで、曲がる所の漕ぎ出しも数えない。
         self._kickoff_axis_id = next(
             (axis_id for axis_id, item in self._effort_axes.items() if item == _KICKOFF_ITEM), None)
@@ -115,7 +96,7 @@ class LedgerCosts:
         #: 数える道のストレスの軸ごとの、区間ごとの代償の秒（時刻に依らない）。
         distance_km = np.asarray(distance_m, dtype=np.float64) / 1000.0
         self._burden_axis_seconds = {
-            axis_id: parameters.effective_strength * parameters.burden_seconds_per_km * multiplier(axis_id)
+            axis_id: parameters.strength * parameters.burden_seconds_per_km * multiplier(axis_id)
             * np.asarray(per_km, dtype=np.float64) * distance_km
             for axis_id, per_km in burden_per_km.items()
         }
@@ -162,9 +143,10 @@ class LedgerCosts:
         ride = model.ride(headwind_ms, crosswind_ms, temperature_c, self._weight_exponent)
         return ride.seconds, self.penalty_seconds(ride)
 
-    def transition_costs(self, turn_seconds: np.ndarray, turn_kickoffs: np.ndarray) -> np.ndarray:
-        """曲がる所の費用（秒、遷移ごと。`turn_seconds`の型のまま）: 時間に、漕ぎ出しの回数 × 漕ぎ出し1回の代償を足したもの。
+    def transition_costs(self, turn_search_seconds: np.ndarray, turn_kickoffs: np.ndarray) -> np.ndarray:
+        """曲がる所の費用（秒、遷移ごと。`turn_search_seconds`の型のまま）: 探索の重み（時間に罰を足したもの。
+        `domain/turn_structure.py: TurnExpandedStructure.turn_search_seconds`）に、漕ぎ出しの回数 × 漕ぎ出し1回の代償を足したもの。
         区間の止まる出来事と同じ換算。"""
         if self._kickoff_seconds == 0.0:
-            return turn_seconds
-        return turn_seconds + turn_kickoffs * turn_seconds.dtype.type(self._kickoff_seconds)
+            return turn_search_seconds
+        return turn_search_seconds + turn_kickoffs * turn_search_seconds.dtype.type(self._kickoff_seconds)
