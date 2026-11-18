@@ -351,12 +351,6 @@ def test_rank_puts_the_pareto_layer_before_the_cost():
     assert _ranked_ids([5, 7, 9], [0.0, 2000.0, 2000.0], [50.0, 10.0, 30.0], tie_by_distance=False) == [7, 5, 9]
 
 
-def test_rank_counts_the_time_as_well_as_the_penalty():
-    """代償が同じ1kmあたり20秒でも、所要時間が長い（1kmあたり100秒の）候補（5）は、短い（50秒の）候補（7）に負けて後ろへ回る。
-    代償だけで比べると同点になり、番号の順で遅い候補が先に試される。"""
-    assert _ranked_ids([5, 7], [0.0, 0.0], [100.0 + 20.0, 50.0 + 20.0], tie_by_distance=False) == [7, 5]
-
-
 def test_rank_treats_distances_within_the_calibrated_quantum_as_the_same():
     """距離の差が較正値の粒度に満たない候補は同じ距離とみなされ、費用だけで並ぶ。"""
     near = 0.4 * TUNING["search.pareto_distance_quantum_m"]

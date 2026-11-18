@@ -418,7 +418,7 @@ def best_first(ranked: list[int], best: int) -> list[int]:
 
 
 def prefers_reverse(forward_cost: float, reverse_cost: float) -> bool:
-    """周回を逆回りで返すか。それぞれの向きの費用（`route_cost`。同じ道のりなので1kmあたりの代償の秒で比べるのと同じ）が
+    """周回を逆回りで返すか。それぞれの向きの費用（`route_cost`。同じ道のりなので1kmあたりの費用で比べるのと同じ）が
     小さい向きを採る。同じなら順回り。"""
     return reverse_cost < forward_cost
 
@@ -435,7 +435,7 @@ def candidate_order(candidate: EvaluatedRoute, *, loop: bool) -> float:
         return candidate.cost_seconds
     if candidate.estimated_duration_seconds is None or not candidate.distance_km > 0:
         return float("inf")
-    return float(_per_km_key(np.asarray(candidate.cost_seconds / candidate.distance_km)))
+    return float(_per_km_key(seconds_per_km(candidate.cost_seconds, candidate.distance_km * 1000.0)))
 
 
 def keep_routes_with_baseline(
