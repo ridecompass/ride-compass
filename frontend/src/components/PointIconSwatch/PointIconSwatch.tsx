@@ -171,13 +171,29 @@ export function PointIconSwatch({ color, glyph, sizePx }: { color: string; glyph
   const size = sizePx ?? mapDisplay.point.iconSizePx;
   const parts = sizePx === undefined ? pointIconParts(color, glyph) : pointOutlineParts(color, glyph);
   return (
-    <svg
-      aria-hidden="true"
-      className={"sign" in POINT_GLYPHS[glyph] ? undefined : cn("rounded-[4px]", LEGEND_SWATCH_RING_CLASS)}
-      width={size}
-      height={size}
+    <IconPartsSvg
+      parts={parts}
+      sizePx={size}
       viewBox={`0 0 ${FRAME} ${FRAME}`}
-    >
+      className={"sign" in POINT_GLYPHS[glyph] ? undefined : cn("rounded-[4px]", LEGEND_SWATCH_RING_CLASS)}
+    />
+  );
+}
+
+/** 絵の部品を、地図へ登録する画素と同じ順・同じ線の端の形で SVG に描く。 */
+export function IconPartsSvg({
+  parts,
+  sizePx,
+  viewBox,
+  className,
+}: {
+  parts: readonly IconPart[];
+  sizePx: number;
+  viewBox: string;
+  className?: string;
+}) {
+  return (
+    <svg aria-hidden="true" className={className} width={sizePx} height={sizePx} viewBox={viewBox}>
       {parts.map((part, index) =>
         "text" in part ? (
           <text

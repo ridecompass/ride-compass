@@ -4,7 +4,8 @@ import palette from "@/types/generated/palette.json";
 import weatherScales from "@/types/generated/weather-scales.json";
 import { gridToFeatureCollection, type DynamicWeatherRenderPayload } from "@/features/map/layers/dynamicWeather";
 import type { MsmGridForecast } from "@/types/weather";
-import { buildRangeLegendBands, type MapColorLegendBand } from "@/lib/mapDisplay/mapColorLegend";
+import { buildRangeLegendBands } from "@/lib/mapDisplay/mapColorLegend";
+import type { LegendEntry } from "@/lib/mapDisplay/legendFilter";
 import { downwindDeg } from "@/lib/cardinalLabel";
 
 // 風速の段（帯の下限・色・呼び名）。段の決め方はbackendの宣言が持つ。
@@ -14,13 +15,13 @@ export const WIND_SPEED_COLOR_STOPS: readonly { speedMs: number; color: string; 
 // この風速未満は無風として矢印を描かない。境はbackendの宣言が持つ。
 export const WIND_CALM_THRESHOLD_MS = weatherScales.wind_calm_below_ms;
 
-// 凡例の行は地図の段と1対1（束ねると、束ねた中の値が色見本と食い違う）。先頭に矢印を出さない無風の行を置く。
-export const WIND_SPEED_LEGEND_LEVELS: readonly MapColorLegendBand[] = buildRangeLegendBands(
+// 凡例の行は地図の段と1対1（束ねると、束ねた中の値が色見本と食い違う）。先頭に矢印を出さない無風の行を置き、ほかの行は地図と同じ矢印で見せる。
+export const WIND_SPEED_LEGEND_LEVELS: readonly LegendEntry[] = buildRangeLegendBands(
   [WIND_CALM_THRESHOLD_MS, ...WIND_SPEED_COLOR_STOPS.slice(1).map((stop) => stop.speedMs)],
   [palette.semantic.no_data, ...WIND_SPEED_COLOR_STOPS.map((stop) => stop.color)],
   "m/s",
   ["無風・矢印なし", ...WIND_SPEED_COLOR_STOPS.map((stop) => stop.name)],
-);
+).map((band, index) => (index === 0 ? band : { ...band, mark: "windArrow" }));
 
 interface WindPointFeatureProperties {
   /** 風速（m/s） */

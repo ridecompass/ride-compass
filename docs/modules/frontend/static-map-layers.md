@@ -23,7 +23,7 @@
 | `lib/mapDisplay/sidePoints.ts` | 近くの点の距離の上限（backendの`domain/map_display.py: SEGMENT_NEARBY_POINT_MAX_DISTANCE_M`を生成物から読む）・選んでいるルートの線と、点の位置をそれに当てた道のりと道からの距離（`lib/mapDisplay/sidePoints.ts: routeSide`） |
 | `features/map/layers/pointIcon.ts` | 絵記号で描く点の、地図へ登録する画素。形は見本（`components/PointIconSwatch/PointIconSwatch.tsx`）の宣言を読む。**単体テストは持たない**（`sdfIcon.ts`と同じく、テスト環境のcanvasは2D描画を実装せず、形は座標の宣言そのもの） |
 | `components/PointIconSwatch/PointIconSwatch.tsx` | 地図の点の見本。点の絵の形（行の色の角丸四角の枠に載せる白い線の絵記号と、枠を持たない標識の絵）の宣言と、
-それを描く部品の列（`components/PointIconSwatch/PointIconSwatch.tsx: pointIconParts`）を持ち、地図へ登録する画素（`pointIcon.ts`）と見本（`PointIconSwatch`）が同じ列を描く。地図の凡例と区間の近くの施設のチップ（ルートの機能）が出すので共有の層に置く。絵記号の名前は源泉の行が持ち、描き方の無い名前は型検査が落とす |
+それを描く部品の列（`components/PointIconSwatch/PointIconSwatch.tsx: pointIconParts`）を持ち、地図へ登録する画素（`pointIcon.ts`）と見本（`PointIconSwatch`）が同じ列を描く。地図の凡例と区間の近くの施設のチップ（ルートの機能）が出すので共有の層に置く。部品の列を描く口（SVG は`IconPartsSvg`、地図の画素は`pointIcon.ts: drawIconPart`）は、天気の印（`components/WeatherMarkSwatch/WeatherMarkSwatch.tsx`）も使う。絵記号の名前は源泉の行が持ち、描き方の無い名前は型検査が落とす |
 | `features/map/scene/groups/areaRasters.ts` | 面（色別標高図・土地被覆・起伏の陰影） |
 | `features/map/scene/legends.ts` | 上の宣言から凡例の行を作る（色と分類の正本はグループにしかない）。災害チップの要素ごとの表示切替の行も、源泉の要素の宣言（backend `domain/weather_elements.py: WEATHER_ELEMENTS`の`features/map/scene/legends.ts: label`、色見本は塗る段`level_scale`）から作る |
 | `features/map/scene/mapSceneGroups.ts` | 家族（面・道路の線・点・レンズの線・ルート・気象）を「いまの状態から、載っているべきレイヤーの並びを返す」1つの形で宣言する型と、それらを1つのsceneへ畳む`features/map/scene/mapSceneGroups.ts: composeScene`（同じソースを名乗る家族を1本へまとめる） |

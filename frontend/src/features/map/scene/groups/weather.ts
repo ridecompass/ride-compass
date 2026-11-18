@@ -104,9 +104,7 @@ export function weatherMarkSizePx(element: Pick<WeatherElement, "group" | "sourc
     ?.drawing.markSizePx;
 }
 
-const WEATHER_IMAGES: readonly MapSceneImage[] = WEATHER_ELEMENTS.flatMap((element) =>
-  element.drawing.icon === undefined ? [] : [element.drawing.icon],
-);
+const WEATHER_IMAGES: readonly MapSceneImage[] = WEATHER_ELEMENTS.flatMap((element) => element.drawing.icons ?? []);
 
 /** 要素が持つソースの名前。**チップidは源泉の語をそのまま使う**——ここで別の呼び名を
  * 付け直すと、源泉が知っているものに画面だけの語彙が重なる。1要素＝1ソース（要素ごとに

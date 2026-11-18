@@ -21,13 +21,13 @@ export function drawPointIcon(color: string, glyph: PointGlyph): { data: ImageDa
     ctx.scale(sizePx / FRAME, sizePx / FRAME);
     ctx.lineCap = "round";
     ctx.lineJoin = "round";
-    for (const part of pointIconParts(color, glyph)) drawPart(ctx, part);
+    for (const part of pointIconParts(color, glyph)) drawIconPart(ctx, part);
   });
   return { data, pixelRatio: PIXEL_RATIO };
 }
 
 /** 絵の部品1つ。形は塗ってから線を引き、字は中心に置く。 */
-function drawPart(ctx: CanvasRenderingContext2D, part: IconPart): void {
+export function drawIconPart(ctx: CanvasRenderingContext2D, part: IconPart): void {
   if ("text" in part) {
     ctx.fillStyle = part.fill;
     ctx.font = `${SIGN_FONT_WEIGHT} ${part.size}px ${SIGN_FONT_FAMILY}`;

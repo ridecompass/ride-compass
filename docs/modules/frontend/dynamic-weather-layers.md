@@ -22,8 +22,8 @@
 | `features/map/layers/weatherSources.ts` | 源泉の宣言（`mapDisplay.ts: mapDisplay.weatherElements`）を名前付きソースへ束ね、段を1本の時系列へつなぎ、源泉が要素ごとに宣言する規則で選んだ時刻に描くコマを選ぶ |
 | `features/map/layers/jmaDelivery.ts` | 気象庁の配信の時刻一覧の取得と読み方・コマのタイルと地物（GeoJSON）のURL（源泉のパスのテンプレートをコマで埋める）（配信の遅れを持つ要素は、まだ配信されていないコマを前の`features/map/layers/jmaDelivery.ts: basetime`へずらして読む）・地物の取得・タイルのURLの読み戻し |
 | `features/map/layers/precipitationNowcast.ts` | 降水の色の段と凡例と、MSMの格子点を中心にした升目の降水の塗り（gridFill） |
-| `features/map/layers/windLayer.ts`・`windArrowIcon.ts` | 風速の色の段と凡例と、MSMの格子点の風の矢印（gridMark）・Canvas 2Dアイコン描画 |
-| `features/map/layers/lidenIcon.ts` | 落雷の地点の記号（Canvas 2Dアイコン描画） |
+| `features/map/layers/windLayer.ts` | 風速の色の段と凡例と、MSMの格子点の風の矢印（gridMark） |
+| `features/map/layers/weatherMarkIcon.ts` | 天気の印（風の矢印・落雷の地点）の、地図へ登録する画素。形は`lib/mapDisplay/weatherMarks.ts`、部品の列は凡例の見本（`components/WeatherMarkSwatch/WeatherMarkSwatch.tsx`）と共有。**単体テストは持たない**（テスト環境のcanvasは2D描画を実装せず、形は座標の宣言そのもの） |
 | `features/map/layers/jmaTileIndex.ts` | 在否インデックスの解釈（「空だと確認済み」の判定、純ロジック） |
 | `features/map/layers/jmaTileProtocol.ts` | `jmatile://`スキームのMapLibreプロトコル。空と分かっているタイルをネットワークへ出さずに透明タイルで返し、配信の失敗を要素ごとに記録して購読できるようにする |
 | `features/map/useJmaTileIndex.ts` | 在否インデックスの定期取得 |
@@ -119,7 +119,7 @@ scene/applyMapScene.ts  … 前回の宣言との差だけを地図へ当てる
 
 **要素ごとに配信先が違うため、1要素＝1ソース**（同じソースへ相乗りできない）。1要素に何枚
 重ねるかは自由で、見た目が`casing`を持つ線（線状降水帯の雨域の輪郭線）だけが、同じソースの縁取りの線を
-同じ段で主の線の下へ1枚敷く。記号の縁取りは別レイヤーではなく`icon-halo-*`で出す（下の「空タイル要求の間引き」の後の段落）。
+同じ段で主の線の下へ1枚敷く。記号の縁取りは別レイヤーではなく、記号の絵に描き込む（下の「空タイル要求の間引き」の後の段落）。
 
 ## 色の段は帯で持ち、地図と凡例が同じ配列を読む
 
@@ -180,11 +180,11 @@ JMAタイル系ソースの`minzoom`/`maxzoom`・ベクタのレイヤー名は�
 配信元は要素ごとに実データを持つズームが異なり、上限を超えると空タイルが返って地図から色が
 消えるため、この値を画面側へ書かない。
 
-`gridMark`（`scene/groups/weatherDrawings.ts: markDrawing`）の縁取りは、主層と別のsymbolレイヤーではなく
-`icon-halo-color`/`icon-halo-width`（SDFアイコンのpaintプロパティ、`icon-image`に
-`sdf: true`が必須）で1層にまとめる。MapLibreはレイヤーの上から順にシンボルを配置する
-ため、同位置・大きめのシンボルを別レイヤー（下）で重ねると`icon-allow-overlap: false`
-下では常に「衝突」として全て落ちる——1層にまとめれば衝突判定は主層自身の1回だけになり、
+`gridMark`（`scene/groups/weatherDrawings.ts: markDrawing`）の縁取り（線の外の白い縁と、その外の暗い細線）は、主層と別の
+symbolレイヤーではなく、記号の絵に描き込んで1層にまとめる（`features/map/layers/weatherMarkIcon.ts`。SDFの`icon-halo-*`は縁を
+1色しか持てない）。色で段を示す記号（風の矢印）は、段ごとに線の色を描き込んだ絵を作り、`icon-image`を値の段で選ぶ。
+MapLibreはレイヤーの上から順にシンボルを配置するため、同位置・大きめのシンボルを別レイヤー（下）で重ねると
+`icon-allow-overlap: false`下では常に「衝突」として全て落ちる——1層にまとめれば衝突判定は主層自身の1回だけになり、
 縁取りは常に主層と同じ地点に出る。
 
 ## 1グループ=複数の名前付きソース
