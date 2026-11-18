@@ -692,10 +692,6 @@ FLOOD_LINE_WIDTH_BY_ZOOM = zoom_curve((6, 1.5), (10, 3), (14, 5))
 #: （`strokeWidth`と、縁取りはその+2）で、ズームによらない。
 RAINBAND_OUTLINE_WIDTH_PX = 4
 RAINBAND_OUTLINE_CASING_WIDTH_PX = RAINBAND_OUTLINE_WIDTH_PX + 2
-#: 段で塗る災害の範囲の縁取りの太さ（px）と、点線の刻み（線の太さを1とした線と間の長さ）。基礎地図の道（実線）と
-#: 市区町村の境（細い灰色の点線）のどちらとも見分けられる、太めで間の短い点線にする。ズームによらない。
-HAZARD_OUTLINE_WIDTH_PX = 2.5
-HAZARD_OUTLINE_DASH = (2.0, 1.5)
 
 
 #: 道の線。太さは意味を運ばない（意味は色だけ）ので、分類の線はすべて同じ太さ。

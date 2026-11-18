@@ -1,102 +1,35 @@
 import { describe, expect, it } from "vitest";
 
-import { markCells, outlinesOf, spreadMarks } from "./hazardRanges";
+import { hazardMarkPoints } from "./hazardRanges";
+import { tileKey, type TileMask } from "./jmaTileMasks";
 
-/** `rows`の文字列（`#`が色のあるマス）を格子にする。 */
-function gridOf(rows: string[]): { grid: Uint8Array; width: number; height: number } {
-  const width = rows[0].length;
-  const grid = new Uint8Array(rows.flatMap((row) => [...row].map((c) => (c === "#" ? 1 : 0))));
-  return { grid, width, height: rows.length };
+/** ズーム0の1枚（世界全体）を、左半分が段`left`・右半分が段`right`の2×1画素で表す。 */
+function worldTile(left: number, right: number): Map<string, TileMask> {
+  return new Map([
+    [tileKey(0, 0, 0), { z: 0, x: 0, y: 0, size: 2, levels: new Uint8Array([left, right, left, right]) }],
+  ]);
 }
 
-const WHOLE = (width: number, height: number) => ({ x0: 0, x1: width, y0: 0, y1: height });
+const WORLD = { west: -180, south: -80, east: 180, north: 80 };
 
 describe("範囲の印の置き場", () => {
-  it("つながった塊ごとに1つ、塊の端から一番遠いマスに置く（斜めにつながったマスは同じ塊）", () => {
-    const { grid, width, height } = gridOf([
-      "#####.......",
-      "#####.......",
-      "#####....#..",
-      "#####.....#.",
-      "#####......#",
-    ]);
+  it("格子点のうち範囲の中の点にだけ置き、その点の段を持たせる", () => {
+    // 倍率0の世界は512px。256pxおきの格子点は、経度-180・0（と180）。
+    const points = hazardMarkPoints(worldTile(0, 2), 0, WORLD, 0, 256, 0);
 
-    const marks = markCells(grid, width, height, WHOLE(width, height), 1);
-
-    expect(marks).toHaveLength(2);
-    expect(marks[0].slice(0, 2)).toEqual([2, 2]);
+    expect(points.length).toBeGreaterThan(0);
+    expect(points.every(({ at: [lng], level }) => lng >= 0 && level === 2)).toBe(true);
   });
 
-  it("見えている範囲の外へ続く塊は、見えている範囲の中に、その縁から離して置く", () => {
-    const { grid, width, height } = gridOf(["##########", "##########", "##########", "##########"]);
+  it("ずらした分だけ横にずれた格子点に置く（重なった災害の印が横に並ぶ）", () => {
+    const [base] = hazardMarkPoints(worldTile(1, 1), 0, WORLD, 0, 256, 0);
+    const [shifted] = hazardMarkPoints(worldTile(1, 1), 0, WORLD, 0, 256, 64);
 
-    const [[x, y]] = markCells(grid, width, height, { x0: 6, x1: 10, y0: 0, y1: 4 }, 1);
-
-    expect(x).toBeGreaterThanOrEqual(6);
-    expect(x).toBeLessThanOrEqual(9);
-    expect([1, 2]).toContain(y);
+    expect(shifted.at[1]).toBeCloseTo(base.at[1]);
+    expect(shifted.at[0] - base.at[0]).toBeCloseTo((64 / 512) * 360);
   });
 
-  it("見えている範囲の中のマスが少ない塊には置かない", () => {
-    const { grid, width, height } = gridOf(["#.........", "..........", "......####", "......####"]);
-
-    const marks = markCells(grid, width, height, WHOLE(width, height), 2);
-
-    expect(marks).toHaveLength(1);
-    expect(marks[0][0]).toBeGreaterThanOrEqual(6);
-    expect(marks[0][1]).toBeGreaterThanOrEqual(2);
-  });
-
-  it("塊の中でいちばん強い段を返す", () => {
-    const grid = new Uint8Array([1, 1, 2, 0, 0, 0, 1, 1, 1]);
-
-    expect(markCells(grid, 3, 3, WHOLE(3, 3), 1).map((mark) => mark[2])).toEqual([2, 1]);
-  });
-});
-
-describe("範囲の外形", () => {
-  it("塊の境を閉じた折れ線でなぞり、並べた格子の縁には境を作らない", () => {
-    const { grid, width, height } = gridOf(["......", ".###..", ".###..", "......"]);
-
-    const [line] = outlinesOf(grid, width, height);
-
-    expect(outlinesOf(grid, width, height)).toHaveLength(1);
-    expect(line[0]).toEqual(line[line.length - 1]);
-    // 境は、色のあるマス（1〜3列目）と無いマスの間の、マスの端の位置を通る。
-    expect(Math.min(...line.map(([x]) => x))).toBe(1);
-    expect(Math.max(...line.map(([x]) => x))).toBe(4);
-  });
-
-  it("段の違うマスがつながった塊も、1つの外形でなぞる", () => {
-    const grid = new Uint8Array([0, 0, 0, 0, 0, 1, 3, 0, 0, 2, 4, 0, 0, 0, 0, 0]);
-
-    expect(outlinesOf(grid, 4, 4)).toHaveLength(1);
-  });
-
-  it("並べた格子の縁まで続く塊は、縁を境にしない", () => {
-    const { grid, width, height } = gridOf(["###...", "###...", "###..."]);
-
-    const lines = outlinesOf(grid, width, height);
-
-    expect(lines.flat().every(([x]) => x > 2)).toBe(true);
-  });
-});
-
-describe("印を寄せて並べる", () => {
-  it("近い印は重心に寄せて横に並べ、離れた印はそのまま", () => {
-    expect(
-      spreadMarks(
-        [
-          [100, 100],
-          [110, 104],
-          [300, 300],
-        ],
-        30,
-      ),
-    ).toEqual([
-      [90, 102],
-      [120, 102],
-      [300, 300],
-    ]);
+  it("タイルが無ければ置かない", () => {
+    expect(hazardMarkPoints(new Map(), 0, WORLD, 0, 256, 0)).toEqual([]);
   });
 });

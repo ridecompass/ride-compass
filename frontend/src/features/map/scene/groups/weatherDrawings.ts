@@ -254,20 +254,6 @@ export const HAZARD_MARK_IMAGES: readonly MapSceneImage[] = HAZARD_ELEMENTS.flat
   ),
 );
 
-/** 要素の注意の段（塗らない段のうち一番上）。 */
-function attentionLevel(element: HazardElement): { readonly key: string; readonly color: string } {
-  const attention = weatherScales[element.levelScale].filter((level) => !level.painted).at(-1);
-  if (attention === undefined) throw new Error(`塗らない段が無い: ${element.levelScale}`);
-  return attention;
-}
-
-/** 範囲の縁取りの色。注意の段の色を半分の明るさにする——注意の段は地図にごく薄くしか出ないので、縁取りで範囲と災害の種類を
- * 読ませる。黄の縁取りが基礎地図の黄〜橙の道と紛れないよう暗くする。 */
-function hazardOutlineColor(element: HazardElement): string {
-  const [r, g, b] = [1, 3, 5].map((i) => Math.round(parseInt(attentionLevel(element).color.slice(i, i + 2), 16) / 2));
-  return `rgb(${r}, ${g}, ${b})`;
-}
-
 /** 要素の行の凡例の見本。地図の範囲の印の中の絵だけを見せる（背景の形と色は段の行が見せる）。 */
 export function hazardLegendSwatch(source: string): { color: string; mark: WeatherMark } | null {
   const element = HAZARD_ELEMENTS.find((candidate) => candidate.source === source);
@@ -275,33 +261,15 @@ export function hazardLegendSwatch(source: string): { color: string; mark: Weath
   return { color: palette.semantic.mark_ink, mark: HAZARD_MARK[element.source] };
 }
 
-/** 範囲の縁取りと印の見た目。地物は要素の名前付きソース（`source`）と、縁取り（`outline`）か印（`mark`）かの種類（`kind`）を持ち、
- * 印は絵のid（`image`。`hazardMarkImageId`）を持つ。 */
-export const HAZARD_RANGE_DRAWING = {
-  outline: {
-    filter: ["==", ["get", "kind"], "outline"] as unknown as FilterSpecification,
-    layout: { "line-join": "round", "line-cap": "butt" },
-    paint: {
-      "line-color": [
-        "match",
-        ["get", "source"],
-        ...HAZARD_ELEMENTS.flatMap((element) => [element.source, hazardOutlineColor(element)]),
-        palette.semantic.mark_ink,
-      ],
-      "line-width": WEATHER.hazardOutlineWidthPx,
-      "line-dasharray": WEATHER.hazardOutlineDash,
-    },
+/** 範囲の印の見た目。地物は絵のid（`image`。`hazardMarkImageId`）を持つ。 */
+export const HAZARD_MARK_DRAWING = {
+  layout: {
+    "icon-image": ["get", "image"],
+    "icon-rotation-alignment": "viewport",
+    // 範囲の印は必ず出し、近くの風の矢印・落雷の印（下の段）を間引かせる。
+    "icon-allow-overlap": true,
+    "icon-ignore-placement": false,
+    "icon-size": zoomScaleExpression(1, WEATHER.markSizeByZoom),
   },
-  mark: {
-    filter: ["==", ["get", "kind"], "mark"] as unknown as FilterSpecification,
-    layout: {
-      "icon-image": ["get", "image"],
-      "icon-rotation-alignment": "viewport",
-      // 範囲の印は必ず出し、近くの風の矢印・落雷の印（下の段）を間引かせる。
-      "icon-allow-overlap": true,
-      "icon-ignore-placement": false,
-      "icon-size": zoomScaleExpression(1, WEATHER.markSizeByZoom),
-    },
-    paint: { "icon-opacity": 1 },
-  },
+  paint: { "icon-opacity": 1 },
 } as const;

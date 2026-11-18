@@ -81,8 +81,6 @@ from app.domain.map_display import (
     FLOOD_LINE_WIDTH_BY_ZOOM,
     RAINBAND_OUTLINE_CASING_WIDTH_PX,
     RAINBAND_OUTLINE_WIDTH_PX,
-    HAZARD_OUTLINE_DASH,
-    HAZARD_OUTLINE_WIDTH_PX,
     HILLSHADE_EXAGGERATION,
     HILLSHADE_HIGHLIGHT_COLOR,
     HILLSHADE_ILLUMINATION_DEG,
@@ -469,8 +467,6 @@ def main() -> None:
                 "floodLineWidthByZoom": [list(pair) for pair in FLOOD_LINE_WIDTH_BY_ZOOM],
                 "rainbandOutlineWidthPx": RAINBAND_OUTLINE_WIDTH_PX,
                 "rainbandOutlineCasingWidthPx": RAINBAND_OUTLINE_CASING_WIDTH_PX,
-                "hazardOutlineWidthPx": HAZARD_OUTLINE_WIDTH_PX,
-                "hazardOutlineDash": list(HAZARD_OUTLINE_DASH),
                 # MSMの予報を読む先の長さ（時間）。出発時刻を選べる先の長さがこれを読む。
                 "msmForecastHours": MSM_FORECAST_HOURS,
             },

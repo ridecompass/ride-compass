@@ -841,11 +841,6 @@ export const mapDisplay = {
     ],
     "rainbandOutlineWidthPx": 4,
     "rainbandOutlineCasingWidthPx": 6,
-    "hazardOutlineWidthPx": 2.5,
-    "hazardOutlineDash": [
-      2.0,
-      1.5
-    ],
     "msmForecastHours": 48
   },
   "route": {

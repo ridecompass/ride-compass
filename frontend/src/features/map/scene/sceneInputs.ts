@@ -63,7 +63,7 @@ export type HiddenLegendKeys = Readonly<Record<string, readonly string[]>>;
 export interface SceneLook {
   readonly layerVisibility: MapLayerVisibility;
   readonly dynamicWeather: Partial<Record<DynamicWeatherLayerId, DynamicWeatherGroupState>>;
-  /** 段で塗る災害の範囲の縁取りと印の地物（`useHazardRanges.ts`）。 */
+  /** 段で塗る災害の範囲の印の地物（`useHazardRanges.ts`）。 */
   readonly hazardRanges?: GeoJSON.FeatureCollection;
   /** ルート線の色分けのモード。 */
   readonly lens: LensId;

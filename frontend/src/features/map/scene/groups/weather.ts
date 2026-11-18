@@ -24,7 +24,7 @@ import { sceneSourceId, type SceneSourceId } from "@/features/map/scene/sceneBui
 import {
   drawingOf,
   HAZARD_MARK_IMAGES,
-  HAZARD_RANGE_DRAWING,
+  HAZARD_MARK_DRAWING,
   type DeclaredElement,
   type Drawing,
 } from "./weatherDrawings";
@@ -97,7 +97,7 @@ const WEATHER_ELEMENTS: readonly WeatherElement[] = mapDisplay.weatherElements.m
 export type WeatherState = {
   /** 表示ON/OFFと中身。鍵は`weatherElementKey`が作る。 */
   readonly shown: ReadonlyMap<string, { readonly visible: boolean; readonly payload?: DynamicWeatherRenderPayload }>;
-  /** 段で塗る災害の範囲の縁取りと印の地物（`useHazardRanges.ts`）。無ければ描かない。 */
+  /** 段で塗る災害の範囲の印の地物（`useHazardRanges.ts`）。無ければ描かない。 */
   readonly hazardRanges?: GeoJSON.FeatureCollection;
 };
 
@@ -165,25 +165,19 @@ export const weatherGroup = declareGroup<WeatherState>((state) => {
     layers.push(layerOf(element.kind, drawing.paint));
   }
 
-  // 範囲の縁取りは観測の線の段、印は記号の段のいちばん上に積む——記号は上の層から場所を取るので、印の近くの風の矢印・
-  // 落雷の印（同じ段の下の層）は描かれない。
+  // 範囲の印は記号の段のいちばん上に積む——記号は上の層から場所を取るので、印の近くの風の矢印・落雷の印（同じ段の下の層）は
+  // 描かれない。
   const ranges = state.hazardRanges;
   sources.push({ id: HAZARD_RANGE_SOURCE, spec: { type: "geojson" }, data: ranges ?? EMPTY_FEATURE_COLLECTION });
-  for (const [role, tier, type, drawing] of [
-    ["hazard-outline", "observedLine", "line", HAZARD_RANGE_DRAWING.outline],
-    ["hazard-mark", "weatherMark", "symbol", HAZARD_RANGE_DRAWING.mark],
-  ] as const) {
-    layers.push({
-      role,
-      tier,
-      type,
-      source: HAZARD_RANGE_SOURCE,
-      paint: drawing.paint,
-      layout: drawing.layout,
-      filter: drawing.filter,
-      visible: ranges !== undefined,
-    });
-  }
+  layers.push({
+    role: "hazard-mark",
+    tier: "weatherMark",
+    type: "symbol",
+    source: HAZARD_RANGE_SOURCE,
+    paint: HAZARD_MARK_DRAWING.paint,
+    layout: HAZARD_MARK_DRAWING.layout,
+    visible: ranges !== undefined,
+  });
 
   return { sources, layers, images: WEATHER_IMAGES };
 });
