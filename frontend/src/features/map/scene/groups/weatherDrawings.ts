@@ -208,7 +208,7 @@ export function drawingOf(element: DeclaredElement): Drawing {
 
 /** 範囲の印と縁取りを描く、段で塗る災害の要素（配信元のラスタ）。 */
 type HazardElement = Extract<DeclaredElement, { kind: "rasterTile"; levelScale: string }>;
-export type HazardSource = HazardElement["source"];
+type HazardSource = HazardElement["source"];
 
 export const HAZARD_ELEMENTS: readonly HazardElement[] = mapDisplay.weatherElements.filter(
   (element): element is HazardElement => element.kind === "rasterTile" && element.levelScale !== null,

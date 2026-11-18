@@ -36,7 +36,7 @@ const LEVEL_COLORS_OF_DELIVERY: ReadonlyMap<string, readonly Rgb[]> = new Map(
  * 色`rgb`の画素の段（`colors`の並びの番号＋1）。いちばん近い色の段にする——配信元は配色を公開しておらず、測れていない段は
  * 凡例の近い色で見分ける。中継が注意の段を薄くした画素も、色は変えていないので同じに見分けられる。
  */
-export function nearestLevel(rgb: Rgb, colors: readonly Rgb[]): number {
+function nearestLevel(rgb: Rgb, colors: readonly Rgb[]): number {
   let best = 0;
   let bestDistance = Infinity;
   colors.forEach(([r, g, b], index) => {
