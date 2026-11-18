@@ -83,6 +83,8 @@
       "name": "猛烈な暴風"
     }
   ],
+  "linear_rainband_outline_color": "#ff0000",
+  "linear_rainband_outline_casing_color": "#ffffff",
   "risk_levels": [
     {
       "level": 0,
@@ -125,8 +127,6 @@
       "tile_color": null
     }
   ],
-  "linear_rainband_outline_color": "#ff0000",
-  "linear_rainband_outline_casing_color": "#ffffff",
   "thunder_activity": [
     {
       "key": "level1",

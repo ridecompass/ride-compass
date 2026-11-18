@@ -7,7 +7,10 @@
 - 取得したタイルが塗り替えられてキャッシュへ入ること → `test_jma_tile_client.py`
 """
 
+import io
+
 import pytest
+from PIL import Image, ImageColor
 
 from app.domain.map_display import AREA_OPACITY
 from app.domain.weather_display import (
@@ -73,6 +76,16 @@ def test_attention_levels_are_thinned_and_painted_levels_are_kept(path, tile, le
             assert pixel[3] == 255
         else:
             assert pixel[3] / 255 * AREA_OPACITY == pytest.approx(ATTENTION_LEVEL_OPACITY, abs=0.005)
+
+
+def test_attention_pixels_already_fainter_than_the_target_stay_faint():
+    """配信元が既に薄く描いた画素（縁のぼかし等）を、薄くする処理で濃くしない（パレット形式と同じ扱い）。"""
+    attention = next(level for level in THUNDER_ACTIVITY_LEVELS if not level.painted)
+    image = Image.new("RGBA", (1, 1), (*ImageColor.getrgb(attention.tile_color), 20))
+    buffer = io.BytesIO()
+    image.save(buffer, format="PNG")
+
+    assert pixels(recolored(THUNDER, buffer.getvalue()))[0][3] == 20
 
 
 def test_colors_missing_from_the_level_table_are_served_as_they_came(caplog):

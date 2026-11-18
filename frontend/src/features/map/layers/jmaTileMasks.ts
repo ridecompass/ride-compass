@@ -1,7 +1,8 @@
 // 段で塗る災害のタイル（雷・竜巻・キキクル）の、画素ごとの段。地図がタイルを取ったとき（`jmaTileProtocol.ts`）に
-// 同じ中身から作って覚え、範囲の外形と印の置き場（`hazardRanges.ts`）が読む——範囲のために配信元へ取りに行き直さない。
+// 同じ中身から作って覚え、範囲の印の置き場（`hazardRanges.ts`）が読む——印のために配信元へ取りに行き直さない。
 
 import type { JmaTileRef } from "@/features/map/layers/jmaDelivery";
+import { hexToRgb } from "@/lib/rgbHsl";
 import { mapDisplay } from "@/types/generated/mapDisplay";
 import weatherScales from "@/types/generated/weather-scales.json";
 
@@ -16,31 +17,44 @@ export interface TileMask {
 
 type Rgb = readonly [number, number, number];
 
-function rgbOf(hex: string): Rgb {
-  return [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16)) as unknown as Rgb;
+/** 配信元のタイルが描かない段（危険度の「平常」。タイルは透明）。画素の見分けの候補にも、凡例の印にも入れない。 */
+export function isUndrawnLevel(level: object): boolean {
+  return "level" in level && level.level === 0;
 }
 
-/** 段で塗る災害の配信要素id → 段の表の並びの順の、段を見分ける色（配信元のタイルの色を測ってあればその色、無ければ凡例の色）。 */
-const LEVEL_COLORS_OF_DELIVERY: ReadonlyMap<string, readonly Rgb[]> = new Map(
+/** 段で塗る災害の配信要素id → 段の表の並びの順の、段を見分ける色（配信元のタイルの色を測ってあればその色、無ければ凡例の色。
+ * 描かない段はnull）。 */
+const LEVEL_COLORS_OF_DELIVERY: ReadonlyMap<string, readonly (Rgb | null)[]> = new Map(
   mapDisplay.weatherElements.flatMap((element) =>
     element.levelScale !== null && element.kind === "rasterTile"
       ? element.jmaElements.map(
           (jma) =>
-            [jma.id, weatherScales[element.levelScale].map((level) => rgbOf(level.tile_color ?? level.color))] as const,
+            [
+              jma.id,
+              weatherScales[element.levelScale].map((level) =>
+                isUndrawnLevel(level) ? null : hexToRgb(level.tile_color ?? level.color),
+              ),
+            ] as const,
         )
       : [],
   ),
 );
 
+/** 配信要素`deliveryId`のタイルの段を覚えるか（範囲の印を描く、段で塗る災害か）。 */
+export function remembersJmaTile(deliveryId: string): boolean {
+  return LEVEL_COLORS_OF_DELIVERY.has(deliveryId);
+}
+
 /**
  * 色`rgb`の画素の段（`colors`の並びの番号＋1）。いちばん近い色の段にする——配信元は配色を公開しておらず、測れていない段は
  * 凡例の近い色で見分ける。中継が注意の段を薄くした画素も、色は変えていないので同じに見分けられる。
  */
-function nearestLevel(rgb: Rgb, colors: readonly Rgb[]): number {
+function nearestLevel(rgb: Rgb, colors: readonly (Rgb | null)[]): number {
   let best = 0;
   let bestDistance = Infinity;
-  colors.forEach(([r, g, b], index) => {
-    const distance = (rgb[0] - r) ** 2 + (rgb[1] - g) ** 2 + (rgb[2] - b) ** 2;
+  colors.forEach((color, index) => {
+    if (color === null) return;
+    const distance = (rgb[0] - color[0]) ** 2 + (rgb[1] - color[1]) ** 2 + (rgb[2] - color[2]) ** 2;
     if (distance < bestDistance) {
       bestDistance = distance;
       best = index + 1;
@@ -51,12 +65,18 @@ function nearestLevel(rgb: Rgb, colors: readonly Rgb[]): number {
 
 /** 配信要素ごとに覚えておくコマの数。時刻を動かして戻ったときに読み直さずに済む分だけ持ち、古いものから捨てる。 */
 const FRAMES_PER_DELIVERY = 3;
+/** 1つのコマで覚えておくタイルの数。地図を動かし続けても覚え先が増え続けないよう、古く覚えたものから捨てる
+ * （見えている範囲を覆うタイルは、どの縮尺でもこれより十分少ない）。 */
+const TILES_PER_FRAME = 64;
+/** 届いたタイルの知らせをまとめる間（ms）。動かすと何十枚も続けて届くので、1枚ごとに地図を組み直さない。 */
+const NOTIFY_DELAY_MS = 150;
 
 /** コマのURL（描いている中身の`tileUrlTemplate`）→ タイルの座標（`z/x/y`）→ 段。 */
 const masks = new Map<string, Map<string, TileMask>>();
 /** 配信要素id → 覚えているコマのURL（古い順）。 */
 const framesOfDelivery = new Map<string, string[]>();
 let version = 0;
+let notifyTimer: ReturnType<typeof setTimeout> | null = null;
 const listeners = new Set<() => void>();
 
 export function tileKey(z: number, x: number, y: number): string {
@@ -81,10 +101,10 @@ export function jmaTileMasksOf(frameUrl: string): ReadonlyMap<string, TileMask> 
 }
 
 /** 段で塗る災害のタイルなら、中身`content`（PNG）を画素へ読み、画素ごとの段を覚える。読めなければ覚えない
- * （地図の塗りは別に描かれ、範囲の印と縁取りが出ないだけ）。 */
-export async function rememberJmaTileMask(ref: JmaTileRef | null, content: ArrayBuffer): Promise<void> {
-  const colors = ref === null ? undefined : LEVEL_COLORS_OF_DELIVERY.get(ref.delivery.id);
-  if (ref === null || colors === undefined || content.byteLength === 0) return;
+ * （地図の塗りは別に描かれ、範囲の印が出ないだけ）。 */
+export async function rememberJmaTileMask(ref: JmaTileRef, content: ArrayBuffer): Promise<void> {
+  const colors = LEVEL_COLORS_OF_DELIVERY.get(ref.delivery.id);
+  if (colors === undefined || content.byteLength === 0) return;
   let read: { size: number; levels: Uint8Array };
   try {
     read = await pixelLevels(content, colors);
@@ -98,14 +118,20 @@ export async function rememberJmaTileMask(ref: JmaTileRef | null, content: Array
     for (const old of frames.splice(0, Math.max(0, frames.length - FRAMES_PER_DELIVERY))) masks.delete(old);
     framesOfDelivery.set(ref.delivery.id, frames);
   }
-  frame.set(tileKey(ref.z, ref.x, ref.y), { z: ref.z, x: ref.x, y: ref.y, ...read });
+  const key = tileKey(ref.z, ref.x, ref.y);
+  frame.delete(key);
+  frame.set(key, { z: ref.z, x: ref.x, y: ref.y, ...read });
+  for (const old of [...frame.keys()].slice(0, Math.max(0, frame.size - TILES_PER_FRAME))) frame.delete(old);
   version += 1;
-  for (const listener of listeners) listener();
+  notifyTimer ??= setTimeout(() => {
+    notifyTimer = null;
+    for (const listener of listeners) listener();
+  }, NOTIFY_DELAY_MS);
 }
 
 async function pixelLevels(
   content: ArrayBuffer,
-  colors: readonly Rgb[],
+  colors: readonly (Rgb | null)[],
 ): Promise<{ size: number; levels: Uint8Array }> {
   const bitmap = await createImageBitmap(new Blob([content], { type: "image/png" }));
   try {

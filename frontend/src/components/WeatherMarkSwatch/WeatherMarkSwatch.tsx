@@ -14,6 +14,7 @@ import {
   WEATHER_MARKS,
   type WeatherMark,
 } from "@/lib/mapDisplay/weatherMarks";
+import { hexToRgb } from "@/lib/rgbHsl";
 import palette from "@/types/generated/palette.json";
 
 /** 余白を含めた、絵の座標の一辺。 */
@@ -54,7 +55,7 @@ export function hazardBadgeParts(badge: HazardBadge, fill: string, mark?: Weathe
 
 /** 塗りが暗い色か（その上の線を白にする境。人の目の明るさの重みで数える）。 */
 function isDark(hex: string): boolean {
-  const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
+  const [r, g, b] = hexToRgb(hex);
   return 0.299 * r + 0.587 * g + 0.114 * b < 110;
 }
 
