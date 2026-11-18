@@ -94,15 +94,18 @@ const SWATCH_LEVEL_KEY: Record<NonNullable<DisasterElement["levelScale"]>, strin
   tornado_potential: "potential1",
 };
 
-/** 段で塗らない災害の要素の色見本。鍵は源泉が段を宣言していないソースで、要素が増えれば型検査が落ちる。 */
-const UNSCALED_SOURCE_SWATCH: Record<Extract<DisasterElement, { levelScale: null }>["source"], string> = {
-  liden: palette.semantic.lightning,
+/** 段で塗らない災害の要素の見本（地図と同じ印）。鍵は源泉が段を宣言していないソースで、要素が増えれば型検査が落ちる。 */
+const UNSCALED_SOURCE_SWATCH: Record<
+  Extract<DisasterElement, { levelScale: null }>["source"],
+  Pick<LegendEntry, "color" | "mark">
+> = {
+  liden: { color: palette.semantic.mark_ink, mark: "liden" },
 };
 
-function disasterSwatch(element: DisasterElement): string {
+function disasterSwatch(element: DisasterElement): Pick<LegendEntry, "color" | "mark"> {
   return element.levelScale === null
     ? UNSCALED_SOURCE_SWATCH[element.source]
-    : levelColor(weatherScales[element.levelScale], SWATCH_LEVEL_KEY[element.levelScale]);
+    : { color: levelColor(weatherScales[element.levelScale], SWATCH_LEVEL_KEY[element.levelScale]) };
 }
 
 /** 災害チップの要素ごとの表示切替。隠した要素は取りに行かない（地図の絞り込みではなく取得を止める）。
@@ -116,7 +119,7 @@ export function disasterSourceLegendAxis(): SceneLegendAxis {
       key: source,
       label: element.label,
       description: element.description ?? undefined,
-      color: disasterSwatch(element),
+      ...disasterSwatch(element),
     })),
   };
 }

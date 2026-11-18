@@ -4,9 +4,8 @@ import palette from "@/types/generated/palette.json";
 import weatherScales from "@/types/generated/weather-scales.json";
 import type { FilterSpecification } from "maplibre-gl";
 
-import { LIDEN_ICON_SIZE_PX, createLidenIcon } from "@/features/map/layers/lidenIcon";
 import { PRECIPITATION_COLOR_STOPS, PRECIPITATION_PAINTED_FROM_MM } from "@/features/map/layers/precipitationNowcast";
-import { WIND_ARROW_SIZE_PX, createWindArrowIcon } from "@/features/map/layers/windArrowIcon";
+import { drawWeatherMarkIcon, weatherMarkIconSizePx } from "@/features/map/layers/weatherMarkIcon";
 import { WIND_CALM_THRESHOLD_MS, WIND_SPEED_COLOR_STOPS } from "@/features/map/layers/windLayer";
 
 import type { MapSceneImage } from "@/features/map/scene/mapScene";
@@ -26,8 +25,8 @@ export type Drawing = {
   readonly paint: Readonly<Record<string, unknown>>;
   readonly layout?: Readonly<Record<string, unknown>>;
   readonly filter?: FilterSpecification;
-  /** 記号を描くのに要るアイコン。 */
-  readonly icon?: MapSceneImage;
+  /** 記号を描くのに要る絵。 */
+  readonly icons?: readonly MapSceneImage[];
   /** 記号の1辺（px）。ズーム`zoom`で、プロパティ`properties`の地物の記号を描く大きさ（`layout`の`icon-size`と同じ値から求める）。 */
   readonly markSizePx?: (zoom: number, properties: Readonly<Record<string, unknown>>) => number;
   /** 主の線の下に敷く縁取りの線の見た目。背景の色に関わらず線を読めるようにする。 */
@@ -47,10 +46,19 @@ type ElementKey<E> = E extends {
 /** 配信元が描いた画像は、どの要素も同じ濃さで重ねるだけなので個別の見た目を持たない。 */
 type DrawnKey = ElementKey<Exclude<DeclaredElement, { kind: "rasterTile" }>>;
 
+/** 帯の下限と値の並びから、値→帯の値の段階式を作る。 */
+function bandExpression(value: unknown, stops: readonly { from: number; value: string }[], below: string): unknown {
+  const rest = stops.slice(1).flatMap((stop) => [stop.from, stop.value]);
+  return ["step", ["to-number", value], stops[0]?.value ?? below, ...rest];
+}
+
 /** 帯の下限と色の並びから、値→色の段階式を作る。 */
 function bandColorExpression(value: unknown, stops: readonly { from: number; color: string }[]): unknown {
-  const rest = stops.slice(1).flatMap((stop) => [stop.from, stop.color]);
-  return ["step", ["to-number", value], stops[0]?.color ?? "rgba(0,0,0,0)", ...rest];
+  return bandExpression(
+    value,
+    stops.map((stop) => ({ from: stop.from, value: stop.color })),
+    "rgba(0,0,0,0)",
+  );
 }
 
 function aboveFilter(property: string, min: number): FilterSpecification {
@@ -100,23 +108,30 @@ function markScaleAt(scale: MarkScale, properties: Readonly<Record<string, unkno
   return linearAt(markScaleStops(scale), Number(properties[scale.property] ?? 0));
 }
 
+/** 天気の印の形の線の座標の一辺を描く大きさ（ズーム13・倍率1のときの画面のpx）。 */
+const MARK_FRAME_PX = 32;
+const MARK_ICON_SIZE_PX = weatherMarkIconSizePx(MARK_FRAME_PX);
+
+function markImage(id: string, mark: Parameters<typeof drawWeatherMarkIcon>[0], color: string): MapSceneImage {
+  return { id, draw: () => drawWeatherMarkIcon(mark, color, MARK_FRAME_PX) };
+}
+
 function markDrawing(options: {
-  readonly iconId: string;
-  readonly createIcon: () => ImageData;
-  /** `createIcon`が描く絵の1辺（px）。 */
-  readonly iconSizePx: number;
-  readonly color: unknown;
+  /** 描く絵。縁まで色を描き込んだ絵（`weatherMarkIcon.ts`）で、どれも同じ大きさ。 */
+  readonly icons: readonly MapSceneImage[];
+  /** 地物に描く絵の id か、それを地物の値から選ぶ式。 */
+  readonly iconImage: unknown;
   readonly scale: MarkScale;
   /** 記号を地図の北から時計回りに回す角度（度）を持つプロパティ。無ければ回さない。 */
   readonly rotateProperty?: string;
   readonly filter?: FilterSpecification;
 }): Drawing {
   return {
-    icon: { id: options.iconId, draw: () => ({ data: options.createIcon(), options: { sdf: true } }) },
+    icons: options.icons,
     markSizePx: (zoom, properties) =>
-      options.iconSizePx * markScaleAt(options.scale, properties) * linearAt(WEATHER.markSizeByZoom, zoom),
+      MARK_ICON_SIZE_PX * markScaleAt(options.scale, properties) * linearAt(WEATHER.markSizeByZoom, zoom),
     layout: {
-      "icon-image": options.iconId,
+      "icon-image": options.iconImage,
       "icon-rotate": options.rotateProperty === undefined ? 0 : ["to-number", ["get", options.rotateProperty]],
       "icon-rotation-alignment": options.rotateProperty === undefined ? "viewport" : "map",
       // 記号が密なズームでは間引く（重ねると格子が塗り潰しに見える）。
@@ -124,17 +139,15 @@ function markDrawing(options: {
       "icon-ignore-placement": false,
       "icon-size": zoomScaleExpression(markScaleExpression(options.scale), WEATHER.markSizeByZoom),
     },
-    paint: {
-      "icon-color": options.color,
-      "icon-opacity": 1,
-      // 記号の縁取り。背景の明暗に関わらず記号の形が読めるようにする。**主層と同じレイヤーの
-      // paintで出す**——別レイヤーにすると、同じ位置に2枚並ぶぶん衝突判定で縁取りが全部落ちる。
-      "icon-halo-color": palette.semantic.mark_halo,
-      "icon-halo-width": WEATHER.markHaloWidthPx,
-    },
+    paint: { "icon-opacity": 1 },
     ...(options.filter === undefined ? {} : { filter: options.filter }),
   };
 }
+
+/** 風速の段ごとの風の矢印の絵（線の色が段の色）。 */
+const WIND_ARROW_ICONS = WIND_SPEED_COLOR_STOPS.map((stop, index) =>
+  markImage(`weather-wind-arrow-${index}`, "windArrow", stop.color),
+);
 
 /** 配信元のラスタ以外の要素の見た目。**源泉に要素が増えて見た目が無ければ型検査が落ちる**
  * （鍵は生成物から導く）。 */
@@ -151,12 +164,11 @@ const DRAWINGS: { readonly [K in DrawnKey]: Drawing } = {
     filter: notBelowFilter("mmPerHour", PRECIPITATION_PAINTED_FROM_MM),
   },
   "windVector/arrow/gridMark": markDrawing({
-    iconId: "weather-wind-arrow",
-    createIcon: createWindArrowIcon,
-    iconSizePx: WIND_ARROW_SIZE_PX,
-    color: bandColorExpression(
+    icons: WIND_ARROW_ICONS,
+    iconImage: bandExpression(
       ["get", "speed"],
-      WIND_SPEED_COLOR_STOPS.map((stop) => ({ from: stop.speedMs, color: stop.color })),
+      WIND_SPEED_COLOR_STOPS.map((stop, index) => ({ from: stop.speedMs, value: WIND_ARROW_ICONS[index].id })),
+      "",
     ),
     scale: { property: "speed", range: WEATHER.windIconScaleRange, fullScaleValue: WEATHER.windFullScaleMs },
     rotateProperty: "bearing",
@@ -179,11 +191,9 @@ const DRAWINGS: { readonly [K in DrawnKey]: Drawing } = {
   "precipitationNowcast/linearRainbandArea/outline": RAINBAND_OUTLINE_DRAWING,
   "precipitationNowcast/linearRainbandAreaForecast/outline": RAINBAND_OUTLINE_DRAWING,
   "disaster/liden/gridMark": markDrawing({
-    iconId: "weather-liden",
-    createIcon: createLidenIcon,
-    iconSizePx: LIDEN_ICON_SIZE_PX,
+    icons: [markImage("weather-liden", "liden", palette.semantic.mark_ink)],
+    iconImage: "weather-liden",
     // 落雷の強弱を配信元が持たないため、大きさはズームだけで決まる。
-    color: palette.semantic.lightning,
     scale: WEATHER.lightningIconScale,
   }),
 };

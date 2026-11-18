@@ -137,12 +137,13 @@ SEMANTIC_COLORS: dict[str, str] = {
     "route_splice": "#c2612b",
     "route_arrow": "#ffffff",
     "route_arrow_halo": "#111827",
-    # 記号の縁取りと、雷。
+    # 記号の縁取り。天気の印（風の矢印・落雷）は、線の色の外に白い縁（mark_stroke）、その外に暗い細線（mark_halo）を引く。
     "mark_halo": "rgba(31, 41, 55, 0.85)",
     "mark_stroke": "#ffffff",
     # 点の角丸四角に載せる絵記号。下地の行の色に対してコントラスト比3:1を割らない。
     "mark_glyph": "#ffffff",
-    "lightning": "#facc15",
+    # 色で段を示さない天気の印（落雷）の線。
+    "mark_ink": "#262626",
     # 基礎地図（OpenFreeMap liberty）の背景色。配信元のスタイルが持つ値の写しで、分類色の
     # 明度の上限（`_MAX_LIGHTNESS`）はこれを基準にする——分類色は地図の上では常にこの地に載る。
     "basemap_ground": "#f8f4f0",
