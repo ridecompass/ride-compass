@@ -303,6 +303,8 @@ async def test_loops_keep_only_routes_within_the_distance_tolerance():
         (NO_POINTS, {"hard": 100.0, "easy": 100.0, "mid": 100.0}, ["easy"]),
         # 1本だけなら比べる相手が無いので付けない
         (NO_POINTS, {"easy": 100.0}, []),
+        # 所要時間のある候補が1本だけでも、比べる相手が無いので付けない
+        (NO_POINTS, {"easy": None, "mid": 100.0}, []),
     ],
 )
 async def test_distance_routes_mark_the_quickest_of_their_own_as_fastest(points, durations, fastest):
@@ -310,7 +312,7 @@ async def test_distance_routes_mark_the_quickest_of_their_own_as_fastest(points,
     engine = FakeEngine(
         turnarounds=[_turnaround(_route(k)) for k in durations],
         routes={
-            k: _candidate(k, penalties[k], estimated_duration_seconds=d, cost_seconds=d + penalties[k])
+            k: _candidate(k, penalties[k], estimated_duration_seconds=d, cost_seconds=(d or 100.0) + penalties[k])
             for k, d in durations.items()
         },
     )
@@ -393,8 +395,7 @@ async def test_distance_routes_through_placed_points_without_a_relay_say_so(capl
     [(None, None), (DESTINATION, True)],  # 目的地を置かない・目的地が出発地へ寄った
 )
 async def test_waypoint_routes_back_to_the_origin_mark_the_quickest_of_their_own_as_fastest(destination, closes):
-    """出発地へ戻るルートは所要時間だけで選んだ基準線を足さず、返す候補のうち所要時間がいちばん短い1本に最速の印を付ける
-    （一覧の先頭に「最速」として出る）。"""
+    """出発地へ戻るルートは所要時間だけで選んだ基準線を足さず、返す候補のうち所要時間がいちばん短い1本に最速の印を付ける。"""
     engine = FakeEngine(via=[_route(k, bearing=None) for k in ("hard", "easy", "mid")], closes=closes,
                         fastest=_route("fastest", bearing=None),
                         routes={"hard": _candidate("hard", 30.0), "easy": _candidate("easy", 10.0),

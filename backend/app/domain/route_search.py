@@ -164,13 +164,13 @@ def retrace_penalized(costs: np.ndarray, travel_seconds: np.ndarray, tuning: Tun
     return costs + (multiplier - 1.0) * np.where(np.isinf(travel_seconds), 0.0, travel_seconds)
 
 
-#: 1kmあたりの代償の秒（`penalty_seconds_per_km`）の、区別する最小の差。並べ方とパレート層は、この刻みで同点とみなす。
-#: 刻みは応答に出す秒の桁——応答で同じ値に見える候補の順を、利用者に見えない差で決めない。
+#: 1kmあたりの秒（代償・費用）の、区別する最小の差。パレート層は1kmあたりの代償を、周回の並べ方は1kmあたりの費用を、この刻みで
+#: 同点とみなす。刻みは応答に出す秒の桁。
 PENALTY_PER_KM_QUANTUM = 10.0 ** -COST_SECONDS_DECIMALS
 
 
 def _penalty_key(per_km: np.ndarray) -> np.ndarray:
-    """1kmあたりの代償の秒を、`PENALTY_PER_KM_QUANTUM`の刻みの数にしたもの（同点の比べに使う）。"""
+    """1kmあたりの秒を、`PENALTY_PER_KM_QUANTUM`の刻みの数にしたもの（同点の比べに使う）。"""
     return np.rint(np.asarray(per_km, dtype=float) / PENALTY_PER_KM_QUANTUM).astype(np.int64)
 
 
@@ -465,7 +465,7 @@ def fits_loop_distance(loop_km: float, target_km: float, tolerance_km: float) ->
 
 
 def by_closeness_to_target(loops: list[TracedLoop], target_km: float) -> list[TracedLoop]:
-    """周回を全長が目標距離に近い順に並べる。評価の前に並べておく——最終の並びは1kmあたりの代償の秒で
+    """周回を全長が目標距離に近い順に並べる。評価の前に並べておく——最終の並びは1kmあたりの費用で
     決まるが、同点の候補はこの順で並ぶ。"""
     return sorted(loops, key=lambda loop: abs(loop.distance_km - target_km))
 

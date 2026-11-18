@@ -254,7 +254,7 @@ class EvaluatedRoute(StrictModel):
 
     def penalty_per_km(self) -> float | None:
         """候補全体の1kmあたりの代償の秒（曲がる所の漕ぎ出しと避け方の秒を含むルート全体の損。`penalty_seconds_per_km`）。曲がる所の
-        罰は道の負担でないので入れない——入れると、地図のレンズの総合の段で塗る候補の帯が道の負担とずれ、短い候補ほど並びが動く。
+        罰は道の負担でないので入れない——入れると、地図のレンズの総合の段で塗る候補の帯が道の負担とずれる。
         候補の帯は応答の`penalty_seconds_per_km`で塗る。所要時間か
         長さが無ければNone。"""
         if self.estimated_duration_seconds is None or not self.distance_km > 0:
@@ -300,7 +300,7 @@ class EvaluatedRoute(StrictModel):
 class RouteCandidate(EvaluatedRoute):
     """応答の1本のルート候補。
 
-    生成の応答は、目的地で終わる候補を費用（`cost_seconds`）、出発地へ戻る候補を1kmあたりの代償の秒の小さい順に並べる
+    生成の応答は、目的地で終わる候補を費用（`cost_seconds`）、出発地へ戻る候補を1kmあたりの費用の小さい順に並べる
     （`domain/route_search.py: candidate_order`）。
     """
 
@@ -310,8 +310,8 @@ class RouteCandidate(EvaluatedRoute):
     id: str
     # 終点が出発地なら`loop`、ほかの所なら`destination`、区間を乗り換えて作った経路は`spliced`。
     kind: RouteKind
-    # 所要時間だけで探した1本（基準線）。距離を決めずに出発地と違う所で終わる生成で、比べる相手があるときだけ1本に付く。
-    # 画面はこの1本を一覧の「最速」に置き、時間の列の基準にする。
+    # 返す候補のうち見積もりの所要時間がいちばん短い1本。所要時間のある候補が2本以上あるときだけ1本に付く
+    # （`services/route_generator.py: _quickest`）。
     is_fastest: bool
     # 探索が区間を切り出した道路網の世代（`RoadNetwork.revision`）。`edge_ids`がどの版の道路網の区間かを、後から照らすときに
     # 分ける。候補を組み立てる途中はNoneで、候補を返す生成の入口が付ける。

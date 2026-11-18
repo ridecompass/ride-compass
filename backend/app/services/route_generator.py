@@ -92,10 +92,10 @@ def _label(drafts: list[EvaluatedRoute], kind: RouteKind, name: str | None = Non
 
 
 def _quickest(drafts: list[EvaluatedRoute]) -> EvaluatedRoute | None:
-    """最速の印を付ける1本。見積もりの所要時間がいちばん短い候補（同着は並びの先の方）。返す候補が1本だけ・所要時間のある
-    候補が無いなら、比べる相手が無いのでNone。"""
+    """最速の印を付ける1本。見積もりの所要時間がいちばん短い候補（同着は並びの先の方）。所要時間のある候補が2本に満たない
+    なら、比べる相手が無いのでNone。"""
     timed = [draft for draft in drafts if draft.estimated_duration_seconds is not None]
-    if len(drafts) < 2 or not timed:
+    if len(timed) < 2:
         return None
     return min(timed, key=lambda draft: cast("float", draft.estimated_duration_seconds))
 

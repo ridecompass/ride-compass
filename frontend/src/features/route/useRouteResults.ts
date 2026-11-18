@@ -46,7 +46,7 @@ export function useRouteResults() {
     [segmentOutsideMap],
   );
 
-  /** 生成の結果で一覧を入れ替える。最初に選ぶのは先頭（最速の1本か、最も早く着く候補）。 */
+  /** 生成の結果で一覧を入れ替える。最初に選ぶのは受け取った並びの先頭（探索の考え方でいちばん良い候補。最速の印の1本とは限らない）。 */
   const replaceWithGenerated = useCallback((generated: RouteCandidate[]) => {
     setGenerated(generated);
     setEdits([]);

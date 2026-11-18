@@ -229,6 +229,14 @@ def test_loops_are_ordered_by_the_cost_per_km_and_destinations_by_the_cost():
     assert sorted([long_loop, short_loop], key=lambda c: candidate_order(c, loop=False)) == [short_loop, long_loop]
 
 
+def test_loops_count_the_time_as_well_as_the_penalty():
+    """周回は1kmあたりの代償だけでなく、所要時間も入れた1kmあたりの費用で並べる（探索が最小にした費用と同じ考え方）。
+    遅い周回（10km・所要時間3000秒・代償100秒）は代償が少ないが、速い周回（10km・1800秒・代償300秒）より費用が多い。"""
+    slow, quick = draft(10.0, 3000.0, 3100.0), draft(10.0, 1800.0, 2100.0)
+
+    assert sorted([slow, quick], key=lambda c: candidate_order(c, loop=True)) == [quick, slow]
+
+
 def test_a_loop_without_a_duration_goes_last():
     unknown, known = draft(10.0, None, 0.0), draft(10.0, 1800.0, 9000.0)
 
