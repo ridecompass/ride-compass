@@ -75,7 +75,7 @@ function useLocationFetch<T>(
   key: string,
   fetcher: (location: Coordinates) => Promise<T>,
   location: Coordinates,
-  locationKnown: boolean,
+  originLocated: boolean,
   following: Coordinates | null,
   areaOf: (data: T) => ValidArea | null | undefined = () => null,
 ): LocationFetchState<T> {
@@ -91,7 +91,7 @@ function useLocationFetch<T>(
         const at = following ?? location;
         return { at, value: await fetcher(at) };
       },
-      enabled: riding || locationKnown,
+      enabled: riding || originLocated,
       placeholderData: keepPreviousData,
       refetchInterval: WEATHER_REFRESH_INTERVAL_MS,
     },
@@ -147,18 +147,18 @@ function useRouteWarningTimeline(route: WarningRoute | null): {
  * あれば、それを通る時刻に当たる注意報級の時間帯も警告に加える。 */
 export function useWeatherConditions(
   location: Coordinates,
-  locationKnown: boolean,
+  originLocated: boolean,
   following: Coordinates | null,
   route: WarningRoute | null,
 ): UseWeatherConditionsResult {
-  const amedas = useLocationFetch("amedas", getAmedasObservation, location, locationKnown, following, validArea);
-  const gridPointToday = useLocationFetch("gridPointToday", getGridPointToday, location, locationKnown, following);
+  const amedas = useLocationFetch("amedas", getAmedasObservation, location, originLocated, following, validArea);
+  const gridPointToday = useLocationFetch("gridPointToday", getGridPointToday, location, originLocated, following);
 
   // 警告は、取れない間その出所のバッジを出さず、失敗した出所を別に渡す（バッジが無いのを「警告なし」と読ませない）。
   // 空の応答は「出ていない」だけを表し、backendが配信元から取れなかったときも失敗（502）で届く。
-  const warnings = useLocationFetch("warnings", getWeatherWarnings, location, locationKnown, following, validArea);
-  const wbgt = useLocationFetch("wbgt", getWbgtStatus, location, locationKnown, following, validArea);
-  const flood = useLocationFetch("flood", getFloodForecasts, location, locationKnown, following, validArea);
+  const warnings = useLocationFetch("warnings", getWeatherWarnings, location, originLocated, following, validArea);
+  const wbgt = useLocationFetch("wbgt", getWbgtStatus, location, originLocated, following, validArea);
+  const flood = useLocationFetch("flood", getFloodForecasts, location, originLocated, following, validArea);
 
   const weatherWarnings = warnings.error ? null : warnings.data;
   const wbgtStatus = wbgt.error ? null : wbgt.data;

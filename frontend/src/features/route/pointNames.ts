@@ -1,3 +1,4 @@
+import { pinMarkName } from "@/components/PinMark/PinMark";
 import type { Coordinates, PinRole, PlaceCandidate, PointTarget } from "@/types/route";
 
 /** 地図で置いた地点の名前（探して置いた名前の無い地点）と、その出どころ。 */
@@ -40,16 +41,21 @@ export function pointNames(inputs: PointNamesInputs): { origin: string; waypoint
 
 /** 地点の呼び名（出発地／経由地2／目的地／新しい経由地）。 */
 export function pointTitle(target: PointTarget): string {
-  if (target.role === "origin") return "出発地";
-  if (target.role === "destination") return "目的地";
-  return target.index === null ? "新しい経由地" : `経由地${target.index + 1}`;
+  if (target.role !== "waypoint") return pinMarkName(target.role);
+  return target.index === null ? "新しい経由地" : pinMarkName("waypoint", String(target.index + 1));
 }
+
+/** 見つけた地点を新しく置く操作の名前（メニューの項目）と、選んだときに何が起きるかの文。 */
+const PLACINGS: Record<PinRole, { label: string; result: string }> = {
+  origin: { label: "出発地にする", result: "出発地にします" },
+  waypoint: { label: "経由地に足す", result: "経由地に足します" },
+  destination: { label: "目的地にする", result: "目的地にします" },
+};
 
 /** 探した候補を選ぶと、その地点に何が起きるか。 */
 export function chooseResultOf(target: PointTarget): string {
-  if (target.role === "origin") return "出発地にします";
-  if (target.role === "destination") return "目的地にします";
-  return target.index === null ? "経由地に足します" : `${pointTitle(target)}を置き直します`;
+  if (target.role === "waypoint" && target.index !== null) return `${pointTitle(target)}を置き直します`;
+  return PLACINGS[target.role].result;
 }
 
 /** 見つけた地点（保存した地点）を新しく置ける先とその名前と、置けないか。経由地は上限まで置いてあれば、目的地は周回の間は置けない。 */
@@ -58,9 +64,10 @@ export function newPlacings({ waypointsFull, loop }: { waypointsFull: boolean; l
   label: string;
   disabled: boolean;
 }[] {
-  return [
-    { role: "origin", label: "出発地にする", disabled: false },
-    { role: "waypoint", label: "経由地に足す", disabled: waypointsFull },
-    { role: "destination", label: "目的地にする", disabled: loop },
-  ];
+  const disabled: Record<PinRole, boolean> = { origin: false, waypoint: waypointsFull, destination: loop };
+  return (Object.keys(PLACINGS) as PinRole[]).map((role) => ({
+    role,
+    label: PLACINGS[role].label,
+    disabled: disabled[role],
+  }));
 }

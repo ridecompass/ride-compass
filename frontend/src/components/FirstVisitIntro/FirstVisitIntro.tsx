@@ -6,7 +6,8 @@ import { GuideText } from "@/components/ui/GuideText/GuideText";
 import { cardVariants } from "@/components/ui/Card/Card";
 import { textVariants } from "@/components/ui/Text/Text";
 import { MenuIcon } from "@/components/ui/icons/lucideIcons";
-import { originMarkColor, PIN_MARK_BACKGROUND, PinMark } from "@/components/PinMark/PinMark";
+import PointMark from "@/components/PinMark/PointMark";
+import { HOW_TO_PLACE_ORIGIN } from "@/hooks/useLocation";
 import { useStoredState } from "@/hooks/useStoredState";
 import { useIsomorphicLayoutEffect } from "@/hooks/useIsomorphicLayoutEffect";
 import { cn } from "@/lib/cn";
@@ -26,14 +27,14 @@ interface FirstVisitIntroProps {
   onClose: () => void;
   /** 最初の位置の取得が決着して、位置が分からないと分かったか。真の間は出発地の印が灰色の仮の地点なので、
    * 地図をタップして置く手順を案内する（決着するまでは「はじめは現在地」のまま）。 */
-  locationUnknown: boolean;
+  originLocateFailed: boolean;
 }
 
 /**
  * 初めて開いたときに地図の上に出す案内。閉じるとこの端末では次から出ず、ヘッダーのメニューからもう一度出せる。
  * 保存値の復元はマウント後なので、マウントするまで出さない（出すとSSRのHTMLに載り、閉じた人にも一瞬見える）。
  */
-export default function FirstVisitIntro({ shown, onClose, locationUnknown }: FirstVisitIntroProps) {
+export default function FirstVisitIntro({ shown, onClose, originLocateFailed }: FirstVisitIntroProps) {
   const [mounted, setMounted] = useState(false);
   const titleId = useId();
   useIsomorphicLayoutEffect(() => setMounted(true), []);
@@ -55,26 +56,19 @@ export default function FirstVisitIntro({ shown, onClose, locationUnknown }: Fir
         <Button
           usage="案内を閉じます。"
           variant="ghost"
-          size="bare"
-          className="px-1"
+          size="close"
+          className="flex-none"
           aria-label="案内を閉じる"
           onClick={onClose}
         >
           ✕
         </Button>
       </div>
-      <p className={cn(textVariants({ variant: "body" }), "m-0")}>走りやすい周回ルートを作ります。</p>
+      <p className={cn(textVariants({ variant: "body" }), "m-0")}>ロードバイクで走りやすいルートを作ります。</p>
       <ol className={cn(textVariants({ variant: "body" }), "m-0 flex list-decimal flex-col gap-1.5 pl-5")}>
         <li>
-          <span
-            className="mr-1 inline-flex rounded-full p-0.5 align-[-3px] shadow-sm"
-            style={{ background: PIN_MARK_BACKGROUND }}
-          >
-            <PinMark role="origin" size={14} originColor={originMarkColor(!locationUnknown)} />
-          </span>
-          {locationUnknown
-            ? "「ルート設定」を開き、地図をタップして出発地を置く"
-            : "出発地を決める[はじめは現在地。つかんで動かせます]"}
+          <PointMark role="origin" originLocated={!originLocateFailed} className="mr-1 align-[-4px]" />
+          {originLocateFailed ? HOW_TO_PLACE_ORIGIN : "出発地を決める[はじめは現在地。つかんで動かせます]"}
         </li>
         <li>
           <GuideText text="「ルート設定」で距離を決めて「ルート生成」" />

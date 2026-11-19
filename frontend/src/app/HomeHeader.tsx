@@ -21,7 +21,7 @@ interface HomeHeaderProps {
   /** 走行モードの間の走りの数字。走っていなければ null（観測のバーとメニューを出す）。 */
   ride: { remaining: RideRemaining | null; offRoute: boolean; speedKmh: number | null } | null;
   location: Coordinates;
-  locationKnown: boolean;
+  originLocated: boolean;
   /** 走行モードの間に受けた現在地。走っていなければ null。 */
   ridingAt: Coordinates | null;
   /** 選んだルート（通る時刻の雷の見込みを読む）。選んでいなければ null。 */
@@ -40,7 +40,7 @@ interface HomeHeaderProps {
 export default function HomeHeader({
   ride,
   location,
-  locationKnown,
+  originLocated,
   ridingAt,
   warningRoute,
   locationFailure,
@@ -56,7 +56,7 @@ export default function HomeHeader({
 
   // 最寄りの実測・警報の類（位置が分かってから、位置が変わるたびに取る。仮の地点では取らない）。
   const { amedas, amedasError, gridPointToday, gridPointTodayError, warningBadgeItems, warningFetchFailures } =
-    useWeatherConditions(location, locationKnown, ridingAt, warningRoute);
+    useWeatherConditions(location, originLocated, ridingAt, warningRoute);
   const clientConfigFailure = clientConfigFetchFailure(useClientConfig());
   const costAxisCatalogFailure = costAxisCatalogFetchFailure(useCostAxisCatalog());
   const headerFetchFailures = useMemo(

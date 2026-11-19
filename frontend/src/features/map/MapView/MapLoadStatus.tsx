@@ -1,5 +1,6 @@
 "use client";
 
+import { Callout } from "@/components/ui/Callout/Callout";
 import { Spinner } from "@/components/ui/Spinner/Spinner";
 import { textVariants } from "@/components/ui/Text/Text";
 import { cn } from "@/lib/cn";
@@ -37,27 +38,14 @@ export default function MapLoadStatus({ loading, failed }: { loading: boolean; f
     <>
       {loading && <MapLoadingBadge />}
       {failed && (
-        <div
+        // 押せない表示なので地図へタッチを素通しする（ピンチの片方の指が乗るとページ全体のズームに化ける）。
+        <Callout
           role="alert"
-          style={{
-            position: "absolute",
-            top: "1rem",
-            left: "50%",
-            transform: "translateX(-50%)",
-            background: "var(--color-danger-muted)",
-            color: "var(--color-danger)",
-            border: "1px solid var(--color-danger)",
-            borderRadius: "0.5rem",
-            padding: "0.5rem 1rem",
-            fontSize: "0.85rem",
-            boxShadow: "0 2px 8px rgba(0,0,0,0.15)",
-            zIndex: 10,
-            // 押せない表示なので地図へタッチを素通しする（ピンチの片方の指が乗るとページ全体のズームに化ける）。
-            pointerEvents: "none",
-          }}
+          tone="danger"
+          className="pointer-events-none absolute top-4 left-1/2 z-10 -translate-x-1/2 px-4 shadow-float"
         >
           地図の読み込みに失敗しました。しばらくしてから再読み込みしてください。
-        </div>
+        </Callout>
       )}
     </>
   );

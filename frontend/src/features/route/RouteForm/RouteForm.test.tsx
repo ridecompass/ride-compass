@@ -61,13 +61,14 @@ describe("RouteForm 距離の目標", () => {
       { [CLIENT_TUNING_IDS.distanceToleranceRatio]: 0.15 },
       "ルート全体の距離の目標です。候補は、この長さの±15%[30kmなら±4.5km]に収まるものだけを作ります。",
     ],
-    [{}, "ルート全体の距離の目標です。定規の「距離を決める」を外すと距離を決めず"],
+    // 「距離を決める」は入り切りのボタンと同じアイコンに替わり、名前は読み上げにだけ残る。
+    [{}, "ルート全体の距離の目標です。距離を決めるを外すと距離を決めず"],
   ])("(i)の奥に、画面の設定が配る許容差（%o）を割合と今の目標での長さで書く", async (clientTuning, text) => {
     serveClientConfig(clientConfigResponse({ client_tuning: clientTuning }));
     renderForm({ distanceInput: "30" });
     await userEvent.click(button("距離の目標の説明を表示"));
 
-    expect(await screen.findByText((content) => content.startsWith(text))).toBeInTheDocument();
+    expect(await screen.findByRole("dialog")).toHaveTextContent(text);
   });
 
   it("ルーラーは5kmから上限まで5km刻みのコマを持ち、今の値のコマを選んでいる", () => {

@@ -94,7 +94,7 @@ describe("選んだ候補の中身", () => {
         ],
       }),
     });
-    expect(screen.getByRole("img", { name: "経由地 1（1.5km地点・09:20着）" })).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "経由地1（1.5km地点・09:20着）" })).toBeInTheDocument();
     expect(screen.getByText("09:20着")).toBeVisible();
   });
 

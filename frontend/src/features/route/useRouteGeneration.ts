@@ -40,7 +40,7 @@ export interface RouteGenerationInputs {
   conditions: GenerationConditionsState;
   origin: Coordinates;
   /** 出発地が実際の位置か（現在地を取れたか、地図で置いたか）。 */
-  originKnown: boolean;
+  originLocated: boolean;
   departure: { at: Date; pinned: boolean };
   assumedSpeedKmh: number;
   /** 候補が並んでいるか（「条件が変わった」は比べる候補があるときだけ出す）。 */
@@ -56,17 +56,17 @@ export interface RouteGenerationInputs {
 /** 押した「生成」・「作成」の結果の種類。候補0件と失敗を、候補が出たことと見分ける。 */
 export type RouteOutcomeKind = "fresh" | "empty" | "failed";
 
+/** `conditionsDirty`のときに画面へ出す文。 */
+export const CONDITIONS_DIRTY_TEXT = "生成条件が変更されています";
+
 /**
  * ルート生成: 検証と送信、実行中の進み方、直近の案内（候補0件の理由・失敗の文言）、表示中の候補を作った条件と
  * いまのフォームのずれ。入力は生成と「条件が変わったか」の判定が同じ関数で組み立てる。
  */
-/** `conditionsDirty`のときに画面へ出す文。 */
-export const CONDITIONS_DIRTY_TEXT = "生成条件が変更されています";
-
 export function useRouteGeneration({
   conditions,
   origin,
-  originKnown,
+  originLocated,
   departure,
   assumedSpeedKmh,
   hasRoutes,
@@ -168,7 +168,7 @@ export function useRouteGeneration({
   /** 検証して生成する。入力の誤りも押した結果として知らせる。出発地が仮の地点のままなら、誤りの窓を出さずに出発地を求める
    * （仮の地点から作ったルートは利用者のいる場所と関係が無く、直すのは窓ではなく出発地の行でする）。 */
   async function submit() {
-    if (!originKnown) {
+    if (!originLocated) {
       clearNotice();
       onOriginMissing();
       return;

@@ -6,13 +6,14 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/Tabs/T
 import type { PinRole, PlaceCandidate } from "@/types/route";
 import { waypointsFull, type GenerationConditionsState } from "@/features/route/useGenerationConditions";
 import routeGenerateConfig from "@/types/generated/route-generate-config.json";
-import { DISTANCE_STEP_KM } from "@/features/route/savedConditions";
+import { DISTANCE_STEP_KM, ROUTE_SHAPE_NAMES } from "@/features/route/savedConditions";
 import SavedPlacesPanel from "@/features/route/SavedPlacesPanel/SavedPlacesPanel";
 import PointList from "./PointList";
 import { GoalFlagIcon, LoopRouteIcon } from "@/components/ui/icons/icons";
 import { RulerIcon } from "@/components/ui/icons/lucideIcons";
 import { Toggle } from "@/components/ui/Toggle/Toggle";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/ToggleGroup/ToggleGroup";
+import { GuideText } from "@/components/ui/GuideText/GuideText";
 import InfoPopover from "@/components/ui/InfoPopover/InfoPopover";
 import Ruler, { type RulerFrame } from "@/components/ui/Ruler/Ruler";
 import { useClientConfig } from "@/hooks/useClientConfig";
@@ -101,20 +102,19 @@ export default function RouteForm({
           >
             <ToggleGroupItem value="loop" className={ROUTE_SHAPE_ITEM_CLASS}>
               <LoopRouteIcon size={14} />
-              周回
+              {ROUTE_SHAPE_NAMES.loop}
             </ToggleGroupItem>
             <ToggleGroupItem value="destination" className={ROUTE_SHAPE_ITEM_CLASS}>
               <GoalFlagIcon size={14} />
-              目的地
+              {ROUTE_SHAPE_NAMES.destination}
             </ToggleGroupItem>
           </ToggleGroup>
           <Toggle
-            variant="plain"
-            className="size-7 flex-none rounded-sm border border-[var(--color-border-strong)] data-[state=on]:border-[var(--color-accent)] data-[state=on]:bg-[var(--color-accent-bg)] data-[state=on]:text-[var(--color-accent-strong)]"
+            variant="icon"
+            className="flex-none"
             pressed={distanceTargeted}
             onClick={() => setDistanceTargeted(!distanceTargeted)}
             aria-label="距離を決める"
-            title="距離を決める"
             usage="オンにすると、ルート全体の距離を目標に合わせます。オフにすると距離を決めません。"
           >
             <RulerIcon size={16} />
@@ -130,19 +130,22 @@ export default function RouteForm({
           />
           <span
             className={cn(
-              "flex-none text-[length:var(--font-size-sm)] tabular-nums",
+              // 値の桁が変わってもルーラーの幅を変えない（滑らせている途中に幅が変わると、ルーラーが測り直して指から外れる）。
+              "min-w-[3.5em] flex-none text-right text-[length:var(--font-size-sm)] tabular-nums",
               !distanceTargeted && "text-[var(--color-muted)]",
             )}
           >
             {distanceTargeted ? `${distanceInput}km` : "指定なし"}
           </span>
           <InfoPopover triggerAriaLabel="距離の目標の説明" triggerClassName="flex-none">
-            {[
-              "ルート全体の距離の目標です。",
-              distanceToleranceRatio === undefined ? "" : toleranceSentence(distanceToleranceRatio, distanceInput),
-              "定規の「距離を決める」を外すと距離を決めず、所要時間と負担の和が小さい道で目的地へ向かいます[周回なら、経由地を回って出発地へ]。",
-              `${routeGenerateConfig.busy_safe_distance_km}kmより長い目標は、混み合っているときに作れないことがあります。`,
-            ].join("")}
+            <GuideText
+              text={[
+                "ルート全体の距離の目標です。",
+                distanceToleranceRatio === undefined ? "" : toleranceSentence(distanceToleranceRatio, distanceInput),
+                "「距離を決める」を外すと距離を決めず、所要時間と負担の和が小さい道で目的地へ向かいます[周回なら、経由地を回って出発地へ]。",
+                `${routeGenerateConfig.busy_safe_distance_km}kmより長い目標は、混み合っているときに作れないことがあります。`,
+              ].join("")}
+            />
           </InfoPopover>
         </div>
 

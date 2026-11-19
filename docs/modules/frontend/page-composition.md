@@ -64,7 +64,7 @@ undefinedにする）。パスの`{名前}`へ入る値は呼び出し口が1区
 `useLocation.ts`はブラウザのGeolocation APIを扱うhookで、出発地と現在地を分けて持つ。取れた現在地は、出発地がまだ分からないとき
 （起動時の自動取得）と「出発地を現在地に戻す」のときだけ出発地にし、地図の「現在地に移動」は現在地だけを取り直して地図を寄せる
 （手で置いた出発地を、地図を動かしただけで失わない）。位置が分かっているか（取れたか、手で置いたか）を
-1つの値（`locationKnown`）で返し、読み手は位置の出所から自分で導かない。
+1つの値（`originLocated`）で返し、読み手は位置の出所から自分で導かない。
 
 `apiClient.ts`/`apiError.ts`は全呼び出しが共有する骨格とエラー正規化。骨格（`requestApi`）は呼び出し口の1回の呼び出しを包み、
 「開始→通信の失敗・HTTPの失敗・本文の解析の失敗・成功のどれかをdebugLogに記録→失敗は`Error`をthrow」を行う。
@@ -192,7 +192,7 @@ backendも日本時間で扱う。`domain/time_zone.py`）。暦と時刻の取�
 地図のどこにも理由が出ない。ポップオーバーの項目に再試行（`onRetry`）を持たせ、ここから取り直せる。
 この印に並べるのは「取れていないと、画面が正常に見えたまま中身が違う」データで、取れない間の
 画面の振る舞いを文（`effect`）で言えるものに限る。
-現在地も同じ印に並べる: 位置が分からない間（`useLocation`の`locationKnown`が偽）は、天候・警報を
+現在地も同じ印に並べる: 位置が分からない間（`useLocation`の`originLocated`が偽）は、天候・警報を
 仮の地点で取らず（どこの値かが画面に出ないまま、利用者の場所の値として読まれる）、印の「現在地」（`useLocation`の
 `locationFailure`。最初の取得——起動時の自動取得か、それより先に押した「現在地に移動」——が決着するまでは出さない）から
 位置を取り直せる。地図で出発地を置けば、自動取得の決着を
@@ -260,7 +260,7 @@ backendも日本時間で扱う。`domain/time_zone.py`）。暦と時刻の取�
 初めて開いた人へ、何をするアプリかの1行と、番号付きの3行の手順（出発地の印・「ルート設定」から「ルート生成」・
 「使い方を見る」の場所）を、地図の上のカードで見せる。短さを優先して、「ルート設定」の場所はスマホ（下部タブ）とPC（左のパネル）で言い分けない。
 最初の位置の取得が決着して位置が分からないと分かった間
-（`useLocation`の`locationFailure`がある間）は、出発地の手順を灰色の仮の地点の印と、「ルート設定」を開いて地図をタップして出発地を置く手順に替える。閉じる（「はじめる」か✕）とlocalStorageへ印を書き、この端末では
+（`useLocation`の`locationFailure`がある間）は、出発地の手順を灰色の仮の地点の印と、出発地の置き方（`hooks/useLocation.ts: HOW_TO_PLACE_ORIGIN`。位置が分からないことの印と同じ文）に替える。閉じる（「はじめる」か✕）とlocalStorageへ印を書き、この端末では
 次から出さない（端末を替えると出る）。ヘッダーのメニューの「初回の案内をもう一度見る」で印を消して出し直すので、閉じたかはページが持ち、案内とメニューへ渡す。2回目以降に分からなくなったときは「使い方を見る」が受け持つので、地図に常設の文字は足さない。
 保存値の復元はマウント後（下記「状態の永続化」）なので、カードもマウントするまで出さない——SSRのHTMLに載せると、閉じた人にも
 復元までの一瞬見える。文は画面に固定で書き、backendからは配らない。
@@ -271,7 +271,7 @@ backendも日本時間で扱う。`domain/time_zone.py`）。暦と時刻の取�
 |---|---|
 | 地図本体 | `features/map/MapView/MapView`（全静的/動的レイヤーのMapLibre実装本体） |
 | 地図オーバーレイ制御 | `MapOverlayControls`（地図の上端の段の左の「表示」のボタンと一覧）・`MapNavigationControl`（地図右上の拡大・縮小と方位磁針）・`LensControl`（地図の上端の段の中央のレンズ選択ピル）・`RideConditionBar`（方位磁針の直下、地図右上の走行条件アイコン列、出発時刻・想定速度） |
-| ルート設定 | `RouteForm`（周回か目的地へか・距離の目標・候補件数・地点の一覧と探す小窓）・`RouteSettingsPanel`（費用の軸ごとの倍率）・`HardFilterPanel`（道路） |
+| ルート設定 | `RouteForm`（周回か目的地か・距離の目標・地点の一覧と探す小窓）・`GenerateRouteActions`（見出しの行の候補数と「ルート生成」）・`RouteSettingsPanel`（費用の軸ごとの倍率）・`HardFilterPanel`（道路） |
 | ルート結果 | `features/route/RouteOutcome/RouteOutcome.tsx`（「ルート結果」の中身: 空の状態・候補の一覧［横に並ぶカード］・区間の詳細・編集面）・`RouteCandidateActions`（選んでいる候補1本への操作。見出しの行に置く）・`RouteOutcome/CandidateFigureNotes.tsx: CandidateFiguresInfo`（カードの所要時間と負担の説明）・`RouteOutcome/CandidateFigureNotes.tsx: MissingTravelDataNotice`（選んだ候補の推定で計算した区間の注意） |
 | レイアウト | `BottomSheet`（モバイル下部シート） |
 

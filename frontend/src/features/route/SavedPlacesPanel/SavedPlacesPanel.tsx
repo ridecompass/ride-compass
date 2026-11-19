@@ -4,9 +4,8 @@ import { useState } from "react";
 
 import { Button } from "@/components/ui/Button/Button";
 import { RecallSavedIcon } from "@/components/ui/icons/lucideIcons";
-import { Popover, PopoverContent, PopoverTrigger, POPOVER_COLLISION_PADDING_PX } from "@/components/ui/Popover/Popover";
-import { textVariants } from "@/components/ui/Text/Text";
-import { cn } from "@/lib/cn";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/Popover/Popover";
+import { PlaceName } from "@/features/route/PlaceSearch/KnownPlaces";
 import SavedList from "@/features/route/SavedList/SavedList";
 import { newPlacings } from "@/features/route/pointNames";
 import type { SavedPlace } from "@/features/route/savedPlaces";
@@ -34,12 +33,7 @@ export default function SavedPlacesPanel({ places, waypointsFull, loop, onRecall
       items={places}
       noun="地点"
       howToSave="条件タブで地点の行を押して探し、候補の右の☆で保存します。保存した地点は、行の「呼び出す」を押すと出発地・経由地・目的地に使えます。"
-      renderMain={(place) => (
-        <span className="min-w-0 flex-auto [overflow-wrap:anywhere]">
-          <span className="font-semibold">{place.name}</span>
-          {place.area !== null && <span className={cn("ml-1.5", textVariants({ variant: "note" }))}>{place.area}</span>}
-        </span>
-      )}
+      renderMain={(place) => <PlaceName place={place} className="font-semibold" />}
       renderActions={(place) => (
         <Popover open={recalling === place.name} onOpenChange={(open) => setRecalling(open ? place.name : null)}>
           <PopoverTrigger asChild>
@@ -55,7 +49,6 @@ export default function SavedPlacesPanel({ places, waypointsFull, loop, onRecall
             className="flex flex-col px-1 py-1"
             side="bottom"
             align="end"
-            collisionPadding={POPOVER_COLLISION_PADDING_PX}
             aria-label={`「${place.name}」をどこに置くか`}
           >
             {newPlacings({ waypointsFull, loop }).map(({ role, label, disabled }) => (
@@ -77,6 +70,7 @@ export default function SavedPlacesPanel({ places, waypointsFull, loop, onRecall
         </Popover>
       )}
       onRemove={onRemove}
+      confirmRemove={false}
     />
   );
 }

@@ -115,7 +115,7 @@ export default function FloatingPanel({
               <Button
                 usage="このパネルを閉じます。"
                 variant="ghost"
-                size="xs"
+                size="close"
                 onClick={onClose}
                 aria-label={`${title}を閉じる`}
               >

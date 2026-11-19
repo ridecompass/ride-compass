@@ -21,11 +21,11 @@ import { afterEach, describe, expect, it } from "vitest";
 import FirstVisitIntro, { useFirstVisitIntro } from "./FirstVisitIntro";
 
 /** フックを通した案内と、もう一度出すボタン（ページがメニューから渡すのと同じ口を、テストが押せる形にする）。 */
-function Intro({ locationUnknown = false }) {
+function Intro({ originLocateFailed = false }) {
   const { shown, close, reopen } = useFirstVisitIntro();
   return (
     <>
-      <FirstVisitIntro shown={shown} onClose={close} locationUnknown={locationUnknown} />
+      <FirstVisitIntro shown={shown} onClose={close} originLocateFailed={originLocateFailed} />
       <button onClick={reopen}>もう一度出す</button>
     </>
   );
@@ -42,9 +42,9 @@ afterEach(() => {
 describe("FirstVisitIntro", () => {
   it.each([
     [false, "出発地を決める[はじめは現在地。つかんで動かせます]"],
-    [true, "「ルート設定」を開き、地図をタップして出発地を置く"],
-  ])("位置が分からないと分かったか（%s）で、出発地の手順を言い分ける", (locationUnknown, originStep) => {
-    render(<Intro locationUnknown={locationUnknown} />);
+    [true, "「ルート設定」で出発地の行を押して探すか、地図をタップして置く"],
+  ])("位置が分からないと分かったか（%s）で、出発地の手順を言い分ける", (originLocateFailed, originStep) => {
+    render(<Intro originLocateFailed={originLocateFailed} />);
 
     expect(screen.getAllByRole("listitem")[0]).toHaveTextContent(originStep);
   });

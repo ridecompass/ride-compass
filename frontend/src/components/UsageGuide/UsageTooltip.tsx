@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Popover, PopoverAnchor, PopoverContent, POPOVER_COLLISION_PADDING_PX } from "@/components/ui/Popover/Popover";
+import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/Popover/Popover";
 import { GuideText } from "@/components/ui/GuideText/GuideText";
 import { TAP_SLOP_PX } from "@/lib/tapSlop";
 import { iconTargetOf, type UsageTarget } from "./usageTarget";
@@ -117,7 +117,6 @@ export default function UsageTooltip() {
         side="top"
         layer="guide"
         tone="bare"
-        collisionPadding={POPOVER_COLLISION_PADDING_PX}
         // 出しても、フォーカスは部品に置いたままにする。
         onOpenAutoFocus={(event) => event.preventDefault()}
         className="pointer-events-none max-w-64"

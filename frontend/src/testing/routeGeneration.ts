@@ -17,14 +17,14 @@ export const B: Coordinates = { latitude: 35.71, longitude: 139.81 };
 export const T1 = new Date("2026-10-04T09:00:00Z");
 
 interface GenerationProps {
-  originKnown: boolean;
+  originLocated: boolean;
   departure: { at: Date; pinned: boolean };
   assumedSpeedKmh: number;
   hasRoutes: boolean;
 }
 
 export const PROPS: GenerationProps = {
-  originKnown: true,
+  originLocated: true,
   departure: { at: T1, pinned: false },
   assumedSpeedKmh: 20,
   hasRoutes: true,

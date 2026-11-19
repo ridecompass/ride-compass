@@ -2,7 +2,7 @@ import { samePosition } from "@/lib/geoDistance";
 import type { Coordinates, PlaceCandidate } from "@/types/route";
 import { withEntryFirst } from "@/lib/storedList";
 
-/** 名前を付けて保存した地点。探して置いた候補と同じ形で持ち、選ぶと候補を選んだのと同じく置く（名前は保存のときに付けたもの）。 */
+/** 保存した地点。探して置いた候補と同じ形で持ち、選ぶと候補を選んだのと同じく置く（名前は候補の名前か、地図で置いた地点なら辺り）。 */
 export type SavedPlace = PlaceCandidate;
 
 /** 保存した地点のうち、位置`at`にあるもの。 */

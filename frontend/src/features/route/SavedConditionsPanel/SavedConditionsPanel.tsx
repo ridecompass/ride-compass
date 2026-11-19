@@ -30,7 +30,7 @@ interface SaveConditionsButtonProps {
   /** 出発地を地図で置いたか（置いていれば、出発地を固定して保存するのが既定）。 */
   originManual: boolean;
   /** 出発地が分かっているか（分からない間は固定できない）。 */
-  originKnown: boolean;
+  originLocated: boolean;
   onSave: (name: string, fixOrigin: boolean) => void;
 }
 
@@ -61,7 +61,7 @@ export function SaveConditionsButton({
   current,
   suggestedName,
   originManual,
-  originKnown,
+  originLocated,
   onSave,
 }: SaveConditionsButtonProps) {
   const catalog = useClientConfig();
@@ -72,7 +72,7 @@ export function SaveConditionsButton({
   const overwriting = saved.some((entry) => entry.name === (name.trim() || suggestedName));
   // 選ぶまでは、出発地を地図で置いたかで決める（触らなければ、地図で置いた地点は固定・現在地は呼び出した時の現在地）。
   const [fixOriginDraft, setFixOriginDraft] = useState<boolean | null>(null);
-  const fixOrigin = originKnown && (fixOriginDraft ?? originManual);
+  const fixOrigin = originLocated && (fixOriginDraft ?? originManual);
   // 窓を開いているか。保存すると閉じる。
   const [saving, setSaving] = useState(false);
   // 窓を開くまで読まないが、パネルはページと一緒に描き直されるので、条件が変わったときだけ組む。
@@ -113,7 +113,7 @@ export function SaveConditionsButton({
                     </ToggleGroupItem>
                     <ToggleGroupItem
                       value="fixed"
-                      disabled={!originKnown}
+                      disabled={!originLocated}
                       usage="いまの出発地を保存して、いつもそこから作ります。"
                     >
                       今の出発地に固定
@@ -195,6 +195,7 @@ export default function SavedConditionsPanel({ saved, onRecall, onRemove }: Save
           </Button>
         )}
         onRemove={(entry) => onRemove(entry.name)}
+        confirmRemove
       />
       <DialogRoot
         open={recalling !== null}

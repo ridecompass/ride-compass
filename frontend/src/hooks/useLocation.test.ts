@@ -40,7 +40,7 @@ describe("マウント時の自動取得", () => {
     const { result } = renderHook(() => useLocation(null));
 
     expect(result.current.locationSource).toBe("default");
-    expect(result.current.locationKnown).toBe(false);
+    expect(result.current.originLocated).toBe(false);
     expect(result.current.here).toBeNull();
     expect(result.current.locationFailure).toBeNull();
   });
@@ -53,7 +53,7 @@ describe("マウント時の自動取得", () => {
     expect(result.current.here).toEqual(HERE);
     expect(result.current.location).toEqual(HERE);
     expect(result.current.locationSource).toBe("geolocation");
-    expect(result.current.locationKnown).toBe(true);
+    expect(result.current.originLocated).toBe(true);
     expect(result.current.originAtHere).toBe(true);
     expect(result.current.locationFailure).toBeNull();
   });
@@ -63,7 +63,7 @@ describe("マウント時の自動取得", () => {
 
     requests[0].fail();
 
-    expect(result.current.locationKnown).toBe(false);
+    expect(result.current.originLocated).toBe(false);
     expect(result.current.locateError).toBeNull();
     act(() => result.current.locationFailure!.onRetry!());
     expect(result.current.locating).toBe(true);

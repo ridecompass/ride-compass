@@ -37,7 +37,7 @@ export default function Home() {
   const navigating = riding.status !== "off";
   const ridePosition = riding.map?.position ?? null;
   const place = useLocation(ridePosition);
-  const { location, locationKnown, setManualLocation, resetOriginToCurrent } = place;
+  const { location, originLocated, setManualLocation, resetOriginToCurrent } = place;
   const originManual = place.locationSource === "manual";
 
   // 道のりのグラフに重ねるレイヤは、結果のパネルと走行中の図が同時に出ても1つの選択を共有する。
@@ -55,12 +55,12 @@ export default function Home() {
   // 名前を付けて保存した生成の条件（保存は「条件」タブ、呼び出しは「保存済み」タブ）。
   const savedConditions = useSavedConditions({
     conditions,
-    origin: locationKnown ? location : null,
+    origin: originLocated ? location : null,
     originManual,
     onOriginPlace: setManualLocation,
     onOriginFollowCurrent: resetOriginToCurrent,
   });
-  // 名前を付けて保存した地点（地点の検索の小窓で保存し、その小窓に出す）。
+  // 保存した地点（地点の検索の小窓で保存し、その小窓に出す）。
   const savedPlaces = useSavedPlaces();
 
   // 説明を見る状態（ヘッダーのメニューの「使い方を見る」で入る）。
@@ -96,7 +96,7 @@ export default function Home() {
   }
   // 出発地が仮の地点のまま「生成」を押した回数（押すたびに出発地の行へ寄せ直す）。出発地が実際の位置になったら0に戻す。
   const [originAsks, setOriginAsks] = useState(0);
-  if (locationKnown && originAsks !== 0) setOriginAsks(0);
+  if (originLocated && originAsks !== 0) setOriginAsks(0);
   // 出発地の行を「ルート設定」の条件タブに出し、置き方へ導く。
   function askOrigin() {
     conditions.selectPoint({ role: "origin" });
@@ -114,7 +114,7 @@ export default function Home() {
   const route = useRoutePlanner({
     conditions,
     origin: location,
-    originKnown: locationKnown,
+    originLocated,
     departure: ride.departure,
     assumedSpeedKmh: ride.speedKmh,
     onOutcome: panels.notifyRouteOutcome,
@@ -167,7 +167,7 @@ export default function Home() {
         roadTabMap={mapView.roadTabMap}
         origin={location}
         originManual={originManual}
-        originLocated={locationKnown}
+        originLocated={originLocated}
         originAtHere={place.originAtHere}
         originAsks={originAsks}
         originRowRef={originRowRef}
@@ -212,7 +212,7 @@ export default function Home() {
             : null
         }
         location={location}
-        locationKnown={locationKnown}
+        originLocated={originLocated}
         ridingAt={navigating ? ridePosition : null}
         warningRoute={warningRoute}
         locationFailure={place.locationFailure}

@@ -6,7 +6,7 @@
  * - 地点の保存 → `PlaceSearch/PointSearch.saved.test.tsx`
  * - 呼び出した地点が条件に置かれ、条件タブへ移ること → `RouteForm/RouteForm.test.tsx`・`app/page.places.test.tsx`
  * - (i)の奥の文（書いた文をそのまま出す）
- * - 「消す」の確認の窓（一覧の部品 `SavedList/SavedList.tsx` が持ち、受け口をそのまま渡す） → `SavedConditionsPanel/SavedConditionsPanel.test.tsx`
+ * - 「消す」で確認の窓を開く形（一覧の部品 `SavedList/SavedList.tsx` が持つ。保存した設定が使う） → `SavedConditionsPanel/SavedConditionsPanel.test.tsx`
  */
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -40,6 +40,15 @@ function renderPanel({ waypointsFull = false, loop = false }: { waypointsFull?: 
 }
 
 describe("SavedPlacesPanel", () => {
+  it("行の「消す」は、確認の窓を開かずにその地点を消す", async () => {
+    const { onRemove } = renderPanel();
+
+    await userEvent.click(screen.getByRole("button", { name: `「${CAFE.name}」を消す` }));
+
+    expect(onRemove).toHaveBeenCalledExactlyOnceWith(CAFE);
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
   it("保存した地点を名前と辺りで並べ、無ければ無いと出して保存の仕方を(i)に置く", () => {
     const props = { waypointsFull: false, loop: false, onRecall: () => {}, onRemove: () => {} };
     const { rerender } = render(<SavedPlacesPanel places={[CAFE, HOME]} {...props} />);

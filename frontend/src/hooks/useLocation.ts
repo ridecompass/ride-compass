@@ -5,6 +5,9 @@ import { samePosition } from "@/lib/geoDistance";
 import type { FetchFailure } from "@/types/fetchFailure";
 import type { Coordinates, LocationSource } from "@/types/route";
 
+/** 位置が分からない間に、出発地の置き方を言う文（初回の案内と、位置が分からないことの印が同じ言い方をする）。 */
+export const HOW_TO_PLACE_ORIGIN = "「ルート設定」で出発地の行を押して探すか、地図をタップして置く";
+
 // 位置が取れないときの初期地点（東京都北区・王子駅付近）。ここからはルートを生成せず、天候・警報も取らない。
 const DEFAULT_LOCATION: Coordinates = { latitude: 35.7597, longitude: 139.7387 };
 const GEOLOCATION_TIMEOUT_MS = 8000;
@@ -19,7 +22,7 @@ interface UseLocationResult {
   location: Coordinates;
   locationSource: LocationSource;
   /** 位置が分かっているか（取れたか、手で置いたか）。分からない間の`location`は初期地点で、利用者のいる場所と関係が無い。 */
-  locationKnown: boolean;
+  originLocated: boolean;
   /** 現在地（走行モードの間は走行モードが受けた位置、ほかは最後に取れた位置）。まだ取れていなければnull。 */
   here: Coordinates | null;
   /** 出発地が、最後に取れた現在地にあるか（偽なら「出発地を現在地に戻す」で動く）。 */
@@ -74,7 +77,7 @@ export function useLocation(ridingAt: Coordinates | null): UseLocationResult {
     );
   }, []);
 
-  // 自動取得の失敗は文を出さず、初期地点のまま`locationKnown`が偽で残る（読み手はそれで仮の地点と分かる）。
+  // 自動取得の失敗は文を出さず、初期地点のまま`originLocated`が偽で残る（読み手はそれで仮の地点と分かる）。
   useEffect(() => {
     if (!navigator.geolocation) {
       // effectの中で同期にsetStateしない（react-hooks/set-state-in-effect）。
@@ -119,28 +122,27 @@ export function useLocation(ridingAt: Coordinates | null): UseLocationResult {
 
   // 走行モードが受けた位置も最後に取れた位置に数える（走行モードを抜けたあと、走り出す前の位置へ戻さない）。
   if (ridingAt !== null && ridingAt !== here) setHere(ridingAt);
-  const locationKnown = origin.source !== "default";
+  const originLocated = origin.source !== "default";
   const currentHere = ridingAt ?? here;
   const originAtHere =
     origin.source === "geolocation" && currentHere !== null && samePosition(currentHere, origin.point);
   const locationFailure = useMemo<FetchFailure | null>(
     () =>
-      locationReady && !locationKnown
+      locationReady && !originLocated
         ? {
             id: "location",
             label: "現在地",
-            effect:
-              "現在地が分からないため、天候・警報を出していません。位置情報を許可するか、「ルート設定」を開いて地図をタップし、出発地を置いてください。",
+            effect: `現在地が分からないため、天候・警報を出していません。位置情報を許可するか、出発地を置いてください[${HOW_TO_PLACE_ORIGIN}]。`,
             onRetry: () => locateMe(),
           }
         : null,
-    [locationReady, locationKnown, locateMe],
+    [locationReady, originLocated, locateMe],
   );
 
   return {
     location: origin.point,
     locationSource: origin.source,
-    locationKnown,
+    originLocated,
     here: currentHere,
     originAtHere,
     locationFailure,

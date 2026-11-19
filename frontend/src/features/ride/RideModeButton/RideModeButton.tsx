@@ -104,10 +104,10 @@ export default function RideModeButton({
           <Button
             usage="このお知らせを閉じます。"
             variant="ghost"
-            size="iconRound"
+            size="close"
             onClick={() => setWakeNoticeClosed(true)}
             aria-label="閉じる"
-            className="flex-none text-[var(--foreground)]"
+            className="flex-none"
           >
             ✕
           </Button>

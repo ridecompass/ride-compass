@@ -8,7 +8,7 @@ import { withSavedPlace, type SavedPlace } from "@/features/route/savedPlaces";
 // 保存先はこの端末のブラウザの中だけ（保存した設定と同じ）。
 export const SAVED_PLACES_STORAGE_KEY = "ridecompass:saved-places";
 
-/** 名前を付けて保存した地点の一覧と、保存・削除。 */
+/** 保存した地点の一覧と、保存・削除。 */
 export function useSavedPlaces() {
   const [places, setPlaces] = useStoredState<SavedPlace[]>(SAVED_PLACES_STORAGE_KEY, "保存した地点", []);
 

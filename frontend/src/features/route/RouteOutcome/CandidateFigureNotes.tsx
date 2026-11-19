@@ -16,7 +16,7 @@ export function CandidateFiguresInfo() {
       <p>{`所要時間: ${routeGenerateConfig.duration_estimate_wording}実際の信号のタイミングや走り方で変わります。`}</p>
       <p>
         {`負担: 避けたいもの${costAxisNamesNote(costAxes)}を通る分を時間に直し、所要時間に上乗せしたものです。` +
-          `候補は、最速の1本を比べる基準として先頭に置き、残りを${routeGenerateConfig.candidate_order_wording}に並べます。` +
+          `候補は、最速の候補を比べる基準として先頭に置き、残りを${routeGenerateConfig.candidate_order_wording}に並べます。` +
           `グラフの右上の一覧は、負担を種類ごとに分けたものです${turnKickoffNote}。` +
           `${ROAD_SETTINGS_TAB_NAME}のタブで好むとした道を通って減った分[−]と、避けるとした道を通って増えた分も、` +
           "この負担に入ります。その区間は、地図のルートの線の両脇の線で示します。" +

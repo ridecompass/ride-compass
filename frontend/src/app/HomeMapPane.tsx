@@ -185,7 +185,7 @@ export default function HomeMapPane({
         <FirstVisitIntro
           shown={firstVisitIntro.shown}
           onClose={firstVisitIntro.close}
-          locationUnknown={place.locationFailure !== null}
+          originLocateFailed={place.locationFailure !== null}
         />
       )}
 

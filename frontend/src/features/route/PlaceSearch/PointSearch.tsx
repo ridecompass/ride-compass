@@ -14,7 +14,7 @@ import {
 import { PopoverArrow, PopoverContent } from "@/components/ui/Popover/Popover";
 import { textVariants } from "@/components/ui/Text/Text";
 import ErrorText from "@/features/route/ErrorText/ErrorText";
-import KnownPlaces, { PlaceName } from "@/features/route/PlaceSearch/KnownPlaces";
+import KnownPlaces, { PlaceRow } from "@/features/route/PlaceSearch/KnownPlaces";
 import { PREDICTION_MIN_LENGTH, type usePlaceLookup } from "@/features/route/PlaceSearch/usePlaceLookup";
 import { historyMatching, savedPlaceAt, savedPlacesMatching } from "@/features/route/savedPlaces";
 import { usePlaceHistory } from "@/features/route/usePlaceHistory";
@@ -53,7 +53,7 @@ interface PointSearchProps {
 /**
  * 地点の行を押すと開く、その地点を探す小窓（呼ぶ側が `Popover` と目印を持つ）。打つ前は「現在地」「地図で置く」「いまの地点を保存」の
  * チップを出し、保存した地点・検索の履歴を打った文字で絞って出し、打つと住所・施設の候補を出す（候補の☆でその地点を保存する）。候補を押すと、その地点に置いて
- * 閉じる。保存した地点と履歴は、行の ✕ でその場で消せる。開いた時点で、スマホは欄へ移ってキーボードを出し、PC は小窓そのものへ
+ * 閉じる。保存した地点と履歴は、行のごみ箱でその場で消せる。開いた時点で、スマホは欄へ移ってキーボードを出し、PC は小窓そのものへ
  * フォーカスを移す（Tab で中へ進める）。✕・選ぶ・ブラウザの「戻る」で閉じる（小窓の外と Escape は、呼ぶ側の `Popover` が閉じる）。
  */
 export default function PointSearch({
@@ -95,8 +95,9 @@ export default function PointSearch({
       ref={contentRef}
       side={isMobile ? "top" : "right"}
       align={isMobile ? "center" : "start"}
+      // スマホの目印（キーボードの上の線）は、見える範囲が変わると動くが、窓の大きさの変化としては届かないので、毎フレーム測り直す。
+      updatePositionStrategy={isMobile ? "always" : "optimized"}
       sideOffset={8}
-      collisionPadding={8}
       aria-label={`${title}を探す`}
       className={cn(
         "flex max-h-[var(--radix-popover-content-available-height)] flex-col gap-1 overflow-y-auto px-2 py-1.5",
@@ -118,8 +119,8 @@ export default function PointSearch({
         <span className={cn(textVariants({ variant: "note" }), "flex-auto")}>{title}</span>
         <Button
           variant="ghost"
-          size="icon"
-          className="size-7 flex-none"
+          size="close"
+          className="flex-none"
           aria-label="検索を閉じる"
           onClick={onClose}
           usage="地点の検索を閉じます。"
@@ -260,33 +261,24 @@ function Candidates({
     );
   }
   return (
-    <ul aria-label="地点の候補" className="flex flex-col divide-y divide-[var(--color-border)]">
+    <ul aria-label="地点の候補" className="flex flex-col gap-0.5">
       {candidates.map((candidate) => {
         const saved = savedPlaceAt(savedPlaces.places, candidate);
         return (
-          <li key={`${candidate.name}:${candidate.latitude}:${candidate.longitude}`} className="flex items-center">
-            <Button
-              variant="menu"
-              size="sm"
-              className="min-h-[1.875rem] min-w-0 flex-auto py-0.5"
-              onClick={() => onChoose(candidate)}
-              usage={`この候補を選ぶと${chooseResult}。`}
-            >
-              <SelectedSpotIcon size={14} />
-              <PlaceName place={candidate} className="truncate" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="size-7 flex-none"
-              aria-label={saved !== null ? `「${saved.name}」の保存をやめる` : `「${candidate.name}」を保存`}
-              aria-pressed={saved !== null}
-              onClick={() => (saved !== null ? savedPlaces.remove(saved) : savedPlaces.save(candidate))}
-              usage="この地点をこの端末に保存します。保存した地点は、地点の検索を開くと出ます。"
-            >
-              {saved !== null ? <SavedPlaceIcon size={16} /> : <SavePlaceIcon size={16} />}
-            </Button>
-          </li>
+          <PlaceRow
+            key={`${candidate.name}:${candidate.latitude}:${candidate.longitude}`}
+            place={candidate}
+            icon={SelectedSpotIcon}
+            usage={`この候補を選ぶと${chooseResult}。`}
+            onChoose={onChoose}
+            action={{
+              name: saved !== null ? `「${saved.name}」の保存をやめる` : `「${candidate.name}」を保存`,
+              usage: "この地点をこの端末に保存します。保存した地点は、地点の検索を開くと出ます。",
+              icon: saved !== null ? <SavedPlaceIcon size={16} /> : <SavePlaceIcon size={16} />,
+              pressed: saved !== null,
+              onClick: () => (saved !== null ? savedPlaces.remove(saved) : savedPlaces.save(candidate)),
+            }}
+          />
         );
       })}
     </ul>

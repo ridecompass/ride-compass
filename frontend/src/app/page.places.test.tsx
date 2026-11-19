@@ -103,7 +103,7 @@ describe("地図に置く地点", () => {
     expect(marksAt(shop)).toHaveLength(2);
     // 地図の印は役割の名前で見分けられ、地点の行の印と同じ記号を描く。
     const [waypointMark, destinationMark] = marksAt(shop).map(({ element }) => element);
-    expect(waypointMark).toHaveAccessibleName("経由地 1");
+    expect(waypointMark).toHaveAccessibleName("経由地1");
     expect(destinationMark).toHaveAccessibleName("目的地");
     expect(screen.getByRole("img", { name: "出発地" })).toBeInTheDocument();
     const listedDestination = screen.getByRole("button", { name: "目的地 角の店" }).closest("li")?.querySelector("svg");

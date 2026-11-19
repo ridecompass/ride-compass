@@ -4,6 +4,7 @@ import { useId, useState, type ReactNode } from "react";
 
 import { Button } from "@/components/ui/Button/Button";
 import { InfoIcon } from "@/components/ui/icons/lucideIcons";
+import { MarkLegend, MarkLegendItem } from "@/components/ui/MarkLegend/MarkLegend";
 import { cn } from "@/lib/cn";
 import type { LegendEntry } from "@/lib/mapDisplay/legendFilter";
 
@@ -62,14 +63,14 @@ export function RowMarksNote({ marks = [] }: { marks?: readonly { key: string; m
     },
   ];
   return (
-    <p className="mb-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[length:var(--font-size-xs)] text-[var(--color-muted)]">
+    <MarkLegend className="mb-1">
       {all.map(({ key, mark, meaning }) => (
-        <span key={key} className="inline-flex items-center gap-0.5">
+        <MarkLegendItem key={key}>
           {mark}
           {meaning}
-        </span>
+        </MarkLegendItem>
       ))}
-    </p>
+    </MarkLegend>
   );
 }
 

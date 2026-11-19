@@ -36,21 +36,22 @@ export interface SavedCondition extends GenerationConditionsSnapshot {
  * 距離の入力の下限も1刻み分。 */
 export const DISTANCE_STEP_KM = 5;
 
+/** 作るルートの形の名前（条件タブの2択と、保存した条件の名前・説明が同じ名前で呼ぶ）。 */
+export const ROUTE_SHAPE_NAMES = { loop: "周回", destination: "目的地" } as const;
+
 // 名前と説明が並べる、ルートの形。
 function routeShape(conditions: GenerationConditionsSnapshot) {
   return {
-    toDestination: !conditions.loop,
+    shape: ROUTE_SHAPE_NAMES[conditions.loop ? "loop" : "destination"],
     distance: conditions.distanceTargeted ? `${conditions.distance}km` : null,
-    waypointCount: conditions.waypoints.length,
+    waypoints: conditions.waypoints.length > 0 ? `経由${conditions.waypoints.length}地点` : null,
   };
 }
 
 /** 名前の欄に最初から入れておく仮の名前。 */
 export function suggestedConditionName(conditions: GenerationConditionsSnapshot): string {
-  const { toDestination, distance, waypointCount } = routeShape(conditions);
-  return [toDestination ? "目的地" : "周回", distance, waypointCount > 0 ? `経由${waypointCount}地点` : null]
-    .filter((part) => part !== null)
-    .join(" ");
+  const { shape, distance, waypoints } = routeShape(conditions);
+  return [shape, distance, waypoints].filter((part) => part !== null).join(" ");
 }
 
 /** 保存の前と一覧の行に並べる、何が保存されるかの説明（出発地は`originDescription`）。 */
@@ -64,13 +65,8 @@ interface ConditionsDescription {
 }
 
 function routeDescription(conditions: GenerationConditionsSnapshot): string {
-  const { toDestination, distance, waypointCount } = routeShape(conditions);
-  const head = toDestination ? "目的地へ" : "周回";
-  return [
-    distance === null ? head : `${head} ${distance}`,
-    waypointCount > 0 ? `経由 ${waypointCount}地点` : null,
-    `候補 ${conditions.maxRoutes}本`,
-  ]
+  const { shape, distance, waypoints } = routeShape(conditions);
+  return [distance === null ? shape : `${shape} ${distance}`, waypoints, `候補 ${conditions.maxRoutes}件`]
     .filter((part) => part !== null)
     .join("・");
 }

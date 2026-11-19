@@ -20,10 +20,13 @@ interface SavedListProps<T extends { name: string }> {
   /** 名前の欄と消す操作の間に置く、行ごとの操作。 */
   renderActions?: (item: T) => React.ReactNode;
   onRemove: (item: T) => void;
+  /** 消す前に確かめる窓を開くか。名前を付けて作ったもの（設定）は確かめ、すぐ保存し直せるもの（地点）は確かめずに消す
+   * （docs/modules/frontend/frontend-design-system.md「5. 意図的に作らない・統合しないもの」）。 */
+  confirmRemove: boolean;
 }
 
-// 「保存済み」タブの一覧（地点・設定）。名前で見分け、消すは確認の窓で「消す」を押すまで消さない——一覧の形と消し方を
-// 1か所に持ち、地点と設定で違って見えないようにする。
+// 「保存済み」タブの一覧（地点・設定）。名前で見分け、行の右のごみ箱で消す——一覧の形と消すボタンを1か所に持ち、地点と設定で
+// 違って見えないようにする。
 export default function SavedList<T extends { name: string }>({
   items,
   noun,
@@ -31,6 +34,7 @@ export default function SavedList<T extends { name: string }>({
   renderMain,
   renderActions,
   onRemove,
+  confirmRemove,
 }: SavedListProps<T>) {
   const [removing, setRemoving] = useState<T | null>(null);
 
@@ -53,13 +57,17 @@ export default function SavedList<T extends { name: string }>({
               {renderMain(item)}
               {renderActions?.(item)}
               <Button
-                usage="この項目をこの端末から消します。消す前に、確かめる窓を開きます。"
+                usage={
+                  confirmRemove
+                    ? "この項目をこの端末から消します。消す前に、確かめる窓を開きます。"
+                    : "この項目をこの端末から消します。"
+                }
                 variant="ghost"
                 size="panelIcon"
                 aria-label={`「${item.name}」を消す`}
-                aria-haspopup="dialog"
-                aria-expanded={removing?.name === item.name}
-                onClick={() => setRemoving(item)}
+                aria-haspopup={confirmRemove ? "dialog" : undefined}
+                aria-expanded={confirmRemove ? removing?.name === item.name : undefined}
+                onClick={() => (confirmRemove ? setRemoving(item) : onRemove(item))}
               >
                 <DeleteSavedIcon size={18} />
               </Button>

@@ -24,11 +24,11 @@ export function originMarkColor(located: boolean): string {
   return located ? PIN_MARK_COLOR.origin : ORIGIN_MARK_FALLBACK_COLOR;
 }
 
-/** 印が指す地点の名前（地図のピンの読み上げ名）。経由地は訪問の順の番号を添える。 */
+/** 地点の呼び名（地図のピンの読み上げ名・地点の一覧の行と小窓の見出し）。経由地は訪問の順の番号を添える（「経由地2」）。 */
 export function pinMarkName(role: PinRole, label?: string): string {
   if (role === "origin") return "出発地";
   if (role === "destination") return "目的地";
-  return `経由地 ${label ?? ""}`.trim();
+  return `経由地${label ?? ""}`;
 }
 
 interface PinMarkProps {

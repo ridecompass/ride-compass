@@ -15,7 +15,7 @@ import { describe, expect, it } from "vitest";
 
 import { useRouteFormSubmit } from "./useRouteFormSubmit";
 
-const NOTHING_TO_MAKE = "定規の「距離を決める」をオンにするか、経由地を置いてください。";
+const NOTHING_TO_MAKE = "「距離を決める」をオンにするか、経由地を置いてください。";
 const NO_DESTINATION = "目的地を置いてください[出発地へ戻るなら「周回」を押してください]。";
 
 interface Options {

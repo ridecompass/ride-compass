@@ -247,10 +247,9 @@ function OpenBottomSheet({
           <Button
             usage="シートを閉じて、地図を広く見せます。下のタブを押すと、また開きます。"
             variant="ghost"
-            size="icon"
+            size="close"
             onClick={onClose}
             aria-label="閉じる"
-            className="size-7 text-base text-[var(--foreground)]"
           >
             ✕
           </Button>

@@ -2,7 +2,7 @@
 
 import { cn } from "@/lib/cn";
 import { LENS_LINK_CLASS, LENS_LINK_DESCRIPTION } from "@/lib/lensLink";
-import { Popover, PopoverContent, PopoverTrigger, POPOVER_COLLISION_PADDING_PX } from "@/components/ui/Popover/Popover";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/Popover/Popover";
 import { useMemo, useState, useSyncExternalStore, type ComponentProps, type ReactNode } from "react";
 import routeGenerateConfig from "@/types/generated/route-generate-config.json";
 import { departureLabelParts } from "@/features/conditions/rideConditions";
@@ -166,7 +166,6 @@ export default function RideConditionBar({
           className="flex max-w-[var(--radix-popover-content-available-width)] flex-col items-end gap-1"
           side="bottom"
           align="end"
-          collisionPadding={POPOVER_COLLISION_PADDING_PX}
         >
           {/* 窓は地図の上に部品だけを浮かせるので、見出しも面に載せる。 */}
           <div className="flex items-center gap-2">
@@ -209,12 +208,7 @@ export default function RideConditionBar({
             {speedLabel}
           </ConditionTrigger>
         </PopoverTrigger>
-        <PopoverContent
-          className="flex flex-col gap-2 px-2 py-1.5"
-          side="bottom"
-          align="end"
-          collisionPadding={POPOVER_COLLISION_PADDING_PX}
-        >
+        <PopoverContent className="flex flex-col gap-2 px-2 py-1.5" side="bottom" align="end">
           <div className="flex items-center gap-2" data-usage={`${CRUISE_SPEED_LABEL}を、つまみか数値で決めます。`}>
             <input
               type="range"
