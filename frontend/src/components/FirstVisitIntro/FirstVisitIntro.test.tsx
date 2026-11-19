@@ -42,7 +42,7 @@ afterEach(() => {
 describe("FirstVisitIntro", () => {
   it.each([
     [false, "出発地を決める[はじめは現在地。つかんで動かせます]"],
-    [true, "地図をタップして出発地を置く"],
+    [true, "「ルート設定」を開き、地図をタップして出発地を置く"],
   ])("位置が分からないと分かったか（%s）で、出発地の手順を言い分ける", (locationUnknown, originStep) => {
     render(<Intro locationUnknown={locationUnknown} />);
 

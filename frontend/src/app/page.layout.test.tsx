@@ -177,7 +177,7 @@ describe("画面の枠", () => {
     expect(section("ルート結果")).toHaveAttribute("aria-expanded", "true");
   });
 
-  it("気象の層を出して寄せると、左下に道路を消した俯瞰図が出て同じ気象の層を描き、引くと消える。はじめは丸いボタンに畳んでいて、開くと出て、開け閉めを次に開いたときも覚えている", async () => {
+  it("気象の層を出して寄せると、左下に道路を消した俯瞰図が出て同じ気象の層を描き、引くと消える。俯瞰図の読み込み中の札は、描けたときか描ける前の失敗で外れる。はじめは丸いボタンに畳んでいて、開くと出て、開け閉めを次に開いたときも覚えている", async () => {
     // 時刻は日本時間の壁時計で、今の時刻を含む1時間から2日分。
     const times = Array.from(
       { length: 48 },
@@ -229,6 +229,9 @@ describe("画面の枠", () => {
 
     const again = renderHome();
     act(() => mapOnScreen().moveTo(near, 12));
+    expect(await screen.findByText("俯瞰図を読み込み中…")).toBeInTheDocument();
+    act(() => insetMapOnScreen()!.emit("error", { error: new Error("スタイルが取れない") }));
+    expect(insetLoading()).toBeNull();
     await again.user.click(await screen.findByRole("button", { name: "俯瞰図を畳む" }));
     expect(screen.queryByRole("region", { name: "俯瞰図" })).toBeNull();
     expect(screen.getByRole("button", { name: "俯瞰図を開く" })).toBeInTheDocument();
