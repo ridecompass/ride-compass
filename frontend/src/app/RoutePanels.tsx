@@ -15,7 +15,7 @@ import SettingsTabsList from "@/features/route/RouteForm/SettingsTabsList";
 import RouteOutcome from "@/features/route/RouteOutcome/RouteOutcome";
 import RouteOutcomeHeaderActions from "@/features/route/RouteOutcome/RouteOutcomeHeaderActions";
 import type { ProfileLayerSelection } from "@/features/route/RouteProfile/useProfileLayers";
-import type { RouteOutcomeKind } from "@/features/route/useRouteGeneration";
+import { CONDITIONS_DIRTY_TEXT, type RouteOutcomeKind } from "@/features/route/useRouteGeneration";
 import type { useRoutePlanner } from "@/features/route/useRoutePlanner";
 import { cn } from "@/lib/cn";
 import { mapOverlayEdge } from "@/lib/mapOverlayEdges";
@@ -47,7 +47,7 @@ const UNSEEN_OUTCOME_SIGNALS: Record<RouteOutcomeKind, OutcomeTabSignal> = {
   empty: { tone: "empty", label: "候補が見つかりませんでした" },
   fresh: { tone: "warning", label: "新しい結果があります" },
 };
-const CONDITIONS_DIRTY_SIGNAL: OutcomeTabSignal = { tone: "warning", label: "生成条件が変更されています" };
+const CONDITIONS_DIRTY_SIGNAL: OutcomeTabSignal = { tone: "warning", label: CONDITIONS_DIRTY_TEXT };
 
 interface RoutePanelsProps {
   panels: ReturnType<typeof usePagePanels>;

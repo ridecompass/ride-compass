@@ -5,11 +5,11 @@ import { useState } from "react";
 import { Button } from "@/components/ui/Button/Button";
 import { dotVariants } from "@/components/ui/Dot/Dot";
 import { GenerateRoutesIcon } from "@/components/ui/icons/lucideIcons";
-import InfoPopover from "@/components/ui/InfoPopover/InfoPopover";
 import { Popover, PopoverContent, PopoverTrigger, POPOVER_COLLISION_PADDING_PX } from "@/components/ui/Popover/Popover";
 import { Spinner } from "@/components/ui/Spinner/Spinner";
 import type { GenerationConditionsState } from "@/features/route/useGenerationConditions";
-import type { useRouteGeneration } from "@/features/route/useRouteGeneration";
+import { CONDITIONS_DIRTY_TEXT, type useRouteGeneration } from "@/features/route/useRouteGeneration";
+import { cn } from "@/lib/cn";
 import { ROAD_SETTINGS_TAB_NAME } from "@/lib/screenNames";
 import routeGenerateConfig from "@/types/generated/route-generate-config.json";
 
@@ -29,18 +29,10 @@ interface GenerateRouteActionsProps {
 /** 「ルート設定」の見出し行の右端の操作。どのタブを見ていても押せるよう、タブの中身ではなく見出しに置く。 */
 export default function GenerateRouteActions({ generation, routeCount, label }: GenerateRouteActionsProps) {
   const [choosingCount, setChoosingCount] = useState(false);
+  // 条件を変えている本人は設定の側を見ているので、押すべきボタンでも知らせる。作っている間は、押した新しい条件で作り直しているので知らせない。
+  const showDirty = generation.conditionsDirty && !generation.running;
   return (
     <div className="flex items-center gap-1">
-      {/* 条件を変えている本人は設定の側を見ているので、押すべきボタンの隣でも知らせる。 */}
-      {/* 作っている間は、押した新しい条件で作り直しているので知らせない。 */}
-      {generation.conditionsDirty && !generation.running && (
-        <InfoPopover
-          triggerAriaLabel="生成条件の変更"
-          triggerContent={<span className={dotVariants({ tone: "warning" })} />}
-        >
-          生成条件が変更されています。表示中の候補は変更前の条件で作ったものです。
-        </InfoPopover>
-      )}
       <Popover open={choosingCount} onOpenChange={setChoosingCount}>
         <PopoverTrigger asChild>
           <Button
@@ -84,11 +76,26 @@ export default function GenerateRouteActions({ generation, routeCount, label }: 
       <Button
         variant="primary"
         size={label === "never" ? "panelIcon" : "panelLabeled"}
-        className={label === "wideScreen" ? "max-narrow:px-1.5" : undefined}
+        className={cn("relative", label === "wideScreen" && "max-narrow:px-1.5")}
         onClick={() => void generation.submit()}
-        aria-label={generation.running ? generation.progressLabel : "ルート生成"}
-        usage={`いまの条件・負担・${ROAD_SETTINGS_TAB_NAME}でルートの候補を作ります。候補は「ルート結果」に並び、地図に線が出ます。`}
+        aria-label={
+          generation.running
+            ? generation.progressLabel
+            : showDirty
+              ? `ルート生成（${CONDITIONS_DIRTY_TEXT}）`
+              : "ルート生成"
+        }
+        usage={`${showDirty ? `${CONDITIONS_DIRTY_TEXT}。表示中の候補は変更前の条件で作ったものです。` : ""}いまの条件・負担・${ROAD_SETTINGS_TAB_NAME}でルートの候補を作ります。候補は「ルート結果」に並び、地図に線が出ます。`}
       >
+        {showDirty && (
+          <span
+            aria-hidden="true"
+            className={cn(
+              dotVariants({ tone: "warning" }),
+              "absolute -top-0.5 -right-0.5 ring-2 ring-[var(--color-surface)]",
+            )}
+          />
+        )}
         {/* 押したことが分かるよう、作っている間は形を回る輪に替える（結果は別の画面に出るので、押した所で知らせる）。 */}
         {generation.running ? <Spinner size={18} /> : <GenerateRoutesIcon size={18} />}
         {/* 主役なので短い文字を添える（docs/modules/frontend/frontend-design-system.md 5-1）。作っている間も文字は替えず、幅を動かさない。 */}

@@ -60,6 +60,9 @@ export type RouteOutcomeKind = "fresh" | "empty" | "failed";
  * ルート生成: 検証と送信、実行中の進み方、直近の案内（候補0件の理由・失敗の文言）、表示中の候補を作った条件と
  * いまのフォームのずれ。入力は生成と「条件が変わったか」の判定が同じ関数で組み立てる。
  */
+/** `conditionsDirty`のときに画面へ出す文。 */
+export const CONDITIONS_DIRTY_TEXT = "生成条件が変更されています";
+
 export function useRouteGeneration({
   conditions,
   origin,

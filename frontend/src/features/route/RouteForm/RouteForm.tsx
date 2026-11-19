@@ -45,6 +45,8 @@ interface RouteFormProps extends Omit<PointListProps, "conditions"> {
 }
 
 const MAX_DISTANCE_KM = routeGenerateConfig.max_distance_km;
+const ROUTE_SHAPE_ITEM_CLASS = "flex-col gap-px px-1.5 py-0.5 leading-none";
+
 /** 距離の目標のルーラーのコマ。止まる刻みごとに1コマで（下限は1刻み分）、10kmごとに太い目盛りと数を付ける。 */
 const DISTANCE_FRAMES: RulerFrame[] = Array.from({ length: Math.floor(MAX_DISTANCE_KM / DISTANCE_STEP_KM) }, (_, i) => {
   const km = (i + 1) * DISTANCE_STEP_KM;
@@ -97,17 +99,13 @@ export default function RouteForm({
             aria-label="作るルートの形"
             usage="周回は出発地へ戻るルートを、目的地は目的地へ向かうルートを作ります。"
           >
-            <ToggleGroupItem value="loop" className="px-2">
-              <span className="inline-flex items-center gap-1 text-[length:var(--font-size-sm)]">
-                <LoopRouteIcon size={14} />
-                周回
-              </span>
+            <ToggleGroupItem value="loop" className={ROUTE_SHAPE_ITEM_CLASS}>
+              <LoopRouteIcon size={14} />
+              周回
             </ToggleGroupItem>
-            <ToggleGroupItem value="destination" className="px-2">
-              <span className="inline-flex items-center gap-1 text-[length:var(--font-size-sm)]">
-                <GoalFlagIcon size={14} />
-                目的地
-              </span>
+            <ToggleGroupItem value="destination" className={ROUTE_SHAPE_ITEM_CLASS}>
+              <GoalFlagIcon size={14} />
+              目的地
             </ToggleGroupItem>
           </ToggleGroup>
           <Toggle
