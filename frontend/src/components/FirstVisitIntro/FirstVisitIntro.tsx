@@ -72,7 +72,9 @@ export default function FirstVisitIntro({ shown, onClose, locationUnknown }: Fir
           >
             <PinMark role="origin" size={14} originColor={originMarkColor(!locationUnknown)} />
           </span>
-          {locationUnknown ? "地図をタップして出発地を置く" : "出発地を決める[はじめは現在地。つかんで動かせます]"}
+          {locationUnknown
+            ? "「ルート設定」を開き、地図をタップして出発地を置く"
+            : "出発地を決める[はじめは現在地。つかんで動かせます]"}
         </li>
         <li>
           <GuideText text="「ルート設定」で距離を決めて「ルート生成」" />

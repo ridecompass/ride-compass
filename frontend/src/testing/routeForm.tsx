@@ -127,6 +127,7 @@ export function renderForm(options: Options = {}, tab: SettingsTab = "generate")
               originLocated={originLocated}
               originAtHere={originAtHere}
               originAsks={0}
+              originDetailRef={null}
               onOriginReset={onOriginReset}
               originFound={originFound}
               here={here}

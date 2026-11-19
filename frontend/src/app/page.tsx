@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import GenerationNotice from "@/features/route/GenerationNotice/GenerationNotice";
 import { usePlaceLookup } from "@/features/route/PlaceSearch/usePlaceLookup";
 import type { SettingsTab } from "@/features/route/RouteForm/RouteForm";
@@ -74,11 +74,14 @@ export default function Home() {
 
   // スマホで下のシートを開いているか。
   const sheetOpen = isMobile && panels.mobileSheet !== null;
+  function openConditions() {
+    setSettingsTab("generate");
+    panels.showRouteSettings();
+  }
   // スマホで閉じているシートは開かない（探す・置くとき、パネルの開き閉じは利用者に任せる）。
   function showConditions() {
     if (isMobile && !sheetOpen) return;
-    setSettingsTab("generate");
-    panels.showRouteSettings();
+    openConditions();
   }
   // 探した・保存した地点を置いたら、置いた地点を選んで「ルート設定」の条件タブにその詳しくを見せる（ピンを地図でつかんで直す
   // ため。足した経由地は`conditions.placeFound`が選ぶ）。
@@ -94,13 +97,18 @@ export default function Home() {
   // 出発地が仮の地点のまま「生成」を押した回数（押すたびに出発地の行へ寄せ直す）。出発地が実際の位置になったら0に戻す。
   const [originAsks, setOriginAsks] = useState(0);
   if (locationKnown && originAsks !== 0) setOriginAsks(0);
-  // 出発地の詳しくを「ルート設定」の条件タブに出し、置き方へ導く。
+  // 出発地の行を「ルート設定」の条件タブに出し、置き方へ導く。
   function askOrigin() {
     conditions.selectPoint({ role: "origin" });
-    setSettingsTab("generate");
-    panels.showRouteSettings();
+    openConditions();
     setOriginAsks((asks) => asks + 1);
   }
+  // 求めるたびに、出発地の行へフォーカスを移す（直す所へ目と読み上げを移す）。求めたときだけ移し、行を描き直した・
+  // 出し直したときには移さない。
+  const originRowRef = useRef<HTMLLIElement>(null);
+  useEffect(() => {
+    if (originAsks > 0) originRowRef.current?.focus();
+  }, [originAsks]);
 
   // ルートを作る機能（結果・生成・区間の乗り換え）。
   const route = useRoutePlanner({
@@ -161,6 +169,7 @@ export default function Home() {
         originLocated={locationKnown}
         originAtHere={place.originAtHere}
         originAsks={originAsks}
+        originRowRef={originRowRef}
         onOriginReset={resetOriginToCurrent}
         originFound={originFound}
         here={place.here}

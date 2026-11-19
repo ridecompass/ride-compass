@@ -66,6 +66,10 @@ describe("スマホのシート", () => {
     await user.click(within(settingsSheet).getByRole("tab", { name: "負担" }));
     expect(originMark().draggable).toBe(false);
     await user.click(within(settingsSheet).getByRole("tab", { name: "条件" }));
+    // 出発地へフォーカスを移すのは押したときだけで、ほかの地点から出発地を選び直しただけでは移さない。
+    await user.click(within(settingsSheet).getByRole("button", { name: "経由地を足す" }));
+    await user.click(within(settingsSheet).getByRole("button", { name: /^出発地:/ }));
+    expect(within(settingsSheet).getByRole("button", { name: /^出発地:/ })).toHaveFocus();
     clickMap(HERE);
     jobs.respond([FIRST], LOOP_CONDITIONS);
     expect(await generate(user)).toMatchObject({ latitude: HERE.latitude, longitude: HERE.longitude });

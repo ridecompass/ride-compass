@@ -8,7 +8,7 @@ import { OverviewMapIcon } from "@/components/ui/icons/lucideIcons";
 import { createBaseMap } from "@/features/map/baseMap";
 import { MapLoadingBadge } from "@/features/map/MapView/MapLoadStatus";
 import type { MapTheme } from "@/lib/mapTheme";
-import { runWhenStyleReady } from "@/features/map/layers/mapStyleOps";
+import { isStyleReady, runWhenStyleReady } from "@/features/map/layers/mapStyleOps";
 import {
   OVERVIEW_PLACE_LABEL,
   OVERVIEW_RENDER_SCALE,
@@ -84,6 +84,10 @@ function OverviewMap({
     });
     map.setBearing(viewport.bearing);
     map.once("load", () => setLoading(false));
+    // 描ける前の失敗はスタイルが取れていない（`load`が来ない）ので、札を外して輪を回し続けない。
+    map.on("error", () => {
+      if (!isStyleReady(map)) setLoading(false);
+    });
     runWhenStyleReady(map, () => {
       const { hidden, places, motorways } = overviewBasemapEdits(map.getStyle().layers);
       for (const layerId of hidden) map.setLayoutProperty(layerId, "visibility", "none");
