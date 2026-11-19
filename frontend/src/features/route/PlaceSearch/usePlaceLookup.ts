@@ -80,11 +80,11 @@ export function usePlaceLookup(mapCenter: Coordinates) {
       lookUp(trimmed);
       if (trimmed === query && samePosition(near, mapCenter)) void search.refetch();
     },
-    /** 引いた候補を下げて検索を閉じる。`clearText`なら打った文字も消す。 */
-    close({ clearText = false } = {}) {
+    /** 打った文字と引いた候補を消す。 */
+    clear() {
       clearTimeout(lookUpTimer.current);
       setQuery("");
-      if (clearText) setText("");
+      setText("");
     },
   };
 }

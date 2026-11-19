@@ -63,12 +63,9 @@ export interface PointListProps {
   savedPlaces: SavedPlacesState;
   /** スマホか（検索の小窓を行の上に開く。PC は行の右）。 */
   isMobile: boolean;
+  /** 地図をタップすると選んでいる地点を置けるか（置けない間は、置き方の文と小窓の「地図で置く」から地図を外す）。 */
+  placing: boolean;
 }
-
-/** 出発地が仮の地点のままの間の、出発地の行の名前の所の文（置き方を言う）。 */
-const ORIGIN_PLACING_GUIDE = "押して探すか、地図をタップ";
-/** 足そうとしている経由地の行の、名前の所の文。 */
-const NEW_WAYPOINT_GUIDE = "探すか、地図をタップ";
 
 /**
  * 地点の縦の一覧: 見出し「地点」の右に「＋ 経由地」を置き、その下に出発地 → 経由地 → 終点（目的地へなら目的地、周回なら押せない
@@ -92,10 +89,18 @@ export default function PointList({
   onPlace,
   savedPlaces,
   isMobile,
+  placing,
 }: PointListProps) {
   const { loop, waypoints, removeWaypoint, reorderPoints, destination, clearDestination, foundAt } = conditions;
   const selected = conditions.selectedPoint;
   const [searching, setSearching] = useState(false);
+  // 置き方の文（出発地が仮の地点のままの間の出発地の行と、足そうとしている経由地の行の名前の所）。
+  const orTap = placing ? "か、地図をタップ" : "";
+
+  function closeSearch() {
+    lookup.clear();
+    setSearching(false);
+  }
 
   const originPlaced = originLocated ? origin : null;
   const areaOf = usePlaceAreas([originPlaced, ...waypoints, destination].filter((point) => point !== null));
@@ -156,11 +161,19 @@ export default function PointList({
     />
   );
   const selectedIndex = targets.findIndex(isSelected);
-  const selectedName = selectedIndex < 0 ? null : rowNames[selectedIndex];
-  const selectedPoint = selectedIndex < 0 ? null : rowPoints[selectedIndex];
+  // 選んでいる行に置いている地点を、保存する形で（探して置いた地点はその候補のまま、地図で置いた地点は辺りを名前と辺りにする）。
+  const selectedPlaced = ((): PlaceCandidate | null => {
+    const at = selectedIndex < 0 ? null : rowPoints[selectedIndex];
+    const name = selectedIndex < 0 ? null : rowNames[selectedIndex];
+    if (at === null || name === null) return null;
+    const found = selected.role === "origin" ? originFound : foundAt(at);
+    if (found !== null) return found;
+    const area = areaOf(at);
+    return { kind: "facility", level: "point", name: area ?? name, area, ...at };
+  })();
 
   // 選んだ行を、小窓の目印にする（打っている間のスマホは、キーボードの上の線を目印にする）。行を目印の部品で包むと、選び直すたびに
-  // 行が作り直されて押したボタンのフォーカスが外れ、閉じたときに戻す先が無くなるので、位置だけを指す。
+  // 行が作り直されて押したボタンのフォーカスが外れるので、位置だけを指す。
   const selectedRow = useMemo(
     () => ({
       current: {
@@ -193,7 +206,7 @@ export default function PointList({
         {markOf(newWaypoint, 22)}
         <span className={cn(textVariants({ variant: "note" }), "w-12 flex-none")}>経由地</span>
         <span className={cn(textVariants({ variant: "body" }), "min-w-0 flex-auto text-[var(--color-muted)]")}>
-          {NEW_WAYPOINT_GUIDE}
+          {`探す${orTap}`}
         </span>
       </button>
       <Button
@@ -219,7 +232,7 @@ export default function PointList({
       modal
       open={searching}
       onOpenChange={(next) => {
-        if (!next) setSearching(false);
+        if (!next) closeSearch();
       }}
     >
       <div className="mb-0.5 flex items-center justify-between gap-2">
@@ -282,7 +295,7 @@ export default function PointList({
                     name === null && "text-[var(--color-muted)]",
                   )}
                 >
-                  {name ?? (isOrigin ? ORIGIN_PLACING_GUIDE : "")}
+                  {name ?? (isOrigin ? `押して探す${orTap}` : "")}
                 </span>
               </button>
               {isOrigin ? (
@@ -366,11 +379,8 @@ export default function PointList({
           savedPlaces={savedPlaces}
           isMobile={isMobile}
           pointsAtRow={!aboveKeyboard}
-          placed={
-            selectedName === null || selectedPoint === null
-              ? null
-              : { kind: "facility", level: "point", name: selectedName, area: null, ...selectedPoint }
-          }
+          placing={placing}
+          placed={selectedPlaced}
           onChoose={(candidate) => onPlace(selected, candidate)}
           onHere={
             selected.role === "origin"
@@ -381,7 +391,12 @@ export default function PointList({
                 ? null
                 : () => onPlace(selected, { kind: "facility", level: "point", name: "現在地", area: null, ...here })
           }
-          onClose={() => setSearching(false)}
+          onClose={closeSearch}
+          onCloseAutoFocus={(event) => {
+            // 閉じたら選んでいる行へ戻す（欄は小窓と一緒に消えるので、戻さないとフォーカスが一覧の外へ落ちる）。
+            event.preventDefault();
+            listRef.current?.querySelector<HTMLElement>('button[aria-pressed="true"]')?.focus({ preventScroll: true });
+          }}
         />
       )}
     </Popover>

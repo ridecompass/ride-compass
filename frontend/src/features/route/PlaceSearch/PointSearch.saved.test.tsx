@@ -1,7 +1,8 @@
 /**
  * `PlaceSearch/PointSearch.tsx`——地点を探す小窓の、打つ前に出す保存した地点と検索の履歴と、候補の☆での保存。開くと保存した地点を出し、
  * 打った文字を名前に含むものに絞り、選んだ地点を置く。住所・施設の候補か履歴を選ぶと履歴に残し、次に開くと保存した地点の下に
- * 新しい順に出し、打った文字で絞り、1件ずつ消せる。候補の☆はその候補を名前のまま保存し、もう一度押すと保存をやめる。
+ * 新しい順に出し、打った文字で絞り、1件ずつ消せる。候補の☆はその候補を名前のまま保存し、もう一度押すと保存をやめる。置いている地点の
+ * 保存のチップは、探して置いた地点をその候補のまま、地図で置いた地点を辺りを名前にして保存する。
  *
  * ここで見ないもの:
  * - 打つ欄で引く・候補を並べる・選ぶこと → `PlaceSearch/PointSearch.test.tsx`
@@ -20,7 +21,7 @@ import { SAVED_PLACES_STORAGE_KEY } from "@/features/route/useSavedPlaces";
 import { onBackend, serveClientConfig } from "@/testing/backendServer";
 import { NEAR_SENSOJI, renderSearch, searchBox, searchFor } from "@/testing/placeSearch";
 import { AZA_CANDIDATE as AZA, FACILITY_CANDIDATE as FACILITY } from "@/testing/routeFixtures";
-import { openPointSearch } from "@/testing/routeForm";
+import { openPointSearch, renderForm } from "@/testing/routeForm";
 
 beforeEach(() => {
   window.localStorage.clear();
@@ -74,6 +75,26 @@ describe("PointSearch 保存した地点", () => {
     await userEvent.click(await screen.findByRole("button", { name: `「${FACILITY.name}」の保存をやめる` }));
     await userEvent.clear(searchBox());
     expect(screen.queryByRole("list", { name: "保存した地点" })).toBeNull();
+  });
+
+  it.each([
+    { label: "探して置いた地点はその候補のまま", found: true, area: null, saved: FACILITY },
+    {
+      label: "地図で置いた地点は辺りを名前と辺りにして",
+      found: false,
+      area: "台東区浅草",
+      saved: { kind: "facility", level: "point", name: "台東区浅草", area: "台東区浅草", ...NEAR_SENSOJI },
+    },
+  ] as const)("置いている地点の保存のチップで保存する: $label", async ({ found, area, saved }) => {
+    onBackend("GET", "/api/place-area", () => Response.json({ area }));
+    const at = found ? FACILITY : NEAR_SENSOJI;
+    renderForm({ destination: at, foundAt: (point) => (found && point?.latitude === at.latitude ? FACILITY : null) });
+    await screen.findByRole("button", { name: `目的地 ${saved.name}` });
+    await openPointSearch(`目的地 ${saved.name}`, "目的地");
+
+    await userEvent.click(screen.getByRole("button", { name: /を保存$/ }));
+
+    expect(JSON.parse(window.localStorage.getItem(SAVED_PLACES_STORAGE_KEY) ?? "[]")).toEqual([saved]);
   });
 });
 

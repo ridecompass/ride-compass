@@ -4,7 +4,8 @@
  *
  * 見るもの: 2択（選んでいる側と、押して上げる値）、地点の一覧（出発地・経由地・終点を通る順に並べ、周回の間の終点は押せない
  * 「出発地へ戻る」）、行を押すとその地点を選んで上げ、その地点を探す小窓を開くこと、行の✕で消すこと、「＋ 経由地」で目的地の手前に
- * 足す行を出し、✕でやめること・上限で押せないこと、つまみを押さえて上下へ動かす並べ替えと、動かせない行。
+ * 足す行を出し、✕でやめること・上限で押せないこと、つまみを押さえて上下へ動かす並べ替えと、動かせない行。仮の出発地の置き方の文と、
+ * 地図で置けない間は地図を案内しないこと。キーボードで小窓へ入って出られること、説明を見る状態の案内へ移っても小窓を閉じないこと。
  *
  * ここで見ないもの: 選んでいる地点をどう決めるか・並べ替えで地点の役割がどう変わるか →
  * `features/route/useGenerationConditions.points.test.ts`。小窓の中身 → `PlaceSearch/PointSearch.test.tsx`。
@@ -13,10 +14,11 @@
  *
  * 差し替えたもの: 辺りの口の応答（網の層）。辺り無しと答える。行の枠（テスト環境はレイアウトを持たない）。
  */
-import { fireEvent, screen, within } from "@testing-library/react";
+import { act, fireEvent, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { USAGE_GUIDE_ATTRIBUTE } from "@/components/UsageGuide/usageTarget";
 import { onBackend, serveClientConfig } from "@/testing/backendServer";
 import { DESTINATION, ORIGIN, button, openPointSearch, pointRows, renderForm, waypointsOf } from "@/testing/routeForm";
 import routeGenerateConfig from "@/types/generated/route-generate-config.json";
@@ -205,10 +207,48 @@ describe("RouteForm 地点の並べ替え", () => {
 });
 
 describe("RouteForm 仮の出発地", () => {
-  it("出発地が仮の地点のままなら、名前の所で置き方を言う", () => {
-    renderForm({ originLocated: false });
+  it.each([
+    { placing: true, guide: "押して探すか、地図をタップ" },
+    { placing: false, guide: "押して探す" },
+  ])(
+    "出発地が仮の地点のままなら、名前の所で置き方を言い、地図で置けない間（$placing）は地図を案内しない",
+    async ({ placing, guide }) => {
+      renderForm({ originLocated: false, placing });
 
-    expect(within(screen.getByRole("list", { name: "通る順" })).getByText("押して探すか、地図をタップ")).toBeVisible();
-    expect(pointRows()[0]).toBe("出発地 未設定");
+      expect(within(screen.getByRole("list", { name: "通る順" })).getByText(guide)).toBeVisible();
+      expect(pointRows()[0]).toBe("出発地 未設定");
+      await openPointSearch("出発地");
+      expect(screen.queryByRole("button", { name: "地図で置く" }) !== null).toBe(placing);
+    },
+  );
+});
+
+describe("RouteForm 小窓のフォーカス", () => {
+  it("キーボードで行から開くと小窓へ移って Tab で欄へ進め、閉じると押した行へ戻る", async () => {
+    renderForm({ waypoints: waypointsOf(1) });
+    const row = button("経由地1 地図で選んだ地点");
+    row.focus();
+
+    await userEvent.keyboard("{Enter}");
+    await userEvent.tab();
+    await userEvent.tab();
+    expect(screen.getByRole("searchbox", { name: "経由地1を住所・施設で探す" })).toHaveFocus();
+
+    await userEvent.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog", { name: "経由地1を探す" })).toBeNull();
+    expect(row).toHaveFocus();
+  });
+
+  it("説明を見る状態の案内へフォーカスが移っても、小窓を閉じない", async () => {
+    renderForm({ waypoints: waypointsOf(1) });
+    const guide = document.createElement("button");
+    guide.setAttribute(USAGE_GUIDE_ATTRIBUTE, "");
+    document.body.append(guide);
+    await openPointSearch("経由地1");
+
+    act(() => guide.focus());
+
+    expect(screen.getByRole("dialog", { name: "経由地1を探す" })).toBeInTheDocument();
+    guide.remove();
   });
 });
