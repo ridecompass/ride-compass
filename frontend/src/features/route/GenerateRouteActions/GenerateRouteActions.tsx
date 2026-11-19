@@ -1,19 +1,32 @@
 "use client";
 
+import { useState } from "react";
+
 import { Button } from "@/components/ui/Button/Button";
 import { dotVariants } from "@/components/ui/Dot/Dot";
 import { GenerateRoutesIcon } from "@/components/ui/icons/lucideIcons";
 import InfoPopover from "@/components/ui/InfoPopover/InfoPopover";
+import { Popover, PopoverContent, PopoverTrigger, POPOVER_COLLISION_PADDING_PX } from "@/components/ui/Popover/Popover";
 import { Spinner } from "@/components/ui/Spinner/Spinner";
+import type { GenerationConditionsState } from "@/features/route/useGenerationConditions";
 import type { useRouteGeneration } from "@/features/route/useRouteGeneration";
 import { ROAD_SETTINGS_TAB_NAME } from "@/lib/screenNames";
+import routeGenerateConfig from "@/types/generated/route-generate-config.json";
+
+const ROUTE_COUNTS = Array.from(
+  { length: routeGenerateConfig.max_routes - routeGenerateConfig.min_routes + 1 },
+  (_, i) => routeGenerateConfig.min_routes + i,
+);
 
 interface GenerateRouteActionsProps {
   generation: Pick<ReturnType<typeof useRouteGeneration>, "conditionsDirty" | "running" | "progressLabel" | "submit">;
+  /** 一度に作る候補の数。入力のままの文字列で受け取り、文字列で上げる。 */
+  routeCount: Pick<GenerationConditionsState, "maxRoutesInput" | "setMaxRoutesInput">;
 }
 
 /** 「ルート設定」の見出し行の右端の操作。どのタブを見ていても押せるよう、タブの中身ではなく見出しに置く。 */
-export default function GenerateRouteActions({ generation }: GenerateRouteActionsProps) {
+export default function GenerateRouteActions({ generation, routeCount }: GenerateRouteActionsProps) {
+  const [choosingCount, setChoosingCount] = useState(false);
   return (
     <div className="flex items-center gap-1.5">
       {/* 条件を変えている本人は設定の側を見ているので、押すべきボタンの隣でも知らせる。 */}
@@ -26,6 +39,46 @@ export default function GenerateRouteActions({ generation }: GenerateRouteAction
           生成条件が変更されています。表示中の候補は変更前の条件で作ったものです。
         </InfoPopover>
       )}
+      <Popover open={choosingCount} onOpenChange={setChoosingCount}>
+        <PopoverTrigger asChild>
+          <Button
+            size="panelLabeled"
+            className="tabular-nums"
+            aria-label={`候補数（${routeCount.maxRoutesInput}件）`}
+            usage="一度に作る候補の数を選びます。"
+          >
+            {routeCount.maxRoutesInput}件
+            <span aria-hidden="true" className="text-[0.7rem] text-[var(--color-muted)]">
+              ▾
+            </span>
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent
+          className="grid grid-cols-5 gap-0.5 px-1 py-1"
+          side="bottom"
+          align="end"
+          collisionPadding={POPOVER_COLLISION_PADDING_PX}
+          aria-label="候補数を選ぶ"
+        >
+          {ROUTE_COUNTS.map((count) => (
+            <Button
+              key={count}
+              variant="menu"
+              size="sm"
+              className="justify-center tabular-nums aria-pressed:bg-[var(--color-accent-bg)] aria-pressed:font-semibold aria-pressed:text-[var(--color-accent-strong)]"
+              aria-label={`${count}件`}
+              aria-pressed={String(count) === routeCount.maxRoutesInput}
+              onClick={() => {
+                routeCount.setMaxRoutesInput(String(count));
+                setChoosingCount(false);
+              }}
+              usage="この数の候補を作ります。"
+            >
+              {count}
+            </Button>
+          ))}
+        </PopoverContent>
+      </Popover>
       <Button
         variant="primary"
         size="panelLabeled"

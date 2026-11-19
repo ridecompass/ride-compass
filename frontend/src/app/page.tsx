@@ -154,6 +154,7 @@ export default function Home() {
     isMobile,
     navigating,
     route,
+    routeCount: conditions,
     profileLayers,
     mapTheme: mapView.look.mapTheme,
     settingsTab,

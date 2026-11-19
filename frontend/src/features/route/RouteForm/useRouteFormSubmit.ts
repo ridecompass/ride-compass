@@ -20,7 +20,7 @@ interface UseRouteFormSubmitResult {
 }
 
 /** 「ルート生成」ボタン（「ルート設定」見出し行の`GenerateRouteActions.tsx`）から呼ぶ検証。距離・候補数は確かめない——
- * 入力がスライダー・ステッパーで、保存値も読むときに範囲の外を捨てる（`features/route/useGenerationConditions.ts`）ので、
+ * 入力がルーラー・件数の選び手で、保存値も読むときに範囲の外を捨てる（`features/route/useGenerationConditions.ts`）ので、
  * 範囲の外の値は作れない。 */
 export function useRouteFormSubmit({
   loop,
@@ -32,7 +32,7 @@ export function useRouteFormSubmit({
 
   function check() {
     if (loop && !distanceTargeted && waypointCount === 0) {
-      setError("「距離」をオンにするか、経由地を置いてください。");
+      setError("定規の「距離を決める」をオンにするか、経由地を置いてください。");
       return false;
     }
     if (!loop && !destinationSet) {

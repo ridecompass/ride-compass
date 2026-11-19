@@ -97,7 +97,7 @@ describe("入力の誤り", () => {
     act(() => rendered.result.current.conditions.setDistanceTargeted(false));
     await submit(rendered);
 
-    expect(rendered.result.current.generation.outcome?.message).toMatch(/^「距離」をオンにするか/);
+    expect(rendered.result.current.generation.outcome?.message).toMatch(/^定規の「距離を決める」をオンにするか/);
   });
 });
 

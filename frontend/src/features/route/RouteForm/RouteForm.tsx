@@ -9,14 +9,12 @@ import routeGenerateConfig from "@/types/generated/route-generate-config.json";
 import { DISTANCE_STEP_KM } from "@/features/route/savedConditions";
 import SavedPlacesPanel from "@/features/route/SavedPlacesPanel/SavedPlacesPanel";
 import PointList from "./PointList";
-import { Button } from "@/components/ui/Button/Button";
 import { GoalFlagIcon, LoopRouteIcon } from "@/components/ui/icons/icons";
 import { RulerIcon } from "@/components/ui/icons/lucideIcons";
 import { Toggle } from "@/components/ui/Toggle/Toggle";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/ToggleGroup/ToggleGroup";
 import InfoPopover from "@/components/ui/InfoPopover/InfoPopover";
 import Ruler, { type RulerFrame } from "@/components/ui/Ruler/Ruler";
-import { textVariants } from "@/components/ui/Text/Text";
 import { useClientConfig } from "@/hooks/useClientConfig";
 import { CLIENT_TUNING_IDS, clientTuningValue } from "@/lib/clientConfig";
 import { cn } from "@/lib/cn";
@@ -28,17 +26,11 @@ export type SettingsTab = "generate" | "weights" | "exclusions" | "saved";
 type PointListProps = ComponentProps<typeof PointList>;
 
 interface RouteFormProps extends Omit<PointListProps, "conditions"> {
-  /** 生成の条件と、それを変える操作。距離・候補数は入力のままの文字列で受け取り、文字列で上げる。 */
+  /** 生成の条件と、それを変える操作。距離は入力のままの文字列で受け取り、文字列で上げる。 */
   conditions: PointListProps["conditions"] &
     Pick<
       GenerationConditionsState,
-      | "distanceInput"
-      | "setDistanceInput"
-      | "maxRoutesInput"
-      | "setMaxRoutesInput"
-      | "distanceTargeted"
-      | "setDistanceTargeted"
-      | "setLoop"
+      "distanceInput" | "setDistanceInput" | "distanceTargeted" | "setDistanceTargeted" | "setLoop"
     >;
   /** 保存した候補を、その役割の地点として置き、置いた地点を選ぶ（経由地は足す）。 */
   onPlaceFound: (role: PinRole, candidate: PlaceCandidate, waypointIndex: number | null) => void;
@@ -59,11 +51,9 @@ const DISTANCE_FRAMES: RulerFrame[] = Array.from({ length: Math.floor(MAX_DISTAN
   const major = km % 10 === 0;
   return { label: `${km}km`, major, tickLabel: major ? String(km) : undefined };
 });
-const MIN_ROUTES = routeGenerateConfig.min_routes;
-const MAX_ROUTES = routeGenerateConfig.max_routes;
 
 // forceMount+data-stateでの表示切替。
-// 候補数等は`features/route/useGenerationConditions.ts`の制御stateのため非表示中も値は失われないが、
+// 距離等は`features/route/useGenerationConditions.ts`の制御stateのため非表示中も値は失われないが、
 // 「条件」タブの地点の編集・場所の検索と、「保存済み」タブの名前の下書きはローカルstateで持つため、
 // タブ切替のたびにアンマウントすると失われる。
 function KeptTabContent({ value, children }: { value: string; children: React.ReactNode }) {
@@ -90,81 +80,46 @@ export default function RouteForm({
   savedConditionsPanel,
   ...points
 }: RouteFormProps) {
-  const { distanceTargeted, setDistanceTargeted, distanceInput, setDistanceInput, maxRoutesInput, setMaxRoutesInput } =
-    conditions;
+  const { distanceTargeted, setDistanceTargeted, distanceInput, setDistanceInput } = conditions;
   // 許容差は管理画面の較正値（目標の距離に対する割合）。引けない間は幅の文を出さない（較正したのとは別の数を出さない）。
   const distanceToleranceRatio = clientTuningValue(useClientConfig(), CLIENT_TUNING_IDS.distanceToleranceRatio);
-
-  // 範囲の端ではボタンを押せなくするので、足した値は範囲を出ない。
-  function stepMaxRoutes(delta: number) {
-    setMaxRoutesInput(String(Number(maxRoutesInput) + delta));
-  }
 
   return (
     <div>
       <KeptTabContent value="generate">
-        {/* 上から「何を作るか（形と候補の数）」→「距離の縛り」→「地点」の順に並べる。 */}
-        <div className="mb-2 flex items-center justify-between gap-1.5">
+        {/* 上から「何を作るか（形と距離の縛り）」→「地点」の順に並べる。形と距離は1行に詰め、ルーラーは行の残りを占める。外している間も
+            ルーラーは出したまま薄くする（入れ直すと前の値に戻ることが見える）。 */}
+        <div className="mb-2 flex items-center gap-1">
           <ToggleGroup
+            className="flex-none"
             value={conditions.loop ? "loop" : "destination"}
             onValueChange={(value) => value !== "" && conditions.setLoop(value === "loop")}
             aria-label="作るルートの形"
-            usage="周回は出発地へ戻るルートを、目的地へは目的地へ向かうルートを作ります。"
+            usage="周回は出発地へ戻るルートを、目的地は目的地へ向かうルートを作ります。"
           >
-            <ToggleGroupItem value="loop">
+            <ToggleGroupItem value="loop" className="px-2">
               <span className="inline-flex items-center gap-1 text-[length:var(--font-size-sm)]">
                 <LoopRouteIcon size={14} />
                 周回
               </span>
             </ToggleGroupItem>
-            <ToggleGroupItem value="destination">
+            <ToggleGroupItem value="destination" className="px-2">
               <span className="inline-flex items-center gap-1 text-[length:var(--font-size-sm)]">
                 <GoalFlagIcon size={14} />
-                目的地へ
+                目的地
               </span>
             </ToggleGroupItem>
           </ToggleGroup>
-          <div className="flex flex-none items-center gap-1">
-            <span className={cn(textVariants({ variant: "hint" }), "flex-shrink-0")}>候補</span>
-            <div className="inline-flex items-center">
-              <Button
-                variant="stepper"
-                size="sm"
-                onClick={() => stepMaxRoutes(-1)}
-                disabled={Number(maxRoutesInput) <= MIN_ROUTES}
-                aria-label="候補数を減らす"
-                usage="一度に作る候補の数を減らします。"
-              >
-                ‹
-              </Button>
-              <span className="min-w-[2.25em] text-center text-[length:var(--font-size-sm)] tabular-nums">{`${maxRoutesInput}件`}</span>
-              <Button
-                variant="stepper"
-                size="sm"
-                onClick={() => stepMaxRoutes(1)}
-                disabled={Number(maxRoutesInput) >= MAX_ROUTES}
-                aria-label="候補数を増やす"
-                usage="一度に作る候補の数を増やします。"
-              >
-                ›
-              </Button>
-            </div>
-          </div>
-        </div>
-        {/* 距離の縛りは、押して切り替えるボタン・ルーラー・値を1行に置く。外している間もルーラーは出したまま薄くする（入れ直すと
-            前の値に戻ることが見える）。 */}
-        <div className="mb-2 flex items-center gap-1.5">
           <Toggle
             variant="plain"
-            className="min-h-6 flex-none gap-1 rounded-sm border border-[var(--color-border-strong)] px-1.5 py-0.5 text-[length:var(--font-size-xs)] data-[state=on]:border-[var(--color-accent)] data-[state=on]:bg-[var(--color-accent-bg)] data-[state=on]:text-[var(--color-accent-strong)]"
+            className="size-7 flex-none rounded-sm border border-[var(--color-border-strong)] data-[state=on]:border-[var(--color-accent)] data-[state=on]:bg-[var(--color-accent-bg)] data-[state=on]:text-[var(--color-accent-strong)]"
             pressed={distanceTargeted}
             onClick={() => setDistanceTargeted(!distanceTargeted)}
             aria-label="距離を決める"
             title="距離を決める"
             usage="オンにすると、ルート全体の距離を目標に合わせます。オフにすると距離を決めません。"
           >
-            <RulerIcon size={14} />
-            距離
+            <RulerIcon size={16} />
           </Toggle>
           <Ruler
             frames={DISTANCE_FRAMES}
@@ -177,7 +132,7 @@ export default function RouteForm({
           />
           <span
             className={cn(
-              "min-w-[3.5em] flex-shrink-0 text-right text-[length:var(--font-size-sm)] tabular-nums",
+              "flex-none text-[length:var(--font-size-sm)] tabular-nums",
               !distanceTargeted && "text-[var(--color-muted)]",
             )}
           >
@@ -187,7 +142,7 @@ export default function RouteForm({
             {[
               "ルート全体の距離の目標です。",
               distanceToleranceRatio === undefined ? "" : toleranceSentence(distanceToleranceRatio, distanceInput),
-              "「距離」を外すと距離を決めず、所要時間と負担の和が小さい道で目的地へ向かいます[周回なら、経由地を回って出発地へ]。",
+              "定規の「距離を決める」を外すと距離を決めず、所要時間と負担の和が小さい道で目的地へ向かいます[周回なら、経由地を回って出発地へ]。",
               `${routeGenerateConfig.busy_safe_distance_km}kmより長い目標は、混み合っているときに作れないことがあります。`,
             ].join("")}
           </InfoPopover>

@@ -146,7 +146,7 @@ describe("地図に置く地点", () => {
     [
       "目的地",
       async (user: User) => {
-        await user.click(screen.getByRole("radio", { name: "目的地へ" }));
+        await user.click(screen.getByRole("radio", { name: "目的地" }));
         await user.click(screen.getByRole("button", { name: "目的地 未設定" }));
       },
       "目的地 浅草寺",
@@ -170,7 +170,7 @@ describe("地図に置く地点", () => {
   it("小窓を開いている間にブラウザの「戻る」を押すと、小窓だけを閉じて打った文字を消す", async () => {
     onBackend("GET", "/api/place-search", () => Response.json({ candidates: [SENSOJI] }));
     const { user } = renderHome();
-    await user.click(screen.getByRole("radio", { name: "目的地へ" }));
+    await user.click(screen.getByRole("radio", { name: "目的地" }));
     await user.click(screen.getByRole("button", { name: "目的地 未設定" }));
     await searchSensoji(user, "目的地");
 
@@ -195,7 +195,7 @@ describe("地図に置く地点", () => {
     expect(screen.getByRole("button", { name: "出発地 地図で選んだ地点" })).toBeInTheDocument();
     expect(marksAt(DESTINATION)).toEqual([]);
 
-    await user.click(screen.getByRole("radio", { name: "目的地へ" }));
+    await user.click(screen.getByRole("radio", { name: "目的地" }));
     expect(marksAt(DESTINATION)).toHaveLength(1);
     expect(screen.getByRole("button", { name: "目的地 地図で選んだ地点" })).toBeInTheDocument();
   });
@@ -203,7 +203,7 @@ describe("地図に置く地点", () => {
   it("候補の☆で保存した地点は、目的地を消したあとも小窓から選び直せ、「保存済み」の「地点」から呼び出すと条件タブへ移って置く", async () => {
     onBackend("GET", "/api/place-search", () => Response.json({ candidates: [SENSOJI] }));
     const { user } = renderHome();
-    await user.click(screen.getByRole("radio", { name: "目的地へ" }));
+    await user.click(screen.getByRole("radio", { name: "目的地" }));
     await user.click(screen.getByRole("button", { name: "目的地 未設定" }));
     const list = await searchSensoji(user, "目的地");
     await user.click(within(list).getByRole("button", { name: "「浅草寺」を保存" }));
@@ -213,7 +213,7 @@ describe("地図に置く地点", () => {
 
     await user.click(screen.getByRole("button", { name: "目的地 未設定" }));
     const saved = screen.getByRole("list", { name: "保存した地点" });
-    await user.click(within(saved).getByRole("button", { name: /浅草寺/ }));
+    await user.click(within(saved).getByRole("button", { name: /^浅草寺/ }));
 
     expect(marksAt(SENSOJI)).toHaveLength(1);
     expect(screen.getByRole("button", { name: "目的地 浅草寺" })).toBeInTheDocument();

@@ -34,10 +34,8 @@ interface PointSearchProps {
   lookup: ReturnType<typeof usePlaceLookup>;
   /** 保存した地点の一覧と保存・削除（打つ前に出し、候補の☆で保存する）。 */
   savedPlaces: SavedPlacesState;
-  /** スマホか。スマホは行の上（打っている間はキーボードの上）に、PC は行の右に開く。 */
+  /** スマホか。スマホは欄へ移ってキーボードを出し、キーボードの上の線（呼ぶ側の目印）の上に開く。PC は行の右に開き、行を三角で指す。 */
   isMobile: boolean;
-  /** 目印が地点の行か（false ならキーボードの上の線で、指す三角を出さない）。 */
-  pointsAtRow: boolean;
   /** 地図をタップすると、この地点を置けるか（置けない間は「地図で置く」を出さない）。 */
   placing: boolean;
   /** いま置いている地点（置いていなければ null で、保存のチップを出さない）。 */
@@ -55,8 +53,8 @@ interface PointSearchProps {
 /**
  * 地点の行を押すと開く、その地点を探す小窓（呼ぶ側が `Popover` と目印を持つ）。打つ前は「現在地」「地図で置く」「いまの地点を保存」の
  * チップを出し、保存した地点・検索の履歴を打った文字で絞って出し、打つと住所・施設の候補を出す（候補の☆でその地点を保存する）。候補を押すと、その地点に置いて
- * 閉じる。開いた時点では欄へ移らず小窓そのものへフォーカスを移す（スマホでキーボードが地図とパネルを覆わないように。Tab で中へ進める）。
- * ✕・選ぶ・ブラウザの「戻る」で閉じる（小窓の外と Escape は、呼ぶ側の `Popover` が閉じる）。
+ * 閉じる。保存した地点と履歴は、行の ✕ でその場で消せる。開いた時点で、スマホは欄へ移ってキーボードを出し、PC は小窓そのものへ
+ * フォーカスを移す（Tab で中へ進める）。✕・選ぶ・ブラウザの「戻る」で閉じる（小窓の外と Escape は、呼ぶ側の `Popover` が閉じる）。
  */
 export default function PointSearch({
   title,
@@ -65,7 +63,6 @@ export default function PointSearch({
   lookup,
   savedPlaces,
   isMobile,
-  pointsAtRow,
   placing,
   placed,
   onChoose,
@@ -107,11 +104,15 @@ export default function PointSearch({
       )}
       onOpenAutoFocus={(event) => {
         event.preventDefault();
-        contentRef.current?.focus();
+        (isMobile ? inputRef : contentRef).current?.focus();
       }}
       onCloseAutoFocus={onCloseAutoFocus}
+      // スマホは、欄の外を押してもフォーカスを欄に残し、キーボードを出したままチップ・一覧を押せるようにする。
+      onMouseDown={(event) => {
+        if (isMobile && event.target !== inputRef.current) event.preventDefault();
+      }}
     >
-      {pointsAtRow && <PopoverArrow className="fill-[var(--color-surface)]" width={14} height={7} />}
+      {!isMobile && <PopoverArrow className="fill-[var(--color-surface)]" width={14} height={7} />}
       <div className="flex items-center gap-2">
         {mark}
         <span className={cn(textVariants({ variant: "note" }), "flex-auto")}>{title}</span>
@@ -204,6 +205,11 @@ export default function PointSearch({
         places={savedMatches}
         usage={`保存した地点です。選ぶと${chooseResult}。`}
         onChoose={choose}
+        forget={{
+          name: (place) => `「${place.name}」の保存をやめる`,
+          usage: "この地点の保存をやめます。",
+          onForget: savedPlaces.remove,
+        }}
       />
       <KnownPlaces
         label="検索の履歴"
@@ -211,7 +217,11 @@ export default function PointSearch({
         places={historyMatches}
         usage={`前に検索で選んだ地点です。選ぶと${chooseResult}。`}
         onChoose={chooseFound}
-        onForget={history.forget}
+        forget={{
+          name: (place) => `「${place.name}」を履歴から消す`,
+          usage: "この地点を検索の履歴から消します。",
+          onForget: history.forget,
+        }}
       />
       {typed && (
         <Candidates lookup={lookup} savedPlaces={savedPlaces} onChoose={chooseFound} chooseResult={chooseResult} />

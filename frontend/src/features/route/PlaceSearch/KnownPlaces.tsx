@@ -2,7 +2,6 @@
 
 import { Button } from "@/components/ui/Button/Button";
 import type { MapIconComponent } from "@/components/ui/icons/icons";
-import { ForgetHistoryPlaceIcon } from "@/components/ui/icons/lucideIcons";
 import { textVariants } from "@/components/ui/Text/Text";
 import { cn } from "@/lib/cn";
 import type { PlaceCandidate } from "@/types/route";
@@ -15,8 +14,8 @@ interface KnownPlacesProps {
   /** 行の使い方の説明。 */
   usage: string;
   onChoose: (place: PlaceCandidate) => void;
-  /** 渡すと、行ごとに履歴から消すボタンを出す。 */
-  onForget?: (place: PlaceCandidate) => void;
+  /** 行ごとに置く、一覧から消す ✕ の名前・使い方と、消す操作。 */
+  forget: { name: (place: PlaceCandidate) => string; usage: string; onForget: (place: PlaceCandidate) => void };
 }
 
 /** 地点の名前と、あれば辺り（同じ名前のチェーンの店を見分ける。名前より控えめにする）。 */
@@ -29,8 +28,8 @@ export function PlaceName({ place, className }: { place: PlaceCandidate; classNa
   );
 }
 
-/** 前に知った地点（保存した地点・検索の履歴）の見出しと一覧。行を押すと選ぶ。空なら見出しも出さない。 */
-export default function KnownPlaces({ label, icon: Icon, places, usage, onChoose, onForget }: KnownPlacesProps) {
+/** 前に知った地点（保存した地点・検索の履歴）の見出しと一覧。行を押すと選び、右の ✕ で消す。空なら見出しも出さない。 */
+export default function KnownPlaces({ label, icon: Icon, places, usage, onChoose, forget }: KnownPlacesProps) {
   if (places.length === 0) return null;
   return (
     <>
@@ -48,18 +47,16 @@ export default function KnownPlaces({ label, icon: Icon, places, usage, onChoose
               <Icon size={14} />
               <PlaceName place={place} className="[overflow-wrap:anywhere]" />
             </Button>
-            {onForget !== undefined && (
-              <Button
-                variant="ghost"
-                size="icon"
-                className="size-6 flex-none"
-                onClick={() => onForget(place)}
-                aria-label={`${place.name}を履歴から消す`}
-                usage="この地点を検索の履歴から消します。"
-              >
-                <ForgetHistoryPlaceIcon size={14} />
-              </Button>
-            )}
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-6 flex-none"
+              onClick={() => forget.onForget(place)}
+              aria-label={forget.name(place)}
+              usage={forget.usage}
+            >
+              ✕
+            </Button>
           </li>
         ))}
       </ul>

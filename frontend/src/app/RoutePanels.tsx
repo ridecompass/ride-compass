@@ -1,6 +1,6 @@
 "use client";
 
-import type { ReactNode } from "react";
+import type { ComponentProps, ReactNode } from "react";
 import BottomSheet from "@/components/BottomSheet/BottomSheet";
 import SectionDisclosure from "@/components/SectionDisclosure/SectionDisclosure";
 import { Button } from "@/components/ui/Button/Button";
@@ -54,6 +54,8 @@ interface RoutePanelsProps {
   isMobile: boolean;
   navigating: boolean;
   route: ReturnType<typeof useRoutePlanner>;
+  /** 一度に作る候補の数（見出しの「生成」の左で選ぶ）。 */
+  routeCount: ComponentProps<typeof GenerateRouteActions>["routeCount"];
   profileLayers: ProfileLayerSelection;
   /** 地図の地の明るさ（候補のカードの帯を地図と同じ色で塗る）。 */
   mapTheme: MapTheme;
@@ -116,7 +118,7 @@ export function DesktopRoutePanels(props: RoutePanelsProps) {
                 trailing={
                   <div className="flex min-w-0 flex-auto items-center justify-between gap-2">
                     <SettingsTabsList />
-                    <GenerateRouteActions generation={route.generation} />
+                    <GenerateRouteActions generation={route.generation} routeCount={props.routeCount} />
                   </div>
                 }
                 open={panels.generateOpen}
@@ -202,7 +204,7 @@ export function MobileRoutePanels(props: RoutePanelsProps) {
           open={panels.mobileSheet === "routeSettings"}
           title="ルート設定"
           headerLead={<SettingsTabsList />}
-          headerAction={<GenerateRouteActions generation={route.generation} />}
+          headerAction={<GenerateRouteActions generation={route.generation} routeCount={props.routeCount} />}
           fitKey={`${settingsTab}:${settingsShape}`}
           fitMaxVh={SETTINGS_SHEET_MAX_FIT_VH}
         >

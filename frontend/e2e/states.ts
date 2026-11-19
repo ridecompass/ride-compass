@@ -140,7 +140,7 @@ export async function splice(page: Page, width: WidthName): Promise<void> {
   await page.route(`${API_BASE}/api/routes/generate/*`, (route) => route.fulfill({ json: doneJobFixture(result) }));
   const settings = width === "mobile" ? await openMobileSheet(page, "ルート設定") : null;
   const scope = settings ?? page;
-  await scope.getByRole("radio", { name: "目的地へ" }).click();
+  await scope.getByRole("radio", { name: "目的地" }).click();
   await scope.getByRole("button", { name: "目的地 未設定", exact: true }).click();
   await page.getByRole("button", { name: "地図で置く" }).click();
   // スマホ幅は、シートを閉じると地図で地点を置けなくなるので、開いたまま見えている地図を押す。

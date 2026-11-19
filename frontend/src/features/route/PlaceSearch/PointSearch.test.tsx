@@ -3,12 +3,13 @@
  * 打つ欄は住所・施設の名前を入れて、地図の真ん中を添えて引き、候補（名前と施設の辺り）を欄の下に並べ、押した候補をその地点に置いて
  * 閉じる。打ちかけでも、決まった文字数から、打つのが止まると引く（かな漢字の変換中は引かない）。文字数に足りなくなると候補を下げる。
  * 引いたあとに地図を動かしても引き直さず、Enter でその時の地図の真ん中で引き直す。引けないとき・当たらないときはそう出す。
- * 打つ前は「現在地」「地図で置く」と、置いている地点の保存のチップを出す。✕・Escape で閉じると打った文字を消す。
+ * 打つ前は「現在地」「地図で置く」と、置いている地点の保存のチップを出す。✕・Escape で閉じると打った文字を消す。開いた時点で、
+ * PC は欄へ移らず、スマホは欄へ移り（キーボードを出す）、小窓の中を押しても欄から外れない（キーボードを出したまま押せる）。
  *
  * ここで見ないもの:
  * - 打つ前に出す保存した地点と検索の履歴・候補の☆での保存 → `PlaceSearch/PointSearch.saved.test.tsx`
  * - 置いた地点を地図に出して寄せること・小窓を開いたまま地図を押すと閉じるだけで置かないこと → `app/page.places.test.tsx`
- * - スマホで「戻る」が小窓だけを閉じること・打っている間に小窓をキーボードの上の見える範囲に収めること（実際のブラウザの履歴と
+ * - スマホで「戻る」が小窓だけを閉じること・小窓をキーボードの上の見える範囲に収めること（実際のブラウザの履歴と
  *   レイアウトの実寸） → `e2e/destination.spec.ts`
  * - 打ちかけの語の続きの候補・施設の候補とその並びを返すこと → backend の `tests/test_place_search_route.py`
  *
@@ -51,7 +52,7 @@ function candidateRows(list: HTMLElement) {
 }
 
 describe("PointSearch 打つ欄", () => {
-  it("開いた時点では欄へ移らず、探すとキーボードを閉じて住所・施設の候補（施設は辺りも）を並べ、押した候補を置いて閉じる", async () => {
+  it("PC は開いた時点では欄へ移らず、探すとキーボードを閉じて住所・施設の候補（施設は辺りも）を並べ、押した候補を置いて閉じる", async () => {
     const sent = onBackend("GET", "/api/place-search", () => Response.json({ candidates: [AZA, FACILITY] }));
     const { onPlace } = await renderSearch();
     expect(searchBox()).not.toHaveFocus();
@@ -66,6 +67,19 @@ describe("PointSearch 打つ欄", () => {
     await userEvent.click(within(list).getByRole("button", { name: new RegExp(`^${FACILITY.name}`) }));
     expect(onPlace).toHaveBeenCalledExactlyOnceWith({ role: "destination" }, FACILITY);
     expect(screen.queryByRole("dialog", { name: "目的地を探す" })).toBeNull();
+  });
+
+  it("スマホは開いた時点で欄へ移り、小窓の中のボタンを押しても欄から外れない", async () => {
+    onBackend("GET", "/api/place-search", () => Response.json({ candidates: [FACILITY] }));
+    await renderSearch({ isMobile: true });
+    expect(searchBox()).toHaveFocus();
+
+    await userEvent.type(searchBox(), "浅草寺{Enter}");
+    await userEvent.click(searchBox());
+    const list = await screen.findByRole("list", { name: "地点の候補" });
+    await userEvent.click(within(list).getByRole("button", { name: `「${FACILITY.name}」を保存` }));
+
+    expect(searchBox()).toHaveFocus();
   });
 
   it("打ちかけでも、決まった文字数から、打つのが止まると引く", async () => {

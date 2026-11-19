@@ -1,5 +1,5 @@
 /**
- * `RouteForm/PointList.tsx`——「ルート設定」の条件タブの、周回か目的地へかの2択と地点の縦の一覧。`RouteForm`の中に置かれる子なので、
+ * `RouteForm/PointList.tsx`——「ルート設定」の条件タブの、周回か目的地かの2択と地点の縦の一覧。`RouteForm`の中に置かれる子なので、
  * `RouteForm`を描いて確かめる。
  *
  * 見るもの: 2択（選んでいる側と、押して上げる値）、地点の一覧（出発地・経由地・終点を通る順に並べ、周回の間の終点は押せない
@@ -32,10 +32,10 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe("RouteForm 周回か目的地へか", () => {
+describe("RouteForm 周回か目的地か", () => {
   it.each([
-    [true, "周回", "目的地へ", false],
-    [false, "目的地へ", "周回", true],
+    [true, "周回", "目的地", false],
+    [false, "目的地", "周回", true],
   ] as const)(
     "周回か（%s）で「%s」を選んでいて、「%s」を押すと反対（%s）を上げる",
     async (loop, chosen, other, raised) => {
@@ -52,7 +52,7 @@ describe("RouteForm 周回か目的地へか", () => {
 describe("RouteForm 地点の一覧", () => {
   it.each([
     {
-      label: "目的地へ",
+      label: "目的地",
       loop: false,
       rows: ["出発地 現在地", "経由地1 地図で選んだ地点", "目的地 地図で選んだ地点"],
       end: false,

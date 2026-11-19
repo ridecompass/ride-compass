@@ -1,7 +1,7 @@
 /**
  * `PlaceSearch/PointSearch.tsx`——地点を探す小窓の、打つ前に出す保存した地点と検索の履歴と、候補の☆での保存。開くと保存した地点を出し、
  * 打った文字を名前に含むものに絞り、選んだ地点を置く。住所・施設の候補か履歴を選ぶと履歴に残し、次に開くと保存した地点の下に
- * 新しい順に出し、打った文字で絞り、1件ずつ消せる。候補の☆はその候補を名前のまま保存し、もう一度押すと保存をやめる。置いている地点の
+ * 新しい順に出し、打った文字で絞り、1件ずつ消せる。保存した地点も行の ✕ でその場で保存をやめられる。候補の☆はその候補を名前のまま保存し、もう一度押すと保存をやめる。置いている地点の
  * 保存のチップは、探して置いた地点をその候補のまま、地図で置いた地点を辺りを名前にして保存する。
  *
  * ここで見ないもの:
@@ -29,6 +29,11 @@ beforeEach(() => {
   serveClientConfig();
 });
 
+/** 一覧の地点の行（右の ✕ は名前を「」で囲むので除く）。 */
+function placeRows(list: HTMLElement) {
+  return within(list).getAllByRole("button", { name: /^(?!「)/ });
+}
+
 /** 前に保存した地点を、この端末の保存へ置く。 */
 function storeSavedPlaces(places: SavedPlace[]) {
   window.localStorage.setItem(SAVED_PLACES_STORAGE_KEY, JSON.stringify(places));
@@ -43,18 +48,27 @@ describe("PointSearch 保存した地点", () => {
     const { onPlace } = await renderSearch();
 
     const saved = () => screen.getByRole("list", { name: "保存した地点" });
-    expect(
-      within(saved())
-        .getAllByRole("button")
-        .map((row) => row.textContent),
-    ).toEqual([`${CAFE.name}${CAFE.area}`, HOME.name]);
+    expect(placeRows(saved()).map((row) => row.textContent)).toEqual([`${CAFE.name}${CAFE.area}`, HOME.name]);
 
     await userEvent.type(searchBox(), "自");
-    expect(within(saved()).getAllByRole("button")).toHaveLength(1);
-    await userEvent.click(within(saved()).getByRole("button", { name: /自宅/ }));
+    expect(placeRows(saved())).toHaveLength(1);
+    await userEvent.click(within(saved()).getByRole("button", { name: HOME.name }));
 
     expect(onPlace).toHaveBeenCalledExactlyOnceWith({ role: "destination" }, HOME);
     expect(screen.queryByRole("dialog", { name: "目的地を探す" })).toBeNull();
+  });
+
+  it("行の ✕ で、小窓を開いたままその地点の保存をやめる", async () => {
+    storeSavedPlaces([CAFE, HOME]);
+    const { onPlace } = await renderSearch();
+
+    await userEvent.click(screen.getByRole("button", { name: `「${CAFE.name}」の保存をやめる` }));
+
+    expect(placeRows(screen.getByRole("list", { name: "保存した地点" })).map((row) => row.textContent)).toEqual([
+      HOME.name,
+    ]);
+    expect(JSON.parse(window.localStorage.getItem(SAVED_PLACES_STORAGE_KEY) ?? "[]")).toEqual([HOME]);
+    expect(onPlace).not.toHaveBeenCalled();
   });
 
   it("候補の☆でその候補を名前のまま保存し、もう一度押すと保存をやめる", async () => {
@@ -67,12 +81,13 @@ describe("PointSearch 保存した地点", () => {
     const unsave = within(list).getByRole("button", { name: `「${FACILITY.name}」の保存をやめる` });
     expect(unsave).toHaveAttribute("aria-pressed", "true");
     await userEvent.clear(searchBox());
-    expect(within(screen.getByRole("list", { name: "保存した地点" })).getByRole("button")).toHaveTextContent(
-      FACILITY.name,
-    );
+    expect(placeRows(screen.getByRole("list", { name: "保存した地点" })).map((row) => row.textContent)).toEqual([
+      `${FACILITY.name}${FACILITY.area}`,
+    ]);
 
     await searchFor("浅草寺");
-    await userEvent.click(await screen.findByRole("button", { name: `「${FACILITY.name}」の保存をやめる` }));
+    const again = await screen.findByRole("list", { name: "地点の候補" });
+    await userEvent.click(within(again).getByRole("button", { name: `「${FACILITY.name}」の保存をやめる` }));
     await userEvent.clear(searchBox());
     expect(screen.queryByRole("list", { name: "保存した地点" })).toBeNull();
   });
@@ -100,10 +115,7 @@ describe("PointSearch 保存した地点", () => {
 
 describe("PointSearch 検索の履歴", () => {
   const history = () => screen.getByRole("list", { name: "検索の履歴" });
-  const rows = () =>
-    within(history())
-      .getAllByRole("button", { name: /^(?!.*履歴から消す)/ })
-      .map((row) => row.textContent);
+  const rows = () => placeRows(history()).map((row) => row.textContent);
 
   it("選んだ候補を次に開いたとき新しい順に出し、選ぶとその地点を置き、打った文字で絞り、1件ずつ消せる", async () => {
     onBackend("GET", "/api/place-search", (request) =>
@@ -131,7 +143,7 @@ describe("PointSearch 検索の履歴", () => {
     await userEvent.type(searchBox(), "浅草");
     expect(rows()).toEqual([`${FACILITY.name}${FACILITY.area}`]);
 
-    await userEvent.click(screen.getByRole("button", { name: `${FACILITY.name}を履歴から消す` }));
+    await userEvent.click(screen.getByRole("button", { name: `「${FACILITY.name}」を履歴から消す` }));
     await userEvent.clear(searchBox());
     expect(rows()).toEqual([AZA.name]);
   });
@@ -140,7 +152,7 @@ describe("PointSearch 検索の履歴", () => {
     storeSavedPlaces([{ ...FACILITY, name: "いつものカフェ" }]);
     await renderSearch();
 
-    await userEvent.click(within(screen.getByRole("list", { name: "保存した地点" })).getByRole("button"));
+    await userEvent.click(placeRows(screen.getByRole("list", { name: "保存した地点" }))[0]);
     await openPointSearch("目的地");
 
     expect(screen.queryByRole("list", { name: "検索の履歴" })).toBeNull();

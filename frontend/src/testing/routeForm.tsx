@@ -28,7 +28,6 @@ export const DESTINATION = { latitude: 35.1, longitude: 139.1 };
 const BASE = {
   loop: false,
   distanceInput: "30",
-  maxRoutesInput: "8",
   distanceTargeted: true,
   waypoints: [],
   destination: null,
@@ -87,7 +86,6 @@ function Selecting({
 export function renderForm(options: Options = {}, tab: SettingsTab = "generate", mapCenter: Coordinates = ORIGIN) {
   const handlers = {
     setDistanceInput: vi.fn(),
-    setMaxRoutesInput: vi.fn(),
     setDistanceTargeted: vi.fn(),
     setLoop: vi.fn(),
     removeWaypoint: vi.fn(),

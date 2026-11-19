@@ -99,8 +99,6 @@ export function SavedPlaceIcon({ size = 16 }: IconProps) {
 }
 /** 検索で選んだ地点の履歴（保存した地点の塗った星と見分ける）。 */
 export const PlaceHistoryIcon = fromLucide(History);
-/** 検索で選んだ地点を履歴から消す。 */
-export const ForgetHistoryPlaceIcon = fromLucide(Trash);
 export const InfoIcon = fromLucide(Info, 14);
 export const ZoomInIcon = fromLucide(Plus);
 export const ZoomOutIcon = fromLucide(Minus);
@@ -149,7 +147,7 @@ export const NotFetchedIcon = fromLucide(CloudOff);
 export const BackToNowIcon = fromLucide(History);
 /** 地点を住所・施設で探す。 */
 export const SearchPlaceIcon = fromLucide(Search);
-/** 距離の目標を決めるか（条件タブの「距離」）。 */
+/** 距離の目標を決めるか（条件タブの「距離を決める」）。 */
 export const RulerIcon = fromLucide(RulerDimensionLine);
 /** 選んだ区間へ地図を寄せる。 */
 export const ShowSectionOnMapIcon = fromLucide(ZoomIn);
