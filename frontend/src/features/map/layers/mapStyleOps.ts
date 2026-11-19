@@ -219,6 +219,23 @@ export function isStyleReady(map: MapLibreMap): boolean {
   return tagOf(map).__rcStyleReady === true;
 }
 
+/** スタイルが読み込まれたら（タイルが描ける前の`style.load`）1度だけ実行し、一度描けた後はすぐ実行する。基礎地図の層の書き換えを
+ * 最初の描画より前に済ませる口——`runWhenStyleReady`の`load`はタイルが描けた後に来るので、それを待つと書き換える前の地図が見える。
+ * `style.load`の後・`load`の前に呼ばれると`style.load`はもう来ないので、`load`でも実行する。 */
+export function runWhenStyleLoaded(map: MapLibreMap, fn: () => void) {
+  if (tagOf(map).__rcStyleReady) {
+    fn();
+    return;
+  }
+  function run() {
+    map.off("style.load", run);
+    map.off("load", run);
+    fn();
+  }
+  map.once("style.load", run);
+  map.once("load", run);
+}
+
 // map.isStyleLoaded()はタイル読み込み中も一時的にfalseを返すため、
 // それをガードに使うと「loadイベントは一度しか発火しない」性質と組み合わさって
 // 二度目以降の描画が永久にスキップされることがある。スタイル自体が一度でも

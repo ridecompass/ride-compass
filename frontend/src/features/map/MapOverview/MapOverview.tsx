@@ -8,7 +8,7 @@ import { OverviewMapIcon } from "@/components/ui/icons/lucideIcons";
 import { createBaseMap } from "@/features/map/baseMap";
 import { MapLoadingBadge } from "@/features/map/MapView/MapLoadStatus";
 import type { MapTheme } from "@/lib/mapTheme";
-import { isStyleReady, runWhenStyleReady } from "@/features/map/layers/mapStyleOps";
+import { isStyleReady, runWhenStyleLoaded } from "@/features/map/layers/mapStyleOps";
 import {
   OVERVIEW_PLACE_LABEL,
   OVERVIEW_RENDER_SCALE,
@@ -88,7 +88,7 @@ function OverviewMap({
     map.on("error", () => {
       if (!isStyleReady(map)) setLoading(false);
     });
-    runWhenStyleReady(map, () => {
+    runWhenStyleLoaded(map, () => {
       const { hidden, places, motorways } = overviewBasemapEdits(map.getStyle().layers);
       for (const layerId of hidden) map.setLayoutProperty(layerId, "visibility", "none");
       for (const [layerId, filter] of places) {
