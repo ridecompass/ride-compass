@@ -65,7 +65,7 @@ export function LensRow({
       <div className="flex items-center gap-1">
         <ToggleGroupItem
           value={option.id}
-          className="group min-w-0 flex-1 justify-start gap-1.5 rounded-sm border-0 px-1 py-1 text-left whitespace-normal hover:bg-[var(--color-surface-hover)] data-[state=on]:bg-[var(--color-accent-bg)] data-[state=on]:font-semibold"
+          className="group min-w-0 flex-1 justify-start gap-1.5 border-0 px-1 py-1 text-left whitespace-normal hover:bg-[var(--color-surface-hover)] data-[state=on]:bg-[var(--color-accent-bg)] data-[state=on]:font-semibold"
         >
           <span
             aria-hidden="true"
