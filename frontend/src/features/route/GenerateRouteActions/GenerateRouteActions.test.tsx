@@ -20,7 +20,9 @@ const IDLE = { conditionsDirty: false, running: false, progressLabel: "", submit
 describe("候補数", () => {
   it("今の件数を出し、開くと下限から上限までを並べて今の数を押した状態にし、選ぶと文字列で上げて閉じる", async () => {
     const setMaxRoutesInput = vi.fn();
-    render(<GenerateRouteActions generation={IDLE} routeCount={{ maxRoutesInput: "8", setMaxRoutesInput }} />);
+    render(
+      <GenerateRouteActions generation={IDLE} routeCount={{ maxRoutesInput: "8", setMaxRoutesInput }} label="never" />,
+    );
 
     await userEvent.click(screen.getByRole("button", { name: "候補数（8件）" }));
     const menu = within(screen.getByRole("dialog", { name: "候補数を選ぶ" }));
@@ -52,6 +54,7 @@ describe("生成", () => {
         <GenerateRouteActions
           generation={{ conditionsDirty: false, running: true, progressLabel: "生成中...(3秒経過)", submit }}
           routeCount={{ maxRoutesInput: "8", setMaxRoutesInput: () => {} }}
+          label="wideScreen"
         />
         <UsageTooltip />
       </>,

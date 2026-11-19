@@ -14,7 +14,7 @@
 | `lib/costPreference.ts` | 利用者の費用の好み（つまみと倍率と無効の軸）そのものの決まり: 標準・軸を数えるか・軸の倍率の引き方・地図のレンズの要求へ載せる書き方（ルートと地図の両方が読む） |
 | `features/route/RouteForm/SettingsTabsList.tsx` | 「ルート設定」のタブ列（条件・負担・道路・保存済み）。道路のタブの名前は、地図の道路のまとまりの名前（`lib/screenNames.ts: ROAD_SETTINGS_TAB_NAME`）。見出し行に置き、選ぶ状態は囲む`Tabs.Root`から読む |
 | `features/route/RouteForm/RouteSettingsForm.tsx` | `RouteForm`へ、負担・道路・条件の保存・保存した条件の一覧の4つのタブの中身を、生成の条件と保存した条件から組んで渡す |
-| `features/route/GenerateRouteActions/GenerateRouteActions.tsx` | 「ルート設定」の見出し行の右端: 条件が変わった印・候補数の選び手（「8件▾」。押すと件数を選ぶ）・「ルート生成」のボタン（アイコンに文字「生成」を添える。下記参照） |
+| `features/route/GenerateRouteActions/GenerateRouteActions.tsx` | 「ルート設定」の見出し行の右端: 条件が変わった印・候補数の選び手（「8件▾」。押すと件数を選ぶ）・「ルート生成」のボタン（幅が足りるスマホのシートでだけアイコンに文字「生成」を添える。[デザインシステム](frontend-design-system.md)「5-1. パネルの操作ボタンの形」） |
 | `features/route/RouteForm/PointList.tsx` | 出発地 → 経由地 → 終点［周回の間は押せない「出発地へ戻る」、目的地なら目的地］を通る順に並べる縦の一覧と、見出しの右の「＋ 経由地」。行を押すとその地点を選び、その行に付く探す小窓（`PlaceSearch/PointSearch.tsx`）を開く。行の✕で消し、つまみで並べ替える。名前は生成の条件と、置いた位置から引いた辺りから引く（下記「地点の指定」「住所・施設で探す」） |
 | `features/route/RouteForm/useReorderDrag.ts` | 縦に並ぶ高さの揃わない行を、掴む所を押さえたまま上下へ動かす並べ替え（指に付ける・入る所を空ける・離した所を決める）。入る所は押さえた時の各行の中ほどで決める |
 | `features/route/usePlaceAreas.ts` | 地点の一覧が、置いた位置から引いた辺り（`GET /api/place-area`）を位置ごとの問い合わせで引く。同じ位置に置いた地点は1回だけ引く |
