@@ -151,7 +151,7 @@ export default function RideConditionBar({
             name={departureName}
             icon={<ClockIcon />}
             linked={linkedDeparture}
-            usage="出発する日時を決めます。地図に出す気象と周りの道の負担[風]の時刻、ルートの到達予想の時刻に使います。"
+            usage="出発する日時を決めます。地図に出す気象と周りの道の負担[風]の時刻と、ルートの到達予想の時刻に使います。"
           >
             {/* 別の日は日付も付くため、列の幅に収まるよう日付と時刻を2行に分ける。時刻には「発」を添え、何の時刻かを文字で示す。 */}
             {departureLabel?.map((part, i) => (
@@ -181,7 +181,7 @@ export default function RideConditionBar({
             <Input
               type="datetime-local"
               aria-label="出発日時を直接指定"
-              data-usage="出発する日時を、日付と時刻で直に入れます。"
+              data-usage="出発する日時を、日付と時刻で直接入れます。"
               value={toJstLocalValue(departureTime)}
               onChange={(e) => {
                 const next = parseJstLocalValue(e.target.value);

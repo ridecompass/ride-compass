@@ -69,7 +69,7 @@ describe("画面の枠", () => {
 
     const before = mapOnScreen().styles.length;
     await user.click(screen.getByRole("button", { name: "メニュー" }));
-    await user.click(screen.getByRole("button", { name: "地図の表示を再描画" }));
+    await user.click(screen.getByRole("button", { name: "地図を描き直す" }));
     expect(mapOnScreen().styles).toHaveLength(before + 1);
   });
 
@@ -100,7 +100,7 @@ describe("画面の枠", () => {
     const failure = () => screen.queryByText(/地図の読み込みに失敗しました/);
     const redraw = async () => {
       await user.click(screen.getByRole("button", { name: "メニュー" }));
-      await user.click(screen.getByRole("button", { name: "地図の表示を再描画" }));
+      await user.click(screen.getByRole("button", { name: "地図を描き直す" }));
     };
     const before = mapOnScreen().styles.length;
     await redraw();
@@ -136,7 +136,7 @@ describe("画面の枠", () => {
       await user.keyboard("{Escape}");
     };
     const redraw = async () => {
-      await fromMenu("地図の表示を再描画");
+      await fromMenu("地図を描き直す");
       act(() => {
         mapOnScreen().loadStyle(basemap);
         mapOnScreen().emit("style.load");

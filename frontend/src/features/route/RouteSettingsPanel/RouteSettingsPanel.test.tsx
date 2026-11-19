@@ -50,7 +50,7 @@ describe("費用の軸の一覧", () => {
     onBackend("GET", "/api/cost-axes", inTurn(new Response(null, { status: 503 }), Response.json(TWO_COST_AXES)));
     renderPanel();
 
-    expect(await screen.findByRole("status")).toHaveTextContent("負担の種類ごとの倍率を変えられません");
+    expect(await screen.findByRole("status")).toHaveTextContent("負担の種類ごとの割合を変えられません");
 
     await userEvent.click(screen.getByRole("button", { name: "再試行" }));
 

@@ -27,7 +27,7 @@ interface MapLifecycleOptions {
   getLook: () => MapLook;
   /** レイヤーカタログ。取得状態を算出するレイヤーの母集団。 */
   layers: readonly MapLayerDescriptor[];
-  /** 「地図の表示を再描画」を押した回数。増えるとスタイルを取り直す。 */
+  /** 「地図を描き直す」を押した回数。増えるとスタイルを取り直す。 */
   refreshToken: number;
   /** スタイルを取り直した後、いまの宣言を空から当て直す。 */
   redraw: (map: MapLibreMap) => void;
@@ -178,7 +178,7 @@ export function useMapLifecycle(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // 「地図の表示を再描画」: スタイルを取り直し、消えたレイヤーをいまの宣言から当て直す（押した人の地図だけ）。
+  // 「地図を描き直す」: スタイルを取り直し、消えたレイヤーをいまの宣言から当て直す（押した人の地図だけ）。
   useEffect(() => {
     const map = mapRef.current;
     if (!map || refreshToken === 0) return;

@@ -79,7 +79,7 @@ export default function HeaderMenu({
           <Button
             variant="menu"
             size="sm"
-            usage="押した部品の使い方を表示するモードに切り替えます。"
+            usage="押した所の使い方を表示するモードに切り替えます。"
             onClick={() => {
               afterClose.current = "guide";
               setOpen(false);
@@ -98,7 +98,7 @@ export default function HeaderMenu({
             }}
           >
             <RedrawMapIcon size={15} />
-            地図の表示を再描画
+            地図を描き直す
           </Button>
           {rideMetrics !== null && (
             // 写したことはメニューの中の名前で見せるので、押しても閉じない。

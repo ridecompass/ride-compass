@@ -142,7 +142,7 @@ export default function RouteSettingsPanel({ costPreference, onCostPreferenceCha
       </ul>
       {catalog.axes.length > 0 && (
         <Button
-          usage={`負担の種類ごとの割合と無効を、すべて標準[${STANDARD_LABEL}]に戻します（全体の割合は変えません）。`}
+          usage={`負担の種類ごとの割合と無効を、すべて標準[${STANDARD_LABEL}]に戻します。全体の割合は変えません。`}
           variant="secondary"
           className="self-end"
           disabled={standard}

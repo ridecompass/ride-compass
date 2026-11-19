@@ -55,13 +55,13 @@ describe("UsageGuide", () => {
     expect(explanation()?.querySelector("p")).toHaveTextContent(name);
   });
 
-  it("名前を引けない部品は「この部品」とし、使い方の文が無ければまだ無いと出す", async () => {
+  it("名前を引けない部品は「この項目」とし、使い方の文が無ければまだ無いと出す", async () => {
     renderScreen();
 
     await userEvent.click(screen.getByTestId("no-name"));
 
-    expect(explanation()).toHaveTextContent("この部品");
-    expect(explanation()).toHaveTextContent("この部品の説明はまだありません。");
+    expect(explanation()).toHaveTextContent("この項目");
+    expect(explanation()).toHaveTextContent("この項目の説明はまだありません。");
   });
 
   it("部品の中の要素を押しても、その部品を説明する", async () => {
