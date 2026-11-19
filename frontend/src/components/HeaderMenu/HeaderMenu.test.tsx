@@ -1,8 +1,8 @@
 /**
- * `components/HeaderMenu/HeaderMenu.tsx`——ヘッダーのメニュー（使い方を見る・地図の表示を再描画・デバッグログの開閉・バージョン表示）。
+ * `components/HeaderMenu/HeaderMenu.tsx`——ヘッダーのメニュー（使い方を見る・地図を描き直す・デバッグログの開閉・バージョン表示）。
  *
  * 見るもの: メニューを開くと出る項目、「使い方を見る」を押すとメニューが閉じ、フォーカスが開くボタンへ戻ってから説明を見る状態に入る操作が上がること、
- * 「地図の表示を再描画」を押すと描き直しの操作が上がってメニューが閉じること、
+ * 「地図を描き直す」を押すと描き直しの操作が上がってメニューが閉じること、
  * デバッグログの項目がデバッグモードの間だけ出て、開閉の状態を名前で出し、押すと開閉の操作が上がること、
  * 走行の記録が端末にあるときだけ「走行の記録をコピー」が出て、押すと記録を写すこと、
  * 「バージョン表示」を押すと、フロントの版の口（`/api/version`）が返した版が窓に出ること。
@@ -56,13 +56,13 @@ describe("HeaderMenu", () => {
     expect(focusedAtStart).toBe(screen.getByRole("button", { name: "メニュー" }));
   });
 
-  it("「地図の表示を再描画」を押すと、描き直しの操作が上がってメニューが閉じる", async () => {
+  it("「地図を描き直す」を押すと、描き直しの操作が上がってメニューが閉じる", async () => {
     const { onRedrawMap } = await openMenu();
 
-    await userEvent.click(screen.getByRole("button", { name: "地図の表示を再描画" }));
+    await userEvent.click(screen.getByRole("button", { name: "地図を描き直す" }));
 
     expect(onRedrawMap).toHaveBeenCalledTimes(1);
-    expect(screen.queryByRole("button", { name: "地図の表示を再描画" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "地図を描き直す" })).not.toBeInTheDocument();
   });
 
   describe("デバッグログ", () => {

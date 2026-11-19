@@ -185,7 +185,7 @@ export default function UsageGuide({ onEnd }: UsageGuideProps) {
           aria-label="使い方の説明"
         >
           <div className="flex items-start justify-between gap-2">
-            <p className="m-0 font-semibold">{target?.name ?? "この部品"}</p>
+            <p className="m-0 font-semibold">{target?.name ?? "この項目"}</p>
             <Button
               usage={null}
               variant="ghost"
@@ -199,7 +199,7 @@ export default function UsageGuide({ onEnd }: UsageGuideProps) {
             </Button>
           </div>
           <p className={cn(textVariants({ variant: target?.usage ? "body" : "hint" }), "m-0")}>
-            {target?.usage ? <GuideText text={target.usage} /> : "この部品の説明はまだありません。"}
+            {target?.usage ? <GuideText text={target.usage} /> : "この項目の説明はまだありません。"}
           </p>
           {target?.opens && (
             <Button

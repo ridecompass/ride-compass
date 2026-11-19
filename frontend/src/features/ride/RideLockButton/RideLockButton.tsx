@@ -40,7 +40,7 @@ export default function RideLockButton({ locked, onLock, onUnlock }: RideLockBut
           aria-pressed={locked}
           aria-haspopup={locked ? "dialog" : undefined}
           aria-expanded={locked ? choosing : undefined}
-          usage="押すと地図をロックし、雨粒が画面に当たっても地図が動かないようにします。ロック中も現在地を追い続け、右の列のボタンと地図の下の部品は使えます。ロック中に押すと「ロックを外す」が出ます。"
+          usage="押すと地図をロックし、雨粒が画面に当たっても地図が動かないようにします。ロック中も現在地を追い続け、右の列のボタンと地図の下のボタンは使えます。ロック中に押すと「ロックを外す」が出ます。"
           className={cn(locked && "bg-[var(--color-accent)] text-white")}
         >
           {locked ? <MapLockedIcon /> : <MapUnlockedIcon />}

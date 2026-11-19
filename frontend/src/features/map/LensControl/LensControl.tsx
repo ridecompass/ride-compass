@@ -188,7 +188,7 @@ export default function LensControl({
               aria-label="選択を外す"
               onClick={() => onLensChange(UNSELECTED_LENS_ID)}
               disabled={unselected}
-              usage={`選んでいる負担の種類を外します。外すと、ルートの前は道路を塗らず、ルートの後は${totalLabel ?? "1色"}で塗ります。`}
+              usage={`選んでいる負担の種類を外します。外すと、ルートを作る前は道路を塗らず、作った後は${totalLabel ?? "1色"}で塗ります。`}
             >
               <ClearAllLayersIcon />
             </Button>

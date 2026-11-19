@@ -87,11 +87,11 @@ export default function FirstVisitIntro({ isMobile, locationUnknown }: FirstVisi
           />
         </li>
         <li>
-          部品の使い方は、右上のメニュー
+          ボタンや欄の使い方は、右上のメニュー
           <span role="img" aria-label="メニュー" className="inline-flex align-[-2px]">
             <MenuIcon size={13} />
           </span>
-          の「使い方を見る」から、部品を押して見られます。
+          の「使い方を見る」から、知りたい所を押して見られます。
         </li>
       </ul>
       <Button

@@ -53,7 +53,7 @@ export default function SavedList<T extends { name: string }>({
               {renderMain(item)}
               {renderActions?.(item)}
               <Button
-                usage="この項目をこの端末から消します。消す前に確かめます。"
+                usage="この項目をこの端末から消します。消す前に、確かめる窓を開きます。"
                 variant="ghost"
                 size="panelIcon"
                 aria-label={`「${item.name}」を消す`}

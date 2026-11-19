@@ -200,7 +200,7 @@ _TOO_WIDE_SIDE = MSM_GRID_MAX_AREA_SQ_DEG**0.5 + 0.01
 
 
 @pytest.mark.parametrize(("bbox", "detail"), [
-    ({**TOKYO_BBOX, "min_lat": 36.0, "max_lat": 35.3}, "表示範囲が不正です。"),
+    ({**TOKYO_BBOX, "min_lat": 36.0, "max_lat": 35.3}, "表示範囲の指定が正しくありません。"),
     (
         {"min_lon": 130.0, "min_lat": 30.0, "max_lon": 130.0 + _TOO_WIDE_SIDE, "max_lat": 30.0 + _TOO_WIDE_SIDE},
         "表示範囲が広すぎます。ズームインしてください。",
