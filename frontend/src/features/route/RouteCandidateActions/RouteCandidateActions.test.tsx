@@ -1,7 +1,7 @@
 /**
  * `features/route/RouteCandidateActions/RouteCandidateActions.tsx`——選んでいる候補1本への操作（走る・合成・GPX出力）。
  *
- * 見るもの: 走るの受け口が無ければ走るを出さないこと、合成は始められる
+ * 見るもの: 走るはアイコンに文字「走る」を添えること、走るの受け口が無ければ走るを出さないこと、合成は始められる
  * ときだけ出し、押すとその候補で編集を始めて押していた区間を外すこと、GPX出力はその候補を書き出すこと。
  *
  * ここで見ないもの: どの候補が相手か・走るを押すとその候補で走り始めること・編集中に出さないこと・走ったあとシートを閉じること
@@ -46,6 +46,11 @@ describe("RouteCandidateActions", () => {
     await userEvent.click(screen.getByRole("button", { name: "ルートを合成" }));
     expect(splice.start).toHaveBeenCalledWith("slow");
     expect(onClearSegment).toHaveBeenCalled();
+  });
+
+  it("走るは、アイコンに文字「走る」を添えて出す", () => {
+    renderActions({ onRide: vi.fn() });
+    expect(screen.getByRole("button", { name: "このルートで走る" })).toHaveTextContent("走る");
   });
 
   it("走る受け口が無ければ走るを、編集を始められなければ合成を出さない", () => {

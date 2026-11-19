@@ -16,7 +16,7 @@ import { describe, expect, it } from "vitest";
 import { useRouteFormSubmit } from "./useRouteFormSubmit";
 
 const ORIGIN_UNKNOWN = "現在地が分かりません。位置情報を許可するか、地図をタップして出発地を置いてください。";
-const NOTHING_TO_MAKE = "「全長の目標を決める」を押すか、経由地を置いてください。";
+const NOTHING_TO_MAKE = "「全長を決める」に印を付けるか、経由地を置いてください。";
 const NO_DESTINATION = "目的地を置いてください[出発地へ戻るなら「周回」を押してください]。";
 
 interface Options {

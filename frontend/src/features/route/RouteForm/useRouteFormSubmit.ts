@@ -40,7 +40,7 @@ export function useRouteFormSubmit({
       return false;
     }
     if (loop && !distanceTargeted && waypointCount === 0) {
-      setError("「全長の目標を決める」を押すか、経由地を置いてください。");
+      setError("「全長を決める」に印を付けるか、経由地を置いてください。");
       return false;
     }
     if (!loop && !destinationSet) {
