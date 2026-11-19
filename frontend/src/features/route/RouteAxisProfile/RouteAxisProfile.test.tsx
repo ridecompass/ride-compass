@@ -2,7 +2,7 @@
  * `features/route/RouteAxisProfile/RouteAxisProfile.tsx`——候補の中身の所要・負担。
  *
  * 見るもの: 所要と負担の数（分へ丸め）と、無いときの省き方、所要時間の前提が崩れたことの注記（値の無い区間の割合を
- * 丸めて1%以上）、負担の説明が費用の軸の一覧の名前と文を差し込むこと。
+ * 丸めて1%以上のときの1行と、(i)の中の推定の仕方）、負担の説明が費用の軸の一覧の名前と文を差し込むこと。
  *
  * ここで見ないもの: 所要の書き方 → `lib/duration.ts`。負担の種類ごとの内訳と事実 → 道のりのグラフの一覧
  * （`features/route/RouteProfile/RouteProfile.test.tsx`）。
@@ -61,11 +61,20 @@ describe("RouteAxisProfile", () => {
   it.each([
     [null, null],
     [0.004, null],
-    [0.012, `データの無い区間が1%[${routeGenerateConfig.missing_travel_data_wording}]`],
+    [0.012, "1%の区間は推定で計算しています"],
   ])("値の無い区間の割合が%sなら、注記は%s（百分率へ丸めて1以上のときだけ出す）", (share, expected) => {
     renderProfile({ missingTravelDataShare: share });
-    if (expected === null) expect(screen.queryByText(/データの無い区間が/)).not.toBeInTheDocument();
+    if (expected === null) expect(screen.queryByText(/推定で計算しています/)).not.toBeInTheDocument();
     else expect(screen.getByText(expected)).toBeInTheDocument();
+  });
+
+  it("推定で計算した区間の注記は1行で、どう推定したかは(i)の中に開く", async () => {
+    renderProfile({ missingTravelDataShare: 0.02 });
+    expect(screen.getByText("2%の区間は推定で計算しています")).not.toHaveTextContent(
+      routeGenerateConfig.missing_travel_data_wording,
+    );
+    await userEvent.click(screen.getByRole("button", { name: "推定で計算した区間の説明を表示" }));
+    expect(await screen.findByText(routeGenerateConfig.missing_travel_data_wording)).toBeInTheDocument();
   });
 
   it("負担の説明に、費用の軸の一覧の名前と、曲がる所の漕ぎ出しの文を差し込む", async () => {

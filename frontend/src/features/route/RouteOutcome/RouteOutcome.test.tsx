@@ -5,11 +5,11 @@
  * - 候補が無い間の案内（生成中の進み方・生成前）と、候補がある間の条件のずれ・既定の配分で作ったこと・目的地の補正・
  *   前に出た予報の風で作ったことの知らせ、乗り換えで作った経路と同じ道だったので選んだ候補の知らせと、選んだカードを一覧の横の見える範囲へ送ること
  * - 候補の一覧: 群（最速・生成した候補・合成）の間の区切りの線と名前の印（意味を読み上げの名前に持つ）、カードに出す
- *   名前・距離・基準線の所要時間・ほかの候補の基準線との差・負担（内訳が無ければ「—」）と、下の帯の色（1kmあたりの負担を
- *   地図の総合のレンズと同じ段の色・内訳が無ければ値の無い色）、選ばれているタブ（選んだ候補・無ければ先頭）と、タブを押したときに上がる操作
+ *   名前・距離・所要時間・負担（内訳が無ければ「—」）と、下の帯の色（1kmあたりの負担を
+ *   地図の総合のレンズと同じ段の色・内訳が無ければ値の無い色）、並びの上の数字と印の見出し、選ばれているタブ（選んだ候補・無ければ先頭）と、タブを押したときに上がる操作
  *
  * ここで見ないもの: 選んだ候補の中身（元との違い・道のりのグラフ・内訳・区間の詳しく・編集面） → `RouteOutcome.selected.test.tsx`。
- * 一覧の並び・群・名前・基準線と差の決め方 → `features/route/routeTabLabel.ts`。
+ * 一覧の並び・群・名前の決め方 → `features/route/routeTabLabel.ts`。
  * 結果の状態の移り変わり → `features/route/useRouteResults.ts`。値を子・文へそのまま渡すだけの所
  * （内訳・事実・所要の前提の知らせ等）は1行の委譲なので見ない。候補1本への操作（走る・合成・GPX）
  * → `features/route/RouteCandidateActions/RouteCandidateActions.tsx`（置き場は見出しの行の`RouteOutcomeHeaderActions.tsx`）。値から段を引く判断 →
@@ -45,6 +45,9 @@ function listTexts(): string[] {
     child.getAttribute("role") === "separator" || child.tagName === "HR" ? "―" : (child.textContent ?? ""),
   );
 }
+
+/** 候補のカードの並びの上の、数字と印の見出し。 */
+const cardLegend = () => screen.getByText(/上: 距離/).parentElement;
 
 describe("候補が無い間", () => {
   it("生成中は進み方を出す", () => {
@@ -105,14 +108,14 @@ describe("候補の上の知らせ", () => {
 });
 
 describe("候補の一覧", () => {
-  it("最速の印の無い生成は最速を分けず、番号・距離・時間・負担の列だけで並べ、区切りの線も群の印も出さない", () => {
+  it("最速の印の無い生成は最速を分けず、番号・距離・所要時間・負担の列だけで並べ、区切りの線も群の印も出さず、見出しは数字の見方だけ", () => {
     renderOutcome({ results: resultsOf({ generated: [FAST, SLOW] }) });
-    expect(listTexts()).toEqual(["1 10.0km 30分 負担+5分", "2 20.0km +12分 負担+0分"]);
+    expect(listTexts()).toEqual(["1 10.0km 30分 負担+5分", "2 20.0km 42分 負担+0分"]);
     expect(within(screen.getByRole("tablist")).queryByRole("img")).not.toBeInTheDocument();
+    expect(cardLegend()).toHaveTextContent(/^上: 距離\s下: 所要時間・負担$/);
   });
 
-  it("最速・生成した候補・合成がそろうと、その順に並べて群の間に線を引き、最速と合成は名前の列の印に意味を持ち、時間の列は最速の行と比べる", () => {
-    // 合成の方が最速の行より速く見積もられても、比べる基準は最速の行のまま
+  it("最速・生成した候補・合成がそろうと、その順に並べて群の間に線を引き、最速と合成は名前の列の印に意味を持ち、どのカードも自分の所要時間を出し、見出しが印の意味を言う", () => {
     const edit: EditedRoute = {
       route: route("spliced-1", { distance_km: 12, estimated_duration_seconds: 1620 }),
       originId: "fast",
@@ -122,10 +125,11 @@ describe("候補の一覧", () => {
     expect(listTexts()).toEqual([
       " 10.0km 30分 負担+5分",
       "―",
-      "1 20.0km +12分 負担+0分",
+      "1 20.0km 42分 負担+0分",
       "―",
-      "1 12.0km −3分 負担+0分",
+      "1 12.0km 27分 負担+0分",
     ]);
+    expect(cardLegend()).toHaveTextContent(/^最速ルート合成ルート上: 距離/);
     const [fastest, , spliced] = screen.getAllByRole("tab");
     expect(within(fastest).getByRole("img", { name: "最速ルート" })).toHaveAttribute("title", "最速ルート");
     expect(within(spliced).getByRole("img", { name: "合成ルート" })).toHaveAttribute("title", "合成ルート");

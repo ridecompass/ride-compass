@@ -3,7 +3,7 @@
  *
  * 見るもの: 選ばれた区間の帯とスライダーとしての値、キーボード（矢印・Home・End）と1本の指（マウス）で横になぞる・
  * 押して離す操作で選ぶ区間と地点、押しただけ・ボタンを押していない動き・縦に動き出した操作・2本目の指が加わった操作では
- * 選ばないこと、選んだ地点の線（図で選んでも地図で押しても、選んだ地点を区間の道なりに当てた所）、選ぶ受け口が無ければ見るだけの図にすること。
+ * 選ばないこと、選んだ地点の線（図で選んでも地図で押しても、選んだ地点を区間の道なりに当てた所）、選ぶ受け口が無ければ見るだけの図にすること、結果の図だけに図の名前の見出しを出すこと。
  *
  * ここで見ないもの: 図の中身（負担の塗り・現在地の印の高さ） → `DifficultyProfile.test.tsx`・`RouteProfile.test.tsx`。
  * 区間の中の割合から地点を引く計算（道なりの形の上） → `lib/routeDistance.ts`。
@@ -40,10 +40,11 @@ type Props = {
   scaleKm: number;
   selected: SelectedRouteSegment | null;
   onSelect?: (selection: SelectedRouteSegment) => void;
+  riding?: boolean;
 };
 
 /** 物差しを`useProfileScale`で組んで、中身の無い枠を描く。 */
-function Chart({ segments, scaleKm, selected, onSelect }: Props) {
+function Chart({ segments, scaleKm, selected, onSelect, riding }: Props) {
   const scale = useProfileScale(segments, scaleKm);
   return (
     <ProfileChart
@@ -53,6 +54,7 @@ function Chart({ segments, scaleKm, selected, onSelect }: Props) {
       selected={selected}
       onSelect={onSelect}
       waypoints={[]}
+      riding={riding}
     >
       {null}
     </ProfileChart>
@@ -90,6 +92,14 @@ function layOut(slider: HTMLElement) {
 }
 
 describe("ProfileChart", () => {
+  it.each([
+    [false, [LABEL]],
+    [true, []],
+  ])("結果の図（走行中 %s）は、図の上に図の名前の見出しを出す。走行中の図には出さない", (riding, headings) => {
+    const { container } = renderProfile({ riding });
+    expect([...container.querySelectorAll("p")].map((p) => p.textContent)).toEqual(headings);
+  });
+
   it("スライダーの値は、選ばれた区間の始まりの距離（選ばれていなければ0）", () => {
     const { slider, rerender } = renderProfile();
     expect(slider).toHaveAttribute("aria-valuemin", "0");

@@ -1,11 +1,6 @@
-import { MINUTE_UNIT, roundedMinutes } from "@/lib/duration";
-import { signMark } from "@/lib/numberFormat";
 import type { RouteCandidate } from "@/types/route";
 
-// 候補タブの表記を組み立てる純関数。
-//
-// タブは候補どうしを見比べる場所のため、「基準線とどれだけ違うか」はここに出す
-// （タブの中身を開かないと分からないと、比較のたびに開き直すことになる）。
+// 候補の一覧の並び・群・名前を組み立てる純関数。
 //
 // 最速の印は**backendが付ける値**（route_generator.py: _label）で、ここは読むだけ。idの文字列や
 // 生成の要求の形から決め直さない。
@@ -52,44 +47,4 @@ export function routeListEntries<T extends ListedRoute>(
     label: `${number}`,
   }));
   return [...fastest, ...numbered, ...spliced];
-}
-
-type TimedRoute = Pick<RouteCandidate, "id" | "estimated_duration_seconds" | "is_fastest">;
-
-/**
- * 時間の列の基準線（そのidと所要時間）。最速の印の付いた1本があればそれ（一覧の「最速」と同じ1本と比べる）、
- * 無ければ一覧の中で最も所要時間が短い候補（同着は先に来た方。生成した候補が1本だけで合成を足したとき等、backendが印を
- * 付けない一覧）。候補が1件以下・基準線の所要時間が無いならnull（比べる相手が無い）。
- */
-export function durationBaseline(routes: readonly TimedRoute[]): { id: string; seconds: number } | null {
-  if (routes.length < 2) return null;
-  const marked = routes.find((route) => route.is_fastest);
-  if (marked) {
-    const seconds = marked.estimated_duration_seconds;
-    return seconds === null ? null : { id: marked.id, seconds };
-  }
-  let best: { id: string; seconds: number } | null = null;
-  for (const route of routes) {
-    const seconds = route.estimated_duration_seconds;
-    if (seconds === null) continue;
-    if (best === null || seconds < best.seconds) best = { id: route.id, seconds };
-  }
-  return best;
-}
-
-/**
- * 基準線との差の表記（例: `+12分`・`+107分`・`−3分`。基準線より速く見積もられた候補は−）。基準線が無い・自分の
- * 所要時間が無い・差が丸めて1分未満のときはnull（0を並べても判断材料にならない。自分が基準線のときも差0なので
- * ここに入る）。
- */
-export function durationDifferenceLabel(
-  route: { estimated_duration_seconds: number | null },
-  baselineSeconds: number | null,
-): string | null {
-  if (baselineSeconds === null) return null;
-  const seconds = route.estimated_duration_seconds;
-  if (seconds === null) return null;
-  const minutes = roundedMinutes(seconds - baselineSeconds);
-  if (minutes === 0) return null;
-  return `${signMark(minutes)}${Math.abs(minutes)}${MINUTE_UNIT}`;
 }

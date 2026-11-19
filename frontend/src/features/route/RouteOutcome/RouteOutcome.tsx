@@ -24,18 +24,13 @@ import RouteSplicePanel from "@/features/route/RouteSplicePanel/RouteSplicePanel
 import { formatDurationShort, MINUTE_UNIT } from "@/lib/duration";
 import EditDifference from "@/features/route/EditDifference/EditDifference";
 import WarningText from "@/features/route/WarningText/WarningText";
-import {
-  durationBaseline,
-  durationDifferenceLabel,
-  routeListEntries,
-  type RouteListGroup,
-} from "@/features/route/routeTabLabel";
+import { routeListEntries, type RouteListGroup } from "@/features/route/routeTabLabel";
 import type { useRouteGeneration } from "@/features/route/useRouteGeneration";
 import type { RouteResults } from "@/features/route/useRouteResults";
 import type { SpliceSessionView } from "@/features/route/useSpliceSession";
 import type { RouteCandidate } from "@/types/route";
 
-const CANDIDATE_TAB_USAGE = `この候補を地図と内訳に出し、地図を候補の全体に合わせます。稲妻の印は最速ルート、合成の印は区間を乗り換えた合成ルート、番号だけのものは生成した候補です。上の段は距離です。下の段は時間と負担[重りの印]です。時間は、最速ルート[無ければ最も早い候補]では所要時間、ほかはそれとの差で、速ければ−です。下の帯は、${LENS_QUANTITY_LABEL}を地図と同じ色で表します。`;
+const CANDIDATE_TAB_USAGE = `この候補を地図と内訳に出し、地図を候補の全体に合わせます。稲妻の印は最速ルート、合成の印は区間を乗り換えた合成ルート、番号だけのものは生成した候補です。上の段は距離です。下の段は所要時間と負担[重りの印]です。下の帯は、${LENS_QUANTITY_LABEL}を地図と同じ色で表します。`;
 
 /** 名前の列で群を見分ける印と、その意味（指を置いたときの吹き出しと読み上げの名前）。生成した候補は印を持たない。 */
 const GROUP_MARKS: Partial<Record<RouteListGroup, { Icon: typeof FastestRouteIcon; meaning: string }>> = {
@@ -135,12 +130,15 @@ export default function RouteOutcome({ results, generation, splice, profileLayer
     );
   }
 
-  // 候補ごとのタブの1段で、タブの切り替えが候補の切り替えを兼ねる。中身は上から、候補の一覧・道のりのグラフ・
-  // 元との違い・内訳（区間を押している間は区間の詳細）の順で、狭い高さでも候補の切り替えとグラフが先に見える。
-  const baseline = durationBaseline(routes);
+  // 候補ごとのタブの1段で、タブの切り替えが候補の切り替えを兼ねる。中身は上から、候補の一覧・所要と負担・道のりのグラフ・
+  // 元との違いの順で、狭い高さでも候補の切り替えと所要・負担が先に見える。
   // 道のりのグラフの横軸の右端。候補どうしで同じ物差しにし、面積（負荷）を見比べられるようにする。
   const longestDistanceKm = Math.max(0, ...routes.map((route) => route.distance_km));
   const selectedValue = selectedRouteId ?? routes[0].id;
+  // 見出しに出す印は、並んでいる候補の群のものだけ（最速の無い一覧に稲妻の説明を出さない）。
+  const legendMarks = Object.entries(GROUP_MARKS).flatMap(([group, mark]) =>
+    entries.some((entry) => entry.group === group) ? [mark] : [],
+  );
   const windNotice = windPreviousRunNotice(
     routes.find((route) => route.wind_previous_run_from !== null)?.wind_previous_run_from,
   );
@@ -159,6 +157,20 @@ export default function RouteOutcome({ results, generation, splice, profileLayer
         </p>
       )}
       <Tabs className="flex flex-col gap-2" value={selectedValue} onValueChange={results.selectRoute}>
+        {/* カードの数字と印の見出し。カードの中に語を足すとカードが広がるので、並びの上に1行で置く。 */}
+        <p className={cn(textVariants({ variant: "hint" }), "m-0 flex flex-wrap items-center gap-x-2")}>
+          {legendMarks.map(({ Icon, meaning }) => (
+            <span key={meaning} className="inline-flex items-center gap-0.5">
+              <Icon size={11} />
+              {meaning}
+            </span>
+          ))}
+          <span className="inline-flex items-center gap-0.5">
+            上: 距離　下: 所要時間・
+            <BurdenIcon size={11} />
+            負担
+          </span>
+        </p>
         {/* 候補は1枚ずつのカードで横に並べ、幅に収まらない分は一覧の中だけを横へ送る。縦には動かないので、縦のなぞりは
             シート・パネルのスクロールへ渡る（縦に動く所を1つにする）。 */}
         <TabsList ref={listRef} variant="cards" aria-label="ルート結果">
@@ -192,11 +204,10 @@ export default function RouteOutcome({ results, generation, splice, profileLayer
                     </span>
                   </span>{" "}
                   <span className="flex items-baseline justify-between gap-1 font-normal text-[var(--color-muted-strong)]">
-                    {/* 基準線の候補はその所要時間、他の候補はそれとの差（見比べる場所に置く）。 */}
                     <span>
-                      {route.id === baseline?.id
-                        ? formatDurationShort(baseline.seconds)
-                        : durationDifferenceLabel(route, baseline?.seconds ?? null)}
+                      {route.estimated_duration_seconds === null
+                        ? "—"
+                        : formatDurationShort(route.estimated_duration_seconds)}
                     </span>{" "}
                     <span className="inline-flex items-center gap-0.5">
                       <span aria-hidden="true" title="負担" className="inline-flex text-[var(--color-muted)]">
@@ -225,6 +236,11 @@ export default function RouteOutcome({ results, generation, splice, profileLayer
             style={{ "--profile-chart-height": "5.5rem" } as CSSProperties}
             value={route.id}
           >
+            <RouteAxisProfile
+              penalty={route.penalty}
+              estimatedDurationSeconds={route.estimated_duration_seconds}
+              missingTravelDataShare={route.missing_travel_data_share}
+            />
             {/* 道のりのグラフ。区間を選んでいる間も残す（動かして地点を選ぶ操作の置き場のため）。選んでいる間は、その地点の
                 詳しくをグラフが自分の下に出す。シートは、高さを決めていなければ、開いたときにここの下端までの高さに合わせる。 */}
             {route.segments.length > 0 && (
@@ -245,11 +261,6 @@ export default function RouteOutcome({ results, generation, splice, profileLayer
               </div>
             )}
             {renderEditDifference(route)}
-            <RouteAxisProfile
-              penalty={route.penalty}
-              estimatedDurationSeconds={route.estimated_duration_seconds}
-              missingTravelDataShare={route.missing_travel_data_share}
-            />
           </TabsContent>
         ))}
       </Tabs>
