@@ -6,12 +6,12 @@
  *   前に出た予報の風で作ったことの知らせ、乗り換えで作った経路と同じ道だったので選んだ候補の知らせと、選んだカードを一覧の横の見える範囲へ送ること
  * - 候補の一覧: 群（最速・生成した候補・合成）の間の区切りの線と名前の印（意味を読み上げの名前に持つ）、カードに出す
  *   名前・距離・所要時間・負担（内訳が無ければ「—」）と、下の帯の色（1kmあたりの負担を
- *   地図の総合のレンズと同じ段の色・内訳が無ければ値の無い色）、並びの上の数字と印の見出し、選ばれているタブ（選んだ候補・無ければ先頭）と、タブを押したときに上がる操作
+ *   地図の総合のレンズと同じ段の色・内訳が無ければ値の無い色）、並びの上の数字と印の見出しと、その右の(i)の所要時間と負担の説明（費用の軸の一覧の名前と文を差し込む）、選ばれているタブ（選んだ候補・無ければ先頭）と、タブを押したときに上がる操作
  *
  * ここで見ないもの: 選んだ候補の中身（元との違い・道のりのグラフ・内訳・区間の詳しく・編集面） → `RouteOutcome.selected.test.tsx`。
  * 一覧の並び・群・名前の決め方 → `features/route/routeTabLabel.ts`。
  * 結果の状態の移り変わり → `features/route/useRouteResults.ts`。値を子・文へそのまま渡すだけの所
- * （内訳・事実・所要の前提の知らせ等）は1行の委譲なので見ない。候補1本への操作（走る・合成・GPX）
+ * （内訳・事実等）は1行の委譲なので見ない。候補1本への操作（走る・合成・GPX）
  * → `features/route/RouteCandidateActions/RouteCandidateActions.tsx`（置き場は見出しの行の`RouteOutcomeHeaderActions.tsx`）。値から段を引く判断 →
  * `lib/mapDisplay/valueScale.ts: bandAt`。シートが開いたときに合わせる高さ → `components/BottomSheet/BottomSheet.tsx`。
  *
@@ -20,6 +20,7 @@
  * 軸は架空のもの（`axis_a`等）を`testing/costAxes.ts: costAxisEntry`の雛形から作る。
  */
 import { screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { EditedRoute } from "@/features/route/useRouteResults";
@@ -27,7 +28,8 @@ import { NO_DATA_LEGEND_BAND } from "@/lib/mapDisplay/mapColorLegend";
 import { costLensPaint } from "@/lib/mapDisplay/costLensPaint";
 import { valueBands } from "@/lib/mapDisplay/valueScale";
 import { serveClientConfig, serveCostAxisCatalog } from "@/testing/backendServer";
-import { costAxisCatalog } from "@/testing/costAxes";
+import { costAxisCatalog, costAxisEntry } from "@/testing/costAxes";
+import routeGenerateConfig from "@/types/generated/route-generate-config.json";
 import { FAST, SLOW, generationOf, renderOutcome, resultsOf, route } from "@/testing/routeOutcome";
 
 beforeEach(() => {
@@ -133,6 +135,19 @@ describe("候補の一覧", () => {
     const [fastest, , spliced] = screen.getAllByRole("tab");
     expect(within(fastest).getByRole("img", { name: "最速ルート" })).toHaveAttribute("title", "最速ルート");
     expect(within(spliced).getByRole("img", { name: "合成ルート" })).toHaveAttribute("title", "合成ルート");
+  });
+
+  it("見出しの右の(i)を開くと、所要時間の見積もり方と、費用の軸の一覧の名前と曲がる所の漕ぎ出しの文を差し込んだ負担の説明を出す", async () => {
+    serveCostAxisCatalog({
+      ...costAxisCatalog(costAxisEntry("ascent", { label: "軸ア" }), costAxisEntry("stopping", { label: "軸イ" })),
+      turn_kickoff_wording: "漕ぎ出しの文",
+    });
+    renderOutcome({ results: resultsOf({ generated: [FAST, SLOW] }) });
+    await userEvent.click(within(cardLegend()!).getByRole("button", { name: "所要時間と負担の説明を表示" }));
+    expect(
+      await screen.findByText(`所要時間: ${routeGenerateConfig.duration_estimate_wording}`, { exact: false }),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/^負担: 避けたいもの\[軸ア・軸イ\]を通る分.*\[漕ぎ出しの文\]/)).toBeInTheDocument();
   });
 
   it.each([
