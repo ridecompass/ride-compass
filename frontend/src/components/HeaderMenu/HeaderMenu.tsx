@@ -61,7 +61,7 @@ export default function HeaderMenu({
       </PopoverTrigger>
       <PopoverContent
         layer="header"
-        className="flex min-w-56 flex-col gap-1 p-1.5"
+        className="flex min-w-56 max-w-[min(calc(100vw-2*var(--space-3)),var(--radix-popover-content-available-width))] flex-col gap-1 p-1.5"
         side="bottom"
         align="end"
         // メニューが閉じきり、フォーカスを開くボタンへ戻してから入る。先に入ると、閉じる動きの間に部品を押して出た
