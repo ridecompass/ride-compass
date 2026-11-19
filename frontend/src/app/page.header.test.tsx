@@ -2,7 +2,7 @@
  * `app/page.tsx`——トップページのヘッダーとメニュー。
  *
  * 見ること: ヘッダーの「未取得」に並ぶ出所と「現在地に移動」の失敗、観測値の失敗の印を取り直しの間も保つこと、「現在地に移動」が
- * 出発地を変えずに地図を寄せて現在地に点を出すこと、メニューから入る使い方の説明とデバッグログ。
+ * 出発地を変えずに地図を寄せて現在地に点を出すこと、メニューから入る使い方の説明とデバッグログ、閉じた初回の案内をメニューから出し直すこと。
  *
  * 差し替えたもの: backend の応答（網の層）、位置情報の取得、地図の描画（`maplibre-gl`）。子の部品は本物を描く。
  */
@@ -12,7 +12,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { setDebugEnabled } from "@/lib/debugLog";
 import { SECOND_MS } from "@/lib/duration";
 import refreshIntervals from "@/types/generated/refresh-intervals.json";
-import { heldReplies, onBackend } from "@/testing/backendServer";
+import { heldReplies, onBackend, onSameOrigin } from "@/testing/backendServer";
 import { installGeolocation } from "@/testing/geolocation";
 import { ELSEWHERE, HERE, clickMap, marksAt, renderHome, serveHome } from "@/testing/homePage";
 
@@ -89,5 +89,18 @@ describe("ヘッダーとメニュー", () => {
     expect(screen.getByText(/^デバッグログ\[/)).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: /^デバッグログ\[.*を閉じる$/ }));
     expect(screen.queryByText(/^デバッグログ\[/)).toBeNull();
+  });
+
+  it("閉じた初回の案内は、メニューの「初回の案内をもう一度見る」で地図の上にまた出る", async () => {
+    onSameOrigin("GET", "/api/version", () => Response.json({ commit: null, started_at: "2026-10-08T22:00:00Z" }));
+    const { user } = renderHome();
+    const intro = () => screen.queryByRole("region", { name: "RideCompass" });
+    await user.click(screen.getByRole("button", { name: "はじめる" }));
+    expect(intro()).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: "メニュー" }));
+    await user.click(screen.getByRole("button", { name: "初回の案内をもう一度見る" }));
+
+    expect(intro()).toBeInTheDocument();
   });
 });

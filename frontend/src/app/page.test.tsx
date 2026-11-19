@@ -159,7 +159,7 @@ describe("ルートを作る", () => {
   it("保存した条件は地図で置いた出発地を持ち、呼び出すとその出発地から生成する", async () => {
     const PLACED: Coordinates = { latitude: 35.65, longitude: 139.75 };
     const { user } = renderHome();
-    // 保存は「条件」タブ、呼び出しは「保存済み」の「プリセット」で行う（隠れたタブの中身も描いてあるので、ほかのタブにも保存のボタンが
+    // 保存は「条件」タブ、呼び出しは「保存済み」の「設定」で行う（隠れたタブの中身も描いてあるので、ほかのタブにも保存のボタンが
     // あれば、ボタンが2つに当たって落ちる）。
     const saveAs = async (name: string) => {
       await user.click(screen.getByRole("tab", { name: "条件" }));
@@ -174,7 +174,7 @@ describe("ルートを作る", () => {
     };
     const recall = async (name: string) => {
       await user.click(screen.getByRole("tab", { name: "保存済み" }));
-      await user.click(screen.getByRole("tab", { name: "プリセット" }));
+      await user.click(screen.getByRole("tab", { name: "設定" }));
       await user.click(screen.getByRole("button", { name: `「${name}」を呼び出す` }));
       await user.click(
         within(screen.getByRole("dialog", { name: `「${name}」を反映します` })).getByRole("button", {

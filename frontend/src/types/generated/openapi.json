@@ -2053,6 +2053,10 @@
             "type": "string",
             "title": "Label"
           },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
           "color": {
             "anyOf": [
               {
@@ -2081,6 +2085,7 @@
         "required": [
           "key",
           "label",
+          "name",
           "color",
           "color_on_dark"
         ],

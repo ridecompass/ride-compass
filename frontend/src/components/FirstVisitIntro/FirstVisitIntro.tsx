@@ -10,26 +10,35 @@ import { originMarkColor, PIN_MARK_BACKGROUND, PinMark } from "@/components/PinM
 import { useStoredState } from "@/hooks/useStoredState";
 import { useIsomorphicLayoutEffect } from "@/hooks/useIsomorphicLayoutEffect";
 import { cn } from "@/lib/cn";
+import { APP_NAME } from "@/lib/screenNames";
 
 const FIRST_VISIT_INTRO_STORAGE_KEY = "ridecompass:first-visit-intro-closed";
 
+/** 初回の案内を出しているか（閉じたことをこの端末に覚える）と、閉じる・もう一度出す操作。案内と、ヘッダーのメニューの入口が分かち合う。 */
+export function useFirstVisitIntro() {
+  const [closed, setClosed] = useStoredState(FIRST_VISIT_INTRO_STORAGE_KEY, "初回の案内を閉じたか", false);
+  return { shown: !closed, close: () => setClosed(true), reopen: () => setClosed(false) };
+}
+
 interface FirstVisitIntroProps {
+  /** 案内を出しているか（`useFirstVisitIntro`の`shown`）。 */
+  shown: boolean;
+  onClose: () => void;
   /** 最初の位置の取得が決着して、位置が分からないと分かったか。真の間は出発地の印が灰色の仮の地点なので、
    * 地図をタップして置く手順を案内する（決着するまでは「はじめは現在地」のまま）。 */
   locationUnknown: boolean;
 }
 
 /**
- * 初めて開いたときだけ地図の上に出す案内。閉じるとこの端末では次から出ない。
+ * 初めて開いたときに地図の上に出す案内。閉じるとこの端末では次から出ず、ヘッダーのメニューからもう一度出せる。
  * 保存値の復元はマウント後なので、マウントするまで出さない（出すとSSRのHTMLに載り、閉じた人にも一瞬見える）。
  */
-export default function FirstVisitIntro({ locationUnknown }: FirstVisitIntroProps) {
-  const [closed, setClosed] = useStoredState(FIRST_VISIT_INTRO_STORAGE_KEY, "初回の案内を閉じたか", false);
+export default function FirstVisitIntro({ shown, onClose, locationUnknown }: FirstVisitIntroProps) {
   const [mounted, setMounted] = useState(false);
   const titleId = useId();
   useIsomorphicLayoutEffect(() => setMounted(true), []);
 
-  if (!mounted || closed) return null;
+  if (!mounted || !shown) return null;
 
   return (
     <section
@@ -41,7 +50,7 @@ export default function FirstVisitIntro({ locationUnknown }: FirstVisitIntroProp
     >
       <div className="flex items-start justify-between gap-2">
         <h2 id={titleId} className={cn(textVariants({ variant: "heading" }), "m-0")}>
-          RideCompass
+          {APP_NAME}
         </h2>
         <Button
           usage="案内を閉じます。"
@@ -49,7 +58,7 @@ export default function FirstVisitIntro({ locationUnknown }: FirstVisitIntroProp
           size="bare"
           className="px-1"
           aria-label="案内を閉じる"
-          onClick={() => setClosed(true)}
+          onClick={onClose}
         >
           ✕
         </Button>
@@ -81,7 +90,7 @@ export default function FirstVisitIntro({ locationUnknown }: FirstVisitIntroProp
         variant="primary"
         size="sm"
         className="self-end"
-        onClick={() => setClosed(true)}
+        onClick={onClose}
       >
         はじめる
       </Button>

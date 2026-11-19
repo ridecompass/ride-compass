@@ -7,7 +7,7 @@ export interface FrontendVersion {
   started_at: string;
 }
 
-// フロント自身が動いている版。メニューのバージョン表示と管理画面のシステム状況が読む。
+// フロント自身が動いている版。メニューの頭と管理画面のシステム状況が読む。
 function getFrontendVersion() {
   return fetchJson<FrontendVersion>("/api/version", {
     category: "api:version",

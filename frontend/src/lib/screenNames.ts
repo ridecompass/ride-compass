@@ -3,6 +3,9 @@
 
 import { mapDisplay } from "@/types/generated/mapDisplay";
 
+/** アプリの名前（ページの題・初回の案内・メニューの頭・書き出したファイルの作り手）。 */
+export const APP_NAME = "RideCompass";
+
 /** 場所の事実（標高・道路の種類・スポット等）を重ねる所。 */
 export const FACT_DISPLAY_NAME = "表示";
 

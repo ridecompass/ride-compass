@@ -23,6 +23,7 @@ import { Popover, PopoverContent, PopoverTrigger, POPOVER_COLLISION_PADDING_PX }
 import { cn } from "@/lib/cn";
 import { FACT_DISPLAY_NAME } from "@/lib/screenNames";
 import { cardVariants } from "@/components/ui/Card/Card";
+import { RowMarksNote } from "@/features/map/LegendCheckboxList/LegendRow";
 import OverlayLayerRow, {
   FILTERED_LABEL,
   FilteredMark,
@@ -213,6 +214,7 @@ export default function MapOverlayControls({
             <MapLookSettings range={range} mapTheme={mapTheme} />
           </TabsContent>
           <TabsContent value="layers">
+            <RowMarksNote />
             {groups}
             <div className="mt-1.5 flex justify-end gap-1 border-t border-[var(--color-border)] pt-1.5">
               <Button

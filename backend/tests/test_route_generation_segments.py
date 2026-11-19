@@ -303,7 +303,7 @@ async def test_the_duration_and_the_penalty_of_each_axis_and_of_the_preferred_an
     assert fastest.penalty.preferred_seconds < 0 < fastest.penalty.avoided_seconds
     assert fastest.penalty.axis_seconds[BAD_AXIS] > 0
     # 事実は軸ごとに、名前と単位を付けて返す（画面が軸idで出し分けない）。数の材料の軸は、その軸の秒に一番効いた区間（道100）の
-    # 材料の値を材料の宣言の名前と単位で、摩擦は一番効いた路面の区分の名前を出す。
+    # 材料の値を材料の宣言の名前と単位で、路面の抵抗は一番効いた路面の区分の名前を出す。
     facts = fastest.facts.axes
     bad = MATERIAL_CATALOG[BAD_MATERIAL]
     assert facts[BAD_AXIS] == AxisFact(label=bad.label, value=1.0, unit=bad.unit)

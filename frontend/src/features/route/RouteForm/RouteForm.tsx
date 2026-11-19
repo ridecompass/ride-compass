@@ -44,7 +44,7 @@ interface RouteFormProps extends Omit<RoutePointsProps, "conditions"> {
   exclusionsPanel: React.ReactNode;
   /** 「条件」タブの、いまの設定を保存するアイコン（保存するものは各タブに及ぶが、条件を詰める所で保存する）。 */
   saveConditionsButton: React.ReactNode;
-  /** 「保存済み」タブの「プリセット」の中身（保存した設定の一覧）。 */
+  /** 「保存済み」タブの「設定」の中身（保存した設定の一覧）。 */
   savedConditionsPanel: React.ReactNode;
 }
 
@@ -174,7 +174,7 @@ export default function RouteForm({
       <KeptTabContent value="exclusions">{exclusionsPanel}</KeptTabContent>
 
       <KeptTabContent value="saved">
-        {/* 保存したものは地点とプリセットの2つで、呼び出すと変わるものが違う（地点は選んだ1地点を置き、プリセットは各タブの値を入れ替える）。 */}
+        {/* 保存したものは地点と設定の2つで、呼び出すと変わるものが違う（地点は選んだ1地点を置き、設定は各タブの値を入れ替える）。 */}
         <Tabs defaultValue="places">
           <TabsList className="mb-2" aria-label="保存したもの">
             <TabsTrigger
@@ -185,9 +185,9 @@ export default function RouteForm({
             </TabsTrigger>
             <TabsTrigger
               value="conditions"
-              usage="条件タブで名前を付けて保存した設定[プリセット]の一覧です。呼び出すと、各タブの値を入れ替えます。"
+              usage="条件タブで名前を付けて保存した設定の一覧です。呼び出すと、各タブの値を入れ替えます。"
             >
-              プリセット
+              設定
             </TabsTrigger>
           </TabsList>
           <KeptTabContent value="places">

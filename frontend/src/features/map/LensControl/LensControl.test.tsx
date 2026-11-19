@@ -1,6 +1,6 @@
 /**
  * `LensControl.tsx`——「負担で塗る」のピルが今のレンズと色の帯の向きを示し、開いた一覧でレンズを1つ選び・外し、選んでいる行の ▶ で
- * 凡例を絞り込み、行の印（走る条件・絞り込み中）と前提の文を読ませること。
+ * 凡例を絞り込み、行の印（走る条件・絞り込み中）と前提の文を読ませ、一覧の頭で行の印の意味を読ませること。
  *
  * ここで見ないもの:
  * - 選択肢・凡例・前提の文の中身を費用の軸の一覧から組むこと → `features/map/view/lens.test.ts`
@@ -61,7 +61,7 @@ const list = () => screen.getByRole("radiogroup", { name: "負担で塗る" });
 describe("LensControl", () => {
   it.each([
     ["used", false, "usedの軸"],
-    [UNSELECTED_LENS_ID, false, "塗る負担を選ぶ"],
+    [UNSELECTED_LENS_ID, false, "負担を色で見る"],
     [UNSELECTED_LENS_ID, true, "総合"],
   ])(
     "ピルは選んでいるレンズ（%s・ルートの確定後 %s）の名前を出し、選んでいなければ塗り方を出す",
@@ -94,6 +94,14 @@ describe("LensControl", () => {
         .getAllByRole("radio")
         .map((row) => row.textContent),
     ).toEqual(["idleの軸", "usedの軸（地図の向きで変わる）（出発時刻で変わる）"]);
+  });
+
+  it("一覧の頭に、どれかの行に出る走る条件の印と、凡例を開く▶の意味を文字で並べる", async () => {
+    renderLens();
+    await open();
+    expect(screen.getByText("凡例を開く").closest("p")).toHaveTextContent(
+      /^地図の向きで変わる出発時刻で変わる▶凡例を開く$/,
+    );
   });
 
   it("行を押すとそのレンズを選び、一覧は閉じない。選んでいる行をもう一度押すと外す", async () => {

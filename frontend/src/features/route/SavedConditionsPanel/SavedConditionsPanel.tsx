@@ -88,7 +88,7 @@ export function SaveConditionsButton({
         aria-label="いまの設定を保存"
         aria-haspopup="dialog"
         aria-expanded={saving}
-        usage={`いまの設定[条件・出発地・負担・${ROAD_SETTINGS_TAB_NAME}]を開いて確かめ、名前を付けてプリセットとしてこの端末に保存します。保存したプリセットは、「保存済み」タブの「プリセット」から呼び出せます。`}
+        usage={`いまの設定[条件・出発地・負担・${ROAD_SETTINGS_TAB_NAME}]を開いて確かめ、名前を付けてこの端末に保存します。保存した設定は、「保存済み」タブの「設定」から呼び出せます。`}
         onClick={() => setSaving(true)}
       >
         <SaveConditionsIcon size={18} />
@@ -102,7 +102,7 @@ export function SaveConditionsButton({
                 [
                   "出発地",
                   <ToggleGroup
-                    usage="保存するプリセットの出発地を、呼び出した時の現在地にするか、今の出発地に固定するかを選びます。"
+                    usage="保存する設定の出発地を、呼び出した時の現在地にするか、今の出発地に固定するかを選びます。"
                     key="origin"
                     aria-label="保存する出発地"
                     value={fixOrigin ? "fixed" : "current"}
@@ -157,7 +157,7 @@ export function SaveConditionsButton({
   );
 }
 
-// 「ルート設定」区分の「保存済み」タブの「プリセット」。保存した設定の一覧（呼び出す・消す）を置く（保存は「条件」タブ）。
+// 「ルート設定」区分の「保存済み」タブの「設定」。保存した設定の一覧（呼び出す・消す）を置く（保存は「条件」タブ）。
 // 一覧の行は名前とアイコンの操作だけで、呼び出すと窓で中身を見せ、「反映する」で各タブの値と地図のピンが入れ替わる。
 // 生成はいつもの「ルート生成」で行う（入れ替えたあとに値を確かめたり少し変えたりできる）。
 export default function SavedConditionsPanel({ saved, onRecall, onRemove }: SavedConditionsPanelProps) {
@@ -179,8 +179,8 @@ export default function SavedConditionsPanel({ saved, onRecall, onRemove }: Save
 
       <SavedList
         items={saved}
-        noun="プリセット"
-        howToSave={`条件タブの「いまの設定を保存」で、いまの設定[条件・出発地・負担・${ROAD_SETTINGS_TAB_NAME}]に名前を付けてプリセットとして保存します。保存したプリセットは、行の「呼び出す」を押すと各タブに戻せます。`}
+        noun="設定"
+        howToSave={`条件タブの「いまの設定を保存」で、いまの設定[条件・出発地・負担・${ROAD_SETTINGS_TAB_NAME}]に名前を付けて保存します。保存した設定は、行の「呼び出す」を押すと各タブに戻せます。`}
         renderMain={(entry) => <span className="min-w-0 flex-auto truncate font-semibold">{entry.name}</span>}
         renderActions={(entry) => (
           <Button
@@ -188,7 +188,7 @@ export default function SavedConditionsPanel({ saved, onRecall, onRemove }: Save
             aria-label={`「${entry.name}」を呼び出す`}
             aria-haspopup="dialog"
             aria-expanded={recalling?.name === entry.name}
-            usage="このプリセットの内容を確かめる窓を開きます。「反映する」を押すと、各タブの値と地図の地点を置き換えます。ルートは、その後に「ルート生成」で作ります。"
+            usage="この設定の内容を確かめる窓を開きます。「反映する」を押すと、各タブの値と地図の地点を置き換えます。ルートは、その後に「ルート生成」で作ります。"
             onClick={() => setRecalling(entry)}
           >
             <RecallSavedIcon size={18} />
@@ -217,7 +217,7 @@ export default function SavedConditionsPanel({ saved, onRecall, onRemove }: Save
                 キャンセル
               </Button>
               <Button
-                usage="このプリセットの値で、各タブの値と地図の地点を入れ替えます。"
+                usage="この設定の値で、各タブの値と地図の地点を入れ替えます。"
                 variant="primary"
                 size="sm"
                 onClick={() => {

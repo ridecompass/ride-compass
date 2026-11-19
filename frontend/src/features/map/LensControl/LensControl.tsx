@@ -15,7 +15,7 @@ import { cn } from "@/lib/cn";
 import { textVariants } from "@/components/ui/Text/Text";
 import { BURDEN_PAINT_NAME } from "@/lib/screenNames";
 import { LENS_QUANTITY_LABEL } from "@/lib/mapDisplay/costLensPaint";
-import { LensRow, type LensOption } from "./LensRow";
+import { LensMarksNote, LensRow, type LensOption } from "./LensRow";
 
 interface LensControlProps {
   lens: LensId;
@@ -47,7 +47,7 @@ interface LensControlProps {
 const LENS_SCREEN_NAME = BURDEN_PAINT_NAME;
 
 /** レンズを選んでいないルートの前のピルの名前（道路は塗らない）。 */
-const UNSELECTED_LABEL = "塗る負担を選ぶ";
+const UNSELECTED_LABEL = "負担を色で見る";
 
 /**
  * レンズ（地図を何で塗るか）の唯一の入口。地図の上のピルが今のレンズを示し、押すと一覧を開く。置き場は呼び出し側が決める。
@@ -172,6 +172,7 @@ export default function LensControl({
               {catalogNotice}
             </p>
           )}
+          {axisOptions.length > 0 && <LensMarksNote options={axisOptions} />}
           <ToggleGroup
             variant="chips"
             className="flex-col flex-nowrap gap-0"

@@ -1,7 +1,7 @@
 "use client";
 
 import { createElement, type ReactElement } from "react";
-import { useRowDescription, useRowPanel } from "@/features/map/LegendCheckboxList/LegendRow";
+import { RowMarksNote, useRowDescription, useRowPanel } from "@/features/map/LegendCheckboxList/LegendRow";
 import { FILTERED_LABEL } from "@/features/map/MapOverlayControls/OverlayLayerRow";
 import type { LensId } from "@/lib/mapDisplay/routeStyleModes";
 import type { WayValueCondition } from "@/lib/mapDisplay/mapLens";
@@ -29,6 +29,18 @@ const CONDITION_MARKS: Record<WayValueCondition, { Icon: (props: { size?: number
   speed_kmh: { Icon: SpeedGaugeIcon, name: "想定速度" },
   at: { Icon: ClockIcon, name: "出発時刻" },
 };
+
+/** 一覧の頭の、行の印の凡例。走る条件の印は、どれかの行に出るものだけを並べる。 */
+export function LensMarksNote({ options }: { options: readonly LensOption[] }) {
+  const shown = new Set(options.flatMap((option) => option.conditions));
+  const marks = (Object.keys(CONDITION_MARKS) as WayValueCondition[])
+    .filter((condition) => shown.has(condition))
+    .map((condition) => {
+      const { Icon, name } = CONDITION_MARKS[condition];
+      return { key: condition, mark: <Icon size={12} />, meaning: `${name}で変わる` };
+    });
+  return <RowMarksNote marks={marks} />;
+}
 
 // 部品は費用の軸のアイコンの固定の辞書から引くので描くたびに作られないが、`const Icon = …; <Icon />`の形は
 // react-hooks/static-componentsが描くたびに作る形と読むため、createElementで描く。

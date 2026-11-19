@@ -23,6 +23,7 @@ import { rideClock } from "@/features/ride/rideRemaining";
 import { useRideMode } from "@/features/ride/useRideMode";
 import { useRideWayConditions } from "@/features/ride/useRideWayConditions";
 import { useMapView } from "@/features/map/view/useMapView";
+import { useFirstVisitIntro } from "@/components/FirstVisitIntro/FirstVisitIntro";
 import HomeHeader from "./HomeHeader";
 import HomeMapPane from "./HomeMapPane";
 import { DesktopRoutePanels, MobileRoutePanels } from "./RoutePanels";
@@ -67,6 +68,7 @@ export default function Home() {
 
   // 説明を見る状態（ヘッダーのメニューの「使い方を見る」で入る）。
   const [usageGuideActive, setUsageGuideActive] = useState(false);
+  const firstVisitIntro = useFirstVisitIntro();
 
   const isMobile = useIsMobile();
   const panels = usePagePanels({ navigating, isMobile });
@@ -216,6 +218,7 @@ export default function Home() {
         mapBearingDeg={mapView.bearing}
         onRedrawMap={mapView.redrawMap}
         onStartUsageGuide={() => setUsageGuideActive(true)}
+        onShowIntro={firstVisitIntro.reopen}
         panelsShown={panels.panelsShown}
         onToggleRidePanel={panels.toggleRidePanel}
       />
@@ -243,6 +246,7 @@ export default function Home() {
             sheetOpen={sheetOpen}
             usageGuideActive={usageGuideActive}
             onUsageGuideEnd={() => setUsageGuideActive(false)}
+            firstVisitIntro={firstVisitIntro}
             searchBar={
               <PlaceSearch
                 title={pointTitle(searchTarget)}

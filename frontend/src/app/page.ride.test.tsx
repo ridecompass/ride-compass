@@ -148,8 +148,9 @@ describe("走行モード", () => {
     await user.click(screen.getByRole("checkbox", { name: "風[矢印]" }));
     await user.keyboard("{Escape}");
     act(() => mapOnScreen().moveTo({ west: 139.68, south: 35.69, east: 139.72, north: 35.71 }, 12));
+    await user.click(await screen.findByRole("button", { name: "俯瞰図を開く" }));
 
-    expect(await screen.findByRole("region", { name: "俯瞰図" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "俯瞰図" })).toBeInTheDocument();
   });
 
   it("走行モードで届いた現在地を選んだ候補の上の距離へ当て、プロファイルに印を出し、地図のルート線のそこまでを薄め、走りの帯に残りと到着予想を出し、この先の経由地の印にも同じ見込みの時刻を添える", async () => {
