@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import GenerationNotice from "@/features/route/GenerationNotice/GenerationNotice";
 import PlaceSearch from "@/features/route/PlaceSearch/PlaceSearch";
 import { usePlaceLookup } from "@/features/route/PlaceSearch/usePlaceLookup";
@@ -77,11 +77,14 @@ export default function Home() {
 
   // スマホで下のシートを開いているか。
   const sheetOpen = isMobile && panels.mobileSheet !== null;
+  function openConditions() {
+    setSettingsTab("generate");
+    panels.showRouteSettings();
+  }
   // スマホで閉じているシートは開かない（探す・置くとき、パネルの開き閉じは利用者に任せる）。
   function showConditions() {
     if (isMobile && !sheetOpen) return;
-    setSettingsTab("generate");
-    panels.showRouteSettings();
+    openConditions();
   }
   // 探した・保存した地点を置いたら、置いた地点を選んで「ルート設定」の条件タブにその詳しくを見せる（ピンを地図でつかんで直す
   // ため。足した経由地は`conditions.placeFound`が選ぶ）。
@@ -105,10 +108,15 @@ export default function Home() {
   // 出発地の詳しくを「ルート設定」の条件タブに出し、置き方へ導く。
   function askOrigin() {
     conditions.selectPoint({ role: "origin" });
-    setSettingsTab("generate");
-    panels.showRouteSettings();
+    openConditions();
     setOriginAsks((asks) => asks + 1);
   }
+  // 求めるたびに、出発地の詳しくへフォーカスを移す（直す所へ目と読み上げを移す）。求めたときだけ移し、詳しくを描き直した・
+  // 出し直したときには移さない。
+  const originDetailRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    if (originAsks > 0) originDetailRef.current?.focus();
+  }, [originAsks]);
 
   // ルートを作る機能（結果・生成・区間の乗り換え）。
   const route = useRoutePlanner({
@@ -169,6 +177,7 @@ export default function Home() {
         originLocated={locationKnown}
         originAtHere={place.originAtHere}
         originAsks={originAsks}
+        originDetailRef={originDetailRef}
         onOriginReset={resetOriginToCurrent}
         originFound={originFound}
         // クリックの中で同期して focus する（iOS は、利用者の操作の中で focus したときだけキーボードを出す）。

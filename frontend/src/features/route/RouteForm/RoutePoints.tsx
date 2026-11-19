@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { type Ref, useState } from "react";
 
 import { Button } from "@/components/ui/Button/Button";
 import { ClearPointsIcon, EditPointsIcon, LocateIcon, LoopRouteIcon } from "@/components/ui/icons/icons";
@@ -52,8 +52,10 @@ interface RoutePointsProps {
   originLocated: boolean;
   /** 出発地が、最後に取れた現在地にあるか（真なら「出発地を現在地に戻す」を押せなくする）。 */
   originAtHere: boolean;
-  /** 出発地が仮の地点のまま「生成」を押した回数（0なら求めていない）。増えるたびに、出発地の詳しくを強調して寄せる。 */
+  /** 出発地が仮の地点のまま「生成」を押した回数（0なら求めていない）。求めている間は出発地の詳しくを強調し、増えたら編集を閉じる。 */
   originAsks: number;
+  /** 出発地の詳しくの要素（求めている間はフォーカスを受けられる）。 */
+  originDetailRef: Ref<HTMLElement>;
   /** 出発地を現在地へ戻す（現在地の取得もこの操作が兼ねる）。 */
   onOriginReset: () => void;
   /** 出発地が、探して置いたときの位置のままなら、その候補。 */
@@ -94,6 +96,7 @@ export default function RoutePoints({
   originLocated,
   originAtHere,
   originAsks,
+  originDetailRef,
   onOriginReset,
   originFound,
   onSearchOpen,
@@ -167,7 +170,8 @@ export default function RoutePoints({
           role="origin"
           source={originManual ? sourceOf(originFound) : undefined}
           name={originLocated ? areaNames.origin : ORIGIN_PLACING_GUIDE}
-          asks={originAsks}
+          asked={originAsks > 0}
+          ref={originDetailRef}
           found={originFound}
           at={originLocated ? origin : null}
           placed={originLocated}
