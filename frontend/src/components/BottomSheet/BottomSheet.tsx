@@ -2,16 +2,14 @@
 
 import { useEffect, useEffectEvent, useId, useLayoutEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/Button/Button";
-import { textVariants } from "@/components/ui/Text/Text";
 import { useStoredState } from "@/hooks/useStoredState";
-import { cn } from "@/lib/cn";
 import { mapOverlayEdge } from "@/lib/mapOverlayEdges";
 import { TAP_SLOP_PX } from "@/lib/tapSlop";
 
 interface BottomSheetProps {
   open: boolean;
   onClose: () => void;
-  /** 見出し（シートのアクセシブル名にもなる）。 */
+  /** 見出し（シートのアクセシブル名）。画面には出さず見出しの行の幅を操作へ回すので、何のシートかは開いた操作の側で見せる。 */
   title: string;
   /** 見出しの行の右、閉じるボタンの手前に置く操作。 */
   headerAction: React.ReactNode;
@@ -234,13 +232,9 @@ function OpenBottomSheet({
         onKeyDown={handleHandleKeyDown}
       />
       <div className="flex flex-shrink-0 items-center justify-between gap-2 border-b border-[var(--color-border)] px-3">
-        {/* 見出しの横に収まらなければ、見出しのすぐ右に置くものを見出しの下の行へ折り返す（右の操作はその右に残る）。 */}
+        {/* 見出しのすぐ右に置くものが収まらなければ、下の行へ折り返す（右の操作はその右に残る）。 */}
         <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2">
-          <h2
-            id={titleId}
-            tabIndex={-1}
-            className={cn(textVariants({ variant: "heading" }), "min-w-0 truncate focus:outline-none")}
-          >
+          <h2 id={titleId} tabIndex={-1} className="sr-only">
             {title}
           </h2>
           {headerLead && <div className="flex min-w-0 items-center">{headerLead}</div>}
