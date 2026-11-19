@@ -36,11 +36,11 @@
 | `features/route/RouteSettingsPanel/HardFilterPanel.tsx` | 「道路」タブの中身。地図の道のレイヤの凡例の行ごとの避け方を1つの並びに出し、自転車が通れない道の行は「通らない」に固定して鍵を付ける（下記「除外」）。選べる行の鍵・名前・既定の段と行をまとめる節は画面の設定の`road_classes.avoidance`が、選べない行（自転車が通れない道）も同じ一覧に`selectable`が偽の行として載り、名前をフロントに持たない——キーと名前を別々に持つと、足した行に名前が無く内部名が出る。画面の設定が届くまでは選べる行を出さない。並びの上に「地図で見る」（このタブを出している間、段を地図の道に塗るか。値は`features/map/view/useMapView.ts`が端末に覚える）を置く |
 | `lib/roadAvoidance.ts` | 画面に出す行の段を決める（`lib/roadAvoidance.ts: avoidanceLevelOf`。道路タブを地図で見ている間に道へ塗る段も同じ決め方で読む。選んでいなければ既定の段）。要求には選んだ段をそのまま送り、行の増減はbackendが揃える |
 | `features/route/SavedPlacesPanel/SavedPlacesPanel.tsx` | 「保存済み」タブの「地点」の中身: 保存した地点の一覧（行は名前・辺りと、アイコンの「呼び出す」「消す」。呼び出すはメニューで出発地・経由地・目的地のどれに置くかを選び（周回の間は目的地を使わないので「目的地にする」を押せない）、消すは確認の窓で「消す」を押すと消す）。無ければ無いと出し、保存の仕方は(i)の奥（下記「保存した地点」） |
-| `features/route/SavedList/SavedList.tsx` | 「保存済み」タブの一覧（地点・プリセット）の形: 空の案内と保存の仕方の(i)・行の枠・消す操作と確認の窓。行の名前の欄と行ごとの操作（「呼び出す」）は使う側が渡す |
+| `features/route/SavedList/SavedList.tsx` | 「保存済み」タブの一覧（地点・設定）の形: 空の案内と保存の仕方の(i)・行の枠・消す操作と確認の窓。行の名前の欄と行ごとの操作（「呼び出す」）は使う側が渡す |
 | `features/route/useSavedPlaces.ts` | 保存した地点の一覧（この端末の`localStorage`）と、保存・削除 |
 | `features/route/savedPlaces.ts` | 保存した地点の形（探した候補と同じ形）と、同じ名前と同じ位置の置き換え・打った文字での絞り込み。検索で選んだ地点の履歴の入れ方（同じ位置の置き換えと件数の上限）・消し方・出す件（保存した地点と同じ位置を除く） |
 | `features/route/usePlaceHistory.ts` | 検索で選んだ地点の履歴（この端末の`localStorage`。保存した地点と同じ読み方）と、入れる・1件を消す。地図の上端の検索の欄（`PlaceSearch/PlaceSearch.tsx`）が使う |
-| `features/route/SavedConditionsPanel/SavedConditionsPanel.tsx` | 「条件」タブの1行目に置くアイコンの「いまの設定を保存」（`features/route/SavedConditionsPanel/SavedConditionsPanel.tsx: SaveConditionsButton`。窓に保存する条件・出発地の扱いの切り替え・負担・回避と、名前の欄・保存のボタン）と、「保存済み」タブの「プリセット」の中身の保存した設定の一覧（行は名前と、アイコンの「呼び出す」「消す」。呼び出すは窓で中身を見せて「反映する」で呼び出し、消すは確認の窓で「消す」を押すと消す。無ければ無いと出し、保存の仕方は(i)の奥。下記「保存した条件」） |
+| `features/route/SavedConditionsPanel/SavedConditionsPanel.tsx` | 「条件」タブの1行目に置くアイコンの「いまの設定を保存」（`features/route/SavedConditionsPanel/SavedConditionsPanel.tsx: SaveConditionsButton`。窓に保存する条件・出発地の扱いの切り替え・負担・回避と、名前の欄・保存のボタン）と、「保存済み」タブの「設定」の中身の保存した設定の一覧（行は名前と、アイコンの「呼び出す」「消す」。呼び出すは窓で中身を見せて「反映する」で呼び出し、消すは確認の窓で「消す」を押すと消す。無ければ無いと出し、保存の仕方は(i)の奥。下記「保存した条件」） |
 | `features/route/useSavedConditions.ts` | 保存した条件の一覧（この端末の`localStorage`）と、いまの条件（`useGenerationConditions.ts: snapshot`）の保存（出発地を固定するかを受け取る）・呼び出し・削除。呼び出すと`useGenerationConditions.ts: restore`で条件を入れ替え、出発地は位置の持ち主（`hooks/useLocation.ts`）へ渡す |
 | `features/route/savedConditions.ts` | 生成の条件の形（`features/route/savedConditions.ts: GenerationConditionsSnapshot`。いまの条件・保存・呼び出しが同じ形を使い、保存の1件はそれに名前と出発地を足す）と、仮の名前・何が保存されるかの説明（`features/route/savedConditions.ts: describeConditions`）・同じ名前の上書き。距離の刻み（`DISTANCE_STEP_KM`。5km刻みで、下限も1刻み分）は画面だけの値で、`RouteForm`のルーラーのコマも読む。候補数の下限・上限は生成物`route-generate-config.json`から読む |
 | `lib/cardinalLabel.ts` | 角度を方位の呼び名へ（天気欄等が使う）と、気象の風向（吹いてくる向き）を矢印が指す吹いていく向きへ（`lib/cardinalLabel.ts: downwindDeg`。地図の風の矢印が使う）と、それを回った地図の上の向きへ（`lib/cardinalLabel.ts: downwindOnMapDeg`。走りの帯と天気欄の矢印が使う）。呼び名の並びはbackend（`domain/geo.py: COMPASS_LABELS`）が配り、丸めは画面が持つ。区分の境界を含む角度でbackendと同じ呼び名になることは、backendが出す表（生成物`geo-expectations.json`）をテストが通して確かめる |
@@ -235,9 +235,9 @@
 
 「ルート設定」で組んだ条件に名前を付けてこの端末に保存し、選ぶだけで同じ条件に戻せる。ログインは要らない
 （保存先はこの端末のブラウザの`localStorage`だけで、別の端末とは共有しない）。保存は「条件」タブ、呼び出しは4つ目のタブ
-「保存済み」の中の「プリセット」で行う（「保存済み」の中は「地点」「プリセット」のタブに分かれ、地点は下記「保存した地点」）——地点の保存と同じく、
+「保存済み」の中の「設定」で行う（「保存済み」の中は「地点」「設定」のタブに分かれ、地点は下記「保存した地点」）——地点の保存と同じく、
 条件を詰める所で保存し、「保存済み」タブは設定も地点も呼び出す・消すだけを持つ。タブは保存したものが並ぶ所だと名前で読め、
-保存した設定は呼び出すと各タブの値をまとめて入れ替えるものなので「プリセット」と呼ぶ。保存するものは負担・道路まで及ぶが、保存の
+保存した設定は呼び出すと各タブの値をまとめて入れ替えるものなので、保存する操作（「いまの設定を保存」）と同じ「設定」と呼ぶ。保存するものは負担・道路まで及ぶが、保存の
 アイコンは「条件」タブの1行目（全長の目標・候補数の行）の右端に置き、縦の幅を増やさない。見出しの行には置かない。
 
 - **保存するもの**: 周回か・全長の目標を決めるか・距離・候補数・出発地（固定したときだけ。下記）・経由地・目的地（周回の間に覚えている目的地も）・つまみと倍率・
@@ -259,7 +259,7 @@
   職場で呼び出すと職場から作られる、という食い違いを、保存の時の一度の選択で防ぐ。
 - **保存**: 名前の欄に、いまの条件から作った仮の名前（「周回 30km」等、`savedConditions.ts: suggestedConditionName`）が
   入った状態で出て、そのまま保存もできる（空にして保存しても仮の名前）。同じ名前で保存すると上書きし、そのときはボタンが
-  「上書き保存」になる。保存すると窓を閉じ、保存した件は「保存済み」タブの「プリセット」の一覧の先頭に入る。
+  「上書き保存」になる。保存すると窓を閉じ、保存した件は「保存済み」タブの「設定」の一覧の先頭に入る。
 - **呼び出し**: 一覧の行の「呼び出す」を押すと窓（`Dialog/Dialog.tsx`）が開き、保存の窓と同じ並び（条件・出発地・負担・道路）で
   その設定の中身を出す。「反映する」を押したときだけ各タブの値と地図のピンが入れ替わり、一覧の上に反映したことを出す
   （何に入れ替わるかを押す前に読め、入れ替わったことが分かるように。出発地は窓と「条件」タブで
@@ -338,7 +338,7 @@ backendの入れ替えでジョブが消えて見つからない等）、打ち�
 
 「ルート設定」区分自体を「条件」（`RouteForm`の地点・全長の目標・候補数と、`saveConditionsButton`propの「いまの設定を保存」）・
 「負担」（`weightsPanel`propで受け取る`RouteSettingsPanel`一式）・
-「道路」（`exclusionsPanel`prop、`HardFilterPanel`）・「保存済み」（中の「地点」は`SavedPlacesPanel`、「プリセット」は`savedConditionsPanel`propの`SavedConditionsPanel`）のタブへ分ける。
+「道路」（`exclusionsPanel`prop、`HardFilterPanel`）・「保存済み」（中の「地点」は`SavedPlacesPanel`、「設定」は`savedConditionsPanel`propの`SavedConditionsPanel`）のタブへ分ける。
 **タブ列（`Tabs.List`）は見出し行の左（見出しのすぐ右）に置き、タブの中身
 （`Tabs.Content`）は本文に出る**ため、
 両方を囲む`Tabs.Root`（`@radix-ui/react-tabs`）は`app/RoutePanels.tsx`、選択状態は`app/page.tsx`が持つ

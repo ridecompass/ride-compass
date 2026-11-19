@@ -91,13 +91,13 @@ def test_avoidance_rows_are_grouped_under_their_map_layers() -> None:
 
 
 def test_levels_are_named_by_the_calibrated_avoid_and_prefer_multipliers():
-    """段の名前は区間の所要時間に掛ける倍率で、並びは倍率の順。「好む」は「なるべく避ける」（テストの較正値は2）の逆数でなく
+    """段の名前は区間の所要時間に掛ける倍率で、並びは倍率の順。向きの名前は段の鍵ごとに決まる（取り違えると、凡例が好む道を避けると読ませる）。「好む」は「なるべく避ける」（テストの較正値は2）の逆数でなく
     自分の較正値（テストの較正値は0.8）で、「少し」の段はそれぞれの平方根。"""
     catalog = road_class_catalog(EMPTY_ROAD_CLASSES, TUNED)
 
-    assert [(level.key, level.label) for level in catalog.avoidance.levels] == [
-        ("prefer", "×0.8"), ("slight_prefer", "×0.9"), ("pass", "×1"), ("slight_avoid", "×1.4"), ("avoid", "×2"),
-        ("exclude", "×∞"),
+    assert [(level.key, level.label, level.name) for level in catalog.avoidance.levels] == [
+        ("prefer", "×0.8", "好む"), ("slight_prefer", "×0.9", "少し好む"), ("pass", "×1", "通る"),
+        ("slight_avoid", "×1.4", "少し避ける"), ("avoid", "×2", "なるべく避ける"), ("exclude", "×∞", "通らない"),
     ]
 
 

@@ -161,7 +161,7 @@ Next.jsのHTMLの404が返る（backendの404はJSON）。本番のAPIを手で�
 デプロイの目安にもなる——`commit`が変わっていなくても、再起動自体が起きたかを確認できる。
 
 確認は`GET /health`（backend）と`GET /api/version`（frontend）の`commit`を、手元の
-`git rev-parse HEAD`と突き合わせる。frontendの版は、画面のメニューの「バージョン表示」でも見られる（`commit`の頭8文字）。
+`git rev-parse HEAD`と突き合わせる。frontendの版は、画面のメニューの頭でも見られる（`commit`の頭8文字）。
 
 **backendのデプロイは、masterのCIが通ったコミットを、本番プロセスに届く変更があるときだけ
 出す。** `ci.yml`の`deploy-backend`が、masterへのpushで`ci-ok`（このワークフローの検査の全部の結論）が

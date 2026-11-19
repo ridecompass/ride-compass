@@ -135,7 +135,7 @@ describe("スマホのシート", () => {
     await user.click(screen.getByRole("checkbox", { name: "風[矢印]" }));
     await user.keyboard("{Escape}");
     act(() => mapOnScreen().moveTo({ west: 139.68, south: 35.69, east: 139.72, north: 35.71 }, 12));
-    expect(await screen.findByRole("region", { name: "俯瞰図" })).toBeInTheDocument();
+    await user.click(await screen.findByRole("button", { name: "俯瞰図を開く" }));
 
     await user.click(screen.getByRole("button", { name: "ルート設定" }));
     expect(screen.queryByRole("region", { name: "俯瞰図" })).toBeNull();

@@ -1,18 +1,19 @@
 /**
- * `components/HeaderMenu/HeaderMenu.tsx`——ヘッダーのメニュー（使い方を見る・地図の表示を再描画・デバッグログの開閉・バージョン表示）。
+ * `components/HeaderMenu/HeaderMenu.tsx`——ヘッダーのメニュー（頭のアプリの名前と版・使い方を見る・初回の案内・地図の表示を再描画・デバッグログの開閉）。
  *
- * 見るもの: メニューを開くと出る項目、「使い方を見る」を押すとメニューが閉じ、フォーカスが開くボタンへ戻ってから説明を見る状態に入る操作が上がること、
- * 「地図の表示を再描画」を押すと描き直しの操作が上がってメニューが閉じること、
+ * 見るもの: メニューを開くと頭にアプリの名前と、フロントの版の口（`/api/version`）が返した版が出ること、「使い方を見る」を押すとメニューが閉じ、フォーカスが開くボタンへ戻ってから説明を見る状態に入る操作が上がること、
+ * 「初回の案内をもう一度見る」を押すと案内を出す操作が上がってメニューが閉じること、「地図の表示を再描画」を押すと描き直しの操作が上がってメニューが閉じること、
  * デバッグログの項目がデバッグモードの間だけ出て、開閉の状態を名前で出し、押すと開閉の操作が上がること、
- * 走行の記録が端末にあるときだけ「走行の記録をコピー」が出て、押すと記録を写すこと、
- * 「バージョン表示」を押すと、フロントの版の口（`/api/version`）が返した版が窓に出ること。
+ * 走行の記録が端末にあるときだけ「走行の記録をコピー」が出て、押すと記録を写すこと。
+ *
+ * メニューを開くと版を取りに行くので、どのテストも版の口の応答を与える。
  *
  * ここで見ないもの: デバッグモードそのもののON/OFF → `features/admin/DebugPanel/DebugPanel.tsx`（このメニューは呼び出し側から受け取るだけ）。
  * 説明を見る状態で部品の使い方が出ること → `components/UsageGuide/UsageGuide.test.tsx`（メニューのボタンの使い方の文は宣言）。
  * 押下の状態（`aria-pressed`）——`components/ui/Toggle`へそのまま渡すだけ。
  * 版をどこから読むか → `app/api/version/route.test.ts`。走行の記録の中身 → `lib/rideMetrics.test.ts`。
  */
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
@@ -23,8 +24,12 @@ import { onSameOrigin } from "@/testing/backendServer";
 
 import HeaderMenu from "./HeaderMenu";
 
-async function openMenu(props: Partial<React.ComponentProps<typeof HeaderMenu>> = {}) {
+const LOCAL_VERSION: FrontendVersion = { commit: null, started_at: "2026-10-08T22:00:00Z" };
+
+async function openMenu(props: Partial<React.ComponentProps<typeof HeaderMenu>> = {}, version = LOCAL_VERSION) {
+  onSameOrigin("GET", "/api/version", () => Response.json(version));
   const onToggleDebugConsole = vi.fn();
+  const onShowIntro = vi.fn();
   const onStartUsageGuide = vi.fn();
   const onRedrawMap = vi.fn();
   render(
@@ -33,12 +38,13 @@ async function openMenu(props: Partial<React.ComponentProps<typeof HeaderMenu>> 
       debugConsoleOpen={false}
       onToggleDebugConsole={onToggleDebugConsole}
       onStartUsageGuide={onStartUsageGuide}
+      onShowIntro={onShowIntro}
       onRedrawMap={onRedrawMap}
       {...props}
     />,
   );
   await userEvent.click(screen.getByRole("button", { name: "メニュー" }));
-  return { onToggleDebugConsole, onStartUsageGuide, onRedrawMap };
+  return { onToggleDebugConsole, onStartUsageGuide, onShowIntro, onRedrawMap };
 }
 
 describe("HeaderMenu", () => {
@@ -56,13 +62,16 @@ describe("HeaderMenu", () => {
     expect(focusedAtStart).toBe(screen.getByRole("button", { name: "メニュー" }));
   });
 
-  it("「地図の表示を再描画」を押すと、描き直しの操作が上がってメニューが閉じる", async () => {
-    const { onRedrawMap } = await openMenu();
+  it.each([
+    ["初回の案内をもう一度見る", "onShowIntro"],
+    ["地図の表示を再描画", "onRedrawMap"],
+  ] as const)("「%s」を押すと、その操作（%s）が上がってメニューが閉じる", async (name, handler) => {
+    const handlers = await openMenu();
 
-    await userEvent.click(screen.getByRole("button", { name: "地図の表示を再描画" }));
+    await userEvent.click(screen.getByRole("button", { name }));
 
-    expect(onRedrawMap).toHaveBeenCalledTimes(1);
-    expect(screen.queryByRole("button", { name: "地図の表示を再描画" })).not.toBeInTheDocument();
+    expect(handlers[handler]).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("button", { name })).not.toBeInTheDocument();
   });
 
   describe("デバッグログ", () => {
@@ -98,29 +107,13 @@ describe("HeaderMenu", () => {
     expect(screen.getByRole("button", { name: "走行の記録をコピーしました" })).toBeInTheDocument();
   });
 
-  describe("バージョン表示", () => {
-    async function openVersion(version: FrontendVersion) {
-      onSameOrigin("GET", "/api/version", () => Response.json(version));
-      await openMenu();
-      await userEvent.click(screen.getByRole("button", { name: "バージョン表示" }));
-      return screen.findByRole("dialog", { name: "バージョン" });
-    }
+  it.each([
+    ["9c2521ce0123456789abcdef0123456789abcdef", /^RideCompassバージョン 9c2521ce$/],
+    [null, /^RideCompass手元で動いているバージョンです\[本番のバージョンではありません\]。$/],
+  ])("頭にアプリの名前と、版の口が返した版（%s）を出す", async (commit, identity) => {
+    await openMenu({}, { commit, started_at: "2026-10-08T22:00:00Z" });
 
-    it("版の口が返したコミットの頭8文字を出す", async () => {
-      const dialog = await openVersion({
-        commit: "9c2521ce0123456789abcdef0123456789abcdef",
-        started_at: "2026-10-08T22:00:00Z",
-      });
-
-      expect(await within(dialog).findByText(/コミット/)).toHaveTextContent(/^コミット 9c2521ce$/);
-    });
-
-    it("手元で動いている版は、版の代わりにそう出す", async () => {
-      const dialog = await openVersion({ commit: null, started_at: "2026-10-08T22:00:00Z" });
-
-      expect(
-        await within(dialog).findByText("手元で動いているバージョンです[本番のバージョンではありません]。"),
-      ).toBeInTheDocument();
-    });
+    const head = screen.getByText("RideCompass").parentElement;
+    await waitFor(() => expect(head).toHaveTextContent(identity));
   });
 });

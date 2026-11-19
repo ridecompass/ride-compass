@@ -30,6 +30,7 @@ interface HomeHeaderProps {
   mapBearingDeg: number;
   onRedrawMap: () => void;
   onStartUsageGuide: () => void;
+  onShowIntro: () => void;
   /** 走行中にパネルを出しているか。 */
   panelsShown: boolean;
   onToggleRidePanel: () => void;
@@ -46,6 +47,7 @@ export default function HomeHeader({
   mapBearingDeg,
   onRedrawMap,
   onStartUsageGuide,
+  onShowIntro,
   panelsShown,
   onToggleRidePanel,
 }: HomeHeaderProps) {
@@ -109,6 +111,7 @@ export default function HomeHeader({
                 debugConsoleOpen={debugConsoleOpen}
                 onToggleDebugConsole={() => setDebugConsoleOpen((v) => !v)}
                 onStartUsageGuide={onStartUsageGuide}
+                onShowIntro={onShowIntro}
                 onRedrawMap={onRedrawMap}
               />
             </div>

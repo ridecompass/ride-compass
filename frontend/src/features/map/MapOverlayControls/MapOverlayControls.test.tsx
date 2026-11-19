@@ -60,6 +60,11 @@ describe("一覧の行", () => {
     expect(screen.queryByRole("region", { name: "memberの内訳" })).not.toBeInTheDocument();
   });
 
+  it("一覧の頭に、行の▶が凡例を開く印だと文字で出す", async () => {
+    await setup([chip("member", { legendDetails: [legend("a", ["1"])] })]);
+    expect(screen.getByText("凡例を開く").closest("p")).toHaveTextContent(/^▶凡例を開く$/);
+  });
+
   it("説明のある行にだけⓘを出し、押すと説明を一覧の中の行の下に開く", async () => {
     const { user, list } = await setup([chip("with_hint", { panelHint: "説明文" }), chip("plain")]);
     expect(within(list).queryByRole("button", { name: /plainの説明/ })).not.toBeInTheDocument();

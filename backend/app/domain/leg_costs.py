@@ -229,7 +229,7 @@ def axis_facts(settings: ModelSettings, materials: Mapping[str, MaterialColumn],
     ルートの事実と道の窓が、どちらもここで作る。
 
     - 登坂は登り`ascent_m`、向かい風は向かい風の成分の長さで重みを付けた平均（風を読めなければNone）、停止は止まる回数`stops`。
-    - 摩擦（転がり抵抗の分け方）と道のストレスの軸（定義の材料）は、読む材料の値（`_material_fact`）。
+    - 路面の抵抗（転がり抵抗の分け方）と道のストレスの軸（定義の材料）は、読む材料の値（`_material_fact`）。
     """
     axes = settings.cost_axes
     mean_headwind = None if headwind_ms is None else length_weighted_mean(headwind_ms, distance_m)

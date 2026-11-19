@@ -1,4 +1,5 @@
 import { METERS_PER_DEGREE, closestPointOnSegment, longitudeScale, type PlanePoint } from "@/lib/localPlane";
+import { APP_NAME } from "@/lib/screenNames";
 import type { RouteCandidate } from "@/types/route";
 
 // Suuntoアプリは1000点を超えるGPXの取り込みで問題が起きることがある
@@ -110,11 +111,11 @@ function escapeXmlText(value: string): string {
  * RouteCandidateが点単位で持たないため含めない。 */
 function buildGpxDocument(candidate: RouteCandidate): string {
   const coordinates = simplifyCoordinates(candidate.geometry.coordinates, candidate.point_distances_m);
-  const name = escapeXmlText(`RideCompass ${candidate.direction_label} ${candidate.distance_km.toFixed(1)}km`);
+  const name = escapeXmlText(`${APP_NAME} ${candidate.direction_label} ${candidate.distance_km.toFixed(1)}km`);
   const trackPoints = coordinates.map(trackPoint).join("\n");
   return [
     '<?xml version="1.0" encoding="UTF-8"?>',
-    '<gpx version="1.1" creator="RideCompass" xmlns="http://www.topografix.com/GPX/1/1">',
+    `<gpx version="1.1" creator="${APP_NAME}" xmlns="http://www.topografix.com/GPX/1/1">`,
     "  <trk>",
     `    <name>${name}</name>`,
     "    <trkseg>",

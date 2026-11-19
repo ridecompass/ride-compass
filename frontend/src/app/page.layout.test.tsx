@@ -3,8 +3,8 @@
  *
  * 見ること: 地図の表示をまとめて戻す操作（「表示」の一覧の末尾と右上のメニュー）、地図を読み込み中の覆いが上限の時間で外れること、
  * 層の取得状態の数え直しと再描画の失敗の案内、「表示」の「範囲と色」で地図を暗くすること（基礎地図の色を暗くし、描き直しても保ち、
- * 覚える）、区分の開閉の保存、左下の俯瞰図（気象の層を出して寄せると出て、道路を消した下地に同じ気象の層を描き、引くと消え、
- * 畳んだことを覚える）。
+ * 覚える）、区分の開閉の保存、左下の俯瞰図（気象の層を出して寄せると、はじめは畳んだボタンが出て、開くと道路を消した下地に同じ気象の層を描き、
+ * 引くと消え、開け閉めを覚える）。
  *
  * ここで見ないもの: スマホの下部タブとシートは`app/page.mobile.test.tsx`が、右上の方位磁針と拡大・縮小は
  * `app/page.compass.test.tsx`が、ヘッダーとメニューは`app/page.header.test.tsx`が見る。
@@ -176,7 +176,7 @@ describe("画面の枠", () => {
     expect(section("ルート結果")).toHaveAttribute("aria-expanded", "true");
   });
 
-  it("気象の層を出して寄せると、左下に道路を消した俯瞰図が出て同じ気象の層を描き、引くと消える。「×」で丸いボタンに畳み、次に開いたときも畳んだまま", async () => {
+  it("気象の層を出して寄せると、左下に道路を消した俯瞰図が出て同じ気象の層を描き、引くと消える。はじめは丸いボタンに畳んでいて、開くと出て、開け閉めを次に開いたときも覚えている", async () => {
     // 時刻は日本時間の壁時計で、今の時刻を含む1時間から2日分。
     const times = Array.from(
       { length: 48 },
@@ -204,7 +204,7 @@ describe("画面の枠", () => {
     await user.keyboard("{Escape}");
     const near = { west: 139.68, south: 35.69, east: 139.72, north: 35.71 };
     act(() => mapOnScreen().moveTo(near, 12));
-    expect(await screen.findByRole("region", { name: "俯瞰図" })).toBeInTheDocument();
+    await user.click(await screen.findByRole("button", { name: "俯瞰図を開く" }));
     const inset = insetMapOnScreen()!;
     act(() => inset.loadStyle(LIBERTY_POI_LAYERS));
     act(() => inset.emit("load"));
@@ -219,13 +219,13 @@ describe("画面の枠", () => {
     act(() => mapOnScreen().moveTo(near, 10));
     expect(screen.queryByRole("region", { name: "俯瞰図" })).toBeNull();
     act(() => mapOnScreen().moveTo(near, 12));
-    await user.click(await screen.findByRole("button", { name: "俯瞰図を畳む" }));
-    expect(screen.queryByRole("region", { name: "俯瞰図" })).toBeNull();
+    expect(await screen.findByRole("region", { name: "俯瞰図" })).toBeInTheDocument();
     unmount();
 
     const again = renderHome();
     act(() => mapOnScreen().moveTo(near, 12));
-    await again.user.click(await screen.findByRole("button", { name: "俯瞰図を開く" }));
-    expect(screen.getByRole("region", { name: "俯瞰図" })).toBeInTheDocument();
+    await again.user.click(await screen.findByRole("button", { name: "俯瞰図を畳む" }));
+    expect(screen.queryByRole("region", { name: "俯瞰図" })).toBeNull();
+    expect(screen.getByRole("button", { name: "俯瞰図を開く" })).toBeInTheDocument();
   });
 });

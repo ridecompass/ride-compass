@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
-import FirstVisitIntro from "@/components/FirstVisitIntro/FirstVisitIntro";
+import FirstVisitIntro, { type useFirstVisitIntro } from "@/components/FirstVisitIntro/FirstVisitIntro";
 import UsageGuide from "@/components/UsageGuide/UsageGuide";
 import UsageTooltip from "@/components/UsageGuide/UsageTooltip";
 import RideConditionBar from "@/features/conditions/RideConditionBar/RideConditionBar";
@@ -58,6 +58,7 @@ interface HomeMapPaneProps {
   sheetOpen: boolean;
   usageGuideActive: boolean;
   onUsageGuideEnd: () => void;
+  firstVisitIntro: ReturnType<typeof useFirstVisitIntro>;
   /** 地図の上端にいつも出す、地点の検索の欄。 */
   searchBar: React.ReactNode;
 }
@@ -83,6 +84,7 @@ export default function HomeMapPane({
   sheetOpen,
   usageGuideActive,
   onUsageGuideEnd,
+  firstVisitIntro,
   searchBar,
 }: HomeMapPaneProps) {
   const costCatalog = useCostAxisCatalog();
@@ -199,7 +201,14 @@ export default function HomeMapPane({
           {overview}
         </div>
       )}
-      {!navigating && <FirstVisitIntro isMobile={isMobile} locationUnknown={place.locationFailure !== null} />}
+      {!navigating && (
+        <FirstVisitIntro
+          shown={firstVisitIntro.shown}
+          onClose={firstVisitIntro.close}
+          isMobile={isMobile}
+          locationUnknown={place.locationFailure !== null}
+        />
+      )}
 
       {usageGuideActive ? <UsageGuide onEnd={onUsageGuideEnd} /> : <UsageTooltip />}
 

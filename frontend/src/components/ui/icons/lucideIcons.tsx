@@ -5,6 +5,7 @@ import {
   Sigma,
   ArrowUp,
   Bike,
+  BookOpen,
   CircleQuestionMark,
   Clock,
   Cloud,
@@ -17,7 +18,6 @@ import {
   Footprints,
   Gauge,
   GripVertical,
-  GitCommitHorizontal,
   History,
   Import,
   Info,
@@ -123,8 +123,8 @@ export const MenuIcon = fromLucide(EllipsisVertical);
 export const DownloadIcon = fromLucide(Download);
 export const SpeedGaugeIcon = fromLucide(Gauge);
 export const HelpIcon = fromLucide(CircleQuestionMark);
-/** 動いている版（コミット）。 */
-export const VersionIcon = fromLucide(GitCommitHorizontal);
+/** 初めて開いたときに出す案内を、もう一度出す。 */
+export const IntroIcon = fromLucide(BookOpen);
 /** 地図で選んでいる区間の地点。 */
 export const SelectedSpotIcon = fromLucide(MapPin);
 /** ルートの全長の目標を決める（押している間は全長が目標に合うルートを作る）。 */

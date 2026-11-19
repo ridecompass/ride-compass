@@ -651,6 +651,8 @@ export interface components {
             key: "pass" | "slight_prefer" | "prefer" | "slight_avoid" | "avoid" | "exclude";
             /** Label */
             label: string;
+            /** Name */
+            name: string;
             /** Color */
             color: string | null;
             /** Color On Dark */

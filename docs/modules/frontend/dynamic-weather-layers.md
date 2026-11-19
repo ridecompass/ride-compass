@@ -435,7 +435,7 @@ basetime・validtimeを含む）で持つため、フレームが進んで取得
 
 - **出す条件**: 気象の層を1つでも出していて、本体の地図のズームが`features/map/MapOverview/overview.ts: OVERVIEW_MIN_ZOOM`以上で、
   スマホで下のシートを開いていない間（`features/map/MapOverview/overview.ts: overviewShown`）。走行中も同じ条件で、走行中の地図の下端（`features/ride/RideBottom/RideBottom.tsx`）の上に積む。
-  「×」で丸いボタンに畳み、畳んだことは端末に覚える。
+  初めて開いた端末では丸いボタンに畳んだ状態から始め、開くと丸い地図を出し、「×」で畳む。開け閉めは端末に覚える。
 - **描くもの**: 下地は同じ基礎地図から、高速道路の本線のほかの道路・建物・店とその文字の層を消し、高速道路は細い線にし、地名を市・区・町と都道府県に絞る
   （`features/map/MapOverview/overview.ts: overviewBasemapEdits`。森・水・土地の塗りは残す）。地名は日本語だけの小さな字にする（`features/map/MapOverview/overview.ts: OVERVIEW_PLACE_LABEL`）。その上に、本体の地図と同じ
   `dynamicWeather`から気象の家族だけの scene（`features/map/scene/buildScene.ts: buildOverviewScene`）を描くので、色・時刻・中身は本体の地図と揃う。

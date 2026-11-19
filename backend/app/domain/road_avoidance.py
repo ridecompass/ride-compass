@@ -26,6 +26,15 @@ from app.domain.tuning import Tuning
 #: 打ち消さない。
 AvoidanceLevel = Literal["pass", "slight_prefer", "prefer", "slight_avoid", "avoid", "exclude"]
 AVOIDANCE_LEVELS: tuple[AvoidanceLevel, ...] = get_args(AvoidanceLevel)
+#: 段の画面の名前。段の名前（倍率）だけでは好む・避けるの向きが読めないので、凡例が倍率に添える。
+AVOIDANCE_LEVEL_NAMES: dict[AvoidanceLevel, str] = {
+    "pass": "通る",
+    "slight_prefer": "少し好む",
+    "prefer": "好む",
+    "slight_avoid": "少し避ける",
+    "avoid": "なるべく避ける",
+    "exclude": "通らない",
+}
 
 
 def level_multipliers(tuning: Tuning) -> dict[AvoidanceLevel, float]:

@@ -56,16 +56,21 @@ export default function HardFilterPanel({
       >
         <Checkbox checked={roadTabMap.on} onCheckedChange={roadTabMap.onChange} aria-label="地図で見る" />
         地図で見る
-        {/* 地図の色が段のどれかを、行の段の名前（倍率）と並べて読ませる。 */}
-        <span className={cn(textVariants({ variant: "note" }), "ml-auto flex items-center gap-2")}>
-          {levels.filter(isPainted).map(({ key, label, color }) => (
-            <span key={key} className="inline-flex items-center gap-1">
-              <Dot tone="none" style={{ backgroundColor: color }} />
-              {label}
-            </span>
-          ))}
-        </span>
       </label>
+      {/* 地図の色が段のどれかを、段の向きの名前と、行に出る段の名前（倍率）で読ませる。 */}
+      <div
+        role="group"
+        aria-label="段の凡例"
+        className={cn(textVariants({ variant: "note" }), "flex flex-wrap items-center gap-x-2 gap-y-0.5 pb-1")}
+      >
+        {levels.filter(isPainted).map(({ key, name, label, color }) => (
+          <span key={key} className="inline-flex items-center gap-1">
+            <Dot tone="none" style={{ backgroundColor: color }} />
+            {name}
+            <span className="tabular-nums">{label}</span>
+          </span>
+        ))}
+      </div>
       {roadTabMap.notice !== null && (
         <p className={cn(textVariants({ variant: "note" }), "pb-1")} role="status">
           {roadTabMap.notice}

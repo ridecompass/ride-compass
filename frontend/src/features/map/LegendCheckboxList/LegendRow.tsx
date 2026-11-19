@@ -42,6 +42,37 @@ export function useRowDescription(label: string, description: string | undefined
   };
 }
 
+/** 行の右端の凡例を開く印。一覧の頭の印の凡例（`RowMarksNote`）も同じ印で書く。 */
+const PANEL_TOGGLE_MARK = "▶";
+
+/** 一覧の行に並ぶ印の意味を、一覧の頭に1行で読ませる（行の印は名前を持たず、`title`はスマホで出ない）。凡例を開く印は
+ * どの一覧にもあるので、いつも最後に並べる。 */
+export function RowMarksNote({ marks = [] }: { marks?: readonly { key: string; mark: ReactNode; meaning: string }[] }) {
+  const all = [
+    ...marks,
+    {
+      key: "panel",
+      // 行の▶と同じ丸い枠で書く（群の見出しの開け閉めの▶と見分ける）。
+      mark: (
+        <span className="inline-flex size-4 items-center justify-center rounded-full border border-[var(--color-border)] text-[0.5rem] leading-none">
+          {PANEL_TOGGLE_MARK}
+        </span>
+      ),
+      meaning: "凡例を開く",
+    },
+  ];
+  return (
+    <p className="m-0 mb-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[length:var(--font-size-xs)] text-[var(--color-muted)]">
+      {all.map(({ key, mark, meaning }) => (
+        <span key={key} className="inline-flex items-center gap-0.5">
+          {mark}
+          {meaning}
+        </span>
+      ))}
+    </p>
+  );
+}
+
 /** 行の右端の▶（`toggle`）と、押すと行のすぐ下に開く`label`の凡例（`region`）。中身が無ければどちらも出さない。 */
 export function useRowPanel(label: string, panel: ReactNode) {
   const [open, setOpen] = useState(false);
@@ -64,7 +95,7 @@ export function useRowPanel(label: string, panel: ReactNode) {
           aria-hidden="true"
           className="inline-block text-[0.6rem] leading-none transition-transform duration-150 group-aria-expanded:rotate-90"
         >
-          ▶
+          {PANEL_TOGGLE_MARK}
         </span>
       </Button>
     ),

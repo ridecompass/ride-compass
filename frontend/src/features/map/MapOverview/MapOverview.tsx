@@ -39,9 +39,9 @@ interface MapOverviewProps {
 }
 
 /** 本体の地図の左下に添える、今の画面より広い範囲を丸く映す俯瞰図。本体の地図で出している気象の層を同じ色で描き、今の画面の範囲を枠で
- * 示す。「×」で丸いボタンに畳み、畳んだことは端末に覚える。出すかどうかは呼ぶ側が`overview.ts: overviewShown`で決める。 */
+ * 示す。初めて開いた端末では丸いボタンに畳んだ状態から始め、開け閉めは端末に覚える。出すかどうかは呼ぶ側が`overview.ts: overviewShown`で決める。 */
 export default function MapOverview(props: MapOverviewProps) {
-  const [collapsed, setCollapsed] = useStoredState(COLLAPSED_STORAGE_KEY, "俯瞰図の開閉", false);
+  const [collapsed, setCollapsed] = useStoredState(COLLAPSED_STORAGE_KEY, "俯瞰図の開閉", true);
   if (collapsed)
     return (
       <Button

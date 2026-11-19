@@ -15,7 +15,7 @@ from app.domain.display_palette import (
 )
 from app.domain.cost_preference import multiplier_label
 from app.domain.hard_filters import HARD_FILTER_PROPERTY, HARD_FILTERS
-from app.domain.road_avoidance import AVOIDANCE_LEVELS, AvoidanceLevel, avoidance_rows, level_multipliers
+from app.domain.road_avoidance import AVOIDANCE_LEVEL_NAMES, AVOIDANCE_LEVELS, AvoidanceLevel, avoidance_rows, level_multipliers
 from app.domain.tuning import Tuning
 from app.domain.road_classes import (
     RoadClassDefinitions,
@@ -53,6 +53,8 @@ class AvoidanceLevelView(StrictModel):
     key: AvoidanceLevel
     #: 掛ける倍率そのもの（`domain/cost_preference.py: multiplier_label`）。
     label: str
+    #: 段の向きの名前（好む・避ける等）。
+    name: str
     #: この段の行に当たる道を地図に塗る色と、暗い地図の上に塗る色。無い段は何も指定していない扱いで、塗らない。
     color: str | None
     color_on_dark: str | None
@@ -163,6 +165,7 @@ def road_class_catalog(definitions: RoadClassDefinitions, tuning: Tuning) -> Roa
                 AvoidanceLevelView(
                     key=level,
                     label=multiplier_label(multipliers[level]),
+                    name=AVOIDANCE_LEVEL_NAMES[level],
                     # 色の役割は`road_avoidance_<段>`。役割の無い段（通る）は塗らない。
                     color=SEMANTIC_COLORS.get(f"road_avoidance_{level}"),
                     color_on_dark=SEMANTIC_COLORS_ON_DARK.get(f"road_avoidance_{level}"),
