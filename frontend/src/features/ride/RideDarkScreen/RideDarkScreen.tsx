@@ -93,7 +93,7 @@ export default function RideDarkScreen({
           onClick={onVoiceToggle}
           aria-label="音声案内"
           aria-pressed={voiceOn}
-          usage="音声案内を入れる・切ります。黒の画面のままです。"
+          usage="音声案内を入れたり切ったりします。黒の画面のままです。"
           className={`pointer-events-auto mt-12 gap-2 rounded-full border-2 bg-black px-7 py-3.5 text-[1.375rem] font-bold hover:enabled:bg-black hover:enabled:text-[#666] ${DIM}`}
         >
           {voiceOn ? <VoiceOnIcon size={24} /> : <VoiceOffIcon size={24} />}

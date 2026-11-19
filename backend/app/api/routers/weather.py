@@ -129,7 +129,7 @@ async def get_msm_grid(
     try:
         bbox = BoundingBox(min_latitude=min_lat, min_longitude=min_lon, max_latitude=max_lat, max_longitude=max_lon)
     except ValidationError:
-        raise HTTPException(status_code=400, detail="表示範囲が不正です。") from None
+        raise HTTPException(status_code=400, detail="表示範囲の指定が正しくありません。") from None
     if (max_lat - min_lat) * (max_lon - min_lon) > MSM_GRID_MAX_AREA_SQ_DEG:
         raise HTTPException(status_code=400, detail="表示範囲が広すぎます。ズームインしてください。")
     return await weather_service.get_msm_grid(bbox)

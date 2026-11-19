@@ -109,7 +109,7 @@ describe("走行中のロック", () => {
     const basemap = [{ id: "background", type: "background", paint: { "background-color": "#f8f4f0" } }];
     // 基礎地図の色は、描き直して読み込んだ基礎地図の様式に当てる。
     await user.click(screen.getByRole("button", { name: "メニュー" }));
-    await user.click(screen.getByRole("button", { name: "地図の表示を再描画" }));
+    await user.click(screen.getByRole("button", { name: "地図を描き直す" }));
     act(() => {
       mapOnScreen().loadStyle(basemap);
       mapOnScreen().emit("style.load");
