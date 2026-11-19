@@ -108,6 +108,12 @@ export function usePlaceLookup(mapCenter: Coordinates) {
       setSearched(true);
       if (trimmed === query && samePosition(near, mapCenter)) void search.refetch();
     },
+    /** 打った文字ですぐ引く（地図には出さず、一覧に出す）。 */
+    lookUpNow() {
+      clearTimeout(lookUpTimer.current);
+      const trimmed = text.trim();
+      if (trimmed !== "") lookUp(trimmed);
+    },
     /** 引いた候補を下げて検索を閉じる。`clearText`なら打った文字も消す。 */
     close({ clearText = false } = {}) {
       clearTimeout(lookUpTimer.current);

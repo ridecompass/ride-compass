@@ -59,8 +59,7 @@ interface HomeMapPaneProps {
   usageGuideActive: boolean;
   onUsageGuideEnd: () => void;
   firstVisitIntro: ReturnType<typeof useFirstVisitIntro>;
-  /** 地図の上端にいつも出す、地点の検索の欄。 */
-  searchBar: React.ReactNode;
+
 }
 
 /** 地図と、地図の上に重ねる操作。 */
@@ -85,7 +84,6 @@ export default function HomeMapPane({
   usageGuideActive,
   onUsageGuideEnd,
   firstVisitIntro,
-  searchBar,
 }: HomeMapPaneProps) {
   const costCatalog = useCostAxisCatalog();
   const { results, splice } = route;
@@ -155,16 +153,6 @@ export default function HomeMapPane({
         turnPoint={upcomingTurn}
       />
 
-      {/* 上端の1段目に地点の検索の欄を、右の縦の列を避けて置く（走行中も出す）。開いている間は、候補をスマホの下のシートより
-          上に重ねる。 */}
-      <div
-        className={cn(
-          "pointer-events-none absolute top-3 left-3 z-[var(--z-map-control)] flex has-[[data-open]]:z-[var(--z-floating-panel)]",
-          "right-[calc(var(--map-ctrl-margin)_+_var(--map-ctrl-column-width)_+_var(--space-2))] @min-[48rem]/map:max-w-[28rem]",
-        )}
-      >
-        {searchBar}
-      </div>
       {/* 検索の欄の下の段の左に「表示」（重ねる情報の一覧）と、走行中は次に曲がる所のカードと走行モードの知らせを縦に積む。どちらも走行中も出す
           （小さいので走りの邪魔にならず、走りながら重ねる情報を替えられる）。知らせを右の列から左へ伸ばすと、狭い幅でカードの距離を覆う。 */}
       <div

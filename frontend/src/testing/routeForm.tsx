@@ -6,6 +6,7 @@ import { useState, type ComponentProps, type ReactNode } from "react";
 import { vi } from "vitest";
 
 import { Tabs } from "@/components/ui/Tabs/Tabs";
+import { usePlaceLookup } from "@/features/route/PlaceSearch/usePlaceLookup";
 import RouteForm, { type SettingsTab } from "@/features/route/RouteForm/RouteForm";
 import type { PointTarget } from "@/types/route";
 
@@ -32,7 +33,8 @@ const BASE = {
   originLocated: true,
   originAtHere: true,
   selectedPoint: { role: "origin" },
-  placing: false,
+  here: ORIGIN,
+  isMobile: false,
   foundAt: () => null,
   originFound: null,
   weightsPanel: null,
@@ -47,7 +49,7 @@ export function waypointsOf(count: number) {
   return Array.from({ length: count }, (_, i) => ({ latitude: 35 + i * 0.01, longitude: 139 }));
 }
 
-/** 選んでいる地点を持つ親の代わり（選ぶと上げ、その地点を選んだことにして詳しくを出し直す）。 */
+/** 選んでいる地点と地点の検索の欄の中身を持つ親の代わり（選ぶと上げ、その地点を選んだことにして描き直す）。 */
 function Selecting({
   initial,
   onSelect,
@@ -55,13 +57,22 @@ function Selecting({
 }: {
   initial: PointTarget;
   onSelect: (target: PointTarget) => void;
-  children: (selected: PointTarget, select: (target: PointTarget) => void) => ReactNode;
+  children: (
+    selected: PointTarget,
+    select: (target: PointTarget) => void,
+    lookup: ReturnType<typeof usePlaceLookup>,
+  ) => ReactNode;
 }) {
   const [selected, setSelected] = useState(initial);
-  return children(selected, (target) => {
-    setSelected(target);
-    onSelect(target);
-  });
+  const lookup = usePlaceLookup(ORIGIN);
+  return children(
+    selected,
+    (target) => {
+      setSelected(target);
+      onSelect(target);
+    },
+    lookup,
+  );
 }
 
 export function renderForm(options: Options = {}, tab: SettingsTab = "generate") {
@@ -77,7 +88,7 @@ export function renderForm(options: Options = {}, tab: SettingsTab = "generate")
     onOriginReset: vi.fn(),
     selectPoint: vi.fn(),
     onPlaceFound: vi.fn(),
-    onSearchOpen: vi.fn(),
+    onPlace: vi.fn(),
   };
   const element = (nextTab: SettingsTab, changed: Options = {}) => {
     const {
@@ -87,14 +98,15 @@ export function renderForm(options: Options = {}, tab: SettingsTab = "generate")
       originAtHere,
       onOriginReset,
       originFound,
-      onSearchOpen,
+      onPlace,
       onPlaceFound,
       weightsPanel,
       exclusionsPanel,
       saveConditionsButton,
       savedConditionsPanel,
       savedPlaces,
-      placing,
+      here,
+      isMobile,
       selectedPoint,
       selectPoint,
       ...conditions
@@ -106,7 +118,7 @@ export function renderForm(options: Options = {}, tab: SettingsTab = "generate")
     };
     return (
       <Selecting initial={selectedPoint} onSelect={selectPoint}>
-        {(selected, select) => (
+        {(selected, select, lookup) => (
           <Tabs value={nextTab}>
             <RouteForm
               conditions={{ ...conditions, selectedPoint: selected, selectPoint: select }}
@@ -117,11 +129,12 @@ export function renderForm(options: Options = {}, tab: SettingsTab = "generate")
               originAsks={0}
               onOriginReset={onOriginReset}
               originFound={originFound}
-              onSearchOpen={onSearchOpen}
+              here={here}
+              lookup={lookup}
+              onPlace={onPlace}
               onPlaceFound={onPlaceFound}
               savedPlaces={savedPlaces}
-              placing={placing}
-              foundCard={null}
+              isMobile={isMobile}
               weightsPanel={weightsPanel}
               exclusionsPanel={exclusionsPanel}
               saveConditionsButton={saveConditionsButton}

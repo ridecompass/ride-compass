@@ -1,14 +1,11 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import GenerationNotice from "@/features/route/GenerationNotice/GenerationNotice";
-import PlaceSearch from "@/features/route/PlaceSearch/PlaceSearch";
 import { usePlaceLookup } from "@/features/route/PlaceSearch/usePlaceLookup";
-import { chooseResultOf, pointTitle } from "@/features/route/pointNames";
 import type { SettingsTab } from "@/features/route/RouteForm/RouteForm";
 import RouteSettingsForm from "@/features/route/RouteForm/RouteSettingsForm";
-import PointStrip from "@/features/route/RouteForm/PointStrip";
-import { useGenerationConditions, waypointsFull } from "@/features/route/useGenerationConditions";
+import { useGenerationConditions } from "@/features/route/useGenerationConditions";
 import { useSavedConditions } from "@/features/route/useSavedConditions";
 import { useSavedPlaces } from "@/features/route/useSavedPlaces";
 import type { Coordinates, PinRole, PlaceCandidate, PointTarget } from "@/types/route";
@@ -91,14 +88,9 @@ export default function Home() {
     setFocusPoint({ latitude: candidate.latitude, longitude: candidate.longitude });
     showConditions();
   }
-  // 地図の上端の地点の検索の欄。ルート設定で選んでいる地点の役割で置く。
-  const searchInputRef = useRef<HTMLInputElement>(null);
-  const searchTarget = conditions.selectedPoint;
   function placeAt(target: PointTarget, candidate: PlaceCandidate) {
     placeFound(target.role, candidate, target.role === "waypoint" ? target.index : null);
   }
-  // スマホで探した候補の札を入れる、パネルの地点の詳しくの所。
-  const [cardSlot, setCardSlot] = useState<HTMLElement | null>(null);
   // 出発地が仮の地点のまま「生成」を押した回数（押すたびに出発地の行へ寄せ直す）。出発地が実際の位置になったら0に戻す。
   const [originAsks, setOriginAsks] = useState(0);
   if (locationKnown && originAsks !== 0) setOriginAsks(0);
@@ -158,7 +150,6 @@ export default function Home() {
     mapTheme: mapView.look.mapTheme,
     settingsTab,
     onSettingsTabChange: setSettingsTab,
-    settingsCardShown: cardSlot !== null,
     settingsBody: (
       <RouteSettingsForm
         conditions={conditions}
@@ -171,14 +162,12 @@ export default function Home() {
         originAsks={originAsks}
         onOriginReset={resetOriginToCurrent}
         originFound={originFound}
-        // クリックの中で同期して focus する（iOS は、利用者の操作の中で focus したときだけキーボードを出す）。
-        onSearchOpen={() => searchInputRef.current?.focus()}
+        here={place.here}
+        lookup={placeLookup}
+        onPlace={placeAt}
         onPlaceFound={placeFound}
         savedPlaces={savedPlaces}
-        placing={tapMode === "points"}
-        foundCard={
-          isMobile && placeLookup.foundOnMap !== null ? { slot: setCardSlot, dismiss: () => placeLookup.close() } : null
-        }
+        isMobile={isMobile}
       />
     ),
     // 「このルートで走る」は、その候補を選んで走行モードを始める（走り始めると作業台のシートは閉じる）。もう走っている間は
@@ -247,36 +236,6 @@ export default function Home() {
             usageGuideActive={usageGuideActive}
             onUsageGuideEnd={() => setUsageGuideActive(false)}
             firstVisitIntro={firstVisitIntro}
-            searchBar={
-              <PlaceSearch
-                title={pointTitle(searchTarget)}
-                chooseResult={chooseResultOf(searchTarget)}
-                // 新しい経由地は、上限まで置いてあれば置けない。
-                full={
-                  searchTarget.role === "waypoint" && searchTarget.index === null && waypointsFull(conditions.waypoints)
-                }
-                lookup={placeLookup}
-                onChoose={(candidate) => placeAt(searchTarget, candidate)}
-                // 探した候補は、地点の並びと同じ札で置く先を選ぶ。
-                placeTo={(place) => (
-                  <PointStrip
-                    conditions={conditions}
-                    originFound={originFound}
-                    originManual={originManual}
-                    originLocated={locationKnown}
-                    selectPoint={place}
-                    forPlacing
-                  />
-                )}
-                onPlace={placeAt}
-                // スマホでシートを開いていれば、探した候補の札をルート設定の地点の詳しくの所へ出す。
-                onSearch={showConditions}
-                isMobile={isMobile}
-                cardIn={sheetOpen ? cardSlot : "map"}
-                savedPlaces={savedPlaces}
-                inputRef={searchInputRef}
-              />
-            }
           />
         </div>
       </div>

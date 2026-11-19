@@ -35,6 +35,7 @@ import {
   Play,
   Plus,
   RotateCw,
+  RulerDimensionLine,
   Save,
   Search,
   Shield,
@@ -150,6 +151,8 @@ export const NotFetchedIcon = fromLucide(CloudOff);
 export const BackToNowIcon = fromLucide(History);
 /** 地点を住所・施設で探す。 */
 export const SearchPlaceIcon = fromLucide(Search);
+/** 距離の目標を決めるか（条件タブの「距離」）。 */
+export const RulerIcon = fromLucide(RulerDimensionLine);
 /** 選んだ区間へ地図を寄せる。 */
 export const ShowSectionOnMapIcon = fromLucide(ZoomIn);
 /** 小窓の地点の Street View を開く（Google マップの Street View の人の形）。 */
