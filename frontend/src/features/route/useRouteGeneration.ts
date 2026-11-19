@@ -49,6 +49,8 @@ export interface RouteGenerationInputs {
   onGenerated: (routes: RouteCandidate[]) => void;
   /** 押した「生成」の結果（候補・候補0件・失敗・入力の誤り）。どれも「ルート結果」でしか中身が見えない。 */
   onOutcome: (outcome: RouteOutcomeKind) => void;
+  /** 出発地が実際の位置でないまま「生成」を押した（生成せず、結果も知らせない）。 */
+  onOriginMissing: () => void;
 }
 
 /** 押した「生成」・「作成」の結果の種類。候補0件と失敗を、候補が出たことと見分ける。 */
@@ -67,6 +69,7 @@ export function useRouteGeneration({
   hasRoutes,
   onGenerated,
   onOutcome,
+  onOriginMissing,
 }: RouteGenerationInputs) {
   // 実行中は順番待ちか実行中かと経過時間を出し（ボタンの名前と「ルート結果」欄）、終わった後は直近の案内を「ルート結果」欄に残す。
   const [generation, setGeneration] = useState<Generation>(GENERATION_IDLE);
@@ -157,11 +160,16 @@ export function useRouteGeneration({
     distanceTargeted,
     waypointCount: waypoints.length,
     destinationSet: destination !== null,
-    originKnown,
   });
 
-  /** 検証して生成する。入力の誤りも押した結果として知らせる。 */
+  /** 検証して生成する。入力の誤りも押した結果として知らせる。出発地が仮の地点のままなら、誤りの窓を出さずに出発地を求める
+   * （仮の地点から作ったルートは利用者のいる場所と関係が無く、直すのは窓ではなく出発地の行でする）。 */
   async function submit() {
+    if (!originKnown) {
+      clearNotice();
+      onOriginMissing();
+      return;
+    }
     if (routeFormSubmit.check()) await generate();
     else onOutcome("failed");
   }

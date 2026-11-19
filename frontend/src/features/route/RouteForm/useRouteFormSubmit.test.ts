@@ -1,9 +1,9 @@
 /**
- * 生成の前の検証（`RouteForm/useRouteFormSubmit.ts`）——出発地が仮の地点のままなら生成せずに
- * 位置情報か地図での指定を促す。周回で全長の目標を決めず経由地も無ければ、作るものが無いのでどちらかを促す。周回を外して
+ * 生成の前の検証（`RouteForm/useRouteFormSubmit.ts`）——周回で全長の目標を決めず経由地も無ければ、作るものが無いのでどちらかを促す。周回を外して
  * 目的地が無ければ、目的地か周回を促す。通れば前の文言を消す。
  *
  * ここで見ないもの:
+ * - 出発地が仮の地点のままのとき（窓を出さず出発地の行へ導く） → `app/page.mobile.test.tsx`
  * - 文言を出す場所（「ルート結果」欄・モバイルの「ルート設定」シート） → `RouteOutcome/RouteOutcome.test.tsx`・`app/page.mobile.test.tsx`
  * - 検証を通った値で何を送るか（距離・経由地・目的地・候補数） → `useRouteGeneration.test.ts`
  * - 候補数のステッパーを押せなくする表示 → `RouteForm/RouteForm.test.tsx`
@@ -15,7 +15,6 @@ import { describe, expect, it } from "vitest";
 
 import { useRouteFormSubmit } from "./useRouteFormSubmit";
 
-const ORIGIN_UNKNOWN = "現在地が分かりません。位置情報を許可するか、地図をタップして出発地を置いてください。";
 const NOTHING_TO_MAKE = "「全長の目標を決める」を押すか、経由地を置いてください。";
 const NO_DESTINATION = "目的地を置いてください[出発地へ戻るなら「周回」を押してください]。";
 
@@ -24,7 +23,6 @@ interface Options {
   distanceTargeted: boolean;
   waypointCount: number;
   destinationSet: boolean;
-  originKnown: boolean;
 }
 
 const LOOP: Options = {
@@ -32,7 +30,6 @@ const LOOP: Options = {
   distanceTargeted: true,
   waypointCount: 0,
   destinationSet: false,
-  originKnown: true,
 };
 const LOOP_NO_DISTANCE: Options = { ...LOOP, distanceTargeted: false };
 const TO_DESTINATION: Options = { ...LOOP, loop: false, destinationSet: true };
@@ -53,18 +50,10 @@ describe("useRouteFormSubmit", () => {
   it.each([
     { label: "周回で全長の目標だけ", options: LOOP },
     { label: "目的地へ向かい全長の目標なし", options: { ...TO_DESTINATION, distanceTargeted: false } },
-  ])("「$label」なら、出発地が分かれば生成する", ({ options }) => {
+  ])("「$label」なら生成する", ({ options }) => {
     const { result } = renderSubmit(options);
 
     expect(check(result)).toBe(true);
-  });
-
-  it("出発地が仮の地点のままなら、押すまでは文言を出さず、押すと生成せずに位置情報の許可か地図での指定を促す", () => {
-    const { result } = renderSubmit({ ...LOOP, originKnown: false });
-    expect(result.current.error).toBeNull();
-
-    expect(check(result)).toBe(false);
-    expect(result.current.error).toBe(ORIGIN_UNKNOWN);
   });
 
   it("周回で全長の目標を決めず経由地も無ければ生成せず、どちらかを促す。文言は押し直すまで残り、経由地を置いて押し直すと消えて生成する", () => {

@@ -97,6 +97,16 @@ export default function Home() {
   }
   // スマホで探した候補の札を入れる、パネルの地点の詳しくの所。
   const [cardSlot, setCardSlot] = useState<HTMLElement | null>(null);
+  // 出発地が仮の地点のまま「生成」を押した回数（押すたびに出発地の行へ寄せ直す）。出発地が実際の位置になったら0に戻す。
+  const [originAsks, setOriginAsks] = useState(0);
+  if (locationKnown && originAsks !== 0) setOriginAsks(0);
+  // 出発地の詳しくを「ルート設定」の条件タブに出し、置き方へ導く。
+  function askOrigin() {
+    conditions.selectPoint({ role: "origin" });
+    setSettingsTab("generate");
+    panels.showRouteSettings();
+    setOriginAsks((asks) => asks + 1);
+  }
 
   // ルートを作る機能（結果・生成・区間の乗り換え）。
   const route = useRoutePlanner({
@@ -106,6 +116,7 @@ export default function Home() {
     departure: ride.departure,
     assumedSpeedKmh: ride.speedKmh,
     onOutcome: panels.notifyRouteOutcome,
+    onOriginMissing: askOrigin,
   });
   const { results } = route;
   const guidance = useRideGuidance({ riding, results, appliedConditions: route.generation.appliedConditions });
@@ -155,6 +166,7 @@ export default function Home() {
         originManual={originManual}
         originLocated={locationKnown}
         originAtHere={place.originAtHere}
+        originAsks={originAsks}
         onOriginReset={resetOriginToCurrent}
         originFound={originFound}
         // クリックの中で同期して focus する（iOS は、利用者の操作の中で focus したときだけキーボードを出す）。

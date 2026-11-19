@@ -94,10 +94,10 @@ describe("入力の誤り", () => {
     backend.jobs.fail("リクエストに失敗しました");
     await submit(rendered);
 
-    rendered.rerender({ ...PROPS, originKnown: false });
+    act(() => rendered.result.current.conditions.setDistanceTargeted(false));
     await submit(rendered);
 
-    expect(rendered.result.current.generation.outcome?.message).toMatch(/^現在地が分かりません/);
+    expect(rendered.result.current.generation.outcome?.message).toMatch(/^「全長の目標を決める」を押すか/);
   });
 });
 
