@@ -18,10 +18,6 @@ import { debugLog } from "@/lib/debugLog";
 import { bindRideMetrics } from "@/lib/rideMetrics";
 import { roundToDigits } from "@/lib/numberFormat";
 
-// 初期表示の覆い（「地図を読み込み中…」）を出しておく上限。覆いは基礎地図が描けた時点（"load"）で外すので、
-// これは基礎地図のタイルが止まって"load"が来ないときの保険。
-const INITIAL_TILES_OVERLAY_MAX_MS = 6000;
-
 interface MapLifecycleOptions {
   /** 地図を作るときの中心。作ったあとは読まない。 */
   initialCenter: Coordinates;
@@ -91,8 +87,8 @@ export function useMapLifecycle(
     const unbindRideMetrics = bindRideMetrics(map);
 
     // "load"は載っているすべてのタイルが揃った最初の描画で来る。アプリのソースは"load"の後に足す
-    // （runWhenStyleReady）ので、この時点で描けているのは基礎地図だけ——覆いはここで外す。"idle"は
-    // アプリのソースの取得まで待つので、遅い外部データが1つあると描けた地図を覆ったままになる。
+    // （runWhenStyleReady）ので、この時点で描けているのは基礎地図だけ——読み込み中の札はここで外す。"idle"は
+    // アプリのソースの取得まで待つので、遅い外部データが1つあると描けた地図に札が残り続ける。
     function handleLoad() {
       debugLog("map:lifecycle", "load（スタイル読み込み完了）");
       setStyleLoadFailed(false);
@@ -162,13 +158,9 @@ export function useMapLifecycle(
     map.on("idle", handleIdleRecompute);
     map.on("rotate", handleRotate);
     map.once("idle", handleFirstIdle);
-    const initialOverlayTimer = window.setTimeout(() => {
-      if (!cancelled) setInitialTilesLoading(false);
-    }, INITIAL_TILES_OVERLAY_MAX_MS);
 
     return () => {
       cancelled = true;
-      window.clearTimeout(initialOverlayTimer);
       resizeObserver.disconnect();
       unbindInteractions();
       unbindRideMetrics();

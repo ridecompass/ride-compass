@@ -199,7 +199,7 @@ export default function HomeMapPane({
           {overview}
         </div>
       )}
-      {!navigating && <FirstVisitIntro isMobile={isMobile} locationUnknown={place.locationFailure !== null} />}
+      {!navigating && <FirstVisitIntro locationUnknown={place.locationFailure !== null} />}
 
       {usageGuideActive ? <UsageGuide onEnd={onUsageGuideEnd} /> : <UsageTooltip />}
 

@@ -100,6 +100,16 @@ export default function ProfileChart({
 
   return (
     <div className="flex flex-col gap-0.5">
+      {/* 何を描いた図かの見出し（読み上げは図の名前が持つ）。図の右上に重ねる切り替えと同じ高さの段にし、切り替えを図から
+          外す。走行中の図は低い高さで図を大きく見せるので出さない。 */}
+      {!riding && (
+        <p
+          aria-hidden="true"
+          className="m-0 flex min-h-7 items-center text-[length:var(--font-size-xs)] text-[var(--color-muted-strong)]"
+        >
+          {label}
+        </p>
+      )}
       {/* 距離の目盛りは図の中の下の角に重ね、図の下に段を取らない（スマホのシートの低い高さで図を大きく見せる）。 */}
       <div className="relative">
         <svg

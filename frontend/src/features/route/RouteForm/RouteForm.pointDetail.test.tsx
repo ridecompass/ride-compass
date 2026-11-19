@@ -37,8 +37,8 @@ describe("RouteForm 出発地", () => {
 
   it.each([
     [true, "現在地", PIN_MARK_COLOR.origin],
-    [false, "現在地を取得できていません", ORIGIN_MARK_FALLBACK_COLOR],
-  ])("現在地を取れたか（%s）で名前を「%s」とし、印の色を変える", (originLocated, name, color) => {
+    [false, "地図をタップするか、住所・施設で探して置いてください", ORIGIN_MARK_FALLBACK_COLOR],
+  ])("現在地を取れたか（%s）で名前の所を「%s」とし、印の色を変える", (originLocated, name, color) => {
     renderForm({ originLocated });
 
     expect(detail("出発地")).toHaveTextContent(`出発地${name}`);

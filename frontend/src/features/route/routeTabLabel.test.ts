@@ -1,10 +1,8 @@
 // @vitest-environment node
 /**
- * `features/route/routeTabLabel.ts`——「ルート結果」の一覧の並び・群・名前と、基準線との差の表記。
+ * `features/route/routeTabLabel.ts`——「ルート結果」の一覧の並び・群・名前。
  * - `routeListEntries`: 最速の印の1本・残りの生成候補（1からの番号）・合成で作ったルート
  *   （「合成N」）の順に、群を付けて置く
- * - `durationBaseline`: 最速の印の1本があればそれ、無ければ2件以上のうち所要時間が最も短い候補（同着は先の方）
- * - `durationDifferenceLabel`: 基準線との差を丸めて1分以上なら「+N分」・「−N分」で書く
  *
  * ここで見ないもの:
  * - 一覧・タブへの描き方（群の印・区切りの線） → `RouteOutcome/RouteOutcome.test.tsx`
@@ -15,7 +13,7 @@ import { describe, expect, it } from "vitest";
 import { makeRouteCandidate } from "@/testing/routeFixtures";
 import type { RouteCandidate } from "@/types/route";
 
-import { durationBaseline, durationDifferenceLabel, routeListEntries } from "./routeTabLabel";
+import { routeListEntries } from "./routeTabLabel";
 
 function route(id: string, seconds: number | null, overrides: Partial<RouteCandidate> = {}) {
   return makeRouteCandidate({ id, direction_label: `${id}の方位`, estimated_duration_seconds: seconds, ...overrides });
@@ -41,40 +39,5 @@ describe("routeListEntries", () => {
       "e2:spliced:合成2/2",
       "e1:spliced:合成1/1",
     ]);
-  });
-});
-
-describe("durationBaseline", () => {
-  it("最速の印の1本があれば、ほかに速い候補があってもそれ", () => {
-    const routes = [route("a", 500), route("b", 600, { is_fastest: true })];
-    expect(durationBaseline(routes)).toEqual({ id: "b", seconds: 600 });
-  });
-
-  it("印が無ければ所要時間が最も短い候補で、同着なら先に来た方。所要時間の無い候補は比べない", () => {
-    const routes = [route("a", null), route("b", 900), route("c", 600), route("d", 600)];
-    expect(durationBaseline(routes)).toEqual({ id: "c", seconds: 600 });
-  });
-
-  it.each([
-    ["候補が1件", [route("a", 600, { is_fastest: true })]],
-    ["所要時間を持つ候補が無い", [route("a", null), route("b", null)]],
-    ["印の1本が所要時間を持たない", [route("a", null, { is_fastest: true }), route("b", 600)]],
-  ])("%sならnull", (_label, routes) => {
-    expect(durationBaseline(routes)).toBeNull();
-  });
-});
-
-describe("durationDifferenceLabel", () => {
-  it.each([
-    [629, null], // 差が丸めて1分に満たない
-    [630, "+1分"], // 半分ちょうどからは1分
-    [420, "−3分"], // 基準線より速く見積もられた
-  ])("所要時間%i秒（基準線600秒）は%s", (seconds, expected) => {
-    expect(durationDifferenceLabel(route("a", seconds), 600)).toBe(expected);
-  });
-
-  it("基準線が無い・自分の所要時間が無いならnull", () => {
-    expect(durationDifferenceLabel(route("a", 900), null)).toBeNull();
-    expect(durationDifferenceLabel(route("a", null), 600)).toBeNull();
   });
 });
