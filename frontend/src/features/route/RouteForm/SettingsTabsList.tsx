@@ -10,7 +10,7 @@ const settingsTabs = (axisNames: string): readonly { value: SettingsTab; label: 
   {
     value: "generate",
     label: "条件",
-    usage: "ルートの形・候補の数・距離の目標と、通る地点を決めます。",
+    usage: "ルートの形・距離の目標と、通る地点を決めます。",
   },
   {
     value: "weights",

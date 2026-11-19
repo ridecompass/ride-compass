@@ -19,7 +19,7 @@ test("目的地を探して置いた地点は地図のその位置にピンが�
     routes: (p) => p.route("**/api/place-search*", (route) => route.fulfill({ json: { candidates: [candidate] } })),
   });
 
-  await page.getByRole("radio", { name: "目的地へ" }).click();
+  await page.getByRole("radio", { name: "目的地" }).click();
   await page.getByRole("button", { name: "目的地 未設定", exact: true }).click();
   const searchBox = page.getByRole("searchbox", { name: "目的地を住所・施設で探す" });
   await searchBox.fill("王子");
@@ -74,7 +74,7 @@ test("目的地を探して置いた地点は地図のその位置にピンが�
 // 当たり判定を持たないので、ここで見る。
 test("小窓を開いたまま地図を押すと小窓を閉じるだけで地点を置かず、閉じてから押すと置く", async ({ page }) => {
   await openMapApp(page);
-  await page.getByRole("radio", { name: "目的地へ" }).click();
+  await page.getByRole("radio", { name: "目的地" }).click();
   await page.getByRole("button", { name: "目的地 未設定", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "目的地を探す" });
   await expect(dialog).toBeVisible();
@@ -103,9 +103,9 @@ async function showKeyboard(page: Page): Promise<number> {
   }, KEYBOARD_HEIGHT);
 }
 
-// 狭い画面では、行を押して開く小窓は欄へ移らず（キーボードを出さない）、打ち始めるとキーボードの上へ移り、候補は欄の下からキーボードの
-// 上までの中で送る。候補が多くてもキーボードに覆われずに末尾まで押せて、押した候補が目的地になることを実ブラウザの寸法で見る（単体テストは
-// レイアウトの実寸を持たない）。
+// 狭い画面では、行を押して開く小窓は欄へ移り（キーボードを出す）、はじめからキーボードのすぐ上に開いて、打っても下端が動かず、候補は
+// 欄の下からキーボードの上までの中で送る。候補が多くてもキーボードに覆われずに末尾まで押せて、押した候補が目的地になることを実ブラウザの
+// 寸法で見る（単体テストはレイアウトの実寸を持たない）。
 test("モバイル: 目的地を打つと候補をキーボードに隠れずに選べ、選ぶと地点の行にその名前が出る", async ({ page }) => {
   const candidates = Array.from({ length: 30 }, (_, index) => ({
     kind: "facility",
@@ -121,16 +121,24 @@ test("モバイル: 目的地を打つと候補をキーボードに隠れずに
     routes: (p) => p.route("**/api/place-search*", (route) => route.fulfill({ json: { candidates } })),
   });
   const settings = await openMobileSheet(page, "ルート設定");
-  await settings.getByRole("radio", { name: "目的地へ" }).click();
+  await settings.getByRole("radio", { name: "目的地" }).click();
   await settings.getByRole("button", { name: "目的地 未設定", exact: true }).click();
   const searchBox = page.getByRole("searchbox", { name: "目的地を住所・施設で探す" });
-  await expect(searchBox).toBeVisible();
-  await expect(searchBox).not.toBeFocused();
-  await searchBox.focus();
+  await expect(searchBox).toBeFocused();
   const keyboardTop = await showKeyboard(page);
+  const popup = page.getByRole("dialog", { name: "目的地を探す" });
+  // 小窓の下端が、キーボードの上端のすぐ上（目印からの間の分だけ上）にある。
+  const expectJustAboveKeyboard = () =>
+    expect(async () => {
+      const popupBox = (await popup.boundingBox())!;
+      expect(popupBox.y + popupBox.height).toBeLessThanOrEqual(keyboardTop);
+      expect(popupBox.y + popupBox.height).toBeGreaterThan(keyboardTop - 16);
+    }).toPass();
+  await expectJustAboveKeyboard();
   await searchBox.fill("浅草寺");
   const list = page.getByRole("list", { name: "地点の候補" });
   await expect(list).toBeVisible();
+  await expectJustAboveKeyboard();
   const box = (await searchBox.boundingBox())!;
   expect(box.y).toBeGreaterThanOrEqual(0);
   expect(box.y + box.height).toBeLessThanOrEqual(keyboardTop);
@@ -155,7 +163,7 @@ test("モバイル: 小窓を開いている間の「戻る」は小窓だけを
   await openMobileApp(page);
   const appUrl = page.url();
   const settings = await openMobileSheet(page, "ルート設定");
-  await settings.getByRole("radio", { name: "目的地へ" }).click();
+  await settings.getByRole("radio", { name: "目的地" }).click();
   const searchButton = settings.getByRole("button", { name: "目的地 未設定", exact: true });
   const closeButton = page.getByRole("button", { name: "検索を閉じる" });
 

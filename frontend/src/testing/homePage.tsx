@@ -243,10 +243,10 @@ export function renderHome() {
 
 export type User = ReturnType<typeof userEvent.setup>;
 
-/** 「目的地へ」に切り替え、地点の一覧で目的地の行を押して開いた小窓の「地図で置く」で閉じる（「ルート設定」が効いている間、小窓を
+/** 「目的地」に切り替え、地点の一覧で目的地の行を押して開いた小窓の「地図で置く」で閉じる（「ルート設定」が効いている間、小窓を
  * 閉じていれば地図を押すと選んでいる地点を置く。何も押していなければ出発地。既定の周回の間は目的地を選べない）。 */
 export async function selectDestination(user: User) {
-  await user.click(screen.getByRole("radio", { name: "目的地へ" }));
+  await user.click(screen.getByRole("radio", { name: "目的地" }));
   await user.click(screen.getByRole("button", { name: "目的地 未設定" }));
   await user.click(screen.getByRole("button", { name: "地図で置く" }));
 }
@@ -258,10 +258,10 @@ export async function showRoadSurface(user: User) {
   await user.keyboard("{Escape}");
 }
 
-/** 「ルート生成」を押し、出した要求を返す。 */
+/** 「ルート生成」を押し、出した要求を返す。条件を変えた後は名前に変えた印の文が続くので、頭で当てる。 */
 export async function generate(user: User) {
   const before = jobs.submitted.length;
-  await user.click(screen.getByRole("button", { name: "ルート生成" }));
+  await user.click(screen.getByRole("button", { name: /^ルート生成/ }));
   await waitFor(() => expect(jobs.submitted).toHaveLength(before + 1));
   return jobs.submitted[before].body as Record<string, unknown>;
 }

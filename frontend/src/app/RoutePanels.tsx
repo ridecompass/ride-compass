@@ -1,6 +1,6 @@
 "use client";
 
-import type { ReactNode } from "react";
+import type { ComponentProps, ReactNode } from "react";
 import BottomSheet from "@/components/BottomSheet/BottomSheet";
 import SectionDisclosure from "@/components/SectionDisclosure/SectionDisclosure";
 import { Button } from "@/components/ui/Button/Button";
@@ -15,7 +15,7 @@ import SettingsTabsList from "@/features/route/RouteForm/SettingsTabsList";
 import RouteOutcome from "@/features/route/RouteOutcome/RouteOutcome";
 import RouteOutcomeHeaderActions from "@/features/route/RouteOutcome/RouteOutcomeHeaderActions";
 import type { ProfileLayerSelection } from "@/features/route/RouteProfile/useProfileLayers";
-import type { RouteOutcomeKind } from "@/features/route/useRouteGeneration";
+import { CONDITIONS_DIRTY_TEXT, type RouteOutcomeKind } from "@/features/route/useRouteGeneration";
 import type { useRoutePlanner } from "@/features/route/useRoutePlanner";
 import { cn } from "@/lib/cn";
 import { mapOverlayEdge } from "@/lib/mapOverlayEdges";
@@ -47,13 +47,15 @@ const UNSEEN_OUTCOME_SIGNALS: Record<RouteOutcomeKind, OutcomeTabSignal> = {
   empty: { tone: "empty", label: "候補が見つかりませんでした" },
   fresh: { tone: "warning", label: "新しい結果があります" },
 };
-const CONDITIONS_DIRTY_SIGNAL: OutcomeTabSignal = { tone: "warning", label: "生成条件が変更されています" };
+const CONDITIONS_DIRTY_SIGNAL: OutcomeTabSignal = { tone: "warning", label: CONDITIONS_DIRTY_TEXT };
 
 interface RoutePanelsProps {
   panels: ReturnType<typeof usePagePanels>;
   isMobile: boolean;
   navigating: boolean;
   route: ReturnType<typeof useRoutePlanner>;
+  /** 一度に作る候補の数（見出しの「生成」の左で選ぶ）。 */
+  routeCount: ComponentProps<typeof GenerateRouteActions>["routeCount"];
   profileLayers: ProfileLayerSelection;
   /** 地図の地の明るさ（候補のカードの帯を地図と同じ色で塗る）。 */
   mapTheme: MapTheme;
@@ -116,7 +118,7 @@ export function DesktopRoutePanels(props: RoutePanelsProps) {
                 trailing={
                   <div className="flex min-w-0 flex-auto items-center justify-between gap-2">
                     <SettingsTabsList />
-                    <GenerateRouteActions generation={route.generation} />
+                    <GenerateRouteActions generation={route.generation} routeCount={props.routeCount} label="never" />
                   </div>
                 }
                 open={panels.generateOpen}
@@ -202,7 +204,9 @@ export function MobileRoutePanels(props: RoutePanelsProps) {
           open={panels.mobileSheet === "routeSettings"}
           title="ルート設定"
           headerLead={<SettingsTabsList />}
-          headerAction={<GenerateRouteActions generation={route.generation} />}
+          headerAction={
+            <GenerateRouteActions generation={route.generation} routeCount={props.routeCount} label="wideScreen" />
+          }
           fitKey={`${settingsTab}:${settingsShape}`}
           fitMaxVh={SETTINGS_SHEET_MAX_FIT_VH}
         >

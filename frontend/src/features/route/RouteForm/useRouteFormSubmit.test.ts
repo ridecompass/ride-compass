@@ -6,8 +6,8 @@
  * - 出発地が仮の地点のままのとき（窓を出さず出発地の行へ導く） → `app/page.mobile.test.tsx`
  * - 文言を出す場所（「ルート結果」欄・モバイルの「ルート設定」シート） → `RouteOutcome/RouteOutcome.test.tsx`・`app/page.mobile.test.tsx`
  * - 検証を通った値で何を送るか（距離・経由地・目的地・候補数） → `useRouteGeneration.test.ts`
- * - 候補数のステッパーを押せなくする表示 → `RouteForm/RouteForm.test.tsx`
- * - 距離・候補数の値域 → 検証しない（入力はスライダー・ステッパーで、保存値は読むときに範囲の外を捨てる。
+ * - 候補数の選び手が並べる数 → `GenerateRouteActions/GenerateRouteActions.test.tsx`
+ * - 距離・候補数の値域 → 検証しない（入力はルーラー・件数の選び手で、保存値は読むときに範囲の外を捨てる。
  *   `useGenerationConditions.test.ts`）
  */
 import { act, renderHook } from "@testing-library/react";
@@ -15,7 +15,7 @@ import { describe, expect, it } from "vitest";
 
 import { useRouteFormSubmit } from "./useRouteFormSubmit";
 
-const NOTHING_TO_MAKE = "「距離」をオンにするか、経由地を置いてください。";
+const NOTHING_TO_MAKE = "定規の「距離を決める」をオンにするか、経由地を置いてください。";
 const NO_DESTINATION = "目的地を置いてください[出発地へ戻るなら「周回」を押してください]。";
 
 interface Options {

@@ -25,7 +25,7 @@ import { formatDurationShort, MINUTE_UNIT } from "@/lib/duration";
 import EditDifference from "@/features/route/EditDifference/EditDifference";
 import WarningText from "@/features/route/WarningText/WarningText";
 import { routeListEntries, type RouteListGroup } from "@/features/route/routeTabLabel";
-import type { useRouteGeneration } from "@/features/route/useRouteGeneration";
+import { CONDITIONS_DIRTY_TEXT, type useRouteGeneration } from "@/features/route/useRouteGeneration";
 import type { RouteResults } from "@/features/route/useRouteResults";
 import type { SpliceSessionView } from "@/features/route/useSpliceSession";
 import type { RouteCandidate } from "@/types/route";
@@ -146,7 +146,7 @@ export default function RouteOutcome({ results, generation, splice, profileLayer
   return (
     <>
       {progress}
-      {generation.conditionsDirty && !generation.running && <WarningText>生成条件が変更されています</WarningText>}
+      {generation.conditionsDirty && !generation.running && <WarningText>{CONDITIONS_DIRTY_TEXT}</WarningText>}
       {generation.destinationCorrected && (
         <WarningText>指定した地点は自転車で行けない場所だったため、近くの自転車で行ける地点へ移しました。</WarningText>
       )}

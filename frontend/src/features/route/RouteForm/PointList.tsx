@@ -147,8 +147,8 @@ export default function PointList({
   const full = waypointsFull(waypoints);
   const newWaypoint: PointTarget = { role: "waypoint", index: null };
   const adding = isSelected(newWaypoint) && !full;
-  // スマホで打っている間は、小窓をキーボードのすぐ上へ寄せる（行はキーボードに隠れる）。
-  const aboveKeyboard = isMobile && searching && lookup.text.trim() !== "";
+  // スマホは開くと欄へ移ってキーボードを出すので、小窓ははじめからキーボードのすぐ上へ置く（行はキーボードに隠れる）。
+  const aboveKeyboard = isMobile && searching;
   const visible = useVisualViewport(aboveKeyboard);
 
   const markOf = (target: PointTarget, size: number) => (
@@ -172,7 +172,7 @@ export default function PointList({
     return { kind: "facility", level: "point", name: area ?? name, area, ...at };
   })();
 
-  // 選んだ行を、小窓の目印にする（打っている間のスマホは、キーボードの上の線を目印にする）。行を目印の部品で包むと、選び直すたびに
+  // 選んだ行を、小窓の目印にする（スマホは、キーボードの上の線を目印にする）。行を目印の部品で包むと、選び直すたびに
   // 行が作り直されて押したボタンのフォーカスが外れるので、位置だけを指す。
   const selectedRow = useMemo(
     () => ({
@@ -361,7 +361,9 @@ export default function PointList({
       {searching && !aboveKeyboard && <PopoverAnchor virtualRef={selectedRow} />}
       {aboveKeyboard &&
         createPortal(
-          <PopoverAnchor asChild>
+          // 目印が動いても Radix は位置を測り直さない（見える範囲の変化は窓の大きさの変化として届かない）ので、見える範囲が変わるたびに
+          // 目印を置き直して測り直させる。
+          <PopoverAnchor asChild key={visible === null ? "" : `${visible.top}:${visible.height}`}>
             <div
               aria-hidden="true"
               className="pointer-events-none fixed inset-x-2 bottom-0 h-0"
@@ -378,7 +380,6 @@ export default function PointList({
           lookup={lookup}
           savedPlaces={savedPlaces}
           isMobile={isMobile}
-          pointsAtRow={!aboveKeyboard}
           placing={placing}
           placed={selectedPlaced}
           onChoose={(candidate) => onPlace(selected, candidate)}
