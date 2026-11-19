@@ -118,7 +118,7 @@ export default function LensControl({
             className="max-w-full flex-row items-center gap-1.5 border-0 px-2.5 py-1 text-[length:var(--font-size-sm)] whitespace-nowrap focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-accent-strong)]"
             aria-label={`${LENS_SCREEN_NAME}: ${pillLabel}（タップで変更）`}
             title={statusLabel}
-            usage={`選んだ負担の種類の${LENS_QUANTITY_LABEL}で、地図の道路[ルートを作った後はルートの線]を塗ります。横の帯は負担の凡例です。`}
+            usage={`選んだ負担の種類の${LENS_QUANTITY_LABEL}で、地図の道路[ルートを作った後はルートの線]を塗ります。横の帯は負担の凡例で、左ほど小さく、右ほど大きい負担です。`}
           >
             {/* 道のりのグラフの「負担で塗る」の切り替えと同じ絵で、どちらも同じ入口と分かるようにする。 */}
             <BurdenPaintIcon size={14} />
@@ -129,16 +129,24 @@ export default function LensControl({
             />
             <span className="flex-shrink-0 font-semibold">{pillLabel}</span>
             {dataStatus && <Dot aria-hidden="true" tone={dataStatus} />}
-            {/* 段の数に依らず固定の幅で等分し、段の多い軸でもピルを横に伸ばさない。地図が狭いときは名前より先に縮める。 */}
+            {/* 段の数に依らず固定の幅で等分し、段の多い軸でもピルを横に伸ばさない。地図が狭いときは名前より先に縮める。
+                段は負担の小さい順に並ぶので、両端に向きを添える。 */}
             {bands.length > 0 && (
-              <span className="flex h-1.5 w-12 min-w-0 shrink-[8] overflow-hidden rounded-[1px]" aria-hidden="true">
-                {bands.map((entry) => (
-                  <span
-                    key={entry.key}
-                    className={cn("flex-1", hiddenLegendKeys.includes(entry.key) && "opacity-25")}
-                    style={{ background: legendSwatchBackground(entry) }}
-                  />
-                ))}
+              <span
+                className="flex min-w-0 shrink-[8] items-center gap-0.5 text-[0.65rem] text-[var(--color-muted-strong)]"
+                aria-hidden="true"
+              >
+                小
+                <span className="flex h-1.5 w-12 min-w-0 shrink overflow-hidden rounded-[1px]">
+                  {bands.map((entry) => (
+                    <span
+                      key={entry.key}
+                      className={cn("flex-1", hiddenLegendKeys.includes(entry.key) && "opacity-25")}
+                      style={{ background: legendSwatchBackground(entry) }}
+                    />
+                  ))}
+                </span>
+                大
               </span>
             )}
             <span aria-hidden="true" className="text-[0.7rem] text-[var(--color-muted)]">
