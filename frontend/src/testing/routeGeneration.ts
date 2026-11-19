@@ -33,10 +33,18 @@ export const PROPS: GenerationProps = {
 export function renderGeneration(props: Partial<GenerationProps> = {}) {
   const onGenerated = vi.fn();
   const onOutcome = vi.fn();
+  const onOriginMissing = vi.fn();
   const rendered = renderHook(
     (p: GenerationProps) => {
       const conditions = useGenerationConditions({ onOriginPlace: () => {} });
-      const generation = useRouteGeneration({ conditions, origin: ORIGIN, ...p, onGenerated, onOutcome });
+      const generation = useRouteGeneration({
+        conditions,
+        origin: ORIGIN,
+        ...p,
+        onGenerated,
+        onOutcome,
+        onOriginMissing,
+      });
       return { conditions, generation };
     },
     { initialProps: { ...PROPS, ...props } },

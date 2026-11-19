@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { Badge } from "@/components/ui/Badge/Badge";
 import { Button } from "@/components/ui/Button/Button";
@@ -44,6 +44,9 @@ interface PointDetailProps {
   full?: boolean;
   /** 地図をタップするとこの地点を置くか（ルート設定が地図で効いている間）。 */
   placing: boolean;
+  /** この地点を置くよう求めた回数（0・無しなら求めていない）。求めている間は枠を警告の色にし、増えるたびにこの詳しくへ
+   * フォーカスを移す（直す所へ目と読み上げを移す）。 */
+  asks?: number;
   /** 出発地の印を、実際の位置（現在地か置いた地点）の色で出すか。 */
   originLocated: boolean;
   /** 地図の上端の地点の検索の欄を、この地点の役割で開く。 */
@@ -70,10 +73,17 @@ export default function PointDetail({
   placingHint = "地図をタップ",
   full = false,
   placing,
+  asks = 0,
   originLocated,
   onSearchOpen,
   savedPlaces,
 }: PointDetailProps) {
+  const sectionRef = useRef<HTMLElement>(null);
+  const asked = asks > 0;
+  useEffect(() => {
+    if (asks > 0) sectionRef.current?.focus();
+  }, [asks]);
+
   // 探した住所は名前が辺りを含み、代表の位置なら行きたい所そのものでもないので、辺りは引かない。
   const representative = found !== null && isRepresentative(found);
   const areaPoint = found?.kind !== "address" && found?.area == null ? at : null;
@@ -102,9 +112,12 @@ export default function PointDetail({
 
   return (
     <section
+      ref={sectionRef}
       aria-label={title}
-      className="group flex flex-col gap-1 rounded-sm border border-[var(--color-border)] p-1.5 data-[placing=true]:border-[var(--color-accent)] data-[placing=true]:shadow-[inset_0_0_0_1px_var(--color-accent)]"
+      tabIndex={asked ? -1 : undefined}
+      className="group flex flex-col gap-1 rounded-sm border border-[var(--color-border)] p-1.5 data-[placing=true]:border-[var(--color-accent)] data-[placing=true]:shadow-[inset_0_0_0_1px_var(--color-accent)] data-[asked=true]:border-[var(--color-warning)]! data-[asked=true]:shadow-[inset_0_0_0_1px_var(--color-warning)]!"
       data-placing={placing}
+      data-asked={asked}
     >
       <div className="flex min-w-0 items-start gap-2">
         <PointMark role={role} label={markLabel} originLocated={originLocated} className="mt-0.5" />

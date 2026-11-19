@@ -1,7 +1,7 @@
 /**
  * `app/page.tsx`——トップページの画面の枠（地図の上の操作・ヘッダー・メニュー）。
  *
- * 見ること: 地図の表示をまとめて戻す操作（「表示」の一覧の末尾と右上のメニュー）、地図を読み込み中の覆いが上限の時間で外れること、
+ * 見ること: 地図の表示をまとめて戻す操作（「表示」の一覧の末尾と右上のメニュー）、地図を読み込み中の札が基礎地図の描けたときに外れること（俯瞰図も）、
  * 層の取得状態の数え直しと再描画の失敗の案内、「表示」の「範囲と色」で地図を暗くすること（基礎地図の色を暗くし、描き直しても保ち、
  * 覚える）、区分の開閉の保存、左下の俯瞰図（気象の層を出して寄せると出て、道路を消した下地に同じ気象の層を描き、引くと消え、
  * 畳んだことを覚える）。
@@ -11,7 +11,7 @@
  *
  * 差し替えたもの: backend の応答（網の層）、位置情報の取得、地図の描画（`maplibre-gl`）。子の部品は本物を描く。
  */
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { HOUR_MS } from "@/lib/duration";
@@ -73,12 +73,13 @@ describe("画面の枠", () => {
     expect(mapOnScreen().styles).toHaveLength(before + 1);
   });
 
-  it("基礎地図が描けず（`load`が来ず）ても、地図を読み込み中の覆いは上限の時間で外れる", () => {
+  it("地図の中央の「地図を読み込み中…」の札は、時間では外れず、基礎地図が描けた（`load`）ときに外れる", () => {
     vi.useFakeTimers();
     try {
       render(<Home />);
-      expect(screen.getByText("地図を読み込み中…")).toBeInTheDocument();
       act(() => vi.runOnlyPendingTimers());
+      expect(screen.getByText("地図を読み込み中…")).toBeInTheDocument();
+      act(() => mapOnScreen().emit("load"));
       expect(screen.queryByText("地図を読み込み中…")).toBeNull();
     } finally {
       vi.useRealTimers();
@@ -206,8 +207,12 @@ describe("画面の枠", () => {
     act(() => mapOnScreen().moveTo(near, 12));
     expect(await screen.findByRole("region", { name: "俯瞰図" })).toBeInTheDocument();
     const inset = insetMapOnScreen()!;
+    const insetLoading = () =>
+      within(screen.getByRole("region", { name: "俯瞰図" })).queryByText("俯瞰図を読み込み中…");
+    expect(insetLoading()).toBeInTheDocument();
     act(() => inset.loadStyle(LIBERTY_POI_LAYERS));
     act(() => inset.emit("load"));
+    expect(insetLoading()).toBeNull();
     const weatherOnMain = () =>
       mapOnScreen()
         .visibleLayerIds()

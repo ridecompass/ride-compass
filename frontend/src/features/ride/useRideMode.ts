@@ -200,7 +200,9 @@ export function useRideMode(plausibleMaxKmh: number | undefined): UseRideModeRes
         debugLog("ride:position", "位置を受け取れなかった", { code: failure.code }, "warn");
         if (failure.code !== PERMISSION_DENIED) return;
         stop();
-        setError("位置情報の利用が許可されていないため、走行モードを止めました。");
+        setError(
+          "位置情報の利用が許可されていないため、走行モードを止めました。ブラウザか端末の設定で、このサイトの位置情報を許可してください。",
+        );
       },
       WATCH_OPTIONS,
     );

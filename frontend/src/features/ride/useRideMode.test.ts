@@ -92,13 +92,15 @@ describe("useRideMode", () => {
     expect(result.current.map?.zoomBase).toBeNull();
   });
 
-  it("位置の利用を断られたら走行モードを止め、受け取りをやめて理由を出す。次に始めると理由を消す", () => {
+  it("位置の利用を断られたら走行モードを止め、受け取りをやめて理由と許可の仕方を出す。次に始めると理由を消す", () => {
     const { result } = renderHook(() => useRideMode(PLAUSIBLE_MAX_KMH));
     act(() => result.current.press());
     geolocation.fail(1);
     expect(result.current.status).toBe("off");
     expect(geolocation.watching()).toBe(0);
-    expect(result.current.error).toMatch(/許可/);
+    expect(result.current.error).toMatch(
+      /許可されていない.*ブラウザか端末の設定で、このサイトの位置情報を許可してください/,
+    );
 
     act(() => result.current.press());
     expect(result.current.error).toBeNull();

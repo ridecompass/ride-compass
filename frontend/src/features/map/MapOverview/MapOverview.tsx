@@ -6,6 +6,7 @@ import { type RefObject, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/Button/Button";
 import { OverviewMapIcon } from "@/components/ui/icons/lucideIcons";
 import { createBaseMap } from "@/features/map/baseMap";
+import { MapLoadingBadge } from "@/features/map/MapView/MapLoadStatus";
 import type { MapTheme } from "@/lib/mapTheme";
 import { runWhenStyleReady } from "@/features/map/layers/mapStyleOps";
 import {
@@ -67,6 +68,7 @@ function OverviewMap({
 }: MapOverviewProps & { onCollapse: () => void }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
+  const [loading, setLoading] = useState(true);
   const [paneSize, setPaneSize] = useState<{ width: number; height: number } | null>(null);
   const center = viewportCenter(viewport);
   const zoom = overviewZoom(center.latitude, viewport.zoom);
@@ -81,6 +83,7 @@ function OverviewMap({
       inset: true,
     });
     map.setBearing(viewport.bearing);
+    map.once("load", () => setLoading(false));
     runWhenStyleReady(map, () => {
       const { hidden, places, motorways } = overviewBasemapEdits(map.getStyle().layers);
       for (const layerId of hidden) map.setLayoutProperty(layerId, "visibility", "none");
@@ -149,6 +152,7 @@ function OverviewMap({
             transform: `scale(${1 / OVERVIEW_RENDER_SCALE})`,
           }}
         />
+        {loading && <MapLoadingBadge label="俯瞰図を読み込み中…" compact />}
         {frame !== null && (
           <div
             aria-hidden="true"

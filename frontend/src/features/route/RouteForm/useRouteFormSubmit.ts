@@ -8,13 +8,10 @@ interface UseRouteFormSubmitOptions {
   waypointCount: number;
   /** 目的地を置いてあるか（周回の間は数えない）。 */
   destinationSet: boolean;
-  /** 出発地が実際の位置か（現在地を取れたか、地図で置いたか）。偽の間の出発地は決まった仮の地点で、そこから
-   * 作ったルートは利用者のいる場所と関係が無い。 */
-  originKnown: boolean;
 }
 
 interface UseRouteFormSubmitResult {
-  /** 生成できない理由（出発地が分からない・周回で全長の目標も経由地も無く作るものが無い・周回を外して目的地が無い）。生成結果の
+  /** 生成できない理由（周回で全長の目標も経由地も無く作るものが無い・周回を外して目的地が無い）。生成結果の
    * 失敗と同じ窓で出す——押した場所とは別のどこかに出ると見落とすため。 */
   error: string | null;
   /** 検証し、通ったかを返す。通らなければ理由を`error`に置く。 */
@@ -30,15 +27,10 @@ export function useRouteFormSubmit({
   distanceTargeted,
   waypointCount,
   destinationSet,
-  originKnown,
 }: UseRouteFormSubmitOptions): UseRouteFormSubmitResult {
   const [error, setError] = useState<string | null>(null);
 
   function check() {
-    if (!originKnown) {
-      setError("現在地が分かりません。位置情報を許可するか、地図をタップして出発地を置いてください。");
-      return false;
-    }
     if (loop && !distanceTargeted && waypointCount === 0) {
       setError("「全長を決める」に印を付けるか、経由地を置いてください。");
       return false;
