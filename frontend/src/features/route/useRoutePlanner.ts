@@ -13,7 +13,7 @@ import { useSpliceSession } from "@/features/route/useSpliceSession";
 /** 生成の入力のうち、ページから渡すもの（候補の有無と生成の結果の受け取り先は結果の側がつなぐ）。 */
 interface RoutePlannerInputs extends Pick<
   RouteGenerationInputs,
-  "conditions" | "origin" | "originKnown" | "departure" | "assumedSpeedKmh"
+  "conditions" | "origin" | "originKnown" | "departure" | "assumedSpeedKmh" | "onOriginMissing"
 > {
   /** 「ルート結果」でしか中身が見えない結果が出た（生成の結果・入力の誤り・乗り換えで作った経路）。押した操作1回に1度。 */
   onOutcome: (outcome: RouteOutcomeKind) => void;

@@ -52,6 +52,8 @@ interface RoutePointsProps {
   originLocated: boolean;
   /** 出発地が、最後に取れた現在地にあるか（真なら「出発地を現在地に戻す」を押せなくする）。 */
   originAtHere: boolean;
+  /** 出発地が仮の地点のまま「生成」を押した回数（0なら求めていない）。増えるたびに、出発地の詳しくを強調して寄せる。 */
+  originAsks: number;
   /** 出発地を現在地へ戻す（現在地の取得もこの操作が兼ねる）。 */
   onOriginReset: () => void;
   /** 出発地が、探して置いたときの位置のままなら、その候補。 */
@@ -72,6 +74,9 @@ const toggleClass = cn(
   "min-h-6 rounded-sm px-1.5 text-[length:var(--font-size-md)] text-[var(--color-muted)] aria-pressed:text-[var(--color-accent-strong)]",
 );
 
+/** 出発地が仮の地点のままの間の、出発地の詳しくの名前の所の文（置き方を言う）。 */
+const ORIGIN_PLACING_GUIDE = "地図をタップするか、住所・施設で探して置いてください";
+
 /** どうやって置いた地点か。 */
 function sourceOf(found: PlaceCandidate | null): string {
   return found !== null ? "探して選んだ地点" : MAP_PLACED;
@@ -88,6 +93,7 @@ export default function RoutePoints({
   originManual,
   originLocated,
   originAtHere,
+  originAsks,
   onOriginReset,
   originFound,
   onSearchOpen,
@@ -120,6 +126,12 @@ export default function RoutePoints({
   if (cardShown !== cardWasShown) {
     setCardWasShown(cardShown);
     if (cardShown) setEditOpen(false);
+  }
+  // 出発地を求めたら、編集を閉じて出発地の詳しくを出す（選ぶのは求めた側）。
+  const [originAsksSeen, setOriginAsksSeen] = useState(originAsks);
+  if (originAsks !== originAsksSeen) {
+    setOriginAsksSeen(originAsks);
+    if (originAsks > 0) setEditOpen(false);
   }
   const editable = waypointCount > 0 || (!loop && destination !== null);
   const editing = editOpen && editable;
@@ -154,10 +166,11 @@ export default function RoutePoints({
           {...common}
           role="origin"
           source={originManual ? sourceOf(originFound) : undefined}
-          name={areaNames.origin}
+          name={originLocated ? areaNames.origin : ORIGIN_PLACING_GUIDE}
+          asks={originAsks}
           found={originFound}
           at={originLocated ? origin : null}
-          placed
+          placed={originLocated}
           extra={
             <Button
               size="panelIcon"

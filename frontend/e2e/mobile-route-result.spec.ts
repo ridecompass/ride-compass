@@ -62,18 +62,15 @@ test("モバイル: 生成したルートを地図へ収めると、開いた「
   expect((Math.max(...ys) - Math.min(...ys)) / (sheetTop - freeTop)).toBeGreaterThan(0.7);
 });
 
-// 観点1（収まる）: 道のりのグラフの切り替えは、結果のシートの図も走行中の地図の下の図も、図の上に段を取らずに図の右上に
-// 重ねる。走行中の図は結果のシートの図より高く描いて画面に収める。重なりと高さは実寸でしか決まらない。
-test("モバイル: 道のりのグラフの切り替えは、結果も走行中も図の右上に重ね、走行中の図は結果の図より高く画面に収まる", async ({
+// 観点1（収まる）: 道のりのグラフの切り替えは、結果のシートの図では図の見出しの段の右に載せて図に掛けず、見出しの無い走行中の
+// 地図の下の図では図の上に段を取らずに図の右上に重ねる。走行中の図は結果のシートの図より高く描いて画面に収める。重なりと高さは
+// 実寸でしか決まらない。
+test("モバイル: 道のりのグラフの切り替えは、結果では見出しの段の右に、走行中は図の右上に重ね、走行中の図は結果の図より高く画面に収まる", async ({
   page,
 }) => {
-  // 切り替えが図の右半分の中に収まる（図の上に段を取らず、左上の値の目盛りに掛からない）。
-  const expectOnTopRight = (
-    tabs: { x: number; y: number; width: number; height: number },
-    graph: { x: number; y: number; width: number; height: number },
-  ) => {
-    expect(tabs.y).toBeGreaterThanOrEqual(graph.y);
-    expect(tabs.y + tabs.height).toBeLessThanOrEqual(graph.y + graph.height);
+  type Box = { x: number; y: number; width: number; height: number };
+  // 切り替えが図の右半分の幅に収まる（左上の値の目盛りに掛からない）。
+  const expectOnRightHalf = (tabs: Box, graph: Box) => {
     expect(tabs.x).toBeGreaterThan(graph.x + graph.width / 2);
     expect(tabs.x + tabs.width).toBeLessThanOrEqual(graph.x + graph.width);
   };
@@ -81,41 +78,59 @@ test("モバイル: 道のりのグラフの切り替えは、結果も走行中
   const sheet = await generateRoutes(page);
   const resultGraph = (await sheet.getByRole("slider", { name: /^道のりに沿った負担/ }).boundingBox())!;
   const resultTabs = (await sheet.getByRole("tablist", { name: "道のりのグラフ" }).boundingBox())!;
-  expectOnTopRight(resultTabs, resultGraph);
+  const heading = (await sheet.getByText("道のりに沿った負担", { exact: true }).boundingBox())!;
+  expectOnRightHalf(resultTabs, resultGraph);
+  expect(resultTabs.y).toBeGreaterThanOrEqual(heading.y);
+  expect(resultTabs.y + resultTabs.height).toBeLessThanOrEqual(resultGraph.y);
 
   await sheet.getByRole("button", { name: /このルートで走る/ }).click();
   const ride = page.getByRole("region", { name: "予定ルートのプロファイル" });
   const rideGraph = (await ride.getByRole("slider", { name: /^道のりに沿った負担/ }).boundingBox())!;
   const rideTabs = (await ride.getByRole("tablist", { name: "道のりのグラフ" }).boundingBox())!;
-  expectOnTopRight(rideTabs, rideGraph);
+  expectOnRightHalf(rideTabs, rideGraph);
+  expect(rideTabs.y).toBeGreaterThanOrEqual(rideGraph.y);
+  expect(rideTabs.y + rideTabs.height).toBeLessThanOrEqual(rideGraph.y + rideGraph.height);
   expect(rideGraph.height).toBeGreaterThan(resultGraph.height);
   expect(rideGraph.y + rideGraph.height).toBeLessThanOrEqual(MOBILE_VIEWPORT.height);
 });
 
-// 「ルート結果」のシート。高さを決めていなければ、開いたときに候補と道のりのグラフの下端までが入る高さに合わせ、グラフは
-// シートの幅いっぱいに描く（パターン4 観点1）。グラフの上から縦になぞるとシートの本文が動き、横になぞると地点を選ぶ（観点2）。
+// 「ルート結果」のシート。高さを決めていなければ、開いたときに候補・所要と負担の要約・道のりのグラフの下端までが入る高さに合わせ、グラフは
+// シートの幅いっぱいに描く（パターン4 観点1）。
+test("モバイル: 「ルート結果」のシートは開くと、所要・負担の要約とグラフの下端までがスクロールせずに入る", async ({
+  page,
+}) => {
+  await openMobileApp(page);
+  const sheet = await generateRoutes(page);
+  const sheetBox = (await sheet.boundingBox())!;
+  const graphBox = (await sheet.getByRole("slider", { name: /^道のりに沿った負担/ }).boundingBox())!;
+  const sheetBottom = sheetBox.y + sheetBox.height;
+  const graphBottom = graphBox.y + graphBox.height;
+  // グラフの下には距離の目盛りの1行と本文の下の余白だけが残る。
+  expect(graphBottom).toBeLessThanOrEqual(sheetBottom);
+  expect(sheetBottom - graphBottom).toBeLessThan(48);
+  // 本文の左右の余白を除いた幅いっぱい。
+  expect(graphBox.width).toBeGreaterThan(sheetBox.width - 48);
+  // 所要・負担の要約はグラフより上にある。
+  const summaryBox = (await sheet.getByRole("button", { name: "負担の説明を表示" }).boundingBox())!;
+  expect(summaryBox.y).toBeGreaterThanOrEqual(sheetBox.y);
+  expect(summaryBox.y + summaryBox.height).toBeLessThanOrEqual(graphBox.y);
+});
+
+// グラフの上から縦になぞるとシートの本文が動き、横になぞると地点を選ぶ（観点2）。本文に送る分があるのは、利用者が
+// シートを中身より低く決めたときなので、決めた高さを最も低くして開く。
 // touch-actionはタッチの始点の要素と祖先で決まり、計算後のCSSの値を読むだけでは効いているかが分からないので、
 // 実際に1本指のタッチを送って見る。
 test.describe("タッチ端末", () => {
   test.use({ viewport: MOBILE_VIEWPORT, isMobile: true, hasTouch: true });
 
-  test("モバイル: 「ルート結果」のシートは開くとグラフの下端までが入り、グラフの上の縦のなぞりで本文が動き、横のなぞりで地点を選ぶ", async ({
+  test("モバイル: 「ルート結果」のグラフの上の縦のなぞりで本文が動き、横のなぞりで地点を選ぶ", async ({
     page,
     browserName,
   }) => {
     test.skip(browserName !== "chromium", "1本指のタッチの列はCDP（Chromiumだけの口）でしか送れない");
-    await openMobileApp(page);
+    await openMobileApp(page, { storedState: { "ridecompass:mobile-sheet-height-vh": "20" } });
     const sheet = await generateRoutes(page);
     const graph = sheet.getByRole("slider", { name: /^道のりに沿った負担/ });
-    const sheetBox = (await sheet.boundingBox())!;
-    const graphBox = (await graph.boundingBox())!;
-    const sheetBottom = sheetBox.y + sheetBox.height;
-    const graphBottom = graphBox.y + graphBox.height;
-    // グラフの下には距離の目盛りの1行と本文の下の余白だけが残る。
-    expect(graphBottom).toBeLessThanOrEqual(sheetBottom);
-    expect(sheetBottom - graphBottom).toBeLessThan(48);
-    // 本文の左右の余白を除いた幅いっぱい。
-    expect(graphBox.width).toBeGreaterThan(sheetBox.width - 48);
 
     const scrollTopOfBody = () =>
       sheet.evaluate((root) => {
@@ -124,7 +139,10 @@ test.describe("タッチ端末", () => {
         );
         return body?.scrollTop ?? -1;
       });
-    expect(await scrollTopOfBody()).toBe(0);
+    // グラフを本文の見える所まで送る（本文は下端まで送られる）。
+    await graph.scrollIntoViewIfNeeded();
+    const scrolled = await scrollTopOfBody();
+    expect(scrolled).toBeGreaterThan(0);
 
     const client = await page.context().newCDPSession(page);
     const drag = async (from: { x: number; y: number }, to: { x: number; y: number }) => {
@@ -135,12 +153,14 @@ test.describe("タッチ端末", () => {
       }
       await client.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
     };
+    const graphBox = (await graph.boundingBox())!;
     const center = { x: graphBox.x + graphBox.width / 2, y: graphBox.y + graphBox.height / 2 };
 
-    await drag(center, { x: center.x, y: center.y - 120 });
-    await expect.poll(scrollTopOfBody).toBeGreaterThan(0);
+    await drag(center, { x: center.x, y: center.y + 120 });
+    await expect.poll(scrollTopOfBody).toBeLessThan(scrolled);
     await expect(sheet.getByRole("button", { name: "区間を地図で見る" })).toHaveCount(0);
 
+    await graph.scrollIntoViewIfNeeded();
     const moved = (await graph.boundingBox())!;
     const row = moved.y + moved.height / 2;
     await drag({ x: moved.x + moved.width * 0.2, y: row }, { x: moved.x + moved.width * 0.6, y: row });

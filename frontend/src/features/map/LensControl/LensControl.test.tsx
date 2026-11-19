@@ -1,5 +1,5 @@
 /**
- * `LensControl.tsx`——「負担で塗る」のピルが今のレンズを示し、開いた一覧でレンズを1つ選び・外し、選んでいる行の ▶ で
+ * `LensControl.tsx`——「負担で塗る」のピルが今のレンズと色の帯の向きを示し、開いた一覧でレンズを1つ選び・外し、選んでいる行の ▶ で
  * 凡例を絞り込み、行の印（走る条件・絞り込み中）と前提の文を読ませ、一覧の頭で行の印の意味を読ませること。
  *
  * ここで見ないもの:
@@ -70,6 +70,14 @@ describe("LensControl", () => {
       expect(pill()).toHaveAccessibleName(`負担で塗る: ${label}（タップで変更）`);
     },
   );
+
+  it.each([
+    [LEGEND, "小大"],
+    [[], ""],
+  ])("ピルの色の帯は、段がある間だけ両端に「小」「大」を添える（段 %j）", (legend, ends) => {
+    renderLens({ legend });
+    expect(pill().textContent).toContain(`usedの軸${ends}▾`);
+  });
 
   it("取得状態は、ピルのtitleと、開いた先の文で伝える", async () => {
     renderLens({ dataStatus: "error" });

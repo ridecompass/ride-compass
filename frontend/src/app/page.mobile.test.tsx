@@ -38,7 +38,7 @@ beforeEach(() => {
 });
 
 describe("スマホのシート", () => {
-  it("スマホでは下部タブでシートを1枚ずつ開き、地図で地点を扱えるのは「ルート設定」の条件タブを開いている間だけ。結果の合図は「ルート結果」を開くまで残り、押した結果が候補を出せなかった理由（候補0件の理由・入力の誤り）はシートでなく窓で出し、閉じると消える。候補0件の合図は成功と見分ける", async () => {
+  it("スマホでは下部タブでシートを1枚ずつ開き、地図で地点を扱えるのは「ルート設定」の条件タブを開いている間だけ。結果の合図は「ルート結果」を開くまで残り、押した結果が候補を出せなかった理由はシートでなく窓で出し、閉じると消える。出発地が仮の地点のまま押すと、窓を出さずに出発地の行へ導く。候補0件の合図は成功と見分ける", async () => {
     installGeolocation(null);
     useMobileLayout();
     const { user } = renderHome();
@@ -51,13 +51,16 @@ describe("スマホのシート", () => {
 
     await user.click(settingsTab());
     const settingsSheet = screen.getByRole("dialog", { name: "ルート設定" });
+    // 出発地が仮の地点のまま押すと、窓も失敗の合図も出さず、別のタブを開いていても条件タブの出発地の行へ寄せ、置き方を言う。
+    await user.click(within(settingsSheet).getByRole("tab", { name: "負担" }));
     await user.click(within(settingsSheet).getByRole("button", { name: "ルート生成" }));
-    const notice = screen.getByRole("dialog", { name: "ルートを作れませんでした" });
-    expect(notice).toHaveAccessibleDescription(/^現在地が分かりません/);
-    expect(within(settingsSheet).queryByText(/^現在地が分かりません/)).toBeNull();
-    expect(outcomeTab).toHaveAccessibleDescription("生成に失敗しました");
-    await user.click(within(notice).getByRole("button", { name: "閉じる" }));
     expect(screen.queryByRole("dialog", { name: "ルートを作れませんでした" })).toBeNull();
+    expect(outcomeTab).not.toHaveAccessibleDescription();
+    expect(within(settingsSheet).getByRole("tab", { name: "条件" })).toHaveAttribute("aria-selected", "true");
+    const originRow = within(settingsSheet).getByRole("region", { name: "出発地" });
+    expect(originRow).toHaveFocus();
+    expect(originRow).toHaveAttribute("data-asked", "true");
+    expect(originRow).toHaveTextContent("地図をタップするか、住所・施設で探して置いてください");
 
     expect(originMark().draggable).toBe(true);
     await user.click(within(settingsSheet).getByRole("tab", { name: "負担" }));

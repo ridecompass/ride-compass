@@ -62,7 +62,12 @@ export default function RouteAxisProfile({
       {/* 所要時間の前提が崩れていることは、所要時間のすぐ下で知らせる（黙って短い所要時間を見せない）。
           値の無い区間は丸めて1%以上のときだけ出す——0%を並べても判断の材料にならない。 */}
       {missingPct >= 1 && (
-        <WarningText>{`データの無い区間が${missingPct}%[${routeGenerateConfig.missing_travel_data_wording}]`}</WarningText>
+        <WarningText>
+          {`${missingPct}%の区間は推定で計算しています`}
+          <InfoPopover triggerAriaLabel="推定で計算した区間の説明">
+            <p>{routeGenerateConfig.missing_travel_data_wording}</p>
+          </InfoPopover>
+        </WarningText>
       )}
     </div>
   );
