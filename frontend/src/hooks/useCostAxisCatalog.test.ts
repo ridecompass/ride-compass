@@ -3,7 +3,7 @@
  *
  * 見るもの: 内訳の軸の行が、一覧が軸ごとに配る色で塗られること（軸が7本以上でも）。
  *
- * ここで見ないもの: 内訳の行の並びと名前 → `lib/routePenalty.test.ts`・`features/route/RouteAxisProfile/RouteAxisProfile.test.tsx`。
+ * ここで見ないもの: 内訳の行の並びと名前 → `lib/routePenalty.test.ts`・`features/route/RouteOutcome/RouteOutcome.test.tsx`。
  */
 import { describe, expect, it } from "vitest";
 
