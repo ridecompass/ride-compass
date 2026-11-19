@@ -231,6 +231,9 @@ PRIMARY_ATTRIBUTES: tuple[PrimaryAttributeSpec, ...] = (
         # 名前を持つのはコンビニの点だけ（OpenStreetMap の点の名前は焼かない）。
         point_name_property="name",
         point_priority=2,
+        # 補給の点どうしが重なると、種類の行の順（コンビニ・自販機・トイレ…）に残す。数で決めると、引いた地図で自販機の束が
+        # 1軒のコンビニを隠す。
+        point_priority_axes=("kind",),
     ),
     # 群「コンビニ」は補給の点に出すので、ここの行に入れない。
     PrimaryAttributeSpec(

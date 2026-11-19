@@ -332,7 +332,9 @@ export const primaryAttributes = [
     "point_name_property": "name",
     "point_min_zoom": null,
     "point_priority": 2,
-    "point_priority_axes": [],
+    "point_priority_axes": [
+      "kind"
+    ],
     "display_axes": [
       {
         "key": "kind",
