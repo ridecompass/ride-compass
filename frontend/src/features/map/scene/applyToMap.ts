@@ -16,6 +16,7 @@ import {
   areaLayerAnchor,
   hideBasemapPois,
   prepareBasemap,
+  runWhenStyleLoaded,
   runWhenStyleReady,
   themeBasemap,
 } from "@/features/map/layers/mapStyleOps";
@@ -36,10 +37,13 @@ export function applyScene(
   scene: MapScene,
   options: { readonly basemap?: BasemapLook; readonly reset?: boolean } = {},
 ) {
-  runWhenStyleReady(map, () => {
+  // 下の`applyMapScene`は`prepareBasemap`が記録した差し込み位置を読む。同じ出来事では先に登録した方が先に走るので、この順で足りる。
+  runWhenStyleLoaded(map, () => {
     prepareBasemap(map);
     hideBasemapPois(map, hiddenBasemapPois(scene));
     themeBasemap(map, options.basemap ?? LIGHT_BASEMAP);
+  });
+  runWhenStyleReady(map, () => {
     applyMapScene(map, {
       scene,
       previous: options.reset === true ? EMPTY_MAP_SCENE : (appliedScene.get(map) ?? EMPTY_MAP_SCENE),
