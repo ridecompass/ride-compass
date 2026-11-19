@@ -1,8 +1,8 @@
 /**
  * `components/FirstVisitIntro/FirstVisitIntro.tsx`——初めて開いたときに地図の上に出す案内と、閉じたかを覚えるフック。
  *
- * 見るもの: 閉じたことが無ければ見出しを名前に持つ案内を出すこと、最初の一手の場所をスマホとPCで言い分けること、
- * 位置が分からないと分かったら出発地の行を「ルート設定」を開いて地図をタップする手順にすること、
+ * 見るもの: 閉じたことが無ければ見出しを名前に持つ案内を出すこと、
+ * 位置が分からないと分かったら出発地の手順を地図をタップして置く手順にすること、
  * ✕と「はじめる」のどちらで閉じても消え、この端末では次に開いても出ず、もう一度出す操作で出ること。
  *
  * ここで見ないもの:
@@ -21,11 +21,11 @@ import { afterEach, describe, expect, it } from "vitest";
 import FirstVisitIntro, { useFirstVisitIntro } from "./FirstVisitIntro";
 
 /** フックを通した案内と、もう一度出すボタン（ページがメニューから渡すのと同じ口を、テストが押せる形にする）。 */
-function Intro({ isMobile = false, locationUnknown = false }) {
+function Intro({ locationUnknown = false }) {
   const { shown, close, reopen } = useFirstVisitIntro();
   return (
     <>
-      <FirstVisitIntro shown={shown} onClose={close} isMobile={isMobile} locationUnknown={locationUnknown} />
+      <FirstVisitIntro shown={shown} onClose={close} locationUnknown={locationUnknown} />
       <button onClick={reopen}>もう一度出す</button>
     </>
   );
@@ -41,24 +41,12 @@ afterEach(() => {
 
 describe("FirstVisitIntro", () => {
   it.each([
-    [true, "下の「ルート設定」を開いて距離を決め、"],
-    [false, "左の「ルート設定」で距離を決め、"],
-  ])("スマホ（%s）かで、最初の一手の場所を言い分ける", (isMobile, firstStep) => {
-    render(<Intro isMobile={isMobile} />);
-
-    expect(screen.getByText(/ルートの候補が地図に出ます/)).toHaveTextContent(firstStep);
-  });
-
-  it.each([
-    [false, "この印が出発地です[はじめは現在地]。地図の上でつかんで動かせます。"],
-    [
-      true,
-      "現在地が分からないため、この灰色の印は仮の地点です。「ルート設定」を開いて地図をタップすると、そこが出発地になります。",
-    ],
-  ])("位置が分からないと分かったか（%s）で、出発地の行を言い分ける", (locationUnknown, originLine) => {
+    [false, "出発地を決める[はじめは現在地。つかんで動かせます]"],
+    [true, "地図をタップして出発地を置く"],
+  ])("位置が分からないと分かったか（%s）で、出発地の手順を言い分ける", (locationUnknown, originStep) => {
     render(<Intro locationUnknown={locationUnknown} />);
 
-    expect(screen.getByText(/が出発地/)).toHaveTextContent(originLine);
+    expect(screen.getAllByRole("listitem")[0]).toHaveTextContent(originStep);
   });
 
   it.each(["案内を閉じる", "はじめる"])(

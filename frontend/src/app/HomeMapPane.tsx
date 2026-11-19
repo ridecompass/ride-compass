@@ -205,7 +205,6 @@ export default function HomeMapPane({
         <FirstVisitIntro
           shown={firstVisitIntro.shown}
           onClose={firstVisitIntro.close}
-          isMobile={isMobile}
           locationUnknown={place.locationFailure !== null}
         />
       )}
