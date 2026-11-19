@@ -115,7 +115,7 @@ export default function PointDetail({
       ref={sectionRef}
       aria-label={title}
       tabIndex={asked ? -1 : undefined}
-      className="group flex flex-col gap-1 rounded-sm border border-[var(--color-border)] p-1.5 data-[placing=true]:border-[var(--color-accent)] data-[placing=true]:shadow-[inset_0_0_0_1px_var(--color-accent)] data-[asked=true]:border-[var(--color-warning)] data-[asked=true]:shadow-[inset_0_0_0_1px_var(--color-warning)]"
+      className="group flex flex-col gap-1 rounded-sm border border-[var(--color-border)] p-1.5 data-[placing=true]:border-[var(--color-accent)] data-[placing=true]:shadow-[inset_0_0_0_1px_var(--color-accent)] data-[asked=true]:border-[var(--color-warning)]! data-[asked=true]:shadow-[inset_0_0_0_1px_var(--color-warning)]!"
       data-placing={placing}
       data-asked={asked}
     >
