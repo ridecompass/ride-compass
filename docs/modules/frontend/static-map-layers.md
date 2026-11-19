@@ -828,7 +828,7 @@ MapLibre の重なりの判定に加わらないので、点はどれも絵の�
 （`domain/registry.py: PrimaryAttributeSpec.point_priority`）の大きい層を上に積む（`scene/groups/points.ts: STACKED_POINT_LAYERS`）。
 層どうしは停止要因 → 補給 → 立ち寄り先 → 事故の順に残す（走る前に知りたいのは、どこで止まるか）。
 同じ層の中は、残す順の鍵（`symbol-sort-key`。小さい鍵の印から置かれる）で決める。宣言した軸（`domain/registry.py: PrimaryAttributeSpec.point_priority_axes`）が
-あればその行の順（事故は死亡事故を先、その中で自転車の事故を先）、軸で決まらなければ束ねた点の数の多い印を先に残す（`scene/groups/points.ts: sortKeyExpression`）。
+あればその行の順（事故は死亡事故を先、その中で自転車の事故を先。補給の点は種類の行の順で、引いた地図でも自販機の束がコンビニを隠さない）、軸で決まらなければ束ねた点の数の多い印を先に残す（`scene/groups/points.ts: sortKeyExpression`）。
 鍵が式なので、地図は層のタイルをまたいで鍵の順に置く（MapLibre の `src/style/pauseable_placement.ts` が、鍵が定数でない層のタイルの印をまとめて並べる）。
 点は基礎地図の文字とも重なりを判定し、基礎地図より前面に積まれるので、点の印を残す。
 2点以上を束ねた代表点には点の右へ数を出す（同じ印の文字なので、印が省かれれば数も出ない。数は押せない）。絵記号は点の先頭の軸の行の全部に、行ごとに違う絵で付ける——絵の無い行は描けず、一部の行だけ形が違うと、形が分類の意味を
