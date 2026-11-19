@@ -4,9 +4,9 @@ import { textVariants } from "@/components/ui/Text/Text";
 import { cn } from "@/lib/cn";
 
 /** 一覧・カードの並びに出る印の読み方を、並びの上に1行で並べる（幅が足りなければ折り返す）。中身は`MarkLegendItem`を並べる。 */
-export function MarkLegend({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
+export function MarkLegend({ className, ...props }: HTMLAttributes<HTMLParagraphElement>) {
   return (
-    <div
+    <p
       className={cn(textVariants({ variant: "note" }), "flex flex-wrap items-center gap-x-2 gap-y-0.5", className)}
       {...props}
     />
