@@ -7,7 +7,8 @@ import { MAIN_MAP_CANVAS } from "./liveMap";
 
 /**
  * Tailwindの余白ユーティリティ（`p-2`・`px-[0.9rem]`・`-mt-1`等）。変種付き（`sm:`・`hover:`）は、今の画面で
- * その条件が成り立つかを判定しないので対象外。
+ * その条件が成り立つかを判定しないので対象外。変種付きが触る辺は、変種なしの側（`px-2 max-narrow:px-1.5`の`px-2`）も
+ * 条件が成り立てば上書きされるので、同じ理由で見ない。
  */
 const SPACING_UTILITY = /^(-?)([pm])([xytrblse]?)-(\d+(?:\.\d+)?|\[[^\]]+\])$/;
 
@@ -39,10 +40,19 @@ export async function scanSpacingUtilities(page: Page): Promise<{ checked: numbe
       for (const element of document.querySelectorAll<HTMLElement>("body *")) {
         if (![...element.classList].some((token) => utility.test(token))) continue;
         if (!window.__e2e.firstInPhase("spacing", window.__e2e.componentKey(element))) continue;
+        const byVariant = new Set<string>();
+        for (const token of element.classList) {
+          if (!token.includes(":")) continue;
+          const variant = utility.exec(token.slice(token.lastIndexOf(":") + 1));
+          if (!variant) continue;
+          for (const side of sides[variant[3]]) byVariant.add(`${variant[2]}-${side}`);
+        }
         for (const token of element.classList) {
           const match = utility.exec(token);
           if (!match) continue;
           const [, negative, kind, axis, amount] = match;
+          const judged = sides[axis].filter((side) => !byVariant.has(`${kind}-${side}`));
+          if (judged.length === 0) continue;
           const property = kind === "p" ? "padding" : "margin";
           const length = amount.startsWith("[")
             ? amount.slice(1, -1).replaceAll("_", " ")
@@ -55,7 +65,7 @@ export async function scanSpacingUtilities(page: Page): Promise<{ checked: numbe
           const expected = getComputedStyle(probe).getPropertyValue(`${property}-left`);
           probe.remove();
           const computed = getComputedStyle(element);
-          for (const side of sides[axis]) {
+          for (const side of judged) {
             const actual = computed.getPropertyValue(`${property}-${side}`);
             if (actual !== expected) {
               const name = (element.textContent ?? "").trim().slice(0, 20);
