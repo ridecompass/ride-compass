@@ -1,14 +1,18 @@
 // 「ルート設定」区分の各タブの中身（`features/route/RouteForm/RouteForm.tsx`）を描いて操る足場。生成の条件とほかの props の既定を置き、
-// 選んでいる地点を持つ親の代わりと`Tabs`で包んで描き、上げた操作を受け取る関数と、条件やタブを変えて描き直す関数を返す。
-// タブの中身を描くには`Tabs`の中に置く必要があるので、囲む側の代わりに`Tabs`で包む。
+// 選んでいる地点と地点の検索の欄の中身を持つ親の代わりと`Tabs`で包んで描き、上げた操作を受け取る関数と、タブ・地図の真ん中を
+// 変えて描き直す関数を返す。タブの中身を描くには`Tabs`の中に置く必要があるので、囲む側の代わりに`Tabs`で包む。
+// 保存した地点を渡さなければ本物の置き場（この端末の保存）を通すので、保存した地点・検索の履歴を見るテストは`beforeEach`で
+// `window.localStorage.clear()`を呼ぶ。
 import { render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { useState, type ComponentProps, type ReactNode } from "react";
 import { vi } from "vitest";
 
 import { Tabs } from "@/components/ui/Tabs/Tabs";
 import { usePlaceLookup } from "@/features/route/PlaceSearch/usePlaceLookup";
+import { useSavedPlaces } from "@/features/route/useSavedPlaces";
 import RouteForm, { type SettingsTab } from "@/features/route/RouteForm/RouteForm";
-import type { PointTarget } from "@/types/route";
+import type { Coordinates, PointTarget } from "@/types/route";
 
 type Props = ComponentProps<typeof RouteForm>;
 /** 部品へ渡す値。生成の条件の欄（`conditions`）とほかの props を並べて渡し、`renderForm` が分ける。 */
@@ -41,7 +45,6 @@ const BASE = {
   exclusionsPanel: null,
   saveConditionsButton: null,
   savedConditionsPanel: null,
-  savedPlaces: { places: [], save: () => {}, remove: () => {} },
 } satisfies Options;
 
 /** 置いた経由地（地点は並べるだけ）。 */
@@ -49,22 +52,26 @@ export function waypointsOf(count: number) {
   return Array.from({ length: count }, (_, i) => ({ latitude: 35 + i * 0.01, longitude: 139 }));
 }
 
-/** 選んでいる地点と地点の検索の欄の中身を持つ親の代わり（選ぶと上げ、その地点を選んだことにして描き直す）。 */
+/** 選んでいる地点・地点の検索の欄の中身・保存した地点を持つ親の代わり（選ぶと上げ、その地点を選んだことにして描き直す）。 */
 function Selecting({
   initial,
   onSelect,
+  mapCenter,
   children,
 }: {
   initial: PointTarget;
   onSelect: (target: PointTarget) => void;
+  mapCenter: Coordinates;
   children: (
     selected: PointTarget,
     select: (target: PointTarget) => void,
     lookup: ReturnType<typeof usePlaceLookup>,
+    savedPlaces: Props["savedPlaces"],
   ) => ReactNode;
 }) {
   const [selected, setSelected] = useState(initial);
-  const lookup = usePlaceLookup(ORIGIN);
+  const lookup = usePlaceLookup(mapCenter);
+  const savedPlaces = useSavedPlaces();
   return children(
     selected,
     (target) => {
@@ -72,10 +79,11 @@ function Selecting({
       onSelect(target);
     },
     lookup,
+    savedPlaces,
   );
 }
 
-export function renderForm(options: Options = {}, tab: SettingsTab = "generate") {
+export function renderForm(options: Options = {}, tab: SettingsTab = "generate", mapCenter: Coordinates = ORIGIN) {
   const handlers = {
     setDistanceInput: vi.fn(),
     setMaxRoutesInput: vi.fn(),
@@ -90,7 +98,7 @@ export function renderForm(options: Options = {}, tab: SettingsTab = "generate")
     onPlaceFound: vi.fn(),
     onPlace: vi.fn(),
   };
-  const element = (nextTab: SettingsTab, changed: Options = {}) => {
+  const element = (nextTab: SettingsTab, center: Coordinates) => {
     const {
       origin,
       originManual,
@@ -114,11 +122,10 @@ export function renderForm(options: Options = {}, tab: SettingsTab = "generate")
       ...BASE,
       ...handlers,
       ...options,
-      ...changed,
     };
     return (
-      <Selecting initial={selectedPoint} onSelect={selectPoint}>
-        {(selected, select, lookup) => (
+      <Selecting initial={selectedPoint} onSelect={selectPoint} mapCenter={center}>
+        {(selected, select, lookup, storedPlaces) => (
           <Tabs value={nextTab}>
             <RouteForm
               conditions={{ ...conditions, selectedPoint: selected, selectPoint: select }}
@@ -127,14 +134,14 @@ export function renderForm(options: Options = {}, tab: SettingsTab = "generate")
               originLocated={originLocated}
               originAtHere={originAtHere}
               originAsks={0}
-              originDetailRef={null}
+              originRowRef={{ current: null }}
               onOriginReset={onOriginReset}
               originFound={originFound}
               here={here}
               lookup={lookup}
               onPlace={onPlace}
               onPlaceFound={onPlaceFound}
-              savedPlaces={savedPlaces}
+              savedPlaces={savedPlaces ?? storedPlaces}
               isMobile={isMobile}
               weightsPanel={weightsPanel}
               exclusionsPanel={exclusionsPanel}
@@ -146,10 +153,16 @@ export function renderForm(options: Options = {}, tab: SettingsTab = "generate")
       </Selecting>
     );
   };
-  const view = render(element(tab));
+  let shown = { tab, center: mapCenter };
+  const view = render(element(tab, mapCenter));
+  const show = (next: Partial<typeof shown>) => {
+    shown = { ...shown, ...next };
+    view.rerender(element(shown.tab, shown.center));
+  };
   return {
     ...handlers,
-    showTab: (nextTab: SettingsTab) => view.rerender(element(nextTab)),
+    showTab: (nextTab: SettingsTab) => show({ tab: nextTab }),
+    moveMap: (center: Coordinates) => show({ center }),
   };
 }
 
@@ -158,24 +171,16 @@ export function button(name: string) {
   return screen.getByRole("button", { name });
 }
 
-/** 押した地点の詳しく（呼び名・出どころ・名前・探すボタン・操作）。 */
-export function detail(title: string) {
-  return screen.getByRole("region", { name: title });
-}
-
-/** 詳しくの、地図の上端の検索の欄をその地点の役割で開くボタン。 */
-export function searchButton(title: string) {
-  return screen.getByRole("button", { name: `${title}を探す` });
-}
-
-/** 地点の並び（出発地 › 経由地の番号の丸 ＋ › 目的地）の、押せるものの名前。 */
-export function strip() {
-  return within(screen.getByRole("group", { name: "地点の並び" }))
+/** 地点の一覧（通る順）の行の、押すと検索の小窓を開く所の名前（「出発地 現在地」「目的地 未設定」等）。 */
+export function pointRows() {
+  return within(screen.getByRole("list", { name: "通る順" }))
     .getAllByRole("button")
-    .map((chip) => chip.getAttribute("aria-label"));
+    .filter((row) => row.hasAttribute("aria-pressed"))
+    .map((row) => row.getAttribute("aria-label") ?? row.textContent);
 }
 
-/** 地点の編集の、通る順の名前の行（出ていなければnull）。 */
-export function editList() {
-  return screen.queryByRole("list", { name: "通る順" });
+/** 地点の行を押して、その地点を探す小窓を開いて返す。 */
+export async function openPointSearch(row: string, title = row.split(" ")[0]) {
+  await userEvent.click(screen.getByRole("button", { name: new RegExp(`^${row}( |$)`) }));
+  return screen.getByRole("dialog", { name: `${title}を探す` });
 }

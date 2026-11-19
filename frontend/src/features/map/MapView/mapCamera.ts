@@ -36,11 +36,6 @@ export function fitBoundsToSection(map: MapLibreMap, path: readonly Position[]) 
   fitPaths(map, [path], "線", FOCUS_ZOOM);
 }
 
-/** 地点（探した候補）を全部、見えている所に収める。1件でも、ピンを直せる倍率より寄らない。 */
-export function fitBoundsToPoints(map: MapLibreMap, points: readonly Coordinates[]) {
-  fitPaths(map, [points.map((point) => [point.longitude, point.latitude])], "地点", FOCUS_ZOOM);
-}
-
 /** 地図の上に重ねた部品を避けた、見えている所（画面のpx）。 */
 export function visibleScreenBox(
   map: MapLibreMap,

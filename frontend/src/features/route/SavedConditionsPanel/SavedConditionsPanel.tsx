@@ -54,7 +54,7 @@ function DescriptionRows({ rows }: { rows: [term: string, detail: React.ReactNod
   );
 }
 
-// 「条件」タブの、いまの設定を保存するアイコン。押すと窓で、残るもの（条件・出発地の扱い・重みの割合・除外）だけを
+// 「保存済み」タブの、いまの設定を保存するアイコン。押すと窓で、残るもの（条件・出発地の扱い・重みの割合・除外）だけを
 // 並べてから名前を付けて保存する（残らないものや重みを変えたかは書かない）。
 export function SaveConditionsButton({
   saved,

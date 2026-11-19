@@ -50,7 +50,7 @@ interface GenerationConditionsInputs {
 }
 
 /**
- * 生成の条件（「ルート設定」の入力）: 周回か・全長の目標を決めるか・距離・候補数・地点（出発地以外）・つまみと倍率・避け方と、地図のタップで
+ * 生成の条件（「ルート設定」の入力）: 周回か・距離の目標を決めるか・距離・候補数・地点（出発地以外）・つまみと倍率・避け方と、地図のタップで
  * 置く地点の選びと、保存した条件での入れ替え。
  */
 export function useGenerationConditions({ onOriginPlace }: GenerationConditionsInputs) {
@@ -72,7 +72,7 @@ export function useGenerationConditions({ onOriginPlace }: GenerationConditionsI
   const destination = loop ? null : placedDestination;
 
   // 選んでいる地点（地図のタップが置く地点）。何も選んでいない・周回で目的地を使わない間は出発地——
-  // 周回を作る人が地図を触っても目的地が置かれず、詳しくに出ている地点と置かれる地点がいつも同じになる。
+  // 周回を作る人が地図を触っても目的地が置かれず、選ばれて見える行の地点と置かれる地点がいつも同じになる。
   // 経由地を減らす操作は、選んでいる経由地も同じ操作の中で直す。
   const [chosenPoint, setChosenPoint] = useState<PointTarget | null>(null);
   const selectedPoint = useMemo<PointTarget>(
@@ -144,7 +144,7 @@ export function useGenerationConditions({ onOriginPlace }: GenerationConditionsI
     [selectedPoint, onOriginPlace, moveWaypoint, addWaypoint, waypoints],
   );
   // 探して選んだ地点を置く（経由地は`waypointIndex`番目を置き直し、無ければ足して、置いた経由地を選ぶ——どこに置いたかを
-  // 詳しくで確かめられる）。足すのは生成が受け付ける数まで（開いた候補の一覧からは、数に達した後にも選べる）。
+  // 地点の一覧で確かめられる）。足すのは生成が受け付ける数まで（開いた候補の一覧からは、数に達した後にも選べる）。
   const placeFound = useCallback(
     (role: PinRole, candidate: PlaceCandidate, waypointIndex: number | null) => {
       const point = { latitude: candidate.latitude, longitude: candidate.longitude };
@@ -175,8 +175,8 @@ export function useGenerationConditions({ onOriginPlace }: GenerationConditionsI
     setChosenPoint(null);
   }, [loop]);
 
-  // 全長の目標を決めるか。外すと距離を送らず、置いた地点へ良い道で向かう。
-  const [distanceTargeted, setDistanceTargeted] = useStoredState(DISTANCE_TARGETED_STORAGE_KEY, "全長の目標", true);
+  // 距離の目標を決めるか。外すと距離を送らず、置いた地点へ良い道で向かう。
+  const [distanceTargeted, setDistanceTargeted] = useStoredState(DISTANCE_TARGETED_STORAGE_KEY, "距離の目標", true);
 
   // 距離の入力（文字列のまま）。表示中の候補を作った条件と比べて「生成条件が変更されています」を出すため、入力の形で持つ。
   const [distanceInput, setDistanceInput] = useStoredState(DISTANCE_STORAGE_KEY, "距離", "30");

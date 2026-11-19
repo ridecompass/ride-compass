@@ -3,7 +3,7 @@
  * 無ければ無いと出し、保存の仕方を(i)の奥に置く。
  *
  * ここで見ないもの:
- * - 地点の保存 → `RouteForm/PointDetail.test.tsx`
+ * - 地点の保存 → `PlaceSearch/PointSearch.saved.test.tsx`
  * - 呼び出した地点が条件に置かれ、条件タブへ移ること → `RouteForm/RouteForm.test.tsx`・`app/page.places.test.tsx`
  * - (i)の奥の文（書いた文をそのまま出す）
  * - 「消す」の確認の窓（一覧の部品 `SavedList/SavedList.tsx` が持ち、受け口をそのまま渡す） → `SavedConditionsPanel/SavedConditionsPanel.test.tsx`

@@ -1,5 +1,5 @@
 /**
- * 生成の前の検証（`RouteForm/useRouteFormSubmit.ts`）——周回で全長の目標を決めず経由地も無ければ、作るものが無いのでどちらかを促す。周回を外して
+ * 生成の前の検証（`RouteForm/useRouteFormSubmit.ts`）——周回で距離の目標を決めず経由地も無ければ、作るものが無いのでどちらかを促す。周回を外して
  * 目的地が無ければ、目的地か周回を促す。通れば前の文言を消す。
  *
  * ここで見ないもの:
@@ -15,7 +15,7 @@ import { describe, expect, it } from "vitest";
 
 import { useRouteFormSubmit } from "./useRouteFormSubmit";
 
-const NOTHING_TO_MAKE = "「全長を決める」に印を付けるか、経由地を置いてください。";
+const NOTHING_TO_MAKE = "「距離」をオンにするか、経由地を置いてください。";
 const NO_DESTINATION = "目的地を置いてください[出発地へ戻るなら「周回」を押してください]。";
 
 interface Options {
@@ -48,15 +48,15 @@ function check(result: { current: ReturnType<typeof useRouteFormSubmit> }) {
 
 describe("useRouteFormSubmit", () => {
   it.each([
-    { label: "周回で全長の目標だけ", options: LOOP },
-    { label: "目的地へ向かい全長の目標なし", options: { ...TO_DESTINATION, distanceTargeted: false } },
+    { label: "周回で距離の目標だけ", options: LOOP },
+    { label: "目的地へ向かい距離の目標なし", options: { ...TO_DESTINATION, distanceTargeted: false } },
   ])("「$label」なら生成する", ({ options }) => {
     const { result } = renderSubmit(options);
 
     expect(check(result)).toBe(true);
   });
 
-  it("周回で全長の目標を決めず経由地も無ければ生成せず、どちらかを促す。文言は押し直すまで残り、経由地を置いて押し直すと消えて生成する", () => {
+  it("周回で距離の目標を決めず経由地も無ければ生成せず、どちらかを促す。文言は押し直すまで残り、経由地を置いて押し直すと消えて生成する", () => {
     const { result, rerender } = renderSubmit(LOOP_NO_DISTANCE);
     expect(check(result)).toBe(false);
     expect(result.current.error).toBe(NOTHING_TO_MAKE);
@@ -68,7 +68,7 @@ describe("useRouteFormSubmit", () => {
     expect(result.current.error).toBeNull();
   });
 
-  it("周回を外して目的地を置いていなければ、全長の目標と経由地があっても生成せず、目的地か周回を促す", () => {
+  it("周回を外して目的地を置いていなければ、距離の目標と経由地があっても生成せず、目的地か周回を促す", () => {
     const { result } = renderSubmit({ ...TO_DESTINATION, destinationSet: false, waypointCount: 2 });
 
     expect(check(result)).toBe(false);

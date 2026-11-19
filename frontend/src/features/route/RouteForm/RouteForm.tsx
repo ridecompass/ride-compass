@@ -40,7 +40,7 @@ interface RouteFormProps extends Omit<PointListProps, "conditions"> {
       | "setDistanceTargeted"
       | "setLoop"
     >;
-  /** 保存した候補を、その役割の地点として置き、置いた地点の詳しくを見せる（経由地は足す）。 */
+  /** 保存した候補を、その役割の地点として置き、置いた地点を選ぶ（経由地は足す）。 */
   onPlaceFound: (role: PinRole, candidate: PlaceCandidate, waypointIndex: number | null) => void;
   /** 「負担」タブの中身。 */
   weightsPanel: React.ReactNode;
@@ -137,7 +137,7 @@ export default function RouteForm({
               >
                 ‹
               </Button>
-              <span className="min-w-[2.25em] text-center text-[length:var(--font-size-md)] tabular-nums">{`${maxRoutesInput}件`}</span>
+              <span className="min-w-[2.25em] text-center text-[length:var(--font-size-sm)] tabular-nums">{`${maxRoutesInput}件`}</span>
               <Button
                 variant="stepper"
                 size="sm"
@@ -156,7 +156,7 @@ export default function RouteForm({
         <div className="mb-2 flex items-center gap-1.5">
           <Toggle
             variant="plain"
-            className="min-h-8 flex-none gap-1 rounded-full border border-[var(--color-accent)] px-2.5 text-[length:var(--font-size-sm)] text-[var(--color-accent-strong)] data-[state=on]:bg-[var(--color-accent-bg)]"
+            className="min-h-6 flex-none gap-1 rounded-sm border border-[var(--color-border-strong)] px-1.5 py-0.5 text-[length:var(--font-size-xs)] data-[state=on]:border-[var(--color-accent)] data-[state=on]:bg-[var(--color-accent-bg)] data-[state=on]:text-[var(--color-accent-strong)]"
             pressed={distanceTargeted}
             onClick={() => setDistanceTargeted(!distanceTargeted)}
             aria-label="距離を決める"
@@ -177,8 +177,8 @@ export default function RouteForm({
           />
           <span
             className={cn(
-              "min-w-[3.5em] flex-shrink-0 text-right text-[length:var(--font-size-md)] tabular-nums",
-              !distanceTargeted && "text-[length:var(--font-size-sm)] text-[var(--color-muted)]",
+              "min-w-[3.5em] flex-shrink-0 text-right text-[length:var(--font-size-sm)] tabular-nums",
+              !distanceTargeted && "text-[var(--color-muted)]",
             )}
           >
             {distanceTargeted ? `${distanceInput}km` : "指定なし"}
@@ -204,21 +204,21 @@ export default function RouteForm({
         {/* 保存したものは地点と設定の2つで、呼び出すと変わるものが違う（地点は選んだ1地点を置き、設定は各タブの値を入れ替える）。 */}
         <Tabs defaultValue="places">
           <div className="mb-2 flex items-center justify-between gap-2">
-          <TabsList aria-label="保存したもの">
-            <TabsTrigger
-              value="places"
-              usage="条件タブで名前を付けて保存した地点の一覧です。呼び出すと、出発地・経由地・目的地に置きます。"
-            >
-              地点
-            </TabsTrigger>
-            <TabsTrigger
-              value="conditions"
-              usage="条件タブで名前を付けて保存した設定の一覧です。呼び出すと、各タブの値を入れ替えます。"
-            >
-              設定
-            </TabsTrigger>
-          </TabsList>
-          {saveConditionsButton}
+            <TabsList aria-label="保存したもの">
+              <TabsTrigger
+                value="places"
+                usage="地点を探す小窓で保存した地点の一覧です。呼び出すと、出発地・経由地・目的地に置きます。"
+              >
+                地点
+              </TabsTrigger>
+              <TabsTrigger
+                value="conditions"
+                usage="右の「いまの設定を保存」で名前を付けて保存した設定の一覧です。呼び出すと、各タブの値を入れ替えます。"
+              >
+                設定
+              </TabsTrigger>
+            </TabsList>
+            {saveConditionsButton}
           </div>
           <KeptTabContent value="places">
             <SavedPlacesPanel

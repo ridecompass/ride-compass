@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { type RefObject, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 import { Button } from "@/components/ui/Button/Button";
@@ -44,8 +44,11 @@ export interface PointListProps {
   originLocated: boolean;
   /** 出発地が、最後に取れた現在地にあるか（真なら「出発地を現在地に戻す」を押せなくする）。 */
   originAtHere: boolean;
-  /** 出発地が仮の地点のまま「生成」を押した回数（0なら求めていない）。増えるたびに、出発地の行を強調してフォーカスを移す。 */
+  /** 出発地が仮の地点のまま「生成」を押した回数（0なら求めていない）。求めている間は出発地の行を強調し、`originRowRef`の行が
+   * フォーカスを受けられるようにする。 */
   originAsks: number;
+  /** 出発地の行（求めたときに呼ぶ側がフォーカスを移す）。 */
+  originRowRef: RefObject<HTMLLIElement | null>;
   /** 出発地を現在地へ戻す（現在地の取得もこの操作が兼ねる）。 */
   onOriginReset: () => void;
   /** 出発地が、探して置いたときの位置のままなら、その候補。 */
@@ -69,7 +72,8 @@ const NEW_WAYPOINT_GUIDE = "探すか、地図をタップ";
 
 /**
  * 地点の縦の一覧: 見出し「地点」の右に「＋ 経由地」を置き、その下に出発地 → 経由地 → 終点（目的地へなら目的地、周回なら押せない
- * 「出発地へ戻る」）を点線でつなぐ。行を押すとその地点を選び（地図をタップすると選んだ地点を置く）、その行に付く検索の小窓を開く。
+ * 「出発地へ戻る」）を点線でつなぐ。行を押すとその地点を選び、その行に付く検索の小窓を開く。小窓を閉じている間は、地図をタップすると
+ * 選んだ地点を置く。
  * 経由地と目的地は右の✕で消し、つまみを押さえて上下へ動かすと通る順を入れ替える（一番上が出発地、一番下が目的地）。
  * 「＋ 経由地」は目的地の手前に足す経由地の行を出し、その行の小窓を開く。
  */
@@ -80,6 +84,7 @@ export default function PointList({
   originLocated,
   originAtHere,
   originAsks,
+  originRowRef,
   onOriginReset,
   originFound,
   here,
@@ -125,18 +130,12 @@ export default function PointList({
     [...(listRef.current?.querySelectorAll("[data-point-row]") ?? [])].map((row) => row.getBoundingClientRect());
   const drag = useReorderDrag({ count, first, onReorder: (from, to) => reorderPoints(from, to, origin) });
 
-  const originRowRef = useRef<HTMLLIElement>(null);
-  useEffect(() => {
-    if (originAsks > 0) originRowRef.current?.focus();
-  }, [originAsks]);
-
   const isSelected = (target: PointTarget) =>
     target.role === selected.role &&
     (target.role !== "waypoint" || (selected.role === "waypoint" && target.index === selected.index));
 
   function open(target: PointTarget) {
     conditions.selectPoint(target);
-    lookup.browse();
     setSearching(true);
   }
 
@@ -160,29 +159,33 @@ export default function PointList({
   const selectedName = selectedIndex < 0 ? null : rowNames[selectedIndex];
   const selectedPoint = selectedIndex < 0 ? null : rowPoints[selectedIndex];
 
-  /** 選んだ行を、小窓の目印にする（打っている間のスマホは、キーボードの上の線を目印にする）。 */
-  const anchored = (target: PointTarget, row: React.ReactElement) =>
-    searching && !aboveKeyboard && isSelected(target) ? (
-      <PopoverAnchor key={row.key} asChild>
-        {row}
-      </PopoverAnchor>
-    ) : (
-      row
-    );
+  // 選んだ行を、小窓の目印にする（打っている間のスマホは、キーボードの上の線を目印にする）。行を目印の部品で包むと、選び直すたびに
+  // 行が作り直されて押したボタンのフォーカスが外れ、閉じたときに戻す先が無くなるので、位置だけを指す。
+  const selectedRow = useMemo(
+    () => ({
+      current: {
+        getBoundingClientRect: () =>
+          listRef.current?.querySelector('button[aria-pressed="true"]')?.closest("li")?.getBoundingClientRect() ??
+          new DOMRect(),
+      },
+    }),
+    [],
+  );
 
   const rowClass = (target: PointTarget) =>
     cn(
-      "relative flex min-h-9 items-center gap-1 rounded-sm border border-transparent",
+      "relative flex min-h-8 items-center gap-0.5 rounded-sm border border-transparent",
       isSelected(target) && "border-[var(--color-accent)] bg-[var(--color-accent-bg)]",
     );
   const nameButtonClass =
-    "flex min-h-9 min-w-0 flex-auto cursor-pointer items-center gap-2 bg-transparent py-0.5 pl-2 text-left";
+    "flex min-h-8 min-w-0 flex-auto cursor-pointer items-center gap-1.5 bg-transparent py-0 pl-1.5 text-left";
 
   const newRow = adding && (
     <li key="new" className={rowClass(newWaypoint)}>
       <button
         type="button"
         className={nameButtonClass}
+        aria-label="新しい経由地 未設定"
         aria-pressed
         onClick={() => open(newWaypoint)}
         data-usage="足す経由地を、住所・施設で探します。地図をタップしても置けます。"
@@ -196,7 +199,7 @@ export default function PointList({
       <Button
         variant="ghost"
         size="bare"
-        className="size-9 flex-none"
+        className="size-8 flex-none"
         aria-label="経由地を足すのをやめる"
         onClick={() => {
           setSearching(false);
@@ -206,12 +209,14 @@ export default function PointList({
       >
         ✕
       </Button>
-      <span className="size-9 flex-none" />
+      <span className="size-8 flex-none" />
     </li>
   );
 
   return (
+    // 小窓を開いている間は外の操作を止める（地図のタップは小窓を閉じるだけで、選んだ地点を置かない。置くのは閉じてから）。
     <Popover
+      modal
       open={searching}
       onOpenChange={(next) => {
         if (!next) setSearching(false);
@@ -220,10 +225,7 @@ export default function PointList({
       <div className="mb-0.5 flex items-center justify-between gap-2">
         <span className={textVariants({ variant: "note" })}>地点</span>
         <Button
-          variant="secondary"
           size="xs"
-          shape="pill"
-          className="min-h-7 gap-1 border-[var(--color-accent)] px-2.5 text-[var(--color-accent-strong)]"
           disabled={full}
           onClick={() => open(newWaypoint)}
           usage={
@@ -253,9 +255,10 @@ export default function PointList({
               ref={isOrigin ? originRowRef : undefined}
               tabIndex={asked ? -1 : undefined}
               data-point-row
+              data-asked={asked}
               className={cn(
                 rowClass(target),
-                asked && "border-[var(--color-warning)]! shadow-[inset_0_0_0_1px_var(--color-warning)]",
+                "data-[asked=true]:border-[var(--color-warning)]! data-[asked=true]:shadow-[inset_0_0_0_1px_var(--color-warning)]",
                 drag.dragging === index
                   ? "z-10 bg-[var(--color-surface)] shadow-md"
                   : drag.dragging !== null && "transition-transform",
@@ -286,7 +289,7 @@ export default function PointList({
                 <Button
                   variant="ghost"
                   size="bare"
-                  className="size-9 flex-none"
+                  className="size-8 flex-none"
                   aria-label="出発地を現在地に戻す"
                   disabled={originAtHere}
                   onClick={onOriginReset}
@@ -298,7 +301,7 @@ export default function PointList({
                 <Button
                   variant="ghost"
                   size="bare"
-                  className="size-9 flex-none"
+                  className="size-8 flex-none"
                   aria-label={`${title}を消す`}
                   disabled={name === null}
                   onClick={() => (target.role === "destination" ? clearDestination() : removeWaypoint(index - 1))}
@@ -314,7 +317,7 @@ export default function PointList({
               <Button
                 variant="ghost"
                 size="bare"
-                className="size-9 flex-none touch-none items-center justify-center text-[var(--color-muted)] select-none [-webkit-touch-callout:none]"
+                className="size-8 flex-none touch-none items-center justify-center text-[var(--color-muted)] select-none [-webkit-touch-callout:none]"
                 aria-label={`${title}を動かす`}
                 disabled={!movable(index)}
                 onPointerDown={(event) => drag.press(index, event, rowRects())}
@@ -328,12 +331,12 @@ export default function PointList({
             </li>
           );
           // 足そうとしている経由地の行は、最後の経由地（無ければ出発地）のすぐ下（目的地の手前）に出す。
-          const rows = [anchored(target, row)];
-          if (index === waypoints.length && newRow) rows.push(anchored(newWaypoint, newRow));
+          const rows = [row];
+          if (index === waypoints.length && newRow) rows.push(newRow);
           return rows;
         })}
         {loop && (
-          <li className="relative flex min-h-9 items-center gap-2 py-0.5 pl-2">
+          <li className="relative flex min-h-8 items-center gap-1.5 pl-1.5">
             <span className="relative inline-flex size-[22px] flex-none items-center justify-center rounded-full bg-[var(--color-surface)] text-[var(--color-muted)]">
               <LoopRouteIcon size={16} />
             </span>
@@ -342,6 +345,7 @@ export default function PointList({
           </li>
         )}
       </ol>
+      {searching && !aboveKeyboard && <PopoverAnchor virtualRef={selectedRow} />}
       {aboveKeyboard &&
         createPortal(
           <PopoverAnchor asChild>

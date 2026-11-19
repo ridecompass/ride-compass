@@ -10,7 +10,7 @@ const settingsTabs = (axisNames: string): readonly { value: SettingsTab; label: 
   {
     value: "generate",
     label: "条件",
-    usage: "地点・全長の目標・候補の数を決め、いまの設定や地点に名前を付けて保存します。",
+    usage: "地点・距離の目標・候補の数を決め、いまの設定や地点に名前を付けて保存します。",
   },
   {
     value: "weights",

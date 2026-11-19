@@ -1,17 +1,17 @@
 /**
- * `RouteForm/RouteForm.tsx`——「ルート設定」区分の各タブの中身。「条件」タブ（候補数・地点の並びと詳しく・全長の目標）を
+ * `RouteForm/RouteForm.tsx`——「ルート設定」区分の各タブの中身。「条件」タブ（候補数・距離の目標・地点の一覧）を
  * 描き、「負担」「道路」タブと「保存済み」タブの「設定」には受け取った中身を置き、「保存済み」タブの「地点」には保存した地点を並べる。
  *
- * 見るもの: 候補数のステッパー（今の件数・1件ずつの増減・端で押せない）、全長の目標の入り切り（押して上がる値・
- * 外している間はルーラーを動かせない）とルーラーのコマ（5km刻みの範囲・今の値）と動かして上がる値、全長の目標の(i)の奥の
- * 許容差（画面の設定が配る較正値で、引けない間は書かない）、距離・候補数の値と地点の並びの札の名前の文字の大きさのそろい、
+ * 見るもの: 候補数のステッパー（今の件数・1件ずつの増減・端で押せない）、距離の目標の入り切り（押して上がる値・
+ * 外している間はルーラーを動かせない）とルーラーのコマ（5km刻みの範囲・今の値）と動かして上がる値、距離の目標の(i)の奥の
+ * 許容差（画面の設定が配る較正値で、引けない間は書かない）、距離・候補数の値と地点の行の名前の文字の大きさのそろい、
  * 経由地が上限のときに保存した地点を経由地に足せないこと、タブを切り替えても各タブの中身を外さないこと。
  *
  * ここで見ないもの: タブの列と選んだタブ、どのタブの中身が見えるか（スタイルで隠す）、呼び出した地点を選んで「条件」タブへ移ること
  * → `app/page.tsx`。
  * 書いた定数や受け取った値をそのまま渡すもの（今の値と km の表記・候補の距離の幅、(i)の奥の文）。
  * 呼び出した地点をどの役割で上げるか・周回の間に目的地にできないこと → `SavedPlacesPanel/SavedPlacesPanel.test.tsx`。
- * 周回の切り替えと地点の並び → `RouteForm/RouteForm.points.test.tsx`。押した地点の詳しく → `RouteForm/RouteForm.pointDetail.test.tsx`。
+ * 周回か目的地へかの2択と地点の一覧 → `RouteForm/RouteForm.points.test.tsx`。地点を探す小窓 → `PlaceSearch/PointSearch.test.tsx`。
  * ルーラーのドラッグ・横スクロール・押せない間の止め方 → `components/ui/Ruler/Ruler.test.tsx`。
  *
  * 差し替えたもの: 辺りの口の応答（網の層）。テストが応答を渡さなければ辺り無しと答える。
@@ -28,15 +28,15 @@ import { DESTINATION, button, renderForm, waypointsOf } from "@/testing/routeFor
 import { FACILITY_CANDIDATE as FACILITY } from "@/testing/routeFixtures";
 import routeGenerateConfig from "@/types/generated/route-generate-config.json";
 
-// 詳しくは置いた地点の辺りを引く。辺りを見ないテストには、辺り無しと答える（見るテストは後から応答を渡す）。
+// 地点の一覧は置いた地点の辺りを引く。辺りを見ないテストには、辺り無しと答える（見るテストは後から応答を渡す）。
 beforeEach(() => {
   onBackend("GET", "/api/place-area", () => Response.json({ area: null }));
   serveClientConfig();
 });
 
-/** 全長の目標のルーラー。 */
+/** 距離の目標のルーラー。 */
 function distanceRuler() {
-  return screen.getByRole("slider", { name: "全長の目標" });
+  return screen.getByRole("slider", { name: "距離の目標" });
 }
 
 describe("RouteForm 候補数", () => {
@@ -59,19 +59,19 @@ describe("RouteForm 候補数", () => {
   });
 });
 
-describe("RouteForm 全長の目標", () => {
+describe("RouteForm 距離の目標", () => {
   it.each([
     [true, false],
     [false, true],
   ] as const)(
-    "決めているか（%s）を「全長を決める」の印で出し、外している間はルーラーを動かせなくして、押すと反対を上げる",
+    "決めているか（%s）を「距離」の押した状態で出し、外している間はルーラーを動かせなくして、押すと反対を上げる",
     async (distanceTargeted, raised) => {
       const { setDistanceTargeted } = renderForm({ distanceTargeted });
-      const toggle = screen.getByRole("checkbox", { name: "全長を決める" });
+      const toggle = button("距離を決める");
 
-      expect(toggle).toHaveAttribute("aria-checked", String(distanceTargeted));
+      expect(toggle).toHaveAttribute("aria-pressed", String(distanceTargeted));
       expect(distanceRuler()).toHaveAttribute("tabindex", distanceTargeted ? "0" : "-1");
-      await userEvent.click(screen.getByText("全長を決める"));
+      await userEvent.click(toggle);
 
       expect(setDistanceTargeted).toHaveBeenCalledExactlyOnceWith(raised);
     },
@@ -80,13 +80,13 @@ describe("RouteForm 全長の目標", () => {
   it.each([
     [
       { [CLIENT_TUNING_IDS.distanceToleranceRatio]: 0.15 },
-      "ルート全体の長さの目標です。候補は、この長さの±15%[30kmなら±4.5km]に収まるものだけを作ります。",
+      "ルート全体の距離の目標です。候補は、この長さの±15%[30kmなら±4.5km]に収まるものだけを作ります。",
     ],
-    [{}, "ルート全体の長さの目標です。印を外すと長さを決めず"],
+    [{}, "ルート全体の距離の目標です。「距離」を外すと距離を決めず"],
   ])("(i)の奥に、画面の設定が配る許容差（%o）を割合と今の目標での長さで書く", async (clientTuning, text) => {
     serveClientConfig(clientConfigResponse({ client_tuning: clientTuning }));
     renderForm({ distanceInput: "30" });
-    await userEvent.click(button("全長の目標の説明を表示"));
+    await userEvent.click(button("距離の目標の説明を表示"));
 
     expect(await screen.findByText((content) => content.startsWith(text))).toBeInTheDocument();
   });
@@ -118,10 +118,10 @@ describe("RouteForm 文字の大きさ", () => {
     return null;
   }
 
-  it("全長の目標の値・候補数の値と、地点の並びの札の名前を同じ文字の大きさで出す", () => {
+  it("距離の目標の値・候補数の値と、地点の行の名前を同じ文字の大きさで出す", () => {
     renderForm({ destination: DESTINATION, maxRoutesInput: "8", distanceInput: "30" });
 
-    const points = within(screen.getByRole("group", { name: "地点の並び" }));
+    const points = within(screen.getByRole("list", { name: "通る順" }));
     const tokens = [
       screen.getByText("30km"),
       screen.getByText("8件"),

@@ -30,7 +30,7 @@ import { useCostAxisCatalog } from "@/hooks/useCostAxisCatalog";
 import type { useLocation } from "@/hooks/useLocation";
 import { cn } from "@/lib/cn";
 import { mapOverlayEdge } from "@/lib/mapOverlayEdges";
-import type { CandidatesOnMap, Coordinates } from "@/types/route";
+import type { Coordinates } from "@/types/route";
 import type { useRideGuidance } from "./useRideGuidance";
 
 interface HomeMapPaneProps {
@@ -50,16 +50,12 @@ interface HomeMapPaneProps {
   /** 地図を寄せる地点（住所の検索で置いた地点・取り直した現在地）。 */
   focusPoint: Coordinates | null;
   onFocusPoint: (point: Coordinates) => void;
-  /** 地点の検索で探した候補と、その点を押したとき。 */
-  placeCandidates: CandidatesOnMap | null;
-  onPlaceCandidatePick: (index: number) => void;
   isMobile: boolean;
   /** スマホで下のシートを開いているか。 */
   sheetOpen: boolean;
   usageGuideActive: boolean;
   onUsageGuideEnd: () => void;
   firstVisitIntro: ReturnType<typeof useFirstVisitIntro>;
-
 }
 
 /** 地図と、地図の上に重ねる操作。 */
@@ -77,8 +73,6 @@ export default function HomeMapPane({
   selectionOwner,
   focusPoint,
   onFocusPoint,
-  placeCandidates,
-  onPlaceCandidatePick,
   isMobile,
   sheetOpen,
   usageGuideActive,
@@ -144,8 +138,6 @@ export default function HomeMapPane({
         onWaypointMove={conditions.moveWaypoint}
         onDestinationMove={conditions.setDestination}
         focusPoint={focusPoint}
-        placeCandidates={placeCandidates}
-        onPlaceCandidatePick={onPlaceCandidatePick}
         // 出発地のピンが現在地にあるときは、ピンが現在地を示すので点を重ねない。
         here={place.originAtHere ? null : place.here}
         ride={riding.map}
@@ -153,11 +145,11 @@ export default function HomeMapPane({
         turnPoint={upcomingTurn}
       />
 
-      {/* 検索の欄の下の段の左に「表示」（重ねる情報の一覧）と、走行中は次に曲がる所のカードと走行モードの知らせを縦に積む。どちらも走行中も出す
+      {/* 上端の段の左に「表示」（重ねる情報の一覧）と、走行中は次に曲がる所のカードと走行モードの知らせを縦に積む。どちらも走行中も出す
           （小さいので走りの邪魔にならず、走りながら重ねる情報を替えられる）。知らせを右の列から左へ伸ばすと、狭い幅でカードの距離を覆う。 */}
       <div
         {...mapOverlayEdge("top")}
-        className="pointer-events-none absolute top-[var(--map-below-search-top)] left-3 z-[var(--z-map-control)] flex flex-col items-start gap-2"
+        className="pointer-events-none absolute top-3 left-3 z-[var(--z-map-control)] flex flex-col items-start gap-2"
       >
         <MapOverlayControls {...mapView.overlayControls} />
         {upcomingTurn !== null && (
@@ -165,14 +157,14 @@ export default function HomeMapPane({
         )}
         {navigating && <div ref={setRideNoticeHost} className="empty:hidden" />}
       </div>
-      {/* 検索の欄の下の段の中央に「負担で塗る」を置く。走行中も、ルートの線と道の色が何かを示すため同じ大きさで出す。
+      {/* 上端の段の中央に「負担で塗る」を置く。走行中も、ルートの線と道の色が何かを示すため同じ大きさで出す。
           左右の余白は、右の縦の列を両側で避ける幅（中央に置くため。左上の「表示」は列と同じ幅なので、これで避けられる）。
           「表示」の横に収まらないほど地図が狭い間は、「表示」の下の段へ下げ、余白は変えずに箱を左へずらして左端を「表示」の左端にそろえる（余白のクラスを上書きしない）。 */}
       <div
         {...mapOverlayEdge("top")}
         className={cn(
-          "pointer-events-none absolute inset-x-0 top-[var(--map-below-search-top)] z-[var(--z-map-control)] flex justify-center px-[calc(var(--map-ctrl-margin)_+_var(--map-ctrl-column-width)_+_var(--space-2))]",
-          "@max-[22rem]/map:top-[calc(var(--map-below-search-top)_+_2.25rem)] @max-[22rem]/map:left-[calc(0.75rem_-_var(--map-ctrl-margin)_-_var(--map-ctrl-column-width)_-_var(--space-2))]",
+          "pointer-events-none absolute inset-x-0 top-3 z-[var(--z-map-control)] flex justify-center px-[calc(var(--map-ctrl-margin)_+_var(--map-ctrl-column-width)_+_var(--space-2))]",
+          "@max-[22rem]/map:top-12 @max-[22rem]/map:left-[calc(0.75rem_-_var(--map-ctrl-margin)_-_var(--map-ctrl-column-width)_-_var(--space-2))]",
         )}
       >
         <LensControl {...mapView.lensControl} />

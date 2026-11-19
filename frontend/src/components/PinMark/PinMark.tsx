@@ -10,14 +10,14 @@ import type { PinRole } from "@/types/route";
 export const PIN_MARK_BACKGROUND = palette.semantic.pin_face;
 
 /** 印の記号の色（役割ごと）。 */
-export const PIN_MARK_COLOR: Record<PinRole, string> = {
+const PIN_MARK_COLOR: Record<PinRole, string> = {
   origin: palette.semantic.pin_origin,
   waypoint: palette.semantic.pin_waypoint,
   destination: palette.semantic.pin_destination,
 };
 
 /** 出発地の印の色（位置が未取得の間は灰色にする）。 */
-export const ORIGIN_MARK_FALLBACK_COLOR = palette.semantic.pin_origin_unresolved;
+const ORIGIN_MARK_FALLBACK_COLOR = palette.semantic.pin_origin_unresolved;
 
 /** 出発地の印の色を、位置が取れているかで選ぶ（パネルの印と地図のピンが同じ色になるように1か所で決める）。 */
 export function originMarkColor(located: boolean): string {

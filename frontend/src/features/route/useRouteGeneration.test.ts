@@ -45,7 +45,7 @@ afterEach(() => {
 });
 
 describe("送る要求", () => {
-  it("全長の目標を決めていれば、いまの位置・入力した距離と候補数・走行条件・除外・選んだ道の避け方と、置いた経由地（置いた順）・目的地をそのまま送り、つまみと倍率は標準で送る", async () => {
+  it("距離の目標を決めていれば、いまの位置・入力した距離と候補数・走行条件・除外・選んだ道の避け方と、置いた経由地（置いた順）・目的地をそのまま送り、つまみと倍率は標準で送る", async () => {
     const rendered = renderGeneration();
     const { conditions } = rendered.result.current;
     act(() => conditions.setDistanceInput("42"));
@@ -75,7 +75,7 @@ describe("送る要求", () => {
     });
   });
 
-  it("全長の目標を外すと距離を送らず、置いた地点は同じに送る", async () => {
+  it("距離の目標を外すと距離を送らず、置いた地点は同じに送る", async () => {
     const rendered = renderGeneration();
     act(() => rendered.result.current.conditions.setDistanceTargeted(false));
     placeDestination(rendered, A);
@@ -97,7 +97,7 @@ describe("入力の誤り", () => {
     act(() => rendered.result.current.conditions.setDistanceTargeted(false));
     await submit(rendered);
 
-    expect(rendered.result.current.generation.outcome?.message).toMatch(/^「全長を決める」に印を付けるか/);
+    expect(rendered.result.current.generation.outcome?.message).toMatch(/^「距離」をオンにするか/);
   });
 });
 

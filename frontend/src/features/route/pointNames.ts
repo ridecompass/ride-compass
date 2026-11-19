@@ -1,7 +1,7 @@
-import type { Coordinates, PlaceCandidate, PointTarget } from "@/types/route";
+import type { Coordinates, PinRole, PlaceCandidate, PointTarget } from "@/types/route";
 
 /** 地図で置いた地点の名前（探して置いた名前の無い地点）と、その出どころ。 */
-export const MAP_PLACED = "地図で選んだ地点";
+const MAP_PLACED = "地図で選んだ地点";
 
 interface PointNamesInputs {
   waypoints: readonly Coordinates[];
@@ -52,55 +52,15 @@ export function chooseResultOf(target: PointTarget): string {
   return target.index === null ? "経由地に足します" : `${pointTitle(target)}を置き直します`;
 }
 
-/** 探した候補をその地点に置くボタンの名前（出発地にする／経由地に足す／経由地2を置き直す／目的地にする）。 */
-export function placeLabelOf(target: PointTarget): string {
-  if (target.role === "origin") return "出発地にする";
-  if (target.role === "destination") return "目的地にする";
-  return target.index === null ? "経由地に足す" : `${pointTitle(target)}を置き直す`;
-}
-
-/** 見つけた地点（保存した地点・探した候補）を新しく置ける先と、置けないか。経由地は上限まで置いてあれば、目的地は周回の間は置けない。 */
+/** 見つけた地点（保存した地点）を新しく置ける先とその名前と、置けないか。経由地は上限まで置いてあれば、目的地は周回の間は置けない。 */
 export function newPlacings({ waypointsFull, loop }: { waypointsFull: boolean; loop: boolean }): {
-  target: PointTarget;
+  role: PinRole;
+  label: string;
   disabled: boolean;
 }[] {
   return [
-    { target: { role: "origin" }, disabled: false },
-    { target: { role: "waypoint", index: null }, disabled: waypointsFull },
-    { target: { role: "destination" }, disabled: loop },
+    { role: "origin", label: "出発地にする", disabled: false },
+    { role: "waypoint", label: "経由地に足す", disabled: waypointsFull },
+    { role: "destination", label: "目的地にする", disabled: loop },
   ];
-}
-
-/** 通る順の並び（出発地・経由地・目的地。周回の間は目的地を除く）の`index`番目の呼び名。 */
-function orderTitle(index: number, count: number, loop: boolean): string {
-  if (index === 0) return "出発地";
-  if (!loop && index === count - 1) return "目的地";
-  return `経由地${index}`;
-}
-
-/**
- * 通る順の並びの`from`番目を`to`番目へ動かしたあと、動かした地点が並びの何番目にあるかと、各行が前の並びの何番目だったか
- * （`order`）と、何がどこへ動いたかを名前で言う文。
- * `names`は並びの順の名前で、置いていない目的地はnull（経由地をそこへ動かすと目的地になり、空の席は並びから抜ける）。
- */
-export function describeReorder(
-  names: readonly (string | null)[],
-  loop: boolean,
-  from: number,
-  to: number,
-): { movedTo: number; order: number[]; note: string } {
-  const order = names.map((_, index) => index);
-  order.splice(to, 0, ...order.splice(from, 1));
-  // 空の目的地の席は、末尾に残るときだけ並びに残る（間に入ると、経由地には数えない）。
-  const last = order.length - 1;
-  const kept = order.filter((index, at) => names[index] !== null || (!loop && at === last));
-  const titleAfter = new Map(kept.map((index, at) => [index, orderTitle(at, kept.length, loop)]));
-  const before = (index: number) => orderTitle(index, names.length, loop);
-  const shifted = kept.filter((index) => index !== from && titleAfter.get(index) !== before(index));
-  const moved = `「${names[from]}」を${before(from)}から${titleAfter.get(from)}へ動かしました。`;
-  const rest =
-    shifted.length === 0
-      ? ""
-      : `前の${shifted.map(before).join("・")}は${shifted.map((index) => titleAfter.get(index)).join("・")}になりました。`;
-  return { movedTo: kept.indexOf(from), order: kept, note: moved + rest };
 }

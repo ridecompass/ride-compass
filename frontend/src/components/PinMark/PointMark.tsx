@@ -13,7 +13,7 @@ interface PointMarkProps {
   className?: string;
 }
 
-/** 地点の並びと詳しくに出す、地図のピンと同じ図形の丸。同じものを2度描くと、片方だけ直したときにピンと違う見た目になる。 */
+/** 地点の一覧と探す小窓に出す、地図のピンと同じ図形の丸。同じものを2度描くと、片方だけ直したときにピンと違う見た目になる。 */
 export default function PointMark({ role, label, originLocated, size = 18, className }: PointMarkProps) {
   return (
     <span

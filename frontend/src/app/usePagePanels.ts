@@ -124,7 +124,7 @@ export function usePagePanels({ navigating, isMobile }: { navigating: boolean; i
     setUnseenOutcome(null);
   };
 
-  // 「ルート設定」を地図で効く区分にして見せる（地点を置いたあと、置いた地点の詳しくを見せる）。走行中のデスクトップは帯の
+  // 「ルート設定」を地図で効く区分にして見せる（地点を置いたあと、置いた地点の行を見せる）。走行中のデスクトップは帯の
   // 「ルート」で出す左のパネルを出す。
   const showRouteSettings = () => {
     if (isMobile) {

@@ -57,7 +57,9 @@ describe("地図で扱えること", () => {
     expect(marksAt(DESTINATION)).toEqual([expect.objectContaining({ draggable: true })]);
     expect(screen.getByRole("button", { name: "目的地を消す" })).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "経由地を足す" }));
+    // 小窓を閉じてから地図を押す（開いている間に地図を押すと、閉じるだけで置かない）。
+    await user.click(screen.getByRole("button", { name: "＋ 経由地" }));
+    await user.keyboard("{Escape}");
     await user.click(screen.getByRole("tab", { name: "負担" }));
     clickMap(ELSEWHERE);
     expect(marksAt(ELSEWHERE)).toEqual([]);
@@ -73,7 +75,7 @@ describe("地図で扱えること", () => {
     await user.click(screen.getByRole("button", { name: "パネルを開く" }));
     clickMap(ELSEWHERE);
     expect(marksAt(ELSEWHERE)).toEqual([expect.objectContaining({ draggable: true })]);
-    expect(screen.getByRole("button", { name: "経由地1: 地図で選んだ地点" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "経由地1 地図で選んだ地点" })).toBeInTheDocument();
   });
 
   it("PC で2つの区分を開いているときは最後に触った区分が効いてその題に添える", async () => {
@@ -90,7 +92,8 @@ describe("地図で扱えること", () => {
     clickMap(ELSEWHERE);
     expect(marksAt(ELSEWHERE)).toEqual([]);
 
-    await user.click(screen.getByRole("button", { name: "出発地: 現在地" }));
+    await user.click(screen.getByRole("button", { name: "出発地 現在地" }));
+    await user.keyboard("{Escape}");
     expect(section("ルート設定")).toHaveAccessibleDescription("地図で操作中");
     clickMap(ELSEWHERE);
     expect(marksAt(ELSEWHERE)).toHaveLength(1);
@@ -107,7 +110,8 @@ describe("地図で扱えること", () => {
     expect(screen.getByRole("group", { name: "区間の小窓の上の帯" })).toBeInTheDocument();
     clickMap(ELSEWHERE);
 
-    await user.click(screen.getByRole("button", { name: "出発地: 現在地" }));
+    await user.click(screen.getByRole("button", { name: "出発地 現在地" }));
+    await user.keyboard("{Escape}");
     clickSegment(drawnSegment, HERE);
     expect(screen.queryByRole("group", { name: "区間の小窓の上の帯" })).toBeNull();
 

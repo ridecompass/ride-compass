@@ -14,8 +14,7 @@ import {
 import { PopoverArrow, PopoverContent } from "@/components/ui/Popover/Popover";
 import { textVariants } from "@/components/ui/Text/Text";
 import ErrorText from "@/features/route/ErrorText/ErrorText";
-import KnownPlaces from "@/features/route/PlaceSearch/KnownPlaces";
-import { PlaceName } from "@/features/route/PlaceSearch/PlaceCandidates";
+import KnownPlaces, { PlaceName } from "@/features/route/PlaceSearch/KnownPlaces";
 import { PREDICTION_MIN_LENGTH, type usePlaceLookup } from "@/features/route/PlaceSearch/usePlaceLookup";
 import { historyMatching, savedPlaceAt, savedPlacesMatching } from "@/features/route/savedPlaces";
 import { usePlaceHistory } from "@/features/route/usePlaceHistory";
@@ -51,7 +50,7 @@ interface PointSearchProps {
 
 /**
  * 地点の行を押すと開く、その地点を探す小窓（呼ぶ側が `Popover` と目印を持つ）。打つ前は「現在地」「地図で置く」「いまの地点を保存」の
- * チップと、保存した地点・検索の履歴を出し、打つと住所・施設の候補を出す（候補の☆でその地点を保存する）。候補を押すと、その地点に置いて
+ * チップを出し、保存した地点・検索の履歴を打った文字で絞って出し、打つと住所・施設の候補を出す（候補の☆でその地点を保存する）。候補を押すと、その地点に置いて
  * 閉じる。開いた時点では欄へ移らない（スマホでキーボードが地図とパネルを覆わないように）。✕・小窓の外・Escape・ブラウザの「戻る」で閉じる。
  */
 export default function PointSearch({
@@ -98,7 +97,7 @@ export default function PointSearch({
       collisionPadding={8}
       aria-label={`${title}を探す`}
       className={cn(
-        "flex max-h-[var(--radix-popover-content-available-height)] flex-col gap-1.5 overflow-y-auto px-2.5 py-2",
+        "flex max-h-[var(--radix-popover-content-available-height)] flex-col gap-1 overflow-y-auto px-2 py-1.5",
         isMobile ? "w-[var(--radix-popover-trigger-width)]" : "w-[22rem]",
       )}
       onOpenAutoFocus={(event) => event.preventDefault()}
@@ -122,10 +121,10 @@ export default function PointSearch({
       </div>
       <form
         role="search"
-        className="flex h-10 flex-none items-center gap-1.5 rounded-sm border border-[var(--color-border-strong)] bg-[var(--color-surface)] px-2 focus-within:border-[var(--color-accent)]"
+        className="flex h-8 flex-none items-center gap-1.5 rounded-sm border border-[var(--color-border-strong)] bg-[var(--color-surface)] px-2 focus-within:border-[var(--color-accent)]"
         onSubmit={(event) => {
           event.preventDefault();
-          lookup.lookUpNow();
+          lookup.submit();
           inputRef.current?.blur();
         }}
       >
@@ -156,71 +155,60 @@ export default function PointSearch({
           </Button>
         )}
       </form>
-      {typed ? (
-        <Candidates lookup={lookup} savedPlaces={savedPlaces} onChoose={chooseFound} chooseResult={chooseResult} />
-      ) : (
-        <>
-          <div className="flex flex-wrap gap-1.5">
-            <Chip
-              disabled={onHere === null}
-              onClick={() => {
-                onHere?.();
-                close();
-              }}
-              usage={`現在地を${title}にします。`}
+      {!typed && (
+        <div className="flex flex-wrap gap-1">
+          <Button
+            size="xs"
+            disabled={onHere === null}
+            onClick={() => {
+              onHere?.();
+              close();
+            }}
+            usage={`現在地を${title}にします。`}
+          >
+            <LocateIcon size={14} />
+            現在地
+          </Button>
+          <Button size="xs" onClick={close} usage={`小窓を閉じます。地図をタップすると、そこを${title}にします。`}>
+            <SelectedSpotIcon size={14} />
+            地図で置く
+          </Button>
+          {placed !== null && (
+            <Button
+              size="xs"
+              aria-pressed={placedSaved !== null}
+              onClick={() => (placedSaved !== null ? savedPlaces.remove(placedSaved) : savedPlaces.save(placed))}
+              usage={`いま${title}に置いている地点を、この端末に保存します。保存した地点は、地点の検索を開くと出ます。`}
             >
-              <LocateIcon size={14} />
-              現在地
-            </Chip>
-            <Chip onClick={close} usage={`小窓を閉じます。地図をタップすると、そこを${title}にします。`}>
-              <SelectedSpotIcon size={14} />
-              地図で置く
-            </Chip>
-            {placed !== null && (
-              <Chip
-                aria-pressed={placedSaved !== null}
-                onClick={() => (placedSaved !== null ? savedPlaces.remove(placedSaved) : savedPlaces.save(placed))}
-                usage={`いま${title}に置いている地点を、この端末に保存します。保存した地点は、地点の検索を開くと出ます。`}
-              >
-                {placedSaved !== null ? <SavedPlaceIcon size={14} /> : <SavePlaceIcon size={14} />}
-                <span className="flex min-w-0">
-                  <span className="max-w-[9em] truncate">{placed.name}</span>
-                  {placedSaved !== null ? "を保存済み" : "を保存"}
-                </span>
-              </Chip>
-            )}
-          </div>
-          {savedMatches.length > 0 && <ListHeading>保存した地点</ListHeading>}
-          <KnownPlaces
-            label="保存した地点"
-            icon={SavedPlaceIcon}
-            places={savedMatches}
-            usage={`保存した地点です。選ぶと${chooseResult}。`}
-            onChoose={choose}
-          />
-          {historyMatches.length > 0 && <ListHeading>検索の履歴</ListHeading>}
-          <KnownPlaces
-            label="検索の履歴"
-            icon={PlaceHistoryIcon}
-            places={historyMatches}
-            usage={`前に検索で選んだ地点です。選ぶと${chooseResult}。`}
-            onChoose={chooseFound}
-            onForget={history.forget}
-          />
-        </>
+              {placedSaved !== null ? <SavedPlaceIcon size={14} /> : <SavePlaceIcon size={14} />}
+              <span className="flex min-w-0">
+                <span className="max-w-[9em] truncate">{placed.name}</span>
+                {placedSaved !== null ? "を保存済み" : "を保存"}
+              </span>
+            </Button>
+          )}
+        </div>
+      )}
+      <KnownPlaces
+        label="保存した地点"
+        icon={SavedPlaceIcon}
+        places={savedMatches}
+        usage={`保存した地点です。選ぶと${chooseResult}。`}
+        onChoose={choose}
+      />
+      <KnownPlaces
+        label="検索の履歴"
+        icon={PlaceHistoryIcon}
+        places={historyMatches}
+        usage={`前に検索で選んだ地点です。選ぶと${chooseResult}。`}
+        onChoose={chooseFound}
+        onForget={history.forget}
+      />
+      {typed && (
+        <Candidates lookup={lookup} savedPlaces={savedPlaces} onChoose={chooseFound} chooseResult={chooseResult} />
       )}
     </PopoverContent>
   );
-}
-
-function Chip({ className, ...props }: React.ComponentProps<typeof Button>) {
-  return (
-    <Button variant="secondary" size="xs" shape="pill" className={cn("min-h-7 gap-1 px-2.5", className)} {...props} />
-  );
-}
-
-function ListHeading({ children }: { children: React.ReactNode }) {
-  return <p className={cn(textVariants({ variant: "note" }), "px-1")}>{children}</p>;
 }
 
 /** 打った文字で引いた住所・施設の候補（名前と地区を1行に）。行を押すと置き、右の☆でその地点を保存する（保存した地点なら保存をやめる）。 */

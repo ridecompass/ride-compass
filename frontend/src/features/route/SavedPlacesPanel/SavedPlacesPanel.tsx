@@ -8,7 +8,7 @@ import { Popover, PopoverContent, PopoverTrigger, POPOVER_COLLISION_PADDING_PX }
 import { textVariants } from "@/components/ui/Text/Text";
 import { cn } from "@/lib/cn";
 import SavedList from "@/features/route/SavedList/SavedList";
-import { newPlacings, placeLabelOf } from "@/features/route/pointNames";
+import { newPlacings } from "@/features/route/pointNames";
 import type { SavedPlace } from "@/features/route/savedPlaces";
 import type { PinRole } from "@/types/route";
 
@@ -23,7 +23,7 @@ interface SavedPlacesPanelProps {
   onRemove: (place: SavedPlace) => void;
 }
 
-// 「保存済み」タブの「地点」。保存した地点の一覧と、呼び出す・消すを置く（保存は条件タブの地点の詳しくの星）。行の「呼び出す」は
+// 「保存済み」タブの「地点」。保存した地点の一覧と、呼び出す・消すを置く（保存は地点を探す小窓のチップと候補の☆）。行の「呼び出す」は
 // 「設定」の行と同じアイコンで、押すとどの役割に置くかを選ぶメニューを開く。
 export default function SavedPlacesPanel({ places, waypointsFull, loop, onRecall, onRemove }: SavedPlacesPanelProps) {
   // 「呼び出す」のメニューを開いている地点。
@@ -58,19 +58,19 @@ export default function SavedPlacesPanel({ places, waypointsFull, loop, onRecall
             collisionPadding={POPOVER_COLLISION_PADDING_PX}
             aria-label={`「${place.name}」をどこに置くか`}
           >
-            {newPlacings({ waypointsFull, loop }).map(({ target, disabled }) => (
+            {newPlacings({ waypointsFull, loop }).map(({ role, label, disabled }) => (
               <Button
                 usage="保存した地点を、この役割[出発地・経由地・目的地]で地図に置きます。"
-                key={target.role}
+                key={role}
                 variant="menu"
                 size="sm"
                 disabled={disabled}
                 onClick={() => {
                   setRecalling(null);
-                  onRecall(target.role, place);
+                  onRecall(role, place);
                 }}
               >
-                {placeLabelOf(target)}
+                {label}
               </Button>
             ))}
           </PopoverContent>

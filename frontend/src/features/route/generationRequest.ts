@@ -10,7 +10,7 @@ import type { Coordinates, CostPreference, RoadAvoidanceOverride, RouteGenerateR
 /** 生成リクエストを決める入力一式（画面の状態から実効値へ解決済み）。 */
 export interface GenerationInput {
   origin: Coordinates;
-  /** 全長の目標距離。nullなら全長の目標を置かない（送らない）。 */
+  /** 距離の目標距離。nullなら距離の目標を置かない（送らない）。 */
   distanceKm: number | null;
   maxRoutes: number;
   assumedSpeedKmh: number;

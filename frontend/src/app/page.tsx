@@ -60,7 +60,7 @@ export default function Home() {
     onOriginPlace: setManualLocation,
     onOriginFollowCurrent: resetOriginToCurrent,
   });
-  // 名前を付けて保存した地点（地点の詳しくで保存し、地点の検索の欄の候補に出す）。
+  // 名前を付けて保存した地点（地点の検索の小窓で保存し、その小窓に出す）。
   const savedPlaces = useSavedPlaces();
 
   // 説明を見る状態（ヘッダーのメニューの「使い方を見る」で入る）。
@@ -83,7 +83,7 @@ export default function Home() {
     if (isMobile && !sheetOpen) return;
     openConditions();
   }
-  // 探した・保存した地点を置いたら、置いた地点を選んで「ルート設定」の条件タブにその詳しくを見せる（ピンを地図でつかんで直す
+  // 探した・保存した地点を置いたら、置いた地点を選んで「ルート設定」の条件タブにその行を見せる（ピンを地図でつかんで直す
   // ため。足した経由地は`conditions.placeFound`が選ぶ）。
   function placeFound(role: PinRole, candidate: PlaceCandidate, waypointIndex: number | null) {
     conditions.placeFound(role, candidate, waypointIndex);
@@ -239,8 +239,6 @@ export default function Home() {
             selectionOwner={mapSelectionOwner}
             focusPoint={focusPoint}
             onFocusPoint={setFocusPoint}
-            placeCandidates={placeLookup.foundOnMap}
-            onPlaceCandidatePick={placeLookup.pickFound}
             isMobile={isMobile}
             sheetOpen={sheetOpen}
             usageGuideActive={usageGuideActive}
