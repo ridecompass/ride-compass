@@ -147,8 +147,8 @@ export default function RouteProfile({
             triggerClassName="rounded-full bg-[color-mix(in_srgb,var(--background)_85%,transparent)]"
           >
             <p>
-              右上の一覧でチェックした種類だけを積み上げます。高さは区間ごとの{LENS_QUANTITY_LABEL}
-              で、上端はこのルートでいちばん大きい区間の値です[曲がる所の負担と、好む道・避ける道による増減は含みません]。色ごとの面積は、その種類の負担の合計です。横軸の右端は、一覧でいちばん長い候補の距離です。
+              チェックした種類だけを積み上げます。高さは区間ごとの{LENS_QUANTITY_LABEL}
+              で、上端はこのルートで最大の区間の値です[曲がる所の負担と、好む道・避ける道の増減は含みません]。色ごとの面積がその種類の負担の合計、横軸の右端は最も長い候補の距離です。
             </p>
           </InfoPopover>
         )}

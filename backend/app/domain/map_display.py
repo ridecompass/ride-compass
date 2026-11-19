@@ -316,17 +316,6 @@ def size_sentence(axis: DisplayAxisSpec) -> str:
 _UNPAINTED_LANDCOVER = "・".join(cls.label for cls in LANDCOVER_CLASSES if not cls.painted)
 
 
-def _window_hours(source: str) -> str:
-    """名前付きソースを重ねる幅（「今」から何時間先まで）。要素の描くコマの規則が宣言する値。"""
-    minutes = next(element.frame_rule.window_minutes for element in WEATHER_ELEMENTS if element.source == source)
-    if minutes is None:
-        raise ValueError(f"{source}は重ねる幅を宣言していない")
-    return f"{minutes / 60:g}"
-
-
-_LINEAR_RAINBAND_HOURS = _window_hours("linearRainband")
-
-
 def _source_jma_elements(source: str) -> tuple[str, ...]:
     """名前付きソースが段に並べる配信要素（同じソースを名乗る要素をすべて合わせる）。"""
     return tuple(e for element in WEATHER_ELEMENTS if element.source == source for e in element.jma_elements)
@@ -334,7 +323,6 @@ def _source_jma_elements(source: str) -> tuple[str, ...]:
 
 #: 降水の段の境目（配信の宣言の、予測が届く先）。降水は近い段から高解像度降水ナウキャスト・降水短時間予報と継ぐ。
 _NOWCAST_REACH, _SHORT_RANGE_REACH = (forecast_reach(e) for e in _source_jma_elements("main"))
-_RAINBAND_AREA_REACH = forecast_reach(*_source_jma_elements("linearRainbandAreaForecast"))
 #: MSMの格子点の値を描く先（読み出しが予報を切る長さ）。
 _MSM_REACH = reach_text(MSM_FORECAST_HOURS * 60)
 
@@ -344,18 +332,15 @@ def _label_list(labels: list[str]) -> str:
     return "・".join(dict.fromkeys(labels))
 
 
-#: 災害の要素を、描くコマの規則ごとに言う語（短い説明・長い説明）。並びが説明の並びになる。
-_DISASTER_FRAME_RULE_WORDING: dict[FrameRuleKind, tuple[str, str]] = {
-    "nearest": ("時刻に連動", "は時刻スライダーに連動し、実況[直近]から{reach}先までを切り替えて確認できます。"),
-    "latestObservation": ("直近の観測", "は観測だけのため、最新の観測より先の時刻には出ません。"),
-    "current": (
-        "現在の危険度のみ",
-        "は色で示した現在の危険度です。現在の危険度だけを配信しているため、時刻スライダーには連動しません。",
-    ),
+#: 災害の要素を、描くコマの規則ごとに言う語。並びが説明の並びになる。
+_DISASTER_FRAME_RULE_WORDING: dict[FrameRuleKind, str] = {
+    "nearest": "は{reach}先まで時刻スライダーで切り替えられます。",
+    "latestObservation": "は最新の観測だけを出します。",
+    "current": "は現在の危険度で、時刻に連動しません。",
 }
 
-def _disaster_by_frame_rule() -> list[tuple[str, str, str]]:
-    """災害の要素の名前を、描くコマの規則ごとにまとめた並び（要素の無い規則は出さない）。長い説明の`{reach}`には、
+def _disaster_by_frame_rule() -> list[tuple[str, str]]:
+    """災害の要素の名前を、描くコマの規則ごとにまとめた並び（要素の無い規則は出さない）。説明の`{reach}`には、
     その規則の要素の予測が届く先を入れる。"""
     disaster = [element for element in WEATHER_ELEMENTS if element.group == "disaster"]
     if unworded := sorted({element.frame_rule.kind for element in disaster} - set(_DISASTER_FRAME_RULE_WORDING)):
@@ -364,13 +349,13 @@ def _disaster_by_frame_rule() -> list[tuple[str, str, str]]:
     if undescribed := sorted(element.label for element in disaster if not (element.description or "").strip()):
         raise ValueError(f"災害の要素に、凡例の行が開く説明が無い: {undescribed}")
     rows = []
-    for kind, (brief, detail) in _DISASTER_FRAME_RULE_WORDING.items():
+    for kind, detail in _DISASTER_FRAME_RULE_WORDING.items():
         elements = [element for element in disaster if element.frame_rule.kind == kind]
         if not elements:
             continue
         if "{reach}" in detail:
             detail = detail.format(reach=forecast_reach(*(e for element in elements for e in element.jma_elements)))
-        rows.append((_label_list([element.label for element in elements]), brief, detail))
+        rows.append((_label_list([element.label for element in elements]), detail))
     return rows
 
 
@@ -400,12 +385,12 @@ _LAYER_SPECS: dict[str, MapLayerSpec] = {
         segment_series="landcoverClass",
         description=(f"周囲の緑・水辺・農地を面で重ねる{f'[{_UNPAINTED_LANDCOVER}は塗らない]' if _UNPAINTED_LANDCOVER else ''}",),
         panel_hint=(
-            "衛星画像から分類した10m四方ごとの土地の使われ方です。1区画に1種類だけが入るため、"
-            f"ルートの結果の「{PRIMARY_ATTRIBUTES_BY_ID['landcover'].label}」が使う「道路の周囲",
+            "衛星画像から分類した10m四方ごとの土地の使われ方で、1区画に1種類だけを塗ります。"
+            f"ルートの結果の「{PRIMARY_ATTRIBUTES_BY_ID['landcover'].label}」は「道路の周囲",
             LayerTextSlot("landcoverRingOuterM", after="m"),
-            "の割合」とは違い、混ざらずそのまま見えます。"
+            "の割合」で、この塗りとは違います。"
             + (
-                f"{_UNPAINTED_LANDCOVER}は塗りません。広い範囲を単色で覆い、基礎地図を隠すだけになるためです。"
+                f"{_UNPAINTED_LANDCOVER}は、基礎地図を隠すだけなので塗りません。"
                 if _UNPAINTED_LANDCOVER
                 else ""
             ),
@@ -419,17 +404,14 @@ _LAYER_SPECS: dict[str, MapLayerSpec] = {
             f"{_point_kind_list('stop_poi')}の位置です。",
         ),
     ),
-    # 種別ごとの鮮度の差を書く根拠は docs/modules/frontend/static-map-layers.md「点で示すもの」。
     "supply_poi": _tile_layer(
         "supply_poi",
         "amenity",
         description=(f"{_point_kind_list('supply_poi')}の位置を種別ごとに表示",),
         panel_hint=(
-            f"{_point_kind_list('supply_poi')}の位置です。自販機は飲み物が買えると分かって"
-            f"いるものだけを「{_row_label('supply_poi', 'vending_drinks')}」として出し、売っているものが分からないものは"
-            f"「{_row_label('supply_poi', 'vending_unknown')}」として区別します[たばこ・切符の機械は出しません]。"
-            f"{_row_label('supply_poi', 'convenience')}はOverture Mapsの地点のうちチェーンの店を、ほかはOSMのデータを出します。"
-            "どれも閉店・撤去にデータが追いついていないことがあり、現地と違う場合があります。",
+            f"{_point_kind_list('supply_poi')}の位置です。「{_row_label('supply_poi', 'vending_drinks')}」は飲み物を売るもの、"
+            f"「{_row_label('supply_poi', 'vending_unknown')}」は売るものが分からないものです。"
+            f"{_row_label('supply_poi', 'convenience')}はチェーンの店だけです。閉店・撤去が反映されていないことがあります。",
         ),
     ),
     "stop_place": _tile_layer(
@@ -465,15 +447,10 @@ _LAYER_SPECS: dict[str, MapLayerSpec] = {
             f"[{_MSM_REACH}先まで。線状降水帯も重ねる]",
         ),
         panel_hint=(
-            "気象庁の雨雲の分布です。ONにすると地図上に時刻スライダーが現れ、時刻を切り替えられます。"
-            f"{_NOWCAST_REACH}先までは降水ナウキャスト、{_SHORT_RANGE_REACH}先までは降水短時間予報で、"
-            "先になるほど外れやすくなります。"
-            f"{_SHORT_RANGE_REACH}より先は、ズーム{MSM_GRID_MIN_ZOOM}以上で{_MSM_REACH}先まで、"
-            "気象庁の数値予報モデルMSMの格子点[約5km間隔]の降水量を1時間刻みで塗ります。"
-            f"升目の中は、どこもその格子点の値です。{MODEL_VALUE_DISCLAIMER}"
-            f"{_LINEAR_RAINBAND_HOURS}時間先までは線状降水帯予測マップ[大雨のおそれがある所。予測が格子単位のため四角く見えます]を、"
-            f"{_RAINBAND_AREA_REACH}先までは発生中の線状降水帯の雨域を、赤で重ねます。"
-            "非公式の内部APIを使う部分は、取得に失敗することがあります。",
+            f"気象庁の雨雲です。時刻スライダーで、{_NOWCAST_REACH}先までは降水ナウキャスト、"
+            f"{_SHORT_RANGE_REACH}先までは降水短時間予報、{_MSM_REACH}先まではMSMの格子点[約5km間隔]の降水量を"
+            f"升目で塗ります[ズーム{MSM_GRID_MIN_ZOOM}以上]。{MODEL_VALUE_DISCLAIMER}"
+            "赤は線状降水帯で、予測は格子単位のため四角く見えます。取得に失敗することがあります。",
         ),
     ),
     # 「負担で塗る」の道路の塗り（向かい風・追い風）と見分けられる名前にする。
@@ -486,12 +463,9 @@ _LAYER_SPECS: dict[str, MapLayerSpec] = {
             f"気象庁の数値予報モデルMSMの格子点の風向・風速を、格子点の位置に矢印で表示[{_MSM_REACH}先まで]",
         ),
         panel_hint=(
-            "気象庁MSM[メソ数値予報モデル]の格子点[約5km間隔]の風向・風速を、格子点の位置に矢印で表示します。"
-            "矢印の値は格子点の値そのもので、格子点の間の地点の風ではありません。"
-            f"格子点が多い範囲では、格子点を一定の間隔おきに選んで表示します。{MODEL_VALUE_DISCLAIMER}"
-            "矢印の向きが風の吹いていく向き、長さ・太さ・色の濃淡が風速を表します。ごく弱い風の格子点は"
-            f"矢印を表示しません。ズーム{MSM_GRID_MIN_ZOOM}以上で表示します。ONにすると地図上に時刻スライダーが現れ、"
-            f"1時間刻みで切り替えられます[先まで見られる範囲は配信中の計算値の長さによって変わり、長くて{_MSM_REACH}先までです]。",
+            "気象庁MSMの格子点[約5km間隔]の風を矢印で示します。格子点の間の地点の風ではありません。"
+            f"{MODEL_VALUE_DISCLAIMER}向きは風の吹いていく向き、長さ・太さ・濃さは風速です。"
+            f"ズーム{MSM_GRID_MIN_ZOOM}以上で出し、時刻スライダーで最長{_MSM_REACH}先まで切り替えられます。",
         ),
     ),
     # 予兆が出てからONにするのでは手遅れになるため既定ONにする。危険度が出ている間は広い範囲が
@@ -506,14 +480,12 @@ _LAYER_SPECS: dict[str, MapLayerSpec] = {
         default_on=True,
         label="災害",
         description=(
-            f"気象庁の{'・'.join(labels for labels, _, _ in _DISASTER_BY_FRAME_RULE)}をまとめて表示"
-            f"[{'、'.join(f'{labels}は{brief}' for labels, brief, _ in _DISASTER_BY_FRAME_RULE)}]",
+            f"気象庁の{'・'.join(labels for labels, _ in _DISASTER_BY_FRAME_RULE)}をまとめて表示",
         ),
         panel_hint=(
-            "気象庁の防災情報をまとめて表示します。"
-            + "".join(labels + detail for labels, _, detail in _DISASTER_BY_FRAME_RULE)
-            + "平常時は危険度ゼロの領域が透明のため、ONのままでも地図の見た目は"
-            "変わりません。非公式の内部APIを利用しているため、取得に失敗することがあります。",
+            "気象庁の防災情報です。"
+            + "".join(labels + detail for labels, detail in _DISASTER_BY_FRAME_RULE)
+            + "平常時は透明で、ONのままでも見た目は変わりません。取得に失敗することがあります。",
         ),
     ),
 }

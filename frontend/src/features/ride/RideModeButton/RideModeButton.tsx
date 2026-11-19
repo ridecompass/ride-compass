@@ -128,7 +128,7 @@ export default function RideModeButton({
             aria-haspopup={status === "off" ? undefined : "dialog"}
             aria-expanded={status === "off" ? undefined : choosing}
             aria-description={wakeLockUnavailable ? WAKE_LOCK_UNAVAILABLE : undefined}
-            usage="押すと走行モードを始め、現在地に合わせて地図を動かし続けます[画面も点けたままにします]。走行中に押すと、「案内を終える」か「休む」を選べます。休んだ後は、地図の下の「続きから走る」で再開します。地図を指で動かすと追従だけが止まり、「現在地へ戻る」で再開します。"
+            usage="押すと走行モードを始め、現在地に地図を合わせ続けます[画面も点けたままにします]。走行中に押すと「案内を終える」か「休む」を選べ、休んだ後は地図の下の「続きから走る」で再開します。地図を指で動かすと追従が止まり、「現在地へ戻る」で戻ります。"
             data-ride={status}
             className={cn(
               "relative",
