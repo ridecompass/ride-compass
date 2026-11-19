@@ -3,7 +3,7 @@
 ## 責務
 
 `app/page.tsx`がアプリのコンポジションルート。地図（`MapView`）・ルート設定/
-結果パネル（`RouteSettingsPanel`・`RouteForm`・`RouteAxisProfile`）・地図
+結果パネル（`RouteSettingsPanel`・`RouteForm`・`RouteOutcome`）・地図
 オーバーレイ制御（`MapOverlayControls`）を1つのReactツリーへ束ねる。**`page.tsx`が持つのは画面の枠（どの区分・シートを開いているか）と、
 機能の間の値の受け渡しだけ**で、機能の状態の遷移・入力の組み立て・描く中身の判断はその機能のフック・部品が持つ
 （[ディレクトリ構成](../../architecture/directory-layout.md)の`app/`の約束）——機能は互いを読まないため、ある機能の状態を
@@ -272,7 +272,7 @@ backendも日本時間で扱う。`domain/time_zone.py`）。暦と時刻の取�
 | 地図本体 | `features/map/MapView/MapView`（全静的/動的レイヤーのMapLibre実装本体） |
 | 地図オーバーレイ制御 | `PlaceSearch`（地図の上端の1段目の、地点を住所・施設で探す欄。[ルート設定・結果](route-settings-and-results.md)「住所・施設で探す」）・`MapOverlayControls`（検索の欄の下の段の左の「表示」のボタンと一覧）・`MapNavigationControl`（地図右上の拡大・縮小と方位磁針）・`LensControl`（検索の欄の下の段の中央のレンズ選択ピル）・`RideConditionBar`（方位磁針の直下、地図右上の走行条件アイコン列、出発時刻・想定速度） |
 | ルート設定 | `RouteForm`（地点・全長の目標・候補件数・全体のつまみ）・`RouteSettingsPanel`（費用の軸ごとの倍率）・`HardFilterPanel`（道路） |
-| ルート結果 | `features/route/RouteOutcome/RouteOutcome.tsx`（「ルート結果」の中身: 空の状態・候補の一覧［横に並ぶカード］・区間の詳細・編集面）・`RouteCandidateActions`（選んでいる候補1本への操作。見出しの行に置く）・`RouteAxisProfile.tsx: RouteAxisProfile`（候補ごとのタブの中身、所要・負担と負担の内訳） |
+| ルート結果 | `features/route/RouteOutcome/RouteOutcome.tsx`（「ルート結果」の中身: 空の状態・候補の一覧［横に並ぶカード］・区間の詳細・編集面）・`RouteCandidateActions`（選んでいる候補1本への操作。見出しの行に置く）・`RouteOutcome/CandidateFigureNotes.tsx: CandidateFiguresInfo`（カードの所要時間と負担の説明）・`RouteOutcome/CandidateFigureNotes.tsx: MissingTravelDataNotice`（選んだ候補の推定で計算した区間の注意） |
 | レイアウト | `BottomSheet`（モバイル下部シート） |
 
 ## page.tsxの状態管理
@@ -674,17 +674,15 @@ backendが最寄りのアクセス可能な地点へ補正した場合のヒン�
 消した候補は生成し直すしかなく、気象が変われば同じ候補にならない）。候補1本に効く操作（「合成」＝区間の乗り換えの入口・
 「GPX」＝`features/route/gpxExport.ts: downloadGpx`）は`RouteOutcome.tsx`がその候補のタブの中身の
 先頭に置く——見出しに並べると、どれが選んでいる1本だけに効くのか見分けられない。「全消去」に**バツ印は使わない**
-——シートの閉じる✕の隣に並ぶため、同じ形だとどちらがどちらか分からない。負担の説明は
-`RouteAxisProfile`側（負担の表示の隣、`InfoPopover`）にあり、候補タブごとに
-繰り返し表示される。デスクトップは「ルート結果」`Disclosure`の`trailing`、モバイルは
+——シートの閉じる✕の隣に並ぶため、同じ形だとどちらがどちらか分からない。所要時間と負担の説明は、カードの並びの上の見出しの右の(i)（`RouteOutcome/CandidateFigureNotes.tsx: CandidateFiguresInfo`）が1つで持つ——
+数はカードが出すので、選んだ候補ごとに数を繰り返す行を持たない。デスクトップは「ルート結果」`Disclosure`の`trailing`、モバイルは
 BottomSheetの`headerAction`propとして同じヘルパーを渡す（`routes.length > 0`の間のみ）。
 候補タブ列のvalueはroute id。
 編集で作ったルートを選んでいる間は、道のりのグラフの下に「元との違い」（`features/route/EditDifference/EditDifference.tsx`）を出し、
 地図には元のルートだけを参考線として重ねる（`useRoutePlanner.ts: mapRoutes`。ほかの候補まで並ぶと、変えた区間がどれとの差か
 読めない）。編集している間は乗り換え先を探すため、全部の候補を参考線にする。
 
-候補タブの中身（`Tabs.Content`）は、上から`RouteAxisProfile`・道のりのグラフ・元との違いの順に置く——シートが開いたときに合わせる高さ（グラフの下端）の中に所要・負担を入れ、スクロールせずに見せるため。結果の中のグラフは、走行中の地図の下の図より低く描く（CSS の変数`--profile-chart-height`。走行中は走りながら読めるよう高くする）。`RouteAxisProfile`は
-所要・負担を出す読み取り専用の面（負担の種類ごとの内訳と事実は、道のりのグラフの右上の一覧が出す）（[ルート設定と結果](route-settings-and-results.md)「RouteAxisProfile.tsx」）。地図の色分け（レンズ）を選ぶ操作はここには無い（`LensControl`）。
+候補タブの中身（`Tabs.Content`）は、上から推定で計算した区間の注意（出るときだけ。カードのすぐ下の1行）・道のりのグラフ・元との違いの順に置く——シートが開いたときに合わせる高さ（グラフの下端）の中にカードと注意を入れ、スクロールせずに見せるため。結果の中のグラフは、走行中の地図の下の図より低く描く（CSS の変数`--profile-chart-height`。走行中は走りながら読めるよう高くする）。負担の種類ごとの内訳と事実は、道のりのグラフの右上の一覧が出す（[ルート設定と結果](route-settings-and-results.md)「CandidateFigureNotes.tsx」）。地図の色分け（レンズ）を選ぶ操作はここには無い（`LensControl`）。
 
 ## `MapView`（`features/map/MapView/MapView.tsx`）との境界
 

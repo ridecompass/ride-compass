@@ -19,7 +19,7 @@ import { routeClock } from "@/lib/routeClock";
 import { formatPenaltyMinutes } from "@/lib/routePenalty";
 import RouteProfile from "@/features/route/RouteProfile/RouteProfile";
 import type { ProfileLayerSelection } from "@/features/route/RouteProfile/useProfileLayers";
-import RouteAxisProfile from "@/features/route/RouteAxisProfile/RouteAxisProfile";
+import { CandidateFiguresInfo, MissingTravelDataNotice } from "@/features/route/RouteOutcome/CandidateFigureNotes";
 import RouteSplicePanel from "@/features/route/RouteSplicePanel/RouteSplicePanel";
 import { formatDurationShort, MINUTE_UNIT } from "@/lib/duration";
 import EditDifference from "@/features/route/EditDifference/EditDifference";
@@ -130,8 +130,8 @@ export default function RouteOutcome({ results, generation, splice, profileLayer
     );
   }
 
-  // 候補ごとのタブの1段で、タブの切り替えが候補の切り替えを兼ねる。中身は上から、候補の一覧・所要と負担・道のりのグラフ・
-  // 元との違いの順で、狭い高さでも候補の切り替えと所要・負担が先に見える。
+  // 候補ごとのタブの1段で、タブの切り替えが候補の切り替えを兼ねる。中身は上から、候補の一覧（所要と負担はカードが出す）・
+  // 推定の注意・道のりのグラフ・元との違いの順で、狭い高さでも候補の切り替えと所要・負担が先に見える。
   // 道のりのグラフの横軸の右端。候補どうしで同じ物差しにし、面積（負荷）を見比べられるようにする。
   const longestDistanceKm = Math.max(0, ...routes.map((route) => route.distance_km));
   const selectedValue = selectedRouteId ?? routes[0].id;
@@ -170,6 +170,7 @@ export default function RouteOutcome({ results, generation, splice, profileLayer
             <BurdenIcon size={11} />
             負担
           </span>
+          <CandidateFiguresInfo />
         </p>
         {/* 候補は1枚ずつのカードで横に並べ、幅に収まらない分は一覧の中だけを横へ送る。縦には動かないので、縦のなぞりは
             シート・パネルのスクロールへ渡る（縦に動く所を1つにする）。 */}
@@ -236,11 +237,7 @@ export default function RouteOutcome({ results, generation, splice, profileLayer
             style={{ "--profile-chart-height": "5.5rem" } as CSSProperties}
             value={route.id}
           >
-            <RouteAxisProfile
-              penalty={route.penalty}
-              estimatedDurationSeconds={route.estimated_duration_seconds}
-              missingTravelDataShare={route.missing_travel_data_share}
-            />
+            <MissingTravelDataNotice share={route.missing_travel_data_share} />
             {/* 道のりのグラフ。区間を選んでいる間も残す（動かして地点を選ぶ操作の置き場のため）。選んでいる間は、その地点の
                 詳しくをグラフが自分の下に出す。シートは、高さを決めていなければ、開いたときにここの下端までの高さに合わせる。 */}
             {route.segments.length > 0 && (

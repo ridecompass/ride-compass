@@ -94,9 +94,9 @@ test("モバイル: 道のりのグラフの切り替えは、結果では見出
   expect(rideGraph.y + rideGraph.height).toBeLessThanOrEqual(MOBILE_VIEWPORT.height);
 });
 
-// 「ルート結果」のシート。高さを決めていなければ、開いたときに候補・所要と負担の要約・道のりのグラフの下端までが入る高さに合わせ、グラフは
+// 「ルート結果」のシート。高さを決めていなければ、開いたときに見出し・候補・道のりのグラフの下端までが入る高さに合わせ、グラフは
 // シートの幅いっぱいに描く（パターン4 観点1）。
-test("モバイル: 「ルート結果」のシートは開くと、所要・負担の要約とグラフの下端までがスクロールせずに入る", async ({
+test("モバイル: 「ルート結果」のシートは開くと、カードの並びの上の見出しとグラフの下端までがスクロールせずに入る", async ({
   page,
 }) => {
   await openMobileApp(page);
@@ -110,8 +110,8 @@ test("モバイル: 「ルート結果」のシートは開くと、所要・負
   expect(sheetBottom - graphBottom).toBeLessThan(48);
   // 本文の左右の余白を除いた幅いっぱい。
   expect(graphBox.width).toBeGreaterThan(sheetBox.width - 48);
-  // 所要・負担の要約はグラフより上にある。
-  const summaryBox = (await sheet.getByRole("button", { name: "負担の説明を表示" }).boundingBox())!;
+  // カードの並びの上の見出し（その右の(i)）はグラフより上にある。
+  const summaryBox = (await sheet.getByRole("button", { name: "所要時間と負担の説明を表示" }).boundingBox())!;
   expect(summaryBox.y).toBeGreaterThanOrEqual(sheetBox.y);
   expect(summaryBox.y + summaryBox.height).toBeLessThanOrEqual(graphBox.y);
 });
