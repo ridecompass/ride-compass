@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState, type RefObject } from "react";
-import { Popover, PopoverAnchor, PopoverContent, POPOVER_COLLISION_PADDING_PX } from "@/components/ui/Popover/Popover";
+import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/Popover/Popover";
 import { Button } from "@/components/ui/Button/Button";
 import { GuideText } from "@/components/ui/GuideText/GuideText";
 import { textVariants } from "@/components/ui/Text/Text";
@@ -181,7 +181,6 @@ export default function UsageGuide({ onEnd }: UsageGuideProps) {
           side="bottom"
           layer="guide"
           className="flex max-w-72 flex-col gap-1"
-          collisionPadding={POPOVER_COLLISION_PADDING_PX}
           aria-label="使い方の説明"
         >
           <div className="flex items-start justify-between gap-2">
@@ -189,8 +188,8 @@ export default function UsageGuide({ onEnd }: UsageGuideProps) {
             <Button
               usage={null}
               variant="ghost"
-              size="bare"
-              className="px-1"
+              size="close"
+              className="flex-none"
               aria-label="説明を閉じる"
               // 説明だけを閉じ、部品を選ぶ続きへ戻る。
               onClick={() => setTarget(null)}

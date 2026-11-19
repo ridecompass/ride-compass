@@ -90,9 +90,9 @@ describe("describeConditions", () => {
   });
 
   it.each([
-    ["戻る周回は距離と候補数", SHAPES.loop, "周回 30km・候補 3本"],
-    ["経由地は地点の数", SHAPES.loopVia, "周回 30km・経由 1地点・候補 3本"],
-    ["目的地だけ", SHAPES.destinationOnly, "目的地へ・候補 3本"],
+    ["戻る周回は距離と候補数", SHAPES.loop, "周回 30km・候補 3件"],
+    ["経由地は地点の数", SHAPES.loopVia, "周回 30km・経由1地点・候補 3件"],
+    ["目的地だけ", SHAPES.destinationOnly, "目的地・候補 3件"],
   ])("条件: %s", (_, conditions, expected) => {
     expect(describeConditions({ ...ENTRY, ...conditions }, CATALOG, COST_CATALOG).route).toBe(expected);
   });

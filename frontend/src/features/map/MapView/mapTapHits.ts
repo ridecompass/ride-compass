@@ -9,6 +9,7 @@ import {
 } from "@/features/map/scene/groups/routes";
 import { POINT_HIT_TARGET, pointLayerOfSceneLayer } from "@/features/map/scene/groups/points";
 import { pointPlaceName, type PointLayer } from "@/lib/mapDisplay/pointLayers";
+import { pointCandidate } from "@/lib/placeCandidate";
 
 /**
  * 地図を押したときの意味。地点: 選んでいる地点を置く・ピンを押すとその地点を選ぶ。乗り換え: 乗り換える区間を選ぶ。開く: 押した物
@@ -54,5 +55,5 @@ export function namedSpotOf(feature: MapGeoJSONFeature): PlaceCandidate | null {
   const name = pointPlaceName(point, feature.properties);
   if (name === null) return null;
   const [longitude, latitude] = feature.geometry.coordinates;
-  return { kind: "facility", level: "point", name, area: null, latitude, longitude };
+  return pointCandidate({ latitude, longitude }, name);
 }

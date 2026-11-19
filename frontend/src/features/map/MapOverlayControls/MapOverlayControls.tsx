@@ -19,7 +19,7 @@ import { RoadIcon } from "@/components/ui/icons/layerIcons";
 import { ChooseItemsIcon, LayersStackIcon } from "@/components/ui/icons/lucideIcons";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/Tabs/Tabs";
 import { Button } from "@/components/ui/Button/Button";
-import { Popover, PopoverContent, PopoverTrigger, POPOVER_COLLISION_PADDING_PX } from "@/components/ui/Popover/Popover";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/Popover/Popover";
 import { cn } from "@/lib/cn";
 import { FACT_DISPLAY_NAME } from "@/lib/screenNames";
 import { cardVariants } from "@/components/ui/Card/Card";
@@ -196,7 +196,6 @@ export default function MapOverlayControls({
       <PopoverContent
         side="bottom"
         align="start"
-        collisionPadding={POPOVER_COLLISION_PADDING_PX}
         aria-label={LIST_SCREEN_NAME}
         className={cn(FLOATING_PANEL_CLASS, "max-h-[var(--radix-popover-content-available-height)] w-72")}
       >

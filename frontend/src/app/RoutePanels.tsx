@@ -118,7 +118,7 @@ export function DesktopRoutePanels(props: RoutePanelsProps) {
                 trailing={
                   <div className="flex min-w-0 flex-auto items-center justify-between gap-2">
                     <SettingsTabsList />
-                    <GenerateRouteActions generation={route.generation} routeCount={props.routeCount} label="never" />
+                    <GenerateRouteActions generation={route.generation} routeCount={props.routeCount} labeled={false} />
                   </div>
                 }
                 open={panels.generateOpen}
@@ -204,9 +204,7 @@ export function MobileRoutePanels(props: RoutePanelsProps) {
           open={panels.mobileSheet === "routeSettings"}
           title="ルート設定"
           headerLead={<SettingsTabsList />}
-          headerAction={
-            <GenerateRouteActions generation={route.generation} routeCount={props.routeCount} label="wideScreen" />
-          }
+          headerAction={<GenerateRouteActions generation={route.generation} routeCount={props.routeCount} labeled />}
           fitKey={`${settingsTab}:${settingsShape}`}
           fitMaxVh={SETTINGS_SHEET_MAX_FIT_VH}
         >

@@ -36,9 +36,9 @@ export function DialogContent({ title, children, className }: DialogContentProps
           <Button
             usage="この窓を閉じます。"
             variant="ghost"
-            size="bare"
+            size="close"
             aria-label="閉じる"
-            className="absolute right-2 top-2 rounded-sm text-[length:var(--font-size-md)] text-[var(--foreground)]"
+            className="absolute right-2 top-2"
           >
             ✕
           </Button>

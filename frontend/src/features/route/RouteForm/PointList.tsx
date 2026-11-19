@@ -17,6 +17,7 @@ import { usePlaceAreas } from "@/features/route/usePlaceAreas";
 import type { SavedPlacesState } from "@/features/route/useSavedPlaces";
 import { useVisualViewport } from "@/hooks/useVisualViewport";
 import { cn } from "@/lib/cn";
+import { pointCandidate } from "@/lib/placeCandidate";
 import type { Coordinates, PlaceCandidate, PointTarget } from "@/types/route";
 
 import { useReorderDrag } from "./useReorderDrag";
@@ -68,7 +69,7 @@ export interface PointListProps {
 }
 
 /**
- * 地点の縦の一覧: 見出し「地点」の右に「＋ 経由地」を置き、その下に出発地 → 経由地 → 終点（目的地へなら目的地、周回なら押せない
+ * 地点の縦の一覧: 見出し「地点」の右に「＋ 経由地」を置き、その下に出発地 → 経由地 → 終点（目的地なら目的地、周回なら押せない
  * 「出発地へ戻る」）を点線でつなぐ。行を押すとその地点を選び、その行に付く検索の小窓を開く。小窓を閉じている間は、地図をタップすると
  * 選んだ地点を置く。
  * 経由地と目的地は右の✕で消し、つまみを押さえて上下へ動かすと通る順を入れ替える（一番上が出発地、一番下が目的地）。
@@ -94,8 +95,11 @@ export default function PointList({
   const { loop, waypoints, removeWaypoint, reorderPoints, destination, clearDestination, foundAt } = conditions;
   const selected = conditions.selectedPoint;
   const [searching, setSearching] = useState(false);
-  // 置き方の文（出発地が仮の地点のままの間の出発地の行と、足そうとしている経由地の行の名前の所）。
-  const orTap = placing ? "か、地図をタップ" : "";
+  // 置き方の文。見える文（出発地が仮の地点のままの間の出発地の行と、足そうとしている経由地の行の名前の所）と使い方の文が読み、
+  // 地図で置けない間は地図を言わない。
+  const howToPlace = placing
+    ? { short: "か、地図をタップ", sentence: "住所・施設で探すか、地図をタップして置きます。" }
+    : { short: "", sentence: "住所・施設で探して置きます。" };
 
   function closeSearch() {
     lookup.clear();
@@ -169,7 +173,7 @@ export default function PointList({
     const found = selected.role === "origin" ? originFound : foundAt(at);
     if (found !== null) return found;
     const area = areaOf(at);
-    return { kind: "facility", level: "point", name: area ?? name, area, ...at };
+    return pointCandidate(at, area ?? name, area);
   })();
 
   // 選んだ行を、小窓の目印にする（スマホは、キーボードの上の線を目印にする）。行を目印の部品で包むと、選び直すたびに
@@ -201,18 +205,18 @@ export default function PointList({
         aria-label="新しい経由地 未設定"
         aria-pressed
         onClick={() => open(newWaypoint)}
-        data-usage="足す経由地を、住所・施設で探します。地図をタップしても置けます。"
+        data-usage={`足す経由地を、${howToPlace.sentence}`}
       >
         {markOf(newWaypoint, 22)}
         <span className={cn(textVariants({ variant: "note" }), "w-12 flex-none")}>経由地</span>
         <span className={cn(textVariants({ variant: "body" }), "min-w-0 flex-auto text-[var(--color-muted)]")}>
-          {`探す${orTap}`}
+          {`探す${howToPlace.short}`}
         </span>
       </button>
       <Button
         variant="ghost"
-        size="bare"
-        className="size-8 flex-none"
+        size="icon"
+        className="flex-none"
         aria-label="経由地を足すのをやめる"
         onClick={() => {
           setSearching(false);
@@ -241,11 +245,7 @@ export default function PointList({
           size="xs"
           disabled={full}
           onClick={() => open(newWaypoint)}
-          usage={
-            full
-              ? "経由地はこれ以上置けません。"
-              : "目的地の手前に経由地を足します。住所・施設で探すか、地図をタップして置きます。"
-          }
+          usage={full ? "経由地はこれ以上置けません。" : `目的地の手前に経由地を足します。${howToPlace.sentence}`}
         >
           ＋ 経由地
         </Button>
@@ -284,7 +284,7 @@ export default function PointList({
                 aria-label={`${title} ${name ?? "未設定"}`}
                 aria-pressed={isSelected(target)}
                 onClick={() => open(target)}
-                data-usage={`${title}を選び、住所・施設で探します。地図をタップしても置けます。`}
+                data-usage={`${title}を選び、${howToPlace.sentence}`}
               >
                 {markOf(target, 22)}
                 <span className={cn(textVariants({ variant: "note" }), "w-12 flex-none")}>{label}</span>
@@ -295,14 +295,14 @@ export default function PointList({
                     name === null && "text-[var(--color-muted)]",
                   )}
                 >
-                  {name ?? (isOrigin ? `押して探す${orTap}` : "")}
+                  {name ?? (isOrigin ? `押して探す${howToPlace.short}` : "")}
                 </span>
               </button>
               {isOrigin ? (
                 <Button
                   variant="ghost"
-                  size="bare"
-                  className="size-8 flex-none"
+                  size="icon"
+                  className="flex-none"
                   aria-label="出発地を現在地に戻す"
                   disabled={originAtHere}
                   onClick={onOriginReset}
@@ -313,8 +313,8 @@ export default function PointList({
               ) : (
                 <Button
                   variant="ghost"
-                  size="bare"
-                  className="size-8 flex-none"
+                  size="icon"
+                  className="flex-none"
                   aria-label={`${title}を消す`}
                   disabled={name === null}
                   onClick={() => (target.role === "destination" ? clearDestination() : removeWaypoint(index - 1))}
@@ -329,8 +329,8 @@ export default function PointList({
               )}
               <Button
                 variant="ghost"
-                size="bare"
-                className="size-8 flex-none touch-none items-center justify-center text-[var(--color-muted)] select-none [-webkit-touch-callout:none]"
+                size="icon"
+                className="flex-none touch-none select-none [-webkit-touch-callout:none]"
                 aria-label={`${title}を動かす`}
                 disabled={!movable(index)}
                 onPointerDown={(event) => drag.press(index, event, rowRects())}
@@ -361,9 +361,7 @@ export default function PointList({
       {searching && !aboveKeyboard && <PopoverAnchor virtualRef={selectedRow} />}
       {aboveKeyboard &&
         createPortal(
-          // 目印が動いても Radix は位置を測り直さない（見える範囲の変化は窓の大きさの変化として届かない）ので、見える範囲が変わるたびに
-          // 目印を置き直して測り直させる。
-          <PopoverAnchor asChild key={visible === null ? "" : `${visible.top}:${visible.height}`}>
+          <PopoverAnchor asChild>
             <div
               aria-hidden="true"
               className="pointer-events-none fixed inset-x-2 bottom-0 h-0"
@@ -390,7 +388,7 @@ export default function PointList({
                 : onOriginReset
               : here === null
                 ? null
-                : () => onPlace(selected, { kind: "facility", level: "point", name: "現在地", area: null, ...here })
+                : () => onPlace(selected, pointCandidate(here, "現在地"))
           }
           onClose={closeSearch}
           onCloseAutoFocus={(event) => {

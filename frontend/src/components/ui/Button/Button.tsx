@@ -47,8 +47,12 @@ export const buttonVariants = cva(
         /** パネルの操作のボタン。アイコンだけを置き、名前は`aria-label`で渡す（長押し・マウスを重ねると、名前と使い方が
          * `components/UsageGuide/UsageTooltip.tsx`のツールチップに出る）。 */
         panelIcon: "rounded-sm px-1.5 py-1",
-        /** パネルの主役の操作（ルート生成・このルートで走る）。`panelIcon`と同じ高さで、アイコンに短い文字を添える。 */
-        panelLabeled: "rounded-sm px-2 py-1 text-[length:var(--font-size-sm)]",
+        /** パネルの主役の操作（ルート生成・このルートで走る）。`panelIcon`と同じ高さで、アイコンに短い文字（`ButtonLabel`）を添える。
+         * 狭い幅（`max-narrow:`）では文字を隠し、余白も`panelIcon`と同じに詰める（docs/modules/frontend/frontend-design-system.md
+         * 「5-1. パネルの操作ボタンの形」）。 */
+        panelLabeled: "rounded-sm px-2 py-1 text-[length:var(--font-size-sm)] max-narrow:px-1.5",
+        /** 窓・シート・小窓・案内を閉じる✕（`ghost`と組む）。✕は細い字形なので、控えめな色にせず文字の色で描く。 */
+        close: "size-7 rounded-sm text-[length:var(--font-size-md)] text-[var(--foreground)]",
         /** 上部の帯の印（警報）。値の並びに混ざるので、枠の無い`ghost`と組む。 */
         headerIcon: "size-7 rounded-sm",
         /** 小さい丸のアイコンボタン。 */
@@ -77,6 +81,15 @@ interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement>, Var
    * 無い画面（管理画面・エラー画面）と説明を見る状態自身の部品だけが渡す（`structure/usageText.test.ts`が見る）。
    */
   usage: string | null;
+}
+
+/** `panelLabeled`のアイコンに添える短い文字。名前は`aria-label`が持つので読み上げから隠し、狭い幅では出さない。 */
+export function ButtonLabel({ children }: { children: string }) {
+  return (
+    <span aria-hidden="true" className="max-narrow:hidden">
+      {children}
+    </span>
+  );
 }
 
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(

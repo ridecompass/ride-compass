@@ -11,7 +11,7 @@
    * 値はデスクトップの配置が始まる幅で、これより狭ければスマホ幅（640pxまで）。Tailwindの`max-mobile:`も
    * 同じ「これより狭い」で判定するので、メディアクエリも`width <`で書く（`max-width`は境目を含んで割れる）。 */
   --breakpoint-mobile: 641px;
-  /* 「ルート設定」のシートの見出しの行に「生成」の文字が入らない、狭いスマホの幅（`max-narrow:`。値の根拠は
+  /* パネルの主役の操作が添える文字を隠す、狭いスマホの幅（`max-narrow:`。値の根拠は
    * docs/modules/frontend/frontend-design-system.md「5-1. パネルの操作ボタンの形」）。 */
   --breakpoint-narrow: 360px;
 

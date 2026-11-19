@@ -166,10 +166,11 @@ function OverviewMap({
           />
         )}
       </div>
+      {/* 地図の上で俯瞰図の角に重ねるので、地図の上の操作の形（`float`）にし、俯瞰図を覆う所を小さくするため丸く小さくする。 */}
       <Button
         variant="float"
-        size="bare"
-        className="pointer-events-auto absolute top-0 right-0 size-6 rounded-full text-[length:var(--font-size-xs)]"
+        size="iconRound"
+        className="absolute top-0 right-0 text-[length:var(--font-size-xs)]"
         aria-label="俯瞰図を畳む"
         usage="俯瞰図を小さな丸いボタンに畳みます。押すと戻ります。"
         onClick={onCollapse}

@@ -32,7 +32,7 @@ export function useRouteFormSubmit({
 
   function check() {
     if (loop && !distanceTargeted && waypointCount === 0) {
-      setError("定規の「距離を決める」をオンにするか、経由地を置いてください。");
+      setError("「距離を決める」をオンにするか、経由地を置いてください。");
       return false;
     }
     if (!loop && !destinationSet) {

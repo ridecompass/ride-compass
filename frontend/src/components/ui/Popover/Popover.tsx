@@ -23,8 +23,8 @@ export const PopoverAnchor = RadixPopover.Anchor;
 /** 浮きパネルから目印を指す三角。 */
 export const PopoverArrow = RadixPopover.Arrow;
 
-/** 画面の端へ寄せて開くとき、端との間に空ける幅（px）。 */
-export const POPOVER_COLLISION_PADDING_PX = 8;
+/** 画面の端へ寄せて開くとき、端との間に空ける幅（px。どの浮きパネルも同じ）。 */
+const POPOVER_COLLISION_PADDING_PX = 8;
 
 const contentVariants = cva(
   [
@@ -65,6 +65,7 @@ export const PopoverContent = forwardRef<HTMLDivElement, PopoverContentProps>(fu
       <RadixPopover.Content
         ref={ref}
         sideOffset={sideOffset}
+        collisionPadding={POPOVER_COLLISION_PADDING_PX}
         className={cn(contentVariants({ layer, tone }), className)}
         onInteractOutside={(event) => {
           // 説明を見る状態の案内・説明の面を押しても、そこへフォーカスが移っても閉じない（開いたまま、中の部品の説明を見られる）。

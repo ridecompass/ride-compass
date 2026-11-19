@@ -52,7 +52,7 @@ export default function RouteSettingsForm({ savedConditions, roadTabMap, ...prop
           current={savedConditions.current}
           suggestedName={savedConditions.suggestedName}
           originManual={originManual}
-          originKnown={originLocated}
+          originLocated={originLocated}
           onSave={savedConditions.save}
         />
       }

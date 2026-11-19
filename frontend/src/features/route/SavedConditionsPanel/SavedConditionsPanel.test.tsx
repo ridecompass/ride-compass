@@ -49,7 +49,7 @@ const TRIP: SavedCondition = {
 
 function renderSaveButton(
   saved: SavedCondition[] = [],
-  { originManual = false, originKnown = true }: { originManual?: boolean; originKnown?: boolean } = {},
+  { originManual = false, originLocated = true }: { originManual?: boolean; originLocated?: boolean } = {},
 ) {
   const onSave = vi.fn();
   render(
@@ -58,7 +58,7 @@ function renderSaveButton(
       current={CURRENT}
       suggestedName="周回 40km"
       originManual={originManual}
-      originKnown={originKnown}
+      originLocated={originLocated}
       onSave={onSave}
     />,
   );
@@ -85,11 +85,11 @@ beforeEach(() => {
 describe("保存", () => {
   it("押すまで中身を出さず、押すと窓で、いまの設定の条件と倍率を並べる", async () => {
     renderSaveButton();
-    expect(screen.queryByText("周回 40km・候補 8本")).not.toBeInTheDocument();
+    expect(screen.queryByText("周回 40km・候補 8件")).not.toBeInTheDocument();
 
     const dialog = await openSaveDialog();
 
-    expect(within(dialog).getByText("周回 40km・候補 8本")).toBeInTheDocument();
+    expect(within(dialog).getByText("周回 40km・候補 8件")).toBeInTheDocument();
     expect(await within(dialog).findByText("標準")).toBeInTheDocument();
   });
 
@@ -126,7 +126,7 @@ describe("保存", () => {
   it.each([
     ["地図で置いた出発地は、既定で固定する", { originManual: true }, true, false],
     ["現在地のままなら、既定で呼び出した時の現在地", { originManual: false }, false, false],
-    ["分からない出発地は、地図で置いても固定できない", { originManual: true, originKnown: false }, false, true],
+    ["分からない出発地は、地図で置いても固定できない", { originManual: true, originLocated: false }, false, true],
   ])("出発地: %s", async (_, origin, fixed, fixDisabled) => {
     const { onSave } = renderSaveButton([], origin);
     const dialog = await openSaveDialog();
@@ -162,7 +162,7 @@ describe("保存した設定", () => {
     await userEvent.click(screen.getByRole("button", { name: "「週末」を呼び出す" }));
 
     const dialog = screen.getByRole("dialog", { name: "「週末」を反映します" });
-    expect(within(dialog).getByText("目的地へ・経由 2地点・候補 8本")).toBeInTheDocument();
+    expect(within(dialog).getByText("目的地・経由2地点・候補 8件")).toBeInTheDocument();
     expect(within(dialog).getByText("保存した地点に固定")).toBeInTheDocument();
     expect(await within(dialog).findByText("振動 200%")).toBeInTheDocument();
   });

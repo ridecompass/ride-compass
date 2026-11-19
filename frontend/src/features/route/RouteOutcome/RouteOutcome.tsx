@@ -6,6 +6,7 @@ import { SHEET_FIT_END_ATTRIBUTE } from "@/components/BottomSheet/BottomSheet";
 import { GuideText } from "@/components/ui/GuideText/GuideText";
 import { RouteSpliceIcon } from "@/components/ui/icons/icons";
 import { BurdenIcon, FastestRouteIcon } from "@/components/ui/icons/lucideIcons";
+import { MarkLegend, MarkLegendItem } from "@/components/ui/MarkLegend/MarkLegend";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/Tabs/Tabs";
 import { textVariants } from "@/components/ui/Text/Text";
 import { useCostAxisCatalog, type CostAxisCatalog } from "@/hooks/useCostAxisCatalog";
@@ -158,20 +159,20 @@ export default function RouteOutcome({ results, generation, splice, profileLayer
       )}
       <Tabs className="flex flex-col gap-2" value={selectedValue} onValueChange={results.selectRoute}>
         {/* カードの数字と印の見出し。カードの中に語を足すとカードが広がるので、並びの上に1行で置く。 */}
-        <p className={cn(textVariants({ variant: "hint" }), "m-0 flex flex-wrap items-center gap-x-2")}>
+        <MarkLegend>
           {legendMarks.map(({ Icon, meaning }) => (
-            <span key={meaning} className="inline-flex items-center gap-0.5">
+            <MarkLegendItem key={meaning}>
               <Icon size={11} />
               {meaning}
-            </span>
+            </MarkLegendItem>
           ))}
-          <span className="inline-flex items-center gap-0.5">
+          <MarkLegendItem>
             上: 距離　下: 所要時間・
             <BurdenIcon size={11} />
             負担
-          </span>
+          </MarkLegendItem>
           <CandidateFiguresInfo />
-        </p>
+        </MarkLegend>
         {/* 候補は1枚ずつのカードで横に並べ、幅に収まらない分は一覧の中だけを横へ送る。縦には動かないので、縦のなぞりは
             シート・パネルのスクロールへ渡る（縦に動く所を1つにする）。 */}
         <TabsList ref={listRef} variant="cards" aria-label="ルート結果">

@@ -178,8 +178,8 @@ describe("走行モード", () => {
       .getAllByRole("img", { name: /^経由地/ })
       .map((mark) => mark.getAttribute("aria-label"));
     expect(waypoints).toEqual([
-      "経由地 1（0.2km地点）",
-      `経由地 2（0.8km地点・${formatJstHourMinute(new Date(fixedAt + MINUTE_MS))}着）`,
+      "経由地1（0.2km地点）",
+      `経由地2（0.8km地点・${formatJstHourMinute(new Date(fixedAt + MINUTE_MS))}着）`,
     ]);
   });
 

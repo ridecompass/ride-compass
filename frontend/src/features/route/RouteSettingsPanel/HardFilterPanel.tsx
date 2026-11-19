@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/Badge/Badge";
 import { Checkbox } from "@/components/ui/Checkbox/Checkbox";
 import { LockedIcon } from "@/components/ui/icons/lucideIcons";
 import { Dot } from "@/components/ui/Dot/Dot";
+import { MarkLegend, MarkLegendItem } from "@/components/ui/MarkLegend/MarkLegend";
 import { textVariants } from "@/components/ui/Text/Text";
 import {
   avoidanceLevelOf,
@@ -58,19 +59,15 @@ export default function HardFilterPanel({
         地図で見る
       </label>
       {/* 地図の色が段のどれかを、段の向きの名前と、行に出る段の名前（倍率）で読ませる。 */}
-      <div
-        role="group"
-        aria-label="段の凡例"
-        className={cn(textVariants({ variant: "note" }), "flex flex-wrap items-center gap-x-2 gap-y-0.5 pb-1")}
-      >
+      <MarkLegend role="group" aria-label="段の凡例" className="pb-1">
         {levels.filter(isPainted).map(({ key, name, label, color }) => (
-          <span key={key} className="inline-flex items-center gap-1">
+          <MarkLegendItem key={key}>
             <Dot tone="none" style={{ backgroundColor: color }} />
             {name}
             <span className="tabular-nums">{label}</span>
-          </span>
+          </MarkLegendItem>
         ))}
-      </div>
+      </MarkLegend>
       {roadTabMap.notice !== null && (
         <p className={cn(textVariants({ variant: "note" }), "pb-1")} role="status">
           {roadTabMap.notice}

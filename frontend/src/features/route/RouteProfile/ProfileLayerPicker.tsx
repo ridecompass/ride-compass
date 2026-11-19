@@ -3,7 +3,7 @@
 import type { ReactNode } from "react";
 
 import { Button } from "@/components/ui/Button/Button";
-import { Popover, PopoverContent, PopoverTrigger, POPOVER_COLLISION_PADDING_PX } from "@/components/ui/Popover/Popover";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/Popover/Popover";
 import { ChooseItemsIcon } from "@/components/ui/icons/lucideIcons";
 
 interface ProfileLayerPickerProps {
@@ -37,7 +37,6 @@ export default function ProfileLayerPicker({ title, usage, count, children }: Pr
       <PopoverContent
         side="bottom"
         align="end"
-        collisionPadding={POPOVER_COLLISION_PADDING_PX}
         className="max-h-[var(--radix-popover-content-available-height)] w-72 overflow-y-auto rounded-sm px-3 py-2.5"
       >
         <p className="mb-1 font-semibold">{title}</p>

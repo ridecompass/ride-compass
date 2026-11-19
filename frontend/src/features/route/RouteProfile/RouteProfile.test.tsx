@@ -114,12 +114,12 @@ describe("RouteProfile", () => {
       }));
     const expected = [
       {
-        name: "経由地 1（0.5km地点）",
+        name: "経由地1（0.5km地点）",
         number: "1",
         left: "25%",
         opacity: String(mapDisplay.route.opacities.travelled),
       },
-      { name: "経由地 2（1.5km地点）", number: "2", left: "75%", opacity: "" },
+      { name: "経由地2（1.5km地点）", number: "2", left: "75%", opacity: "" },
     ];
     const lines = (name: string) =>
       [...screen.getByRole("img", { name }).querySelectorAll("[data-waypoint]")].map((line) => line.getAttribute("x1"));

@@ -1,8 +1,8 @@
 /**
  * 「ルート設定」の見出しの操作（候補数の選び手と「ルート生成」のボタン）。
  *
- * 見ること: 候補数の選び手が今の件数を出し、開くと下限から上限までの数を並べて今の数を押した状態にし、選ぶと文字列で上げて
- * 閉じること。「生成」のボタンが作っている間（形が回る輪のとき）も、添えた文字「生成」を替えず、アイコンのボタンとして長押しで
+ * 見ること: 候補数の選び手が今の件数を出し、開くと下限から上限までの数を並べて今の数を選んだ状態にしてそこへフォーカスを置き、
+ * 選ぶと文字列で上げて閉じること。「生成」のボタンが作っている間（形が回る輪のとき）も、添えた文字「生成」を替えず、アイコンのボタンとして長押しで
  * 名前（進み方）を出し、離しても作り直さないこと。
  * ここで見ないもの: 押すと作り、作っている間の名前が進み方になることは`app/page.test.tsx`が、長押しの扱いそのものは
  * `components/UsageGuide/UsageTooltip.test.tsx`が見る。
@@ -18,20 +18,26 @@ import GenerateRouteActions from "./GenerateRouteActions";
 const IDLE = { conditionsDirty: false, running: false, progressLabel: "", submit: () => Promise.resolve() };
 
 describe("候補数", () => {
-  it("今の件数を出し、開くと下限から上限までを並べて今の数を押した状態にし、選ぶと文字列で上げて閉じる", async () => {
+  it("今の件数を出し、開くと下限から上限までを並べて今の数を選んだ状態にしてそこへ移り、選ぶと文字列で上げて閉じる", async () => {
     const setMaxRoutesInput = vi.fn();
     render(
-      <GenerateRouteActions generation={IDLE} routeCount={{ maxRoutesInput: "8", setMaxRoutesInput }} label="never" />,
+      <GenerateRouteActions
+        generation={IDLE}
+        routeCount={{ maxRoutesInput: "8", setMaxRoutesInput }}
+        labeled={false}
+      />,
     );
 
     await userEvent.click(screen.getByRole("button", { name: "候補数（8件）" }));
     const menu = within(screen.getByRole("dialog", { name: "候補数を選ぶ" }));
     const { min_routes: min, max_routes: max } = routeGenerateConfig;
-    expect(menu.getAllByRole("button").map((count) => count.textContent)).toEqual(
+    expect(menu.getAllByRole("radio").map((count) => count.textContent)).toEqual(
       Array.from({ length: max - min + 1 }, (_, i) => String(min + i)),
     );
-    expect(menu.getByRole("button", { pressed: true })).toHaveAccessibleName("8件");
-    await userEvent.click(menu.getByRole("button", { name: "12件" }));
+    const chosen = menu.getByRole("radio", { checked: true });
+    expect(chosen).toHaveAccessibleName("8件");
+    expect(chosen).toHaveFocus();
+    await userEvent.click(menu.getByRole("radio", { name: "12件" }));
 
     expect(setMaxRoutesInput).toHaveBeenCalledExactlyOnceWith("12");
     expect(screen.queryByRole("dialog", { name: "候補数を選ぶ" })).not.toBeInTheDocument();
@@ -54,7 +60,7 @@ describe("生成", () => {
         <GenerateRouteActions
           generation={{ conditionsDirty: false, running: true, progressLabel: "生成中...(3秒経過)", submit }}
           routeCount={{ maxRoutesInput: "8", setMaxRoutesInput: () => {} }}
-          label="wideScreen"
+          labeled
         />
         <UsageTooltip />
       </>,

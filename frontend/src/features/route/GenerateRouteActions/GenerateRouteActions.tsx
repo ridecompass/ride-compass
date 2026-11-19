@@ -2,11 +2,12 @@
 
 import { useState } from "react";
 
-import { Button } from "@/components/ui/Button/Button";
+import { Button, ButtonLabel } from "@/components/ui/Button/Button";
 import { dotVariants } from "@/components/ui/Dot/Dot";
 import { GenerateRoutesIcon } from "@/components/ui/icons/lucideIcons";
-import { Popover, PopoverContent, PopoverTrigger, POPOVER_COLLISION_PADDING_PX } from "@/components/ui/Popover/Popover";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/Popover/Popover";
 import { Spinner } from "@/components/ui/Spinner/Spinner";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/ToggleGroup/ToggleGroup";
 import type { GenerationConditionsState } from "@/features/route/useGenerationConditions";
 import { CONDITIONS_DIRTY_TEXT, type useRouteGeneration } from "@/features/route/useRouteGeneration";
 import { cn } from "@/lib/cn";
@@ -22,12 +23,12 @@ interface GenerateRouteActionsProps {
   generation: Pick<ReturnType<typeof useRouteGeneration>, "conditionsDirty" | "running" | "progressLabel" | "submit">;
   /** 一度に作る候補の数。入力のままの文字列で受け取り、文字列で上げる。 */
   routeCount: Pick<GenerationConditionsState, "maxRoutesInput" | "setMaxRoutesInput">;
-  /** 「生成」の文字を出すか。`wideScreen`は画面の幅が`--breakpoint-narrow`以上のときだけ出し、`never`は出さない。 */
-  label: "wideScreen" | "never";
+  /** 「生成」に文字を添えるか（添えない置き場はアイコンだけの`panelIcon`にする）。 */
+  labeled: boolean;
 }
 
 /** 「ルート設定」の見出し行の右端の操作。どのタブを見ていても押せるよう、タブの中身ではなく見出しに置く。 */
-export default function GenerateRouteActions({ generation, routeCount, label }: GenerateRouteActionsProps) {
+export default function GenerateRouteActions({ generation, routeCount, labeled }: GenerateRouteActionsProps) {
   const [choosingCount, setChoosingCount] = useState(false);
   // 条件を変えている本人は設定の側を見ているので、押すべきボタンでも知らせる。作っている間は、押した新しい条件で作り直しているので知らせない。
   const showDirty = generation.conditionsDirty && !generation.running;
@@ -35,9 +36,11 @@ export default function GenerateRouteActions({ generation, routeCount, label }: 
     <div className="flex items-center gap-1">
       <Popover open={choosingCount} onOpenChange={setChoosingCount}>
         <PopoverTrigger asChild>
+          {/* 今の数を出す選び手なので、アイコンにせず数を文字で出す（5-1 の「画面の値を名前に含む操作」）。主役と並ぶ行で同じ高さにし、
+              狭い幅では同じ決まりで余白を詰める。 */}
           <Button
             size="panelLabeled"
-            className="tabular-nums max-narrow:px-1.5"
+            className="tabular-nums"
             aria-label={`候補数（${routeCount.maxRoutesInput}件）`}
             usage="一度に作る候補の数を選びます。"
           >
@@ -47,36 +50,35 @@ export default function GenerateRouteActions({ generation, routeCount, label }: 
             </span>
           </Button>
         </PopoverTrigger>
-        <PopoverContent
-          className="grid grid-cols-5 gap-0.5 px-1 py-1"
-          side="bottom"
-          align="end"
-          collisionPadding={POPOVER_COLLISION_PADDING_PX}
-          aria-label="候補数を選ぶ"
-        >
-          {ROUTE_COUNTS.map((count) => (
-            <Button
-              key={count}
-              variant="menu"
-              size="sm"
-              className="justify-center tabular-nums aria-pressed:bg-[var(--color-accent-bg)] aria-pressed:font-semibold aria-pressed:text-[var(--color-accent-strong)]"
-              aria-label={`${count}件`}
-              aria-pressed={String(count) === routeCount.maxRoutesInput}
-              onClick={() => {
-                routeCount.setMaxRoutesInput(String(count));
-                setChoosingCount(false);
-              }}
-              usage="この数の候補を作ります。"
-            >
-              {count}
-            </Button>
-          ))}
+        <PopoverContent className="px-1.5 py-1.5" side="bottom" align="end" aria-label="候補数を選ぶ">
+          <ToggleGroup
+            variant="chips"
+            className="grid w-max grid-cols-5"
+            value={routeCount.maxRoutesInput}
+            onValueChange={(count) => {
+              routeCount.setMaxRoutesInput(count);
+              setChoosingCount(false);
+            }}
+            aria-label="候補数"
+            usage="一度に作る候補の数を選びます。選ぶと小窓を閉じます。"
+          >
+            {ROUTE_COUNTS.map((count) => (
+              <ToggleGroupItem
+                key={count}
+                value={String(count)}
+                className="justify-center tabular-nums"
+                aria-label={`${count}件`}
+              >
+                {count}
+              </ToggleGroupItem>
+            ))}
+          </ToggleGroup>
         </PopoverContent>
       </Popover>
       <Button
         variant="primary"
-        size={label === "never" ? "panelIcon" : "panelLabeled"}
-        className={cn("relative", label === "wideScreen" && "max-narrow:px-1.5")}
+        size={labeled ? "panelLabeled" : "panelIcon"}
+        className="relative"
         onClick={() => void generation.submit()}
         aria-label={
           generation.running
@@ -96,14 +98,9 @@ export default function GenerateRouteActions({ generation, routeCount, label }: 
             )}
           />
         )}
-        {/* 押したことが分かるよう、作っている間は形を回る輪に替える（結果は別の画面に出るので、押した所で知らせる）。 */}
+        {/* 押したことが分かるよう、作っている間は形を回る輪に替える（結果は別の画面に出るので、押した所で知らせる）。文字は替えず、幅を動かさない。 */}
         {generation.running ? <Spinner size={18} /> : <GenerateRoutesIcon size={18} />}
-        {/* 主役なので短い文字を添える（docs/modules/frontend/frontend-design-system.md 5-1）。作っている間も文字は替えず、幅を動かさない。 */}
-        {label === "wideScreen" && (
-          <span aria-hidden="true" className="max-narrow:hidden">
-            生成
-          </span>
-        )}
+        {labeled && <ButtonLabel>生成</ButtonLabel>}
       </Button>
     </div>
   );
