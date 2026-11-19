@@ -178,6 +178,7 @@ export default function Home() {
         onPlaceFound={placeFound}
         savedPlaces={savedPlaces}
         isMobile={isMobile}
+        placing={tapMode === "points"}
       />
     ),
     // 「このルートで走る」は、その候補を選んで走行モードを始める（走り始めると作業台のシートは閉じる）。もう走っている間は

@@ -167,13 +167,6 @@ export function useGenerationConditions({ onOriginPlace }: GenerationConditionsI
       at === null ? null : (found.findLast((candidate) => samePosition(candidate, at)) ?? null),
     [found],
   );
-  // 並びに出ている経由地と目的地を一度に消す（周回の間に覚えている目的地は消さない）。選んでいる地点も出発地に戻す（消した地点を
-  // 置き直す途中のまま残さない）。
-  const clearPoints = useCallback(() => {
-    setWaypoints([]);
-    if (!loop) setDestination(null);
-    setChosenPoint(null);
-  }, [loop]);
 
   // 距離の目標を決めるか。外すと距離を送らず、置いた地点へ良い道で向かう。
   const [distanceTargeted, setDistanceTargeted] = useStoredState(DISTANCE_TARGETED_STORAGE_KEY, "距離の目標", true);
@@ -265,7 +258,6 @@ export function useGenerationConditions({ onOriginPlace }: GenerationConditionsI
     destination,
     setDestination,
     clearDestination,
-    clearPoints,
     selectedPoint,
     selectPoint,
     placeAtSelected,

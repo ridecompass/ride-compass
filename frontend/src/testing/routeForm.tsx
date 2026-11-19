@@ -39,6 +39,7 @@ const BASE = {
   selectedPoint: { role: "origin" },
   here: ORIGIN,
   isMobile: false,
+  placing: true,
   foundAt: () => null,
   originFound: null,
   weightsPanel: null,
@@ -92,7 +93,6 @@ export function renderForm(options: Options = {}, tab: SettingsTab = "generate",
     removeWaypoint: vi.fn(),
     reorderPoints: vi.fn(),
     clearDestination: vi.fn(),
-    clearPoints: vi.fn(),
     onOriginReset: vi.fn(),
     selectPoint: vi.fn(),
     onPlaceFound: vi.fn(),
@@ -115,6 +115,7 @@ export function renderForm(options: Options = {}, tab: SettingsTab = "generate",
       savedPlaces,
       here,
       isMobile,
+      placing,
       selectedPoint,
       selectPoint,
       ...conditions
@@ -143,6 +144,7 @@ export function renderForm(options: Options = {}, tab: SettingsTab = "generate",
               onPlaceFound={onPlaceFound}
               savedPlaces={savedPlaces ?? storedPlaces}
               isMobile={isMobile}
+              placing={placing}
               weightsPanel={weightsPanel}
               exclusionsPanel={exclusionsPanel}
               saveConditionsButton={saveConditionsButton}

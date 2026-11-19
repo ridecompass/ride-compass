@@ -67,9 +67,13 @@ export const PopoverContent = forwardRef<HTMLDivElement, PopoverContentProps>(fu
         sideOffset={sideOffset}
         className={cn(contentVariants({ layer, tone }), className)}
         onInteractOutside={(event) => {
-          onInteractOutside?.(event);
           // 説明を見る状態の案内・説明の面を押しても、そこへフォーカスが移っても閉じない（開いたまま、中の部品の説明を見られる）。
-          if (isInUsageGuide(event.target)) event.preventDefault();
+          // 呼ぶ側の受け口へも、外の操作として渡さない。
+          if (isInUsageGuide(event.target)) {
+            event.preventDefault();
+            return;
+          }
+          onInteractOutside?.(event);
         }}
         {...props}
       />

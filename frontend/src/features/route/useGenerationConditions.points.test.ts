@@ -252,29 +252,6 @@ describe("地点", () => {
     expect(result.current.selectedPoint).toEqual({ role: "waypoint", index: 1 });
   });
 
-  it.each([
-    { label: "周回を外した間", loop: false, destination: null },
-    { label: "周回の間", loop: true, destination: C },
-  ])(
-    "$labelは経由地と目的地を一度に消せ、出発地はそのまま残し、出発地を選んでいることに戻る（周回の間は覚えている目的地を残す）",
-    ({ loop, destination }) => {
-      const { result, onOriginPlace } = renderConditions();
-      act(() => result.current.setDestination(C));
-      act(() => result.current.setLoop(loop));
-      act(() => result.current.selectPoint({ role: "waypoint", index: null }));
-      act(() => result.current.placeAtSelected(A, null));
-      act(() => result.current.placeAtSelected(B, null));
-
-      act(() => result.current.clearPoints());
-
-      expect(result.current.waypoints).toEqual([]);
-      expect(result.current.selectedPoint).toEqual({ role: "origin" });
-      expect(onOriginPlace).not.toHaveBeenCalled();
-      act(() => result.current.setLoop(false));
-      expect(result.current.destination).toEqual(destination);
-    },
-  );
-
   it("検索で選んだ地点はその役割で置く（経由地は番号を指せばそれを置き直し、指さなければ足してその経由地を選ぶ）", () => {
     const { result, onOriginPlace } = renderConditions();
     const originShop = candidateAt(A, "出発の店");

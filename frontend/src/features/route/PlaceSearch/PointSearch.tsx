@@ -38,6 +38,8 @@ interface PointSearchProps {
   isMobile: boolean;
   /** 目印が地点の行か（false ならキーボードの上の線で、指す三角を出さない）。 */
   pointsAtRow: boolean;
+  /** 地図をタップすると、この地点を置けるか（置けない間は「地図で置く」を出さない）。 */
+  placing: boolean;
   /** いま置いている地点（置いていなければ null で、保存のチップを出さない）。 */
   placed: PlaceCandidate | null;
   /** 候補・保存した地点・履歴から選んだ地点を、この地点として置く。 */
@@ -46,12 +48,15 @@ interface PointSearchProps {
   onHere: (() => void) | null;
   /** 小窓を閉じる（「地図で置く」も、閉じて地図を見せる）。 */
   onClose: () => void;
+  /** 閉じたときにフォーカスを戻す（目印は押した部品ではないので、Radix は戻す先を知らない）。 */
+  onCloseAutoFocus: (event: Event) => void;
 }
 
 /**
  * 地点の行を押すと開く、その地点を探す小窓（呼ぶ側が `Popover` と目印を持つ）。打つ前は「現在地」「地図で置く」「いまの地点を保存」の
  * チップを出し、保存した地点・検索の履歴を打った文字で絞って出し、打つと住所・施設の候補を出す（候補の☆でその地点を保存する）。候補を押すと、その地点に置いて
- * 閉じる。開いた時点では欄へ移らない（スマホでキーボードが地図とパネルを覆わないように）。✕・小窓の外・Escape・ブラウザの「戻る」で閉じる。
+ * 閉じる。開いた時点では欄へ移らず小窓そのものへフォーカスを移す（スマホでキーボードが地図とパネルを覆わないように。Tab で中へ進める）。
+ * ✕・選ぶ・ブラウザの「戻る」で閉じる（小窓の外と Escape は、呼ぶ側の `Popover` が閉じる）。
  */
 export default function PointSearch({
   title,
@@ -61,11 +66,14 @@ export default function PointSearch({
   savedPlaces,
   isMobile,
   pointsAtRow,
+  placing,
   placed,
   onChoose,
   onHere,
   onClose,
+  onCloseAutoFocus,
 }: PointSearchProps) {
+  const contentRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const history = usePlaceHistory();
   const typed = lookup.text.trim() !== "";
@@ -73,15 +81,11 @@ export default function PointSearch({
   const historyMatches = historyMatching(history.places, savedPlaces.places, lookup.text);
   const placedSaved = placed === null ? null : savedPlaceAt(savedPlaces.places, placed);
 
-  function close() {
-    lookup.close({ clearText: true });
-    onClose();
-  }
-  useCloseOnBack(true, close);
+  useCloseOnBack(true, onClose);
 
   function choose(candidate: PlaceCandidate) {
     onChoose(candidate);
-    close();
+    onClose();
   }
   /** 住所・施設の候補か履歴を選ぶ（履歴に残す。保存した地点は保存した一覧から出すので残さない）。 */
   function chooseFound(candidate: PlaceCandidate) {
@@ -91,6 +95,7 @@ export default function PointSearch({
 
   return (
     <PopoverContent
+      ref={contentRef}
       side={isMobile ? "top" : "right"}
       align={isMobile ? "center" : "start"}
       sideOffset={8}
@@ -100,9 +105,11 @@ export default function PointSearch({
         "flex max-h-[var(--radix-popover-content-available-height)] flex-col gap-1 overflow-y-auto px-2 py-1.5",
         isMobile ? "w-[var(--radix-popover-trigger-width)]" : "w-[22rem]",
       )}
-      onOpenAutoFocus={(event) => event.preventDefault()}
-      onEscapeKeyDown={close}
-      onInteractOutside={close}
+      onOpenAutoFocus={(event) => {
+        event.preventDefault();
+        contentRef.current?.focus();
+      }}
+      onCloseAutoFocus={onCloseAutoFocus}
     >
       {pointsAtRow && <PopoverArrow className="fill-[var(--color-surface)]" width={14} height={7} />}
       <div className="flex items-center gap-2">
@@ -113,7 +120,7 @@ export default function PointSearch({
           size="icon"
           className="size-7 flex-none"
           aria-label="検索を閉じる"
-          onClick={close}
+          onClick={onClose}
           usage="地点の検索を閉じます。"
         >
           ✕
@@ -144,7 +151,7 @@ export default function PointSearch({
             variant="ghost"
             size="icon"
             onClick={() => {
-              lookup.close({ clearText: true });
+              lookup.clear();
               inputRef.current?.focus();
             }}
             aria-label="入力を消す"
@@ -162,17 +169,19 @@ export default function PointSearch({
             disabled={onHere === null}
             onClick={() => {
               onHere?.();
-              close();
+              onClose();
             }}
             usage={`現在地を${title}にします。`}
           >
             <LocateIcon size={14} />
             現在地
           </Button>
-          <Button size="xs" onClick={close} usage={`小窓を閉じます。地図をタップすると、そこを${title}にします。`}>
-            <SelectedSpotIcon size={14} />
-            地図で置く
-          </Button>
+          {placing && (
+            <Button size="xs" onClick={onClose} usage={`小窓を閉じます。地図をタップすると、そこを${title}にします。`}>
+              <SelectedSpotIcon size={14} />
+              地図で置く
+            </Button>
+          )}
           {placed !== null && (
             <Button
               size="xs"
