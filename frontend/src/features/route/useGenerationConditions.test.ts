@@ -1,5 +1,5 @@
 /**
- * 生成の条件（`useGenerationConditions.ts`）——周回か・全長の目標を決めるか・距離・候補数・つまみと倍率・道ごとの避け方を返す。
+ * 生成の条件（`useGenerationConditions.ts`）——周回か・距離の目標を決めるか・距離・候補数・つまみと倍率・道ごとの避け方を返す。
  * 保存する値（地点以外）は開き直しても残る。倍率は、費用の軸の一覧が届いた後に、今の軸のものだけを送る。
  *
  * ここで見ないもの:
@@ -40,10 +40,10 @@ beforeEach(() => {
   onBackend("GET", "/api/cost-axes", heldReplies().reply);
 });
 
-describe("周回と全長の目標", () => {
+describe("周回と距離の目標", () => {
   it.each([
     { label: "周回", read: "loop", set: "setLoop" },
-    { label: "全長の目標", read: "distanceTargeted", set: "setDistanceTargeted" },
+    { label: "距離の目標", read: "distanceTargeted", set: "setDistanceTargeted" },
   ] as const)("$labelは既定で入っていて、外したことは開き直しても残る", ({ read, set }) => {
     const first = renderConditions();
     expect(first.result.current[read]).toBe(true);

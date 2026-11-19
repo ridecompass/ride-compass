@@ -10,7 +10,7 @@ import { withEntryFirst } from "@/lib/storedList";
 export interface GenerationConditionsSnapshot {
   /** 周回か（終点を出発地にする）。周回の間も`destination`は覚えておき、外すと戻す。 */
   loop: boolean;
-  /** 全長の目標を決めるか。外している間も距離の入力は残す（入れ直すと前の値に戻る）。 */
+  /** 距離の目標を決めるか。外している間も距離の入力は残す（入れ直すと前の値に戻る）。 */
   distanceTargeted: boolean;
   /** 距離の入力（文字列のまま。「ルート設定」が持つ形）。 */
   distance: string;
@@ -55,7 +55,7 @@ export function suggestedConditionName(conditions: GenerationConditionsSnapshot)
 
 /** 保存の前と一覧の行に並べる、何が保存されるかの説明（出発地は`originDescription`）。 */
 interface ConditionsDescription {
-  /** 周回か目的地か・全長の目標・経由地・候補数。 */
+  /** 周回か目的地か・距離の目標・経由地・候補数。 */
   route: string;
   /** つまみと、標準でない軸の倍率（全部標準なら「標準」）。 */
   costPreference: string;

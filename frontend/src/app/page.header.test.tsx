@@ -55,7 +55,9 @@ describe("ヘッダーとメニュー", () => {
       const held = heldReplies();
       onBackend("GET", "/api/weather/amedas", held.reply);
       act(() => vi.advanceTimersByTime(refreshIntervals.amedas_seconds * SECOND_MS));
-      await waitFor(() => expect(held.arrived()).toBe(1));
+      // 要求が届いても DOM は変わらないので、偽の`setInterval`の下でも確かめ直す`vi.waitFor`で待つ（testing-library の`waitFor`は
+      // 確かめ直しに`setInterval`を使い、偽の時計の下では DOM が変わったときしか確かめ直さない）。
+      await vi.waitFor(() => expect(held.arrived()).toBe(1));
       expect(mark()).not.toBeNull();
     } finally {
       vi.useRealTimers();

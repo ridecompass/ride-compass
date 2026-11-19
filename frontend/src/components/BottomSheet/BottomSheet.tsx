@@ -22,6 +22,8 @@ interface BottomSheetProps {
   onHeightChoose: (vh: number) => void;
   /** 変わったら中身が別物になったとみなして高さを合わせ直す（タブの切り替え等）。 */
   fitKey?: string;
+  /** 中身へ合わせるときの高さの上限（vh）。超える分はシートの中で動かす。 */
+  fitMaxVh?: number;
 }
 
 const SWIPE_CLOSE_THRESHOLD_PX = 60;
@@ -87,6 +89,7 @@ function OpenBottomSheet({
   chosenHeightVh,
   onHeightChoose,
   fitKey,
+  fitMaxVh = MAX_SHEET_HEIGHT_VH,
 }: Omit<BottomSheetProps, "open">) {
   const titleId = useId();
   // 中身に合わせた高さ・ドラッグの途中の高さ。持ち主へ上げないので、動かす間に持ち主は描き直されない。
@@ -107,12 +110,12 @@ function OpenBottomSheet({
     const viewportHeight = window.innerHeight;
     const needed = fitHeightOf(sheet, body);
     if (viewportHeight <= 0 || sheet.clientHeight <= 0 || needed <= 0) return;
-    const fittedVh = clampSheetHeightVh(Math.ceil((needed / viewportHeight) * 100));
+    const fittedVh = clampSheetHeightVh(Math.min(fitMaxVh, Math.ceil((needed / viewportHeight) * 100)));
     // 描き直しを待たずに書く。同じ描画で開いた他の部品の effect（地図がルートを空きへ収める等）は、描き直しの前に流れて
     // シートの高さを読む。
     sheet.style.height = `${fittedVh}vh`;
     setWorkingHeightVh(fittedVh);
-  }, [autoFitHeight, fitKey]);
+  }, [autoFitHeight, fitKey, fitMaxVh]);
   // つまみのドラッグ。始めた指（pointerId）の動きだけを見る（別の指のmove/upに反応しない）。
   // つまむ前のシートの中の高さ（`startWorkingHeightVh`）は、決めずに終えたときに戻す先。
   const dragRef = useRef<{

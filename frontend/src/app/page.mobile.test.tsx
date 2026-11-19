@@ -57,19 +57,22 @@ describe("スマホのシート", () => {
     expect(screen.queryByRole("dialog", { name: "ルートを作れませんでした" })).toBeNull();
     expect(outcomeTab).not.toHaveAccessibleDescription();
     expect(within(settingsSheet).getByRole("tab", { name: "条件" })).toHaveAttribute("aria-selected", "true");
-    const originRow = within(settingsSheet).getByRole("region", { name: "出発地" });
+    const originRow = within(settingsSheet).getByRole("button", { name: "出発地 未設定" }).closest("li");
     expect(originRow).toHaveFocus();
     expect(originRow).toHaveAttribute("data-asked", "true");
-    expect(originRow).toHaveTextContent("地図をタップするか、住所・施設で探して置いてください");
+    expect(originRow).toHaveTextContent("押して探すか、地図をタップ");
 
     expect(originMark().draggable).toBe(true);
     await user.click(within(settingsSheet).getByRole("tab", { name: "負担" }));
     expect(originMark().draggable).toBe(false);
     await user.click(within(settingsSheet).getByRole("tab", { name: "条件" }));
     // 出発地へフォーカスを移すのは押したときだけで、ほかの地点から出発地を選び直しただけでは移さない。
-    await user.click(within(settingsSheet).getByRole("button", { name: "経由地を足す" }));
-    await user.click(within(settingsSheet).getByRole("button", { name: /^出発地:/ }));
-    expect(within(settingsSheet).getByRole("button", { name: /^出発地:/ })).toHaveFocus();
+    // 小窓は閉じてから地図を押す（開いている間に地図を押すと、閉じるだけで置かない）。
+    await user.click(within(settingsSheet).getByRole("button", { name: "＋ 経由地" }));
+    await user.keyboard("{Escape}");
+    await user.click(within(settingsSheet).getByRole("button", { name: /^出発地 / }));
+    await user.keyboard("{Escape}");
+    expect(within(settingsSheet).getByRole("button", { name: /^出発地 / })).toHaveFocus();
     clickMap(HERE);
     jobs.respond([FIRST], LOOP_CONDITIONS);
     expect(await generate(user)).toMatchObject({ latitude: HERE.latitude, longitude: HERE.longitude });
@@ -81,7 +84,7 @@ describe("スマホのシート", () => {
     expect(screen.queryByRole("dialog")).toBeNull();
 
     await user.click(settingsTab());
-    act(() => screen.getByRole("slider", { name: "全長の目標" }).focus());
+    act(() => screen.getByRole("slider", { name: "距離の目標" }).focus());
     await user.keyboard("{ArrowRight}");
     expect(outcomeTab).toHaveAccessibleDescription("生成条件が変更されています");
     jobs.respond([], LOOP_CONDITIONS, "起点の近くに道路データがありません");

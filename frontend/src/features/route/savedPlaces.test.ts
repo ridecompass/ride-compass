@@ -5,7 +5,7 @@
  * 保存すると置き換える。履歴は同じ位置を置き換え、上限を超えた古い件を捨て、保存した地点と同じ位置の件を出さない。
  *
  * ここで見ないもの:
- * - 一覧をどこに出し、選ぶと何が起きるか → `PlaceSearch/PlaceSearch.test.tsx`
+ * - 一覧をどこに出し、選ぶと何が起きるか → `PlaceSearch/PointSearch.saved.test.tsx`
  */
 import { describe, expect, it } from "vitest";
 

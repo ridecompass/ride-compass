@@ -58,7 +58,7 @@ const COST_CATALOG: CostAxisCatalog = {
   failed: false,
 };
 
-// 名前と説明が分ける形: 周回か（周回の間に覚えている目的地は出さない）・全長の目標の有無・経由地の有無。
+// 名前と説明が分ける形: 周回か（周回の間に覚えている目的地は出さない）・距離の目標の有無・経由地の有無。
 const SHAPES = {
   loop: { loop: true, distanceTargeted: true, waypoints: [], destination: POINT },
   loopVia: { loop: true, distanceTargeted: true, waypoints: [POINT], destination: null },

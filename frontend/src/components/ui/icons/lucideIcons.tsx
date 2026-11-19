@@ -35,6 +35,7 @@ import {
   Play,
   Plus,
   RotateCw,
+  RulerDimensionLine,
   Save,
   Search,
   Shield,
@@ -126,8 +127,6 @@ export const HelpIcon = fromLucide(CircleQuestionMark);
 export const IntroIcon = fromLucide(BookOpen);
 /** 地図で選んでいる区間の地点。 */
 export const SelectedSpotIcon = fromLucide(MapPin);
-/** 置いた地点を1つ消す。保存したものを消す`DeleteSavedIcon`と同じく、消す操作はごみ箱の形にそろえる。 */
-export const RemovePointIcon = fromLucide(Trash);
 /** 押さえたまま上下へ動かして、行の順を入れ替える所。 */
 export const ReorderHandleIcon = fromLucide(GripVertical);
 /** 利用者が変えられない選び方（いつも決まった値の行）。 */
@@ -150,6 +149,8 @@ export const NotFetchedIcon = fromLucide(CloudOff);
 export const BackToNowIcon = fromLucide(History);
 /** 地点を住所・施設で探す。 */
 export const SearchPlaceIcon = fromLucide(Search);
+/** 距離の目標を決めるか（条件タブの「距離」）。 */
+export const RulerIcon = fromLucide(RulerDimensionLine);
 /** 選んだ区間へ地図を寄せる。 */
 export const ShowSectionOnMapIcon = fromLucide(ZoomIn);
 /** 小窓の地点の Street View を開く（Google マップの Street View の人の形）。 */

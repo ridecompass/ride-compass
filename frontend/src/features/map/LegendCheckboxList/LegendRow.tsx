@@ -62,7 +62,7 @@ export function RowMarksNote({ marks = [] }: { marks?: readonly { key: string; m
     },
   ];
   return (
-    <p className="m-0 mb-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[length:var(--font-size-xs)] text-[var(--color-muted)]">
+    <p className="mb-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[length:var(--font-size-xs)] text-[var(--color-muted)]">
       {all.map(({ key, mark, meaning }) => (
         <span key={key} className="inline-flex items-center gap-0.5">
           {mark}

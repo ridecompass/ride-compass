@@ -11,7 +11,7 @@ const groupVariants = cva("inline-flex", {
   variants: {
     variant: {
       /** 横に並ぶ切り替え。置き場より広ければ、各項目の文字を折り返して置き場の幅に収める。 */
-      segmented: "max-w-full overflow-hidden rounded-full border border-[var(--color-border)]",
+      segmented: "max-w-full overflow-hidden rounded-sm border border-[var(--color-border)]",
       /** 札を横へ流して選ぶ（レンズの軸）。 */
       chips: "w-full flex-wrap gap-1",
       /** 1本の目盛りの上の点から選ぶ（並びに大小の向きがある段）。目盛りの線を項目の後ろに引き、項目の中身は呼ぶ側が描く。 */

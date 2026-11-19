@@ -25,7 +25,7 @@ export const CLIENT_TUNING_IDS = {
   minStretchKm: "splice.min_stretch_km",
   /** 下りの速度上限（km/h）。 */
   maxDescentKmh: "speed.max_descent_kmh",
-  /** 全長の目標からの許容差（目標の距離に対する割合）。全長の目標の説明文に出す。 */
+  /** 距離の目標からの許容差（目標の距離に対する割合）。距離の目標の説明文に出す。 */
   distanceToleranceRatio: "search.distance_tolerance_ratio",
   /** 土地被覆を数える帯の外の幅（m）。作り直しに使った値が届く。土地被覆の層の説明文に出す。 */
   landcoverRingOuterM: "landcover.ring_outer_m",

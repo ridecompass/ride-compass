@@ -87,7 +87,7 @@ export async function installApiMocks(page: Page): Promise<void> {
     route.fulfill({ json: { materials: {}, wind_previous_run_from: null } }),
   );
 
-  // 地点の詳しくが、置いた位置の辺りを引く。辺り無し（境界の外）で答える。
+  // 地点の行が、置いた位置の辺りを引く。辺り無し（境界の外）で答える。
   await page.route(`${API_BASE}/api/place-area*`, (route) => route.fulfill({ json: { area: null } }));
 
   // Next.jsのrewritesでbackendへ中継される経路（タイル・時刻一覧等）。モックしないと、E2Eの
@@ -203,7 +203,7 @@ export async function openMobileSheet(page: Page, name: MobileSheetName) {
 }
 
 /**
- * 「ルート設定」シートから全長の目標を指定してルートを生成し、候補が出て移った「ルート結果」シートを返す。
+ * 「ルート設定」シートから距離の目標を指定してルートを生成し、候補が出て移った「ルート結果」シートを返す。
  * @public 撮影の脚本が口（`capture/context.ts`の`fixtures`）越しに呼ぶ。knipは口越しの呼び出しを辿れない。
  */
 export async function generateRoutes(page: Page, { distanceKm = 20 }: { distanceKm?: number } = {}) {
@@ -212,9 +212,9 @@ export async function generateRoutes(page: Page, { distanceKm = 20 }: { distance
   return generateInMobileSheet(page, sheet);
 }
 
-/** 開いている「ルート設定」シートの全長の目標のルーラーを、キー操作で`distanceKm`（5km刻み）のコマへ合わせる。 */
+/** 開いている「ルート設定」シートの距離の目標のルーラーを、キー操作で`distanceKm`（5km刻み）のコマへ合わせる。 */
 export async function setDistance(sheet: Locator, distanceKm: number) {
-  const ruler = sheet.getByRole("slider", { name: "全長の目標", exact: true });
+  const ruler = sheet.getByRole("slider", { name: "距離の目標", exact: true });
   await ruler.focus();
   await ruler.press("Home");
   for (let km = 5; km < distanceKm; km += 5) await ruler.press("ArrowRight");

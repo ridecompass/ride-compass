@@ -243,11 +243,12 @@ export function renderHome() {
 
 export type User = ReturnType<typeof userEvent.setup>;
 
-/** 周回を外し、地点の並びで目的地を押して選ぶ（「ルート設定」が効いている間、地図を押すと選んでいる地点を置く。何も押していなければ
- * 出発地。既定の周回の間は目的地を選べない）。 */
+/** 「目的地へ」に切り替え、地点の一覧で目的地の行を押して開いた小窓の「地図で置く」で閉じる（「ルート設定」が効いている間、小窓を
+ * 閉じていれば地図を押すと選んでいる地点を置く。何も押していなければ出発地。既定の周回の間は目的地を選べない）。 */
 export async function selectDestination(user: User) {
-  await user.click(screen.getByRole("button", { name: "周回", pressed: true }));
-  await user.click(screen.getByRole("button", { name: "目的地: 未設定" }));
+  await user.click(screen.getByRole("radio", { name: "目的地へ" }));
+  await user.click(screen.getByRole("button", { name: "目的地 未設定" }));
+  await user.click(screen.getByRole("button", { name: "地図で置く" }));
 }
 
 /** 「地図に出す情報」の一覧で道路のレイヤー（路面の種類）を出す。 */

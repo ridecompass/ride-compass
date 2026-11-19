@@ -11,7 +11,7 @@
  * 選ばれ、区間を持つかで周りの塗りが決まること、全消去は確認の窓で「消す」を押してから両方から消えること、候補がある間だけ
  * 条件のずれの印が点き全消去で消えること、走行条件の想定速度・出発時刻が生成と地図の道の詳細へ同じ値で渡ること、
  * 「負担」タブの全体の割合と軸ごとの無効が生成の要求に載り、無効の軸が「負担で塗る」に出ないこと、負担を説明する文の
- * 軸の並びとルートの後の「負担で塗る」の総合の名前が費用の軸の一覧から引かれること、「条件」タブで保存した条件が地図で置いた
+ * 軸の並びとルートの後の「負担で塗る」の総合の名前が費用の軸の一覧から引かれること、「保存済み」タブで保存した条件が地図で置いた
  * 出発地を持ち、呼び出すとその出発地から生成すること、「道路」タブの段を、タブを出していて「地図で見る」がONの間だけ地図の道に
  * 塗ること。
  *
@@ -118,7 +118,7 @@ describe("ルートを作る", () => {
     await generate(user);
     await waitFor(() => expect(candidateTabs()).toHaveLength(1));
 
-    act(() => screen.getByRole("slider", { name: "全長の目標" }).focus());
+    act(() => screen.getByRole("slider", { name: "距離の目標" }).focus());
     await user.keyboard("{ArrowRight}");
     await user.click(changedMark()!);
     expect(screen.getByRole("dialog")).toHaveTextContent("生成条件が変更されています");
@@ -159,12 +159,12 @@ describe("ルートを作る", () => {
   it("保存した条件は地図で置いた出発地を持ち、呼び出すとその出発地から生成する", async () => {
     const PLACED: Coordinates = { latitude: 35.65, longitude: 139.75 };
     const { user } = renderHome();
-    // 保存は「条件」タブ、呼び出しは「保存済み」の「設定」で行う（隠れたタブの中身も描いてあるので、ほかのタブにも保存のボタンが
-    // あれば、ボタンが2つに当たって落ちる）。
+    // 保存も呼び出しも「保存済み」タブで行う（隠れたタブの中身も描いてあるので、ほかのタブにも保存のボタンがあれば、ボタンが2つに
+    // 当たって落ちる）。
     const saveAs = async (name: string) => {
-      await user.click(screen.getByRole("tab", { name: "条件" }));
+      await user.click(screen.getByRole("tab", { name: "保存済み" }));
       const saveButton = screen.getByRole("button", { name: "いまの設定を保存" });
-      expect(screen.getByRole("tabpanel", { name: "条件" })).toContainElement(saveButton);
+      expect(screen.getByRole("tabpanel", { name: "保存済み" })).toContainElement(saveButton);
       await user.click(saveButton);
       const dialog = screen.getByRole("dialog", { name: "いまの設定を保存" });
       const nameInput = within(dialog).getByRole("textbox", { name: "保存する名前" });
@@ -186,6 +186,7 @@ describe("ルートを作る", () => {
 
     clickMap(PLACED);
     await saveAs("置いた所");
+    await user.click(screen.getByRole("tab", { name: "条件" }));
     await user.click(screen.getByRole("button", { name: "出発地を現在地に戻す" }));
 
     jobs.respond([FIRST], LOOP_CONDITIONS);

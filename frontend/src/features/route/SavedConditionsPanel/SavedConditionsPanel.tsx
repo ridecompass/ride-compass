@@ -54,7 +54,7 @@ function DescriptionRows({ rows }: { rows: [term: string, detail: React.ReactNod
   );
 }
 
-// 「条件」タブの、いまの設定を保存するアイコン。押すと窓で、残るもの（条件・出発地の扱い・重みの割合・除外）だけを
+// 「保存済み」タブの、いまの設定を保存するアイコン。押すと窓で、残るもの（条件・出発地の扱い・重みの割合・除外）だけを
 // 並べてから名前を付けて保存する（残らないものや重みを変えたかは書かない）。
 export function SaveConditionsButton({
   saved,
@@ -157,7 +157,7 @@ export function SaveConditionsButton({
   );
 }
 
-// 「ルート設定」区分の「保存済み」タブの「設定」。保存した設定の一覧（呼び出す・消す）を置く（保存は「条件」タブ）。
+// 「ルート設定」区分の「保存済み」タブの「設定」。保存した設定の一覧（呼び出す・消す）を置く（保存のボタンは中のタブの行の右）。
 // 一覧の行は名前とアイコンの操作だけで、呼び出すと窓で中身を見せ、「反映する」で各タブの値と地図のピンが入れ替わる。
 // 生成はいつもの「ルート生成」で行う（入れ替えたあとに値を確かめたり少し変えたりできる）。
 export default function SavedConditionsPanel({ saved, onRecall, onRemove }: SavedConditionsPanelProps) {
@@ -180,7 +180,7 @@ export default function SavedConditionsPanel({ saved, onRecall, onRemove }: Save
       <SavedList
         items={saved}
         noun="設定"
-        howToSave={`条件タブの「いまの設定を保存」で、いまの設定[条件・出発地・負担・${ROAD_SETTINGS_TAB_NAME}]に名前を付けて保存します。保存した設定は、行の「呼び出す」を押すと各タブに戻せます。`}
+        howToSave={`右上の「いまの設定を保存」で、いまの設定[条件・出発地・負担・${ROAD_SETTINGS_TAB_NAME}]に名前を付けて保存します。保存した設定は、行の「呼び出す」を押すと各タブに戻せます。`}
         renderMain={(entry) => <span className="min-w-0 flex-auto truncate font-semibold">{entry.name}</span>}
         renderActions={(entry) => (
           <Button
