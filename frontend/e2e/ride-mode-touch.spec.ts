@@ -1,4 +1,5 @@
 import { expect, test, type BrowserContext, type Page } from "@playwright/test";
+import { RIDE_ZOOM_STEPS } from "@/features/map/MapView/rideZoom";
 import { moved } from "@/testing/movedPoint";
 
 import { MAIN_MAP_CANVAS, MOBILE_VIEWPORT, openMapApp } from "./fixtures";
@@ -26,8 +27,9 @@ test.describe("タッチ端末", () => {
 
     // 走っている間の縮尺のボタンは、押すたびに中→遠→近→中と倍率を替える。
     const zoomButton = page.getByRole("button", { name: /^縮尺/ });
-    expect(await settledZoom(page)).toBeCloseTo(17, 2);
-    for (const expected of [15, 18, 17]) {
+    const [middle, far, near] = RIDE_ZOOM_STEPS.map((step) => step.zoom);
+    expect(await settledZoom(page)).toBeCloseTo(middle, 2);
+    for (const expected of [far, near, middle]) {
       await zoomButton.click();
       expect(await settledZoom(page)).toBeCloseTo(expected, 2);
     }

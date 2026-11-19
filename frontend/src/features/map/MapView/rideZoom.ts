@@ -1,11 +1,11 @@
 // 走行モードで追っている間の倍率。倍率のボタンで段を回して選ぶ（速さでは変えない——走る速さで倍率がじわじわ動くと
 // 読みにくい）。
 
-/** 走行モードの倍率のボタンが回す基準の倍率（押す順）。走り始めは先頭の中（数十m先の曲がり角が地図の上で見分けられる。
- * 17で1pxが約1m）。`reach`は絵の角の広がり。 */
+/** 走行モードの倍率のボタンが回す基準の倍率（押す順）。走り始めは先頭の中（曲がる所の交差点が地図の上で見分けられる。
+ * 16で1pxが約2m）。段は2つずつ離し、押したら違いがはっきり分かるようにする。`reach`は絵の角の広がり。 */
 export const RIDE_ZOOM_STEPS = [
-  { reach: "middle", label: "中", zoom: 17 },
-  { reach: "far", label: "遠", zoom: 15 },
+  { reach: "middle", label: "中", zoom: 16 },
+  { reach: "far", label: "遠", zoom: 14 },
   { reach: "near", label: "近", zoom: 18 },
 ] as const;
 export type RideZoomStep = (typeof RIDE_ZOOM_STEPS)[number];
