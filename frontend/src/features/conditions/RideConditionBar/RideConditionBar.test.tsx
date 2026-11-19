@@ -57,18 +57,19 @@ async function openRuler(step?: string) {
 
 describe("RideConditionBar 出発時刻", () => {
   it.each([
-    ["今日は時刻だけを1行", "2026-09-24T09:05", "9:05", ["9:05"]],
-    ["別の日は日付と時刻を2行に分けて（列の幅に収める）", "2026-09-25T13:00", "9/25 13:00", ["9/25", "13:00"]],
+    ["今日は「発」を添えた時刻だけを1行", "2026-09-24T09:05", "9:05", ["9:05発"]],
+    ["別の日は日付と時刻を2行に分けて（列の幅に収める）", "2026-09-25T13:00", "9/25 13:00", ["9/25", "13:00発"]],
   ])("出発時刻を、%s出す", (_case, departure, label, lines) => {
     renderBar({ departureTime: jst(departure) });
     const button = screen.getByRole("button", { name: `出発時刻: ${label}（タップで変更）` });
     expect([...button.lastElementChild!.children].map((line) => line.textContent)).toEqual(lines);
   });
 
-  it("開くと、日時の入力欄に日本時間で今の出発時刻を入れて出し、直接指定した日時を日本時間として渡す", async () => {
+  it("開くと、見出し「出発の時刻」と日時の入力欄に日本時間で今の出発時刻を入れて出し、直接指定した日時を日本時間として渡す", async () => {
     const props = renderBar();
     await userEvent.click(screen.getByRole("button", { name: /^出発時刻:/ }));
     const input = await screen.findByLabelText("出発日時を直接指定");
+    expect(screen.getByRole("heading", { name: "出発の時刻" })).toBeVisible();
     expect(input).toHaveValue("2026-09-24T09:05");
     fireEvent.change(input, { target: { value: "2026-09-26T07:30" } });
     expect(props.onDepartureTimeChange).toHaveBeenCalledWith(jst("2026-09-26T07:30"));

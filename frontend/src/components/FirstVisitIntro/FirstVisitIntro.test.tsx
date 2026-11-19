@@ -29,8 +29,8 @@ afterEach(() => {
 
 describe("FirstVisitIntro", () => {
   it.each([
-    [true, "下の「ルート設定」を開いて距離を決め、ルート生成を押すと、ルートの候補が地図に出ます。"],
-    [false, "左の「ルート設定」で距離を決め、ルート生成を押すと、ルートの候補が地図に出ます。"],
+    [true, "下の「ルート設定」を開いて距離を決め、"],
+    [false, "左の「ルート設定」で距離を決め、"],
   ])("スマホ（%s）かで、最初の一手の場所を言い分ける", (isMobile, firstStep) => {
     render(<FirstVisitIntro isMobile={isMobile} locationUnknown={false} />);
 
