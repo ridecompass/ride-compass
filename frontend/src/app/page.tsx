@@ -150,6 +150,7 @@ export default function Home() {
     mapTheme: mapView.look.mapTheme,
     settingsTab,
     onSettingsTabChange: setSettingsTab,
+    settingsShape: `${conditions.loop}:${conditions.waypoints.length}:${conditions.selectedPoint.role === "waypoint" && conditions.selectedPoint.index === null}`,
     settingsBody: (
       <RouteSettingsForm
         conditions={conditions}

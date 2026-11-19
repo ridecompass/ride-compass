@@ -62,6 +62,8 @@ interface RoutePanelsProps {
   onSettingsTabChange: (tab: SettingsTab) => void;
   /** 「ルート設定」の中身。 */
   settingsBody: ReactNode;
+  /** 「条件」タブの中身の形（地点の行の数等）。変わったら、シートの高さを中身へ合わせ直す。 */
+  settingsShape: string;
   /** 「このルートで走る」を押した。無ければボタンを出さない（もう走っている間）。 */
   onRide?: (routeId: string) => void;
 }
@@ -148,12 +150,15 @@ export function DesktopRoutePanels(props: RoutePanelsProps) {
   );
 }
 
+/** 「ルート設定」のシートを中身へ合わせるときの上限（地図を半分は見せる）。 */
+const SETTINGS_SHEET_MAX_FIT_VH = 50;
+
 /**
  * モバイルの下部タブと部分シート。シートを開いたままでも地図の上側は見えて動かせる。走行中は、帯の「ルート」でシートを
  * 開いている間だけ出す（タブで2枚のシートを行き来し、閉じると地図に戻る）。
  */
 export function MobileRoutePanels(props: RoutePanelsProps) {
-  const { panels, isMobile, route, settingsTab, onSettingsTabChange, settingsBody } = props;
+  const { panels, isMobile, route, settingsTab, onSettingsTabChange, settingsBody, settingsShape } = props;
   if (!isMobile || !panels.panelsShown) return null;
   const outcome = outcomeParts(props);
   const outcomeTabSignal: OutcomeTabSignal | null = panels.unseenOutcome
@@ -198,7 +203,8 @@ export function MobileRoutePanels(props: RoutePanelsProps) {
           title="ルート設定"
           headerLead={<SettingsTabsList />}
           headerAction={<GenerateRouteActions generation={route.generation} />}
-          fitKey={settingsTab}
+          fitKey={`${settingsTab}:${settingsShape}`}
+          fitMaxVh={SETTINGS_SHEET_MAX_FIT_VH}
         >
           {settingsBody}
         </BottomSheet>

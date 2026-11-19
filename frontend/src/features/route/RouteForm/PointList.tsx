@@ -1,10 +1,12 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 import { Button } from "@/components/ui/Button/Button";
 import { LocateIcon, LoopRouteIcon } from "@/components/ui/icons/icons";
 import { ReorderHandleIcon } from "@/components/ui/icons/lucideIcons";
+import { Popover, PopoverAnchor } from "@/components/ui/Popover/Popover";
 import { textVariants } from "@/components/ui/Text/Text";
 import PointMark from "@/components/PinMark/PointMark";
 import PointSearch from "@/features/route/PlaceSearch/PointSearch";
@@ -13,6 +15,7 @@ import { chooseResultOf, pointNames, pointTitle } from "@/features/route/pointNa
 import { waypointsFull, type GenerationConditionsState } from "@/features/route/useGenerationConditions";
 import { usePlaceAreas } from "@/features/route/usePlaceAreas";
 import type { SavedPlacesState } from "@/features/route/useSavedPlaces";
+import { useVisualViewport } from "@/hooks/useVisualViewport";
 import { cn } from "@/lib/cn";
 import type { Coordinates, PlaceCandidate, PointTarget } from "@/types/route";
 
@@ -55,17 +58,20 @@ export interface PointListProps {
   onPlace: (target: PointTarget, candidate: PlaceCandidate) => void;
   /** 保存した地点（検索の打つ前に出し、候補の☆で保存する）。 */
   savedPlaces: SavedPlacesState;
-  /** スマホか（検索を全面に開く）。 */
+  /** スマホか（検索の小窓を行の上に開く。PC は行の右）。 */
   isMobile: boolean;
 }
 
 /** 出発地が仮の地点のままの間の、出発地の行の名前の所の文（置き方を言う）。 */
 const ORIGIN_PLACING_GUIDE = "押して探すか、地図をタップ";
+/** 足そうとしている経由地の行の、名前の所の文。 */
+const NEW_WAYPOINT_GUIDE = "探すか、地図をタップ";
 
 /**
- * 地点の縦の一覧: 出発地 → 経由地 → 「経由地を足す」 → 終点（目的地へなら目的地、周回なら押せない「出発地へ戻る」）を点線でつなぐ。
- * 行を押すとその地点を選び（地図をタップすると選んだ地点を置く）、その地点の検索を開く。経由地と目的地は右の✕で消し、つまみを
- * 押さえて上下へ動かすと通る順を入れ替える（一番上が出発地、一番下が目的地）。
+ * 地点の縦の一覧: 見出し「地点」の右に「＋ 経由地」を置き、その下に出発地 → 経由地 → 終点（目的地へなら目的地、周回なら押せない
+ * 「出発地へ戻る」）を点線でつなぐ。行を押すとその地点を選び（地図をタップすると選んだ地点を置く）、その行に付く検索の小窓を開く。
+ * 経由地と目的地は右の✕で消し、つまみを押さえて上下へ動かすと通る順を入れ替える（一番上が出発地、一番下が目的地）。
+ * 「＋ 経由地」は目的地の手前に足す経由地の行を出し、その行の小窓を開く。
  */
 export default function PointList({
   conditions,
@@ -109,6 +115,7 @@ export default function PointList({
     ...names.waypoints,
     ...(loop ? [] : [destination === null ? null : names.destination]),
   ];
+  const rowPoints: (Coordinates | null)[] = [originPlaced, ...waypoints, ...(loop ? [] : [destination])];
   const count = targets.length;
   const first = originLocated ? 0 : 1;
   const movable = (index: number) => index >= first && rowNames[index] !== null && count - first >= 2;
@@ -133,176 +140,246 @@ export default function PointList({
     setSearching(true);
   }
 
-  const search = searching && (
-    <PointSearch
-      title={pointTitle(selected)}
-      chooseResult={chooseResultOf(selected)}
-      lookup={lookup}
-      savedPlaces={savedPlaces}
-      isMobile={isMobile}
-      onChoose={(candidate) => onPlace(selected, candidate)}
-      onHere={
-        selected.role === "origin"
-          ? originAtHere
-            ? null
-            : onOriginReset
-          : here === null
-            ? null
-            : () => onPlace(selected, { kind: "facility", level: "point", name: "現在地", area: null, ...here })
-      }
-      onClose={() => setSearching(false)}
+  const full = waypointsFull(waypoints);
+  const newWaypoint: PointTarget = { role: "waypoint", index: null };
+  const adding = isSelected(newWaypoint) && !full;
+  // スマホで打っている間は、小窓をキーボードのすぐ上へ寄せる（行はキーボードに隠れる）。
+  const aboveKeyboard = isMobile && searching && lookup.text.trim() !== "";
+  const visible = useVisualViewport(aboveKeyboard);
+
+  const markOf = (target: PointTarget, size: number) => (
+    <PointMark
+      role={target.role}
+      label={target.role === "waypoint" ? String((target.index ?? waypoints.length) + 1) : undefined}
+      originLocated={originLocated}
+      size={size}
+      className="relative"
     />
   );
-  // PC は選んだ行のすぐ下に検索を開く。
-  const searchBelow = (target: PointTarget) => (!isMobile && isSelected(target) ? search : null);
+  const selectedIndex = targets.findIndex(isSelected);
+  const selectedName = selectedIndex < 0 ? null : rowNames[selectedIndex];
+  const selectedPoint = selectedIndex < 0 ? null : rowPoints[selectedIndex];
 
-  const addTarget: PointTarget = { role: "waypoint", index: null };
-  const full = waypointsFull(waypoints);
+  /** 選んだ行を、小窓の目印にする（打っている間のスマホは、キーボードの上の線を目印にする）。 */
+  const anchored = (target: PointTarget, row: React.ReactElement) =>
+    searching && !aboveKeyboard && isSelected(target) ? (
+      <PopoverAnchor key={row.key} asChild>
+        {row}
+      </PopoverAnchor>
+    ) : (
+      row
+    );
+
+  const rowClass = (target: PointTarget) =>
+    cn(
+      "relative flex min-h-9 items-center gap-1 rounded-sm border border-transparent",
+      isSelected(target) && "border-[var(--color-accent)] bg-[var(--color-accent-bg)]",
+    );
+  const nameButtonClass =
+    "flex min-h-9 min-w-0 flex-auto cursor-pointer items-center gap-2 bg-transparent py-0.5 pl-2 text-left";
+
+  const newRow = adding && (
+    <li key="new" className={rowClass(newWaypoint)}>
+      <button
+        type="button"
+        className={nameButtonClass}
+        aria-pressed
+        onClick={() => open(newWaypoint)}
+        data-usage="足す経由地を、住所・施設で探します。地図をタップしても置けます。"
+      >
+        {markOf(newWaypoint, 22)}
+        <span className={cn(textVariants({ variant: "note" }), "w-12 flex-none")}>経由地</span>
+        <span className={cn(textVariants({ variant: "body" }), "min-w-0 flex-auto text-[var(--color-muted)]")}>
+          {NEW_WAYPOINT_GUIDE}
+        </span>
+      </button>
+      <Button
+        variant="ghost"
+        size="bare"
+        className="size-9 flex-none"
+        aria-label="経由地を足すのをやめる"
+        onClick={() => {
+          setSearching(false);
+          conditions.selectPoint({ role: "origin" });
+        }}
+        usage="経由地を足すのをやめます。"
+      >
+        ✕
+      </Button>
+      <span className="size-9 flex-none" />
+    </li>
+  );
 
   return (
-    <ol ref={listRef} aria-label="通る順" className="relative flex flex-col gap-0.5">
-      {/* 地点の印をつなぐ点線（印の真ん中の縦の線）。 */}
-      <span
-        aria-hidden="true"
-        className="absolute top-5 bottom-5 left-[1.375rem] border-l-2 border-dotted border-[var(--color-border-strong)]"
-      />
-      {targets.map((target, index) => {
-        const title = pointTitle(target);
-        const name = rowNames[index];
-        const origin = target.role === "origin";
-        const asked = origin && originAsks > 0;
-        const row = (
-          <li
-            key={index}
-            ref={origin ? originRowRef : undefined}
-            tabIndex={asked ? -1 : undefined}
-            data-point-row
-            className={cn(
-              "relative flex min-h-11 items-center gap-1 rounded-sm border border-transparent",
-              isSelected(target) && "border-[var(--color-accent)] bg-[var(--color-accent-bg)]",
-              asked && "border-[var(--color-warning)]! shadow-[inset_0_0_0_1px_var(--color-warning)]",
-              drag.dragging === index
-                ? "z-10 bg-[var(--color-surface)] shadow-md"
-                : drag.dragging !== null && "transition-transform",
-            )}
-            style={{ translate: `0 ${drag.offsetOf(index)}px` }}
-          >
-            <button
-              type="button"
-              className="flex min-h-11 min-w-0 flex-auto cursor-pointer items-center gap-2 bg-transparent py-1 pl-2.5 text-left"
-              aria-pressed={isSelected(target)}
-              onClick={() => open(target)}
-              data-usage={`${title}を選び、住所・施設で探します。地図をタップしても置けます。`}
+    <Popover
+      open={searching}
+      onOpenChange={(next) => {
+        if (!next) setSearching(false);
+      }}
+    >
+      <div className="mb-0.5 flex items-center justify-between gap-2">
+        <span className={textVariants({ variant: "note" })}>地点</span>
+        <Button
+          variant="secondary"
+          size="xs"
+          shape="pill"
+          className="min-h-7 gap-1 border-[var(--color-accent)] px-2.5 text-[var(--color-accent-strong)]"
+          disabled={full}
+          onClick={() => open(newWaypoint)}
+          usage={
+            full
+              ? "経由地はこれ以上置けません。"
+              : "目的地の手前に経由地を足します。住所・施設で探すか、地図をタップして置きます。"
+          }
+        >
+          ＋ 経由地
+        </Button>
+      </div>
+      <ol ref={listRef} aria-label="通る順" className="relative flex flex-col">
+        {/* 地点の印をつなぐ点線（印の真ん中の縦の線）。 */}
+        <span
+          aria-hidden="true"
+          className="absolute top-[1.125rem] bottom-[1.125rem] left-[1.1875rem] border-l-2 border-dotted border-[var(--color-border-strong)]"
+        />
+        {targets.map((target, index) => {
+          const title = pointTitle(target);
+          const label = target.role === "waypoint" ? "経由地" : title;
+          const name = rowNames[index];
+          const isOrigin = target.role === "origin";
+          const asked = isOrigin && originAsks > 0;
+          const row = (
+            <li
+              key={index}
+              ref={isOrigin ? originRowRef : undefined}
+              tabIndex={asked ? -1 : undefined}
+              data-point-row
+              className={cn(
+                rowClass(target),
+                asked && "border-[var(--color-warning)]! shadow-[inset_0_0_0_1px_var(--color-warning)]",
+                drag.dragging === index
+                  ? "z-10 bg-[var(--color-surface)] shadow-md"
+                  : drag.dragging !== null && "transition-transform",
+              )}
+              style={{ translate: `0 ${drag.offsetOf(index)}px` }}
             >
-              <PointMark
-                role={target.role}
-                label={target.role === "waypoint" ? String((target.index ?? 0) + 1) : undefined}
-                originLocated={originLocated}
-                size={24}
-                className="relative"
-              />
-              <span className={cn(textVariants({ variant: "note" }), "w-12 flex-none")}>{title}</span>
-              <span
-                className={cn(
-                  textVariants({ variant: "body" }),
-                  "min-w-0 flex-auto [overflow-wrap:anywhere]",
-                  name === null && "text-[var(--color-muted)]",
-                )}
+              <button
+                type="button"
+                className={nameButtonClass}
+                aria-label={`${title} ${name ?? "未設定"}`}
+                aria-pressed={isSelected(target)}
+                onClick={() => open(target)}
+                data-usage={`${title}を選び、住所・施設で探します。地図をタップしても置けます。`}
               >
-                {name ?? ORIGIN_PLACING_GUIDE}
-              </span>
-            </button>
-            {origin ? (
+                {markOf(target, 22)}
+                <span className={cn(textVariants({ variant: "note" }), "w-12 flex-none")}>{label}</span>
+                <span
+                  className={cn(
+                    textVariants({ variant: "body" }),
+                    "min-w-0 flex-auto truncate",
+                    name === null && "text-[var(--color-muted)]",
+                  )}
+                >
+                  {name ?? (isOrigin ? ORIGIN_PLACING_GUIDE : "")}
+                </span>
+              </button>
+              {isOrigin ? (
+                <Button
+                  variant="ghost"
+                  size="bare"
+                  className="size-9 flex-none"
+                  aria-label="出発地を現在地に戻す"
+                  disabled={originAtHere}
+                  onClick={onOriginReset}
+                  usage="現在地を取得し直して、そこから出発します。"
+                >
+                  <LocateIcon size={18} />
+                </Button>
+              ) : (
+                <Button
+                  variant="ghost"
+                  size="bare"
+                  className="size-9 flex-none"
+                  aria-label={`${title}を消す`}
+                  disabled={name === null}
+                  onClick={() => (target.role === "destination" ? clearDestination() : removeWaypoint(index - 1))}
+                  usage={
+                    target.role === "waypoint"
+                      ? `置いた${title}を消します。ほかの経由地の番号は詰めます。`
+                      : `置いた${title}を消します。`
+                  }
+                >
+                  ✕
+                </Button>
+              )}
               <Button
                 variant="ghost"
                 size="bare"
-                className="size-11 flex-none"
-                aria-label="出発地を現在地に戻す"
-                disabled={originAtHere}
-                onClick={onOriginReset}
-                usage="現在地を取得し直して、そこから出発します。"
+                className="size-9 flex-none touch-none items-center justify-center text-[var(--color-muted)] select-none [-webkit-touch-callout:none]"
+                aria-label={`${title}を動かす`}
+                disabled={!movable(index)}
+                onPointerDown={(event) => drag.press(index, event, rowRects())}
+                onPointerMove={drag.move}
+                onPointerUp={drag.release}
+                onPointerCancel={drag.cancel}
+                usage="押さえたまま上下へ動かすと、通る順を入れ替えます。"
               >
-                <LocateIcon size={18} />
+                <ReorderHandleIcon size={18} />
               </Button>
-            ) : (
-              <Button
-                variant="ghost"
-                size="bare"
-                className="size-11 flex-none"
-                aria-label={`${title}を消す`}
-                disabled={name === null}
-                onClick={() => (target.role === "destination" ? clearDestination() : removeWaypoint(index - 1))}
-                usage={
-                  target.role === "waypoint"
-                    ? `置いた${title}を消します。ほかの経由地の番号は詰めます。`
-                    : `置いた${title}を消します。`
-                }
-              >
-                ✕
-              </Button>
-            )}
-            <Button
-              variant="ghost"
-              size="bare"
-              className="size-11 flex-none touch-none items-center justify-center text-[var(--color-muted)] select-none [-webkit-touch-callout:none]"
-              aria-label={`${title}を動かす`}
-              disabled={!movable(index)}
-              onPointerDown={(event) => drag.press(index, event, rowRects())}
-              onPointerMove={drag.move}
-              onPointerUp={drag.release}
-              onPointerCancel={drag.cancel}
-              usage="押さえたまま上下へ動かすと、通る順を入れ替えます。"
-            >
-              <ReorderHandleIcon size={20} />
-            </Button>
+            </li>
+          );
+          // 足そうとしている経由地の行は、最後の経由地（無ければ出発地）のすぐ下（目的地の手前）に出す。
+          const rows = [anchored(target, row)];
+          if (index === waypoints.length && newRow) rows.push(anchored(newWaypoint, newRow));
+          return rows;
+        })}
+        {loop && (
+          <li className="relative flex min-h-9 items-center gap-2 py-0.5 pl-2">
+            <span className="relative inline-flex size-[22px] flex-none items-center justify-center rounded-full bg-[var(--color-surface)] text-[var(--color-muted)]">
+              <LoopRouteIcon size={16} />
+            </span>
+            <span className={cn(textVariants({ variant: "note" }), "w-12 flex-none")}>終点</span>
+            <span className={cn(textVariants({ variant: "body" }), "text-[var(--color-muted)]")}>出発地へ戻る</span>
           </li>
-        );
-        const below = searchBelow(target);
-        const rows = below === null ? [row] : [row, <li key={`${index}-search`}>{below}</li>];
-        // 「経由地を足す」は、最後の経由地（無ければ出発地）のすぐ下に置く。
-        if (index !== waypoints.length) return rows;
-        return [
-          ...rows,
-          <li
-            key="add"
-            className={cn(
-              "relative rounded-sm border border-transparent",
-              isSelected(addTarget) && "border-[var(--color-accent)] bg-[var(--color-accent-bg)]",
-            )}
-          >
-            <button
-              type="button"
-              disabled={full}
-              className="flex min-h-11 w-full cursor-pointer items-center gap-2 bg-transparent py-1 pl-2.5 text-left text-[var(--color-accent-strong)] disabled:cursor-default disabled:text-[var(--color-neutral)]"
-              aria-pressed={isSelected(addTarget)}
-              onClick={() => open(addTarget)}
-              data-usage="経由地を足します。住所・施設で探すか、地図をタップして置きます。"
-            >
-              <span className="relative inline-flex size-6 flex-none items-center justify-center rounded-full border-2 border-current bg-[var(--color-surface)] text-[length:var(--font-size-md)] leading-none">
-                ＋
-              </span>
-              <span className={textVariants({ variant: "body" })}>
-                {full ? "経由地はこれ以上置けません" : "経由地を足す"}
-              </span>
-            </button>
-          </li>,
-          ...(searchBelow(addTarget) === null ? [] : [<li key="add-search">{searchBelow(addTarget)}</li>]),
-          ...(loop
-            ? [
-                <li key="loop-end" className="relative flex min-h-11 items-center gap-2 py-1 pl-2.5">
-                  <span className="relative inline-flex size-6 flex-none items-center justify-center rounded-full bg-[var(--color-surface)] text-[var(--color-muted)]">
-                    <LoopRouteIcon size={18} />
-                  </span>
-                  <span className={cn(textVariants({ variant: "note" }), "w-12 flex-none")}>終点</span>
-                  <span className={cn(textVariants({ variant: "body" }), "text-[var(--color-muted)]")}>
-                    出発地へ戻る
-                  </span>
-                </li>,
-              ]
-            : []),
-        ];
-      })}
-      {isMobile && search}
-    </ol>
+        )}
+      </ol>
+      {aboveKeyboard &&
+        createPortal(
+          <PopoverAnchor asChild>
+            <div
+              aria-hidden="true"
+              className="pointer-events-none fixed inset-x-2 bottom-0 h-0"
+              style={visible === null ? undefined : { top: visible.top + visible.height, bottom: "auto" }}
+            />
+          </PopoverAnchor>,
+          document.body,
+        )}
+      {searching && (
+        <PointSearch
+          title={pointTitle(selected)}
+          mark={markOf(selected, 20)}
+          chooseResult={chooseResultOf(selected)}
+          lookup={lookup}
+          savedPlaces={savedPlaces}
+          isMobile={isMobile}
+          pointsAtRow={!aboveKeyboard}
+          placed={
+            selectedName === null || selectedPoint === null
+              ? null
+              : { kind: "facility", level: "point", name: selectedName, area: null, ...selectedPoint }
+          }
+          onChoose={(candidate) => onPlace(selected, candidate)}
+          onHere={
+            selected.role === "origin"
+              ? originAtHere
+                ? null
+                : onOriginReset
+              : here === null
+                ? null
+                : () => onPlace(selected, { kind: "facility", level: "point", name: "現在地", area: null, ...here })
+          }
+          onClose={() => setSearching(false)}
+        />
+      )}
+    </Popover>
   );
 }
