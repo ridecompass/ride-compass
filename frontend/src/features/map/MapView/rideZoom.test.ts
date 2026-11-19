@@ -9,7 +9,7 @@ describe("倍率のボタン: 押すたびに基準の倍率を中・遠・近�
     { case: "中から遠へ", zoom: middle.zoom, shown: middle, next: far.zoom },
     { case: "遠から近へ", zoom: far.zoom, shown: far, next: near.zoom },
     { case: "近から中へ戻る", zoom: near.zoom, shown: near, next: middle.zoom },
-    { case: "つまんで中と遠の間にしたら、近い中の絵で、次は遠", zoom: 16.2, shown: middle, next: far.zoom },
+    { case: "つまんで中と遠の間にしたら、近い中の絵で、次は遠", zoom: 15.2, shown: middle, next: far.zoom },
     { case: "つまんで近より寄せたら、近の絵で、次は中", zoom: 19.5, shown: near, next: middle.zoom },
   ])("$case", ({ zoom, shown, next }) => {
     expect(nearestRideZoomStep(zoom)).toBe(shown);
