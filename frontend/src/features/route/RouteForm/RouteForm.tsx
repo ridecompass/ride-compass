@@ -10,11 +10,10 @@ import { DISTANCE_STEP_KM } from "@/features/route/savedConditions";
 import SavedPlacesPanel from "@/features/route/SavedPlacesPanel/SavedPlacesPanel";
 import RoutePoints from "./RoutePoints";
 import { Button } from "@/components/ui/Button/Button";
-import { DistanceTargetIcon } from "@/components/ui/icons/lucideIcons";
+import { Checkbox } from "@/components/ui/Checkbox/Checkbox";
 import InfoPopover from "@/components/ui/InfoPopover/InfoPopover";
 import Ruler, { type RulerFrame } from "@/components/ui/Ruler/Ruler";
 import { textVariants } from "@/components/ui/Text/Text";
-import { panelIconToggleClass, Toggle } from "@/components/ui/Toggle/Toggle";
 import { useClientConfig } from "@/hooks/useClientConfig";
 import { CLIENT_TUNING_IDS, clientTuningValue } from "@/lib/clientConfig";
 import { cn } from "@/lib/cn";
@@ -89,7 +88,6 @@ export default function RouteForm({
 }: RouteFormProps) {
   const { distanceTargeted, setDistanceTargeted, distanceInput, setDistanceInput, maxRoutesInput, setMaxRoutesInput } =
     conditions;
-  const distanceToggleName = distanceTargeted ? "全長の目標をやめる" : "全長の目標を決める";
   // 許容差は管理画面の較正値（目標の距離に対する割合）。引けない間は幅の文を出さない（較正したのとは別の数を出さない）。
   const distanceToleranceRatio = clientTuningValue(useClientConfig(), CLIENT_TUNING_IDS.distanceToleranceRatio);
 
@@ -101,48 +99,44 @@ export default function RouteForm({
   return (
     <div>
       <KeptTabContent value="generate">
-        {/* 全長の目標と候補数といまの設定の保存を1行に並べ、パネルの縦幅を詰める。ルーラーは残りの幅を取り、狭い幅では長い距離の側を
-            見えない所へ置く（滑らせると出る）。全長の目標を外している間もルーラーと値は出したまま薄くする（入れ直すと
-            前の値に戻ることが見える）。部品の間は詰めて、いちばん狭い幅でもルーラーに押せる幅（24px四方）を残す。 */}
-        <div className="mb-2 flex items-center gap-1.5">
-          <div className="flex min-w-0 flex-1 items-center gap-1">
-            <Toggle
-              variant="plain"
-              className={panelIconToggleClass}
-              pressed={distanceTargeted}
-              aria-label={distanceToggleName}
-              onClick={() => setDistanceTargeted(!distanceTargeted)}
-              usage="オンにすると、ルート全体の長さを目標に合わせます。"
-            >
-              <DistanceTargetIcon />
-            </Toggle>
-            <Ruler
-              frames={DISTANCE_FRAMES}
-              index={Number(distanceInput) / DISTANCE_STEP_KM - 1}
-              onIndexChange={(i) => setDistanceInput(String((i + 1) * DISTANCE_STEP_KM))}
-              ariaLabel="全長の目標"
-              disabled={!distanceTargeted}
-              className="min-w-0 flex-1 touch-pan-y"
-              usage="ルート全体の長さの目標を、目盛りを横に滑らせて決めます。"
-            />
-            <span
-              className={cn(
-                // 文字の大きさは地点の並びの札の名前とそろえる（`PointStrip.tsx: chipName`）。
-                "min-w-[3.25em] flex-shrink-0 text-right text-[length:var(--font-size-md)] tabular-nums",
-                !distanceTargeted && "opacity-40",
-              )}
-            >
-              {distanceInput}km
-            </span>
-            <InfoPopover triggerAriaLabel="全長の目標の説明" triggerClassName="flex-none">
-              {[
-                "ルート全体の長さの目標です。",
-                distanceToleranceRatio === undefined ? "" : toleranceSentence(distanceToleranceRatio, distanceInput),
-                "オフにすると長さを決めず、所要時間と負担の和が小さい道で目的地へ向かいます[周回なら、経由地を回って出発地へ]。",
-                `${routeGenerateConfig.busy_safe_distance_km}kmより長い目標は、混み合っているときに作れないことがあります。`,
-              ].join("")}
-            </InfoPopover>
-          </div>
+        {/* 全長の目標は、決めるかを文字で示し、ルーラーに数の付いた目盛りが並ぶ幅を取るため、1行を占める。外している間も
+            ルーラーと値は出したまま薄くする（入れ直すと前の値に戻ることが見える）。 */}
+        <div className="mb-1 flex items-center gap-1.5">
+          <label
+            className="flex flex-none cursor-pointer items-center gap-1 text-[length:var(--font-size-sm)]"
+            data-usage="印を付けると、ルート全体の長さを目標に合わせます。外すと長さを決めません。"
+          >
+            <Checkbox checked={distanceTargeted} onCheckedChange={setDistanceTargeted} />
+            全長を決める
+          </label>
+          <Ruler
+            frames={DISTANCE_FRAMES}
+            index={Number(distanceInput) / DISTANCE_STEP_KM - 1}
+            onIndexChange={(i) => setDistanceInput(String((i + 1) * DISTANCE_STEP_KM))}
+            ariaLabel="全長の目標"
+            disabled={!distanceTargeted}
+            className="min-w-0 flex-1 touch-pan-y"
+            usage="ルート全体の長さの目標を、目盛りを横に滑らせて決めます。"
+          />
+          <span
+            className={cn(
+              // 文字の大きさは地点の並びの札の名前とそろえる（`PointStrip.tsx: chipName`）。
+              "min-w-[3.25em] flex-shrink-0 text-right text-[length:var(--font-size-md)] tabular-nums",
+              !distanceTargeted && "opacity-40",
+            )}
+          >
+            {distanceInput}km
+          </span>
+          <InfoPopover triggerAriaLabel="全長の目標の説明" triggerClassName="flex-none">
+            {[
+              "ルート全体の長さの目標です。",
+              distanceToleranceRatio === undefined ? "" : toleranceSentence(distanceToleranceRatio, distanceInput),
+              "印を外すと長さを決めず、所要時間と負担の和が小さい道で目的地へ向かいます[周回なら、経由地を回って出発地へ]。",
+              `${routeGenerateConfig.busy_safe_distance_km}kmより長い目標は、混み合っているときに作れないことがあります。`,
+            ].join("")}
+          </InfoPopover>
+        </div>
+        <div className="mb-2 flex items-center justify-end gap-1.5">
           <div className="flex flex-none items-center gap-1">
             <span className={cn(textVariants({ variant: "hint" }), "flex-shrink-0")}>候補数</span>
             <div className="inline-flex items-center">

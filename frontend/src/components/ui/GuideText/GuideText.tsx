@@ -2,17 +2,16 @@ import type { ReactNode } from "react";
 import { cn } from "@/lib/cn";
 import { buttonVariants } from "../Button/Button";
 import { RouteDiffIcon, type MapIconComponent } from "../icons/icons";
-import { DistanceTargetIcon, GenerateRoutesIcon, SaveConditionsIcon, SavePlaceIcon } from "../icons/lucideIcons";
+import { GenerateRoutesIcon, SaveConditionsIcon, SavePlaceIcon } from "../icons/lucideIcons";
 
 // 案内の文の中で、アイコンだけのパネルの操作を「名前」で指した所を、そのボタンと同じ見た目のアイコンにして描く
 // （docs/modules/frontend/frontend-design-system.md 5-1）。名前はボタンの`aria-label`と同じにする——
-// 読み上げと吹き出しには、ボタンと同じ名前を残す。
-const BUTTON_MARKS = new Map<string, { Icon: MapIconComponent; variant: "primary" | "secondary" }>([
-  ["ルート生成", { Icon: GenerateRoutesIcon, variant: "primary" }],
+// 読み上げと吹き出しには、ボタンと同じ名前を残す。ボタンがアイコンに文字を添えるもの（`label`）は、印にも同じ文字を添える。
+const BUTTON_MARKS = new Map<string, { Icon: MapIconComponent; variant: "primary" | "secondary"; label?: string }>([
+  ["ルート生成", { Icon: GenerateRoutesIcon, variant: "primary", label: "生成" }],
   ["差分を見る", { Icon: RouteDiffIcon, variant: "secondary" }],
   ["地点を保存", { Icon: SavePlaceIcon, variant: "secondary" }],
   ["いまの設定を保存", { Icon: SaveConditionsIcon, variant: "secondary" }],
-  ["全長の目標を決める", { Icon: DistanceTargetIcon, variant: "secondary" }],
 ]);
 
 const QUOTED_NAME = /「([^「」]+)」/g;
@@ -36,6 +35,7 @@ export function GuideText({ text }: { text: string }) {
         )}
       >
         <mark.Icon size={14} />
+        {mark.label && <span aria-hidden="true">{mark.label}</span>}
         <span className="sr-only">{name}</span>
       </span>,
     );

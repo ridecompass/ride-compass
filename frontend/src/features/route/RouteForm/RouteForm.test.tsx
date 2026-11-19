@@ -61,16 +61,17 @@ describe("RouteForm 候補数", () => {
 
 describe("RouteForm 全長の目標", () => {
   it.each([
-    [true, "全長の目標をやめる", "true", false],
-    [false, "全長の目標を決める", "false", true],
+    [true, false],
+    [false, true],
   ] as const)(
-    "決めているか（%s）で入り切りの操作を「%s」とし、外している間はルーラーを動かせなくして、押すと反対を上げる",
-    async (distanceTargeted, name, pressed, raised) => {
+    "決めているか（%s）を「全長を決める」の印で出し、外している間はルーラーを動かせなくして、押すと反対を上げる",
+    async (distanceTargeted, raised) => {
       const { setDistanceTargeted } = renderForm({ distanceTargeted });
+      const toggle = screen.getByRole("checkbox", { name: "全長を決める" });
 
-      expect(button(name)).toHaveAttribute("aria-pressed", pressed);
+      expect(toggle).toHaveAttribute("aria-checked", String(distanceTargeted));
       expect(distanceRuler()).toHaveAttribute("tabindex", distanceTargeted ? "0" : "-1");
-      await userEvent.click(button(name));
+      await userEvent.click(screen.getByText("全長を決める"));
 
       expect(setDistanceTargeted).toHaveBeenCalledExactlyOnceWith(raised);
     },
@@ -81,7 +82,7 @@ describe("RouteForm 全長の目標", () => {
       { [CLIENT_TUNING_IDS.distanceToleranceRatio]: 0.15 },
       "ルート全体の長さの目標です。候補は、この長さの±15%[30kmなら±4.5km]に収まるものだけを作ります。",
     ],
-    [{}, "ルート全体の長さの目標です。オフにすると長さを決めず"],
+    [{}, "ルート全体の長さの目標です。印を外すと長さを決めず"],
   ])("(i)の奥に、画面の設定が配る許容差（%o）を割合と今の目標での長さで書く", async (clientTuning, text) => {
     serveClientConfig(clientConfigResponse({ client_tuning: clientTuning }));
     renderForm({ distanceInput: "30" });
