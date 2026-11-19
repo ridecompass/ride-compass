@@ -258,10 +258,10 @@ export async function showRoadSurface(user: User) {
   await user.keyboard("{Escape}");
 }
 
-/** 「ルート生成」を押し、出した要求を返す。 */
+/** 「ルート生成」を押し、出した要求を返す。条件を変えた後は名前に変えた印の文が続くので、頭で当てる。 */
 export async function generate(user: User) {
   const before = jobs.submitted.length;
-  await user.click(screen.getByRole("button", { name: "ルート生成" }));
+  await user.click(screen.getByRole("button", { name: /^ルート生成/ }));
   await waitFor(() => expect(jobs.submitted).toHaveLength(before + 1));
   return jobs.submitted[before].body as Record<string, unknown>;
 }
