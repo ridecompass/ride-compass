@@ -24,12 +24,14 @@ export default function RouteCandidateActions({ route, splice, onClearSegment, o
       {onRide && (
         <Button
           variant="primary"
-          size="panelIcon"
+          size="panelLabeled"
           onClick={() => onRide(route.id)}
           aria-label="このルートで走る"
           usage="選んでいる候補で走行モードを始め、現在地を追って地図を動かし続けます。地図の右の走行モードのボタンでも始められます。"
         >
           <RideModeIcon size={18} />
+          {/* 主役なので短い文字を添える（docs/modules/frontend/frontend-design-system.md 5-1）。 */}
+          <span aria-hidden="true">走る</span>
         </Button>
       )}
       {/* 合成（区間の乗り換え）の入口。乗り換える相手が無い（候補1件）間は出さない。 */}

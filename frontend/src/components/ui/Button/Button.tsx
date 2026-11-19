@@ -47,6 +47,8 @@ export const buttonVariants = cva(
         /** パネルの操作のボタン。アイコンだけを置き、名前は`aria-label`で渡す（長押し・マウスを重ねると、名前と使い方が
          * `components/UsageGuide/UsageTooltip.tsx`のツールチップに出る）。 */
         panelIcon: "rounded-sm px-1.5 py-1",
+        /** パネルの主役の操作（ルート生成・このルートで走る）。`panelIcon`と同じ高さで、アイコンに短い文字を添える。 */
+        panelLabeled: "rounded-sm px-2 py-1 text-[length:var(--font-size-sm)]",
         /** 上部の帯の印（警報）。値の並びに混ざるので、枠の無い`ghost`と組む。 */
         headerIcon: "size-7 rounded-sm",
         /** 小さい丸のアイコンボタン。 */

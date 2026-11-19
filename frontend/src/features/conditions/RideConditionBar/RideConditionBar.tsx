@@ -153,10 +153,10 @@ export default function RideConditionBar({
             linked={linkedDeparture}
             usage="出発する日時を決めます。地図に出す気象と周りの道の負担[風]の時刻、ルートの到達予想の時刻に使います。"
           >
-            {/* 別の日は日付も付くため、列の幅に収まるよう日付と時刻を2行に分ける。 */}
-            {departureLabel?.map((part) => (
+            {/* 別の日は日付も付くため、列の幅に収まるよう日付と時刻を2行に分ける。時刻には「発」を添え、何の時刻かを文字で示す。 */}
+            {departureLabel?.map((part, i) => (
               <span key={part} className="block">
-                {part}
+                {i === departureLabel.length - 1 ? `${part}発` : part}
               </span>
             ))}
           </ConditionTrigger>
@@ -168,17 +168,28 @@ export default function RideConditionBar({
           align="end"
           collisionPadding={POPOVER_COLLISION_PADDING_PX}
         >
-          <Input
-            type="datetime-local"
-            aria-label="出発日時を直接指定"
-            data-usage="出発する日時を、日付と時刻で直に入れます。"
-            value={toJstLocalValue(departureTime)}
-            onChange={(e) => {
-              const next = parseJstLocalValue(e.target.value);
-              if (!Number.isNaN(next.getTime())) onDepartureTimeChange(next);
-            }}
-            className="h-8 tabular-nums"
-          />
+          {/* 窓は地図の上に部品だけを浮かせるので、見出しも面に載せる。 */}
+          <div className="flex items-center gap-2">
+            <h2
+              className={cn(
+                textVariants({ variant: "heading" }),
+                "rounded-sm bg-[var(--color-surface)] px-2 py-1 shadow-float",
+              )}
+            >
+              出発の時刻
+            </h2>
+            <Input
+              type="datetime-local"
+              aria-label="出発日時を直接指定"
+              data-usage="出発する日時を、日付と時刻で直に入れます。"
+              value={toJstLocalValue(departureTime)}
+              onChange={(e) => {
+                const next = parseJstLocalValue(e.target.value);
+                if (!Number.isNaN(next.getTime())) onDepartureTimeChange(next);
+              }}
+              className="h-8 tabular-nums"
+            />
+          </div>
           <DepartureRuler
             departureTime={departureTime}
             onDepartureTimeChange={onDepartureTimeChange}

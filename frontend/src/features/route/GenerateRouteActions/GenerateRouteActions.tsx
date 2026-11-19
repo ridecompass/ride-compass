@@ -28,13 +28,15 @@ export default function GenerateRouteActions({ generation }: GenerateRouteAction
       )}
       <Button
         variant="primary"
-        size="panelIcon"
+        size="panelLabeled"
         onClick={() => void generation.submit()}
         aria-label={generation.running ? generation.progressLabel : "ルート生成"}
         usage={`いまの条件・負担・${ROAD_SETTINGS_TAB_NAME}でルートの候補を作ります。候補は「ルート結果」に並び、地図に線が出ます。`}
       >
         {/* 押したことが分かるよう、作っている間は形を回る輪に替える（結果は別の画面に出るので、押した所で知らせる）。 */}
         {generation.running ? <Spinner size={18} /> : <GenerateRoutesIcon size={18} />}
+        {/* 主役なので短い文字を添える（docs/modules/frontend/frontend-design-system.md 5-1）。作っている間も文字は替えず、幅を動かさない。 */}
+        <span aria-hidden="true">生成</span>
       </Button>
     </div>
   );

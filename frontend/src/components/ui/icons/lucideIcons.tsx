@@ -35,7 +35,6 @@ import {
   Play,
   Plus,
   RotateCw,
-  Ruler,
   Save,
   Search,
   Shield,
@@ -127,8 +126,6 @@ export const HelpIcon = fromLucide(CircleQuestionMark);
 export const VersionIcon = fromLucide(GitCommitHorizontal);
 /** 地図で選んでいる区間の地点。 */
 export const SelectedSpotIcon = fromLucide(MapPin);
-/** ルートの全長の目標を決める（押している間は全長が目標に合うルートを作る）。 */
-export const DistanceTargetIcon = fromLucide(Ruler);
 /** 置いた地点を1つ消す。保存したものを消す`DeleteSavedIcon`と同じく、消す操作はごみ箱の形にそろえる。 */
 export const RemovePointIcon = fromLucide(Trash);
 /** 押さえたまま上下へ動かして、行の順を入れ替える所。 */
