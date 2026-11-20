@@ -33,8 +33,8 @@ export function MissingTravelDataNotice({ share }: { share: number | null }) {
   if (missingPct < 1) return null;
   return (
     <WarningText>
-      {`${missingPct}%の区間は推定で計算しています`}
-      <InfoPopover triggerAriaLabel="推定で計算した区間の説明">
+      {`${missingPct}%の道のりはデータが欠けていて、平均の値で計算しています`}
+      <InfoPopover triggerAriaLabel="平均で計算した道のりの説明">
         <p>{routeGenerateConfig.missing_travel_data_wording}</p>
       </InfoPopover>
     </WarningText>

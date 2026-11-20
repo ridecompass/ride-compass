@@ -2,7 +2,7 @@
  * `features/route/RouteOutcome/RouteOutcome.tsx`——「ルート結果」の中身のうち、選んだ候補の中身。
  *
  * 見るもの: 編集で作ったルートの「元との違い」の元と名前、道のりのグラフ（横軸・押した区間・動かして選ぶこと）、経由地の着く見込みの時刻、
- * 推定で計算した区間の注意、候補の内訳、編集中は編集面だけを出し、
+ * 平均で計算した道のりの注意、候補の内訳、編集中は編集面だけを出し、
  * 同じ道の候補を一覧の名前で渡すこと。
  *
  * ここで見ないもの: 候補が無い間の案内・候補の上の知らせ・候補の一覧 → `RouteOutcome.test.tsx`。選んだ区間の中身
@@ -101,18 +101,18 @@ describe("選んだ候補の中身", () => {
   it.each([
     [null, null],
     [0.004, null],
-    [0.012, "1%の区間は推定で計算しています"],
+    [0.012, "1%の道のりはデータが欠けていて、平均の値で計算しています"],
   ])(
     "選んだ候補の値の無い区間の割合が%sなら、注意は%s（百分率へ丸めて1以上のときだけ出し、どう推定したかは(i)の中に開く）",
     async (share, expected) => {
       const candidate = route("fast", { missing_travel_data_share: share });
       renderOutcome({ results: resultsOf({ generated: [candidate, SLOW], selectedRouteId: "fast" }) });
       if (expected === null) {
-        expect(screen.queryByText(/推定で計算しています/)).not.toBeInTheDocument();
+        expect(screen.queryByText(/平均の値で計算しています/)).not.toBeInTheDocument();
         return;
       }
       expect(screen.getByText(expected)).not.toHaveTextContent(routeGenerateConfig.missing_travel_data_wording);
-      await userEvent.click(screen.getByRole("button", { name: "推定で計算した区間の説明を表示" }));
+      await userEvent.click(screen.getByRole("button", { name: "平均で計算した道のりの説明を表示" }));
       expect(await screen.findByText(routeGenerateConfig.missing_travel_data_wording)).toBeInTheDocument();
     },
   );
