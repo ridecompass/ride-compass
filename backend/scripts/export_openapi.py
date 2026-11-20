@@ -623,7 +623,7 @@ def main() -> None:
             "duration_estimate_wording": DURATION_ESTIMATE_WORDING,
             "candidate_order_wording": CANDIDATE_ORDER_WORDING,
             "turn_penalty_wording": TURN_PENALTY_WORDING,
-            # 所要時間の計算が値の無い区間をどう数えるかの文。結果の「推定で計算した区間」の注意の詳しい説明に出す。
+            # 所要時間の計算が値の無い区間をどう数えるかの文。結果の「平均で計算した道のり」の注意の詳しい説明に出す。
             "missing_travel_data_wording": MISSING_TRAVEL_DATA_WORDING,
             # 地図のレンズ（総合と費用の軸ごと）の量の名前と単位と、凡例の目安の条件の文。レンズを述べる画面の文が差し込む。
             "lens_quantity_label": LENS_QUANTITY_LABEL,

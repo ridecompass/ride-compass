@@ -59,12 +59,12 @@ from app.domain.wind_context import WindContext
 TIME_BIN_HOURS = 1.0
 MAX_TIME_BINS = 4
 
-#: 所要時間の計算が値の無い区間をどう数えるかを、利用者に言う文（走行の模型が標高の欠けを道路網全体の坂の分布どおりの坂で走り、
+#: 所要時間の計算が値の無い区間をどう数えるかを、利用者に言う文（走行の模型が標高の欠けと公道としてありえない坂の間を道路網全体の坂の分布どおりの坂で走り、
 #: `_travel_inputs`が停止要因の件数の欠けを取込の範囲全体の平均の密度で置き換え、走行の模型が標高の無い区間の空気を海面のものとし、風の高さの倍率が
 #: 土地被覆の割合の欠けを取込の範囲全体の平均の割合で埋める）。置き換え方を変えたら、ここも変える。
 MISSING_TRAVEL_DATA_WORDING = (
-    "標高や、信号などの止まる所の数、周りの建物や林の様子が分からない区間は、地域全体でよくある坂と、平均の止まる所の数と"
-    "周りの様子で所要時間を計算しています。標高が分からない区間の空気の濃さは、海面の高さのものとしています。")
+    "標高が無いか乱れていて坂を測れない所は、地域でよくある坂で計算しています。信号などの止まる所の数や、周りの建物・林の様子が"
+    "分からない区間は平均の値で、標高の無い区間の空気の濃さは海面の高さのもので計算しています。")
 
 #: 所要時間の見積もりが何を足したものかを、利用者に言う文（区間の走行時間・止まる出来事の待ち・曲がる所の時間）。
 DURATION_ESTIMATE_WORDING = (
@@ -557,16 +557,18 @@ class LegCostComposer:
         return int(self._full_row_index[full_row])
 
     def missing_travel_data_share(self, rows: np.ndarray) -> float | None:
-        """切り出した区間の順の行`rows`のうち、所要時間の計算で標高か停止要因の件数の値が無く、取込の範囲全体の平均（坂の
-        割合・停止要因の密度）で数えた所のある区間の距離の割合。`_travel_inputs`が欠けを置き換えるのと同じ値を見る。距離の合計が0ならNone。"""
+        """切り出した区間の順の行`rows`の距離のうち、所要時間の計算で取込の範囲全体の平均で埋めた長さの割合。坂は測れない間
+        （`unknown_m`）の長さだけを平均の坂で埋め、停止要因の件数の無い区間は区間の全体を平均の密度で数える（`_travel_inputs`が
+        欠けを置き換えるのと同じ値を見る）。区間の長さで数えると、短い間の揺れ1か所で割合が何倍にもなる。距離の合計が0ならNone。"""
         distance = self._search_materials.distance_m[rows]
         total = float(distance.sum())
         if total <= 0:
             return None
-        missing = self._travel_inputs.model.unknown_m[rows] > 0
+        stops_missing = np.zeros(len(rows), dtype=bool)
         for material_id in stop_count_material_ids():
-            missing |= np.isnan(self._static_material_arrays[material_id][rows])
-        return round(float(distance[missing].sum()) / total, 4)
+            stops_missing |= np.isnan(self._static_material_arrays[material_id][rows])
+        filled = np.where(stops_missing, distance, self._travel_inputs.model.unknown_m[rows])
+        return round(float(filled.sum()) / total, 4)
 
     @cached_property
     def _ledger(self) -> LedgerCosts:

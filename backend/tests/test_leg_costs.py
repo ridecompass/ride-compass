@@ -334,13 +334,25 @@ def test_values_recomposed_for_the_rows_on_the_route_match_the_composition_used_
 # --- 所要時間の欠け ---------------------------------------------------
 
 
-def test_the_share_of_distance_timed_without_gradient_or_stop_data():
-    composer = _composer(_matrix(
-        3, distance=[1000.0, 3000.0, 6000.0], gradient=[np.nan, 0.0, 0.0],
-        materials={STOP_DENSITY["signal"]: [0.0, np.nan, 0.0]},
-    ))
+#: 1本目は1000mの真ん中の100mだけが公道としてありえない坂（標高の読み違い）、2本目は平らな1000m。
+_PARTLY_UNMEASURED = dataclasses.replace(
+    _matrix(2, distance=1000.0),
+    elevation_profiles=profiles([0.0, 0.0, 500.0, 500.0], [0.0, 0.0], positions=[[0.0, 0.45, 0.55, 1.0], []]),
+)
 
-    assert composer.missing_travel_data_share(np.array([0, 1, 2])) == 0.4
+
+@pytest.mark.parametrize(("matrix", "expected"), [
+    # 標高の無い区間（1000m）と停止要因の件数の無い区間（3000m）は、区間の全体を平均で埋める。
+    (_matrix(3, distance=[1000.0, 3000.0, 6000.0], gradient=[np.nan, 0.0, 0.0],
+             materials={STOP_DENSITY["signal"]: [0.0, np.nan, 0.0]}), 0.4),
+    # 坂を測れない間が区間の一部だけなら、その間の長さだけを数える。区間の長さで数えると、1か所の揺れで画面が
+    # 平均で計算した道のりを何倍にも大きく知らせる。
+    (_PARTLY_UNMEASURED, 0.05),
+])
+def test_the_share_of_distance_timed_with_averages(matrix, expected):
+    composer = _composer(matrix)
+
+    assert composer.missing_travel_data_share(np.arange(len(matrix.distance_m))) == expected
     assert composer.missing_travel_data_share(np.array([], dtype=np.int64)) is None
 
 
