@@ -8,6 +8,7 @@
 # 本番VMのホストの定期の仕組み（DBのバックアップ・元の取り直し）が止まっていないかも見る
 # （docs/modules/backend/cross-cutting-infrastructure.md「本番DBのバックアップ」「元の取り直し」）。
 # 予報（MSM）の配信が止まっていないかも見る（docs/modules/backend/weather-dynamic-layers.md「配信が止まったことの検知」）。
+# 本番の宛先の証明書が切れる前に更新されているかも見る（docs/architecture/tech-stack.md「本番の宛先」）。
 name: Prod Route Check
 
 on:
@@ -87,3 +88,15 @@ jobs:
       - uses: actions/checkout@v5
       - name: 本番の予報の鮮度を見る
         run: python3 backend/scripts/prod_msm_check.py
+
+  # VMのcertbotの更新は失敗してもVMのログにしか残らないので、ここで残りの日数を見る。標準ライブラリだけで読む。
+  certificate:
+    concurrency:
+      group: ${{ github.head_ref || github.ref_name }}-lane-3
+      queue: max
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+      - name: 本番の宛先の証明書の残りの日数を見る
+        run: python3 backend/scripts/prod_cert_check.py
