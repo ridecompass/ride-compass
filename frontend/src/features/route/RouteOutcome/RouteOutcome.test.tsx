@@ -137,11 +137,10 @@ describe("候補の一覧", () => {
     expect(within(spliced).getByRole("img", { name: "合成ルート" })).toHaveAttribute("title", "合成ルート");
   });
 
-  it("並びの先頭の見本は、カードの数字の位置に距離と所要・負担を出し、押しても候補を選ばない。その(i)を開くと、段と印の読み方・所要時間の見積もり方と、費用の軸の一覧の名前と曲がる所の漕ぎ出しの文を差し込んだ負担の説明を出す", async () => {
-    serveCostAxisCatalog({
-      ...costAxisCatalog(costAxisEntry("ascent", { label: "軸ア" }), costAxisEntry("stopping", { label: "軸イ" })),
-      turn_kickoff_wording: "漕ぎ出しの文",
-    });
+  it("並びの先頭の見本は、カードの数字の位置に距離と所要・負担を出し、押しても候補を選ばない。その(i)を開くと、段と印の読み方・所要時間の見積もり方・費用の軸の一覧の名前を差し込んだ負担・候補の並べ方を、1つずつ1文で出す", async () => {
+    serveCostAxisCatalog(
+      costAxisCatalog(costAxisEntry("ascent", { label: "軸ア" }), costAxisEntry("stopping", { label: "軸イ" })),
+    );
     const results = resultsOf({ generated: [FAST, SLOW] });
     renderOutcome({ results });
     expect(cardSample()).toHaveTextContent(/^距離所要負担$/);
@@ -154,10 +153,11 @@ describe("候補の一覧", () => {
     expect(
       await screen.findByText(/^上の段は距離、下の段は所要時間と負担です。稲妻の印は最速ルート、合成の印は/),
     ).toBeInTheDocument();
+    expect(screen.getByText(`所要時間: ${routeGenerateConfig.duration_estimate_wording}`)).toBeInTheDocument();
+    expect(screen.getByText("負担: 避けたいもの[軸ア・軸イ]を通る分を時間に直したものです。")).toBeInTheDocument();
     expect(
-      screen.getByText(`所要時間: ${routeGenerateConfig.duration_estimate_wording}`, { exact: false }),
+      screen.getByText(`並び: 先頭は最速、残りは${routeGenerateConfig.candidate_order_wording}です。`),
     ).toBeInTheDocument();
-    expect(screen.getByText(/^負担: 避けたいもの\[軸ア・軸イ\]を通る分.*\[漕ぎ出しの文\]/)).toBeInTheDocument();
   });
 
   it.each([

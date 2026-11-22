@@ -3,30 +3,21 @@
 import InfoPopover from "@/components/ui/InfoPopover/InfoPopover";
 import WarningText from "@/features/route/WarningText/WarningText";
 import { costAxisNamesNote, useCostAxisCatalog } from "@/hooks/useCostAxisCatalog";
-import { ROAD_SETTINGS_TAB_NAME } from "@/lib/screenNames";
 import routeGenerateConfig from "@/types/generated/route-generate-config.json";
 
 /** 候補のカードの名前の列の印の意味。 */
 export const CANDIDATE_MARKS_WORDING =
   "稲妻の印は最速ルート、合成の印は区間を乗り換えた合成ルート、番号だけは生成した候補です。";
 
-/** カードの数字と印の説明（カードの並びの先頭の見本の(i)）。負担は、避けたいもの（費用の軸）を通る代償を秒にしたもので、
- * 種類ごとの内訳と事実は道のりのグラフの右上の一覧が出す。 */
+/** カードの数字と印の説明（カードの並びの先頭の見本の(i)）。読み方だけを、項目ごとに1文で言う。 */
 export function CandidateFiguresInfo() {
   const costAxes = useCostAxisCatalog();
-  const turnKickoffNote = costAxes.turnKickoffWording ? `[${costAxes.turnKickoffWording}]` : "";
   return (
     <InfoPopover triggerAriaLabel="所要時間と負担の説明">
       <p>{`上の段は距離、下の段は所要時間と負担です。${CANDIDATE_MARKS_WORDING}`}</p>
-      <p>{`所要時間: ${routeGenerateConfig.duration_estimate_wording}実際の信号のタイミングや走り方で変わります。`}</p>
-      <p>
-        {`負担: 避けたいもの${costAxisNamesNote(costAxes)}を通る分を時間に直し、所要時間に上乗せしたものです。` +
-          `候補は、最速の候補を比べる基準として先頭に置き、残りを${routeGenerateConfig.candidate_order_wording}に並べます。` +
-          `グラフの右上の一覧は、負担を種類ごとに分けたものです${turnKickoffNote}。` +
-          `${ROAD_SETTINGS_TAB_NAME}のタブで好むとした道を通って減った分[−]と、避けるとした道を通って増えた分も、` +
-          "この負担に入ります。その区間は、地図のルートの線の両脇の線で示します。" +
-          `${routeGenerateConfig.turn_penalty_wording}。`}
-      </p>
+      <p>{`所要時間: ${routeGenerateConfig.duration_estimate_wording}`}</p>
+      <p>{`負担: 避けたいもの${costAxisNamesNote(costAxes)}を通る分を時間に直したものです。`}</p>
+      <p>{`並び: 先頭は最速、残りは${routeGenerateConfig.candidate_order_wording}です。`}</p>
     </InfoPopover>
   );
 }

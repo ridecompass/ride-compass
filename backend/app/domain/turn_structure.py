@@ -230,8 +230,6 @@ def build_turn_expanded_structure(
 #: 実際に時間を失う出来事ではなく、選ばせないための罰の曲がり。秒は探索の重みにだけ足し、予想の所要時間には入れない
 #: （Uターンは、禁じると行き止まりから出られないので、罰で行き止まりのほかでは選ばせない）。
 PENALTY_TURNS = frozenset({TurnKind.UTURN})
-#: 罰の曲がりの扱いを、利用者に言う文（罰は候補の負担に入る）。罰の曲がりを変えたら、ここも変える。
-TURN_PENALTY_WORDING = "折り返し[Uターン]は、選ばれにくくするための分を所要時間に入れず、負担に入れます"
 
 
 def _turn_events(spec: TurnCostSpec) -> tuple[StopEvent, ...]:
