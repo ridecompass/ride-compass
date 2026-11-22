@@ -11,15 +11,16 @@ import numpy as np
 
 from app.domain.geo import LatLonPoint, bearing_between
 from app.domain.search_graph import EDGE_VALUE_DTYPE, SEARCH_INDEX_DTYPE, CsrGraphStructure, LazyRoadGraph
+from app.domain.stop_events import EventGroup, event_seconds_parameter_id, event_share_parameter_id
 from app.domain.traffic import INTERSECTION_DEGREE_THRESHOLD, MAJOR_CROSSING_MIN_RANK, NO_EVENT, StopEvent, stop_event
-from app.domain.tuning import Tuning
+from app.domain.tuning import Tuning, require_tuning
 
 
 @dataclass(frozen=True)
 class TurnCostSpec:
     """曲がる所の止まる出来事（`domain/traffic.py: StopEvent`）と、直進とみなす方位差の上限（度）。
 
-    左折は止まらず減速する出来事、右折（自転車は二段階右折）・Uターン・上位の道の横断/右左折は止まる出来事。
+    左折は止まらず減速する出来事、ほかは止まる出来事（種類は`domain/stop_events.py: STOP_EVENT_KINDS`）。
     割合・待ち・直進とみなす方位差は、いずれも走ってみて決める値のため`domain/tuning.py`が宣言する。既定を組み立てるのは
     `turn_cost`で、ここにフィールドの既定値は置かない——既定が分かれると、片方だけが変わる。
     """
@@ -33,6 +34,13 @@ class TurnCostSpec:
     # 数え、ここでは足さない——両方で足すと同じ待ちを二重に数える（`docs/architecture/design-principles.md`構造仕様13）。
     major_crossing: StopEvent
     major_turn: StopEvent
+    # 信号のある交差点で、通り方によって足す出来事（右折＝二段階右折・下の階級の道から上位の道を直進で渡る）。較正値の
+    # その通り方の全体から、信号の基本の出来事を引いた差（`_beyond`）。右折の差は`right`の代わりに使う。
+    signal_right: StopEvent
+    minor_signal: StopEvent
+    # 上下線の分かれた上位の道へ、下の階級の道から右折で入るとき、2つ目の頂点で足す差（信号での右折の全体から、1つ目の頂点で
+    # 足した上位の道の横断の全体を引いたもの）。
+    signal_right_after_crossing: StopEvent
 
 
 def turn_cost(tuning: Tuning) -> TurnCostSpec:
@@ -44,7 +52,29 @@ def turn_cost(tuning: Tuning) -> TurnCostSpec:
         straight_max_deg=tuning.value("turn.straight_max_deg"),
         major_crossing=stop_event("turn", "major_crossing", tuning),
         major_turn=stop_event("turn", "major_turn", tuning),
+        signal_right=_beyond("signal_right", ("stop", "signal"), tuning),
+        minor_signal=_beyond("minor_signal", ("stop", "signal"), tuning),
+        signal_right_after_crossing=_beyond("signal_right", ("turn", "minor_signal"), tuning),
     )
+
+
+def _beyond(name: str, base: tuple[EventGroup, str], tuning: Tuning) -> StopEvent:
+    """曲がる所の出来事`name`の全体（較正値）から、同じ所で既に数えた出来事`base`の全体を引いた差。差の割合と、差の
+    割合 × 待ちのどちらかが負なら断る——負だと、その通り方を`base`より速く通ることになる。割合が同じで割合 × 待ちだけが
+    大きい差は、割合 × 待ちの形で表せないので断る。"""
+    whole, under = stop_event("turn", name, tuning), stop_event(*base, tuning)
+    share = whole.share - under.share
+    seconds = whole.expected_seconds - under.expected_seconds
+    require_tuning(
+        {event_share_parameter_id("turn", name): whole.share,
+         event_seconds_parameter_id("turn", name): whole.wait_seconds,
+         event_share_parameter_id(*base): under.share,
+         event_seconds_parameter_id(*base): under.wait_seconds},
+        share >= 0 and seconds >= 0 and (share > 0 or seconds == 0),
+        f"止まる割合と割合 × 待ちが{event_seconds_parameter_id(*base)}の出来事以上（割合が同じなら割合 × 待ちも同じ）",
+    )
+    return StopEvent(share=share, wait_seconds=seconds / share if share > 0 else 0.0,
+                     kickoffs=whole.kickoffs - under.kickoffs)
 
 
 @dataclass
@@ -154,6 +184,8 @@ def build_turn_expanded_structure(
     node_has_signal: np.ndarray,
     node_db_rank: np.ndarray,
     node_branch_count: np.ndarray,
+    edge_distance_m: np.ndarray,
+    same_place_m: float,
 ) -> TurnExpandedStructure:
     """`CsrGraphStructure`から、状態＝有向Edgeの遷移構造を組む。
 
@@ -168,6 +200,11 @@ def build_turn_expanded_structure(
     足す——分かれ道でない点は道のデータの継ぎ目で、道を選ばない。本数は進めない道
     （向こうから来る一方通行）も、部分グラフの外へ出る道も数える。進める道だけで数えると、進めない道のある交差点の
     曲がりが継ぎ目に見え、待ちも案内も消える。
+
+    信号のある交差点の通り方の出来事（`TurnCostSpec.signal_right`・`minor_signal`）は、1つの交差点で1回だけ足す。入る区間の始点にも
+    信号があり、区間が`same_place_m`（停止の点を1つの場所にまとめる距離。`edge_distance_m`は区間の番号順の長さ）より短ければ、
+    同じ交差点の中を進む区間とみなして上位の道の横断を足さない——上下線の分かれた道を渡ると、信号の頂点を2つ続けて通る。
+    その中で右折するとき（下の階級の道から、上下線の分かれた上位の道へ右折する）は、1つ目の頂点で足した横断との差だけを足す。
 
     ターンの費用に要る入力はすべて引数で受け取り、**`None`を受け取らない**。既定を持たせても
     実行時に`None`を許しても、渡し忘れた呼び出しが「上位の道の横断に待ちが付かない」構造を
@@ -205,17 +242,29 @@ def build_turn_expanded_structure(
     node_rank = np.maximum(node_rank, node_db_rank)
     via_node = edge_to[source]
     target_node_rank = node_rank[via_node]
-    crosses_major = (
-        (target_node_rank > edge_rank[source])
-        & (target_node_rank >= MAJOR_CROSSING_MIN_RANK)
-        & ~node_has_signal[via_node]
+    signal = node_has_signal[via_node]
+    major_road = target_node_rank >= MAJOR_CROSSING_MIN_RANK
+    # 交差点に、入る区間より上位で、そもそも待ちの要る階級の道がある。信号の無い交差点で上位の道を横切る・入る待ちと、信号の
+    # ある交差点で上位の道を直進で渡る待ちが、同じこの判定を読む。
+    below_major = (target_node_rank > edge_rank[source]) & major_road
+    turning = branch & ~is_uturn
+    in_place = node_has_signal[edge_from[source]] & (np.asarray(edge_distance_m, dtype=np.float64)[source] < same_place_m)
+    signal_first = turning & signal & ~in_place
+    signal_right = turning & signal & major_road & (wait_kind == TurnKind.RIGHT)
+    # 遷移の時間と漕ぎ出しは、曲がり方（`TurnKind`の4通り）× 交差点の通り方（`_Passage`）の表から引く——遷移の数（探索の範囲で
+    # 約200万）の配列を組み直さない。
+    passage = np.select(
+        [turning & below_major & ~signal & straight,
+         turning & below_major & ~signal,
+         signal_first & below_major & straight,
+         signal_right & ~in_place,
+         signal_right & in_place & below_major],
+        [_Passage.MAJOR_CROSSING, _Passage.MAJOR_TURN, _Passage.MINOR_SIGNAL, _Passage.SIGNAL_RIGHT,
+         _Passage.SIGNAL_RIGHT_AFTER_CROSSING],
+        _Passage.PLAIN,
     )
-    # 遷移の時間と漕ぎ出しは、曲がり方（`TurnKind`の4通り）× 上位の道（無し・横断・右左折の3通り）の12通りの表から引く
-    # ——遷移の数（探索の範囲で約200万）の配列を組み直さない。
-    major = crosses_major & ~is_uturn & branch
-    major_kind = np.where(major, np.where(straight, 1, 2), 0)
     seconds_table, kickoffs_table = _turn_tables(spec)
-    code = (wait_kind + len(TurnKind) * major_kind).astype(np.intp)
+    code = (wait_kind + len(TurnKind) * passage).astype(np.intp)
 
     return TurnExpandedStructure(
         state_count=state_count, indptr=new_indptr.astype(SEARCH_INDEX_DTYPE),
@@ -245,16 +294,37 @@ def _penalty_table(spec: TurnCostSpec) -> np.ndarray:
                      for kind, event in zip(TurnKind, _turn_events(spec), strict=True)], dtype=EDGE_VALUE_DTYPE)
 
 
+class _Passage(IntEnum):
+    """交差点の通り方（曲がり方に重ねて足す出来事を決める）。"""
+
+    PLAIN = 0
+    # 信号の無い交差点で、上位の道を直進で横切る・右左折で入る。
+    MAJOR_CROSSING = 1
+    MAJOR_TURN = 2
+    # 信号のある交差点で、上位の道を直進で渡る・右折する。
+    MINOR_SIGNAL = 3
+    SIGNAL_RIGHT = 4
+    # 信号のある交差点の中（1つ目の頂点で上位の道を渡ったあと）で、上下線の分かれた上位の道へ右折する。
+    SIGNAL_RIGHT_AFTER_CROSSING = 5
+
+
 def _turn_tables(spec: TurnCostSpec) -> tuple[np.ndarray, np.ndarray]:
-    """曲がり方（`TurnKind`の値）＋ 4 ×上位の道（0＝無し・1＝横断・2＝右左折）を添字にした、遷移の時間（秒。罰の曲がりの罰は
-    入れない）と漕ぎ出しの回数の表。上位の道の待ちは曲がりの待ちに足し、漕ぎ出しは同じ所で1回しか起きないので重なる出来事の
-    大きい方だけを数える。"""
+    """曲がり方（`TurnKind`の値）＋ 4 × 通り方（`_Passage`の値）を添字にした、遷移の時間（秒。罰の曲がりの罰は入れない）と
+    漕ぎ出しの回数の表。通り方の待ちは曲がりの待ちに足し、漕ぎ出しは同じ所で1回しか起きないので重なる出来事の大きい方だけを
+    数える。信号での右折は、右折の出来事の代わりに使う。"""
     penalties = _penalty_table(spec)
+    added = {_Passage.PLAIN: NO_EVENT, _Passage.MAJOR_CROSSING: spec.major_crossing, _Passage.MAJOR_TURN: spec.major_turn,
+             _Passage.MINOR_SIGNAL: spec.minor_signal, _Passage.SIGNAL_RIGHT: NO_EVENT,
+             _Passage.SIGNAL_RIGHT_AFTER_CROSSING: NO_EVENT}
+    signal_rights = {_Passage.SIGNAL_RIGHT: spec.signal_right,
+                     _Passage.SIGNAL_RIGHT_AFTER_CROSSING: spec.signal_right_after_crossing}
     seconds, kickoffs = [], []
-    for major in (NO_EVENT, spec.major_crossing, spec.major_turn):
+    for passage in _Passage:
         for kind, event in zip(TurnKind, _turn_events(spec), strict=True):
-            seconds.append(event.expected_seconds - float(penalties[kind]) + major.expected_seconds)
-            kickoffs.append(max(event.kickoffs, major.kickoffs))
+            if kind is TurnKind.RIGHT and passage in signal_rights:
+                event = signal_rights[passage]
+            seconds.append(event.expected_seconds - float(penalties[kind]) + added[passage].expected_seconds)
+            kickoffs.append(max(event.kickoffs, added[passage].kickoffs))
     return np.array(seconds, dtype=EDGE_VALUE_DTYPE), np.array(kickoffs, dtype=EDGE_VALUE_DTYPE)
 
 

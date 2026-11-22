@@ -22,7 +22,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from app.api.routers import tuning_admin
-from app.domain import traffic, tuning
+from app.domain import stop_events, traffic, tuning
 from tests.admin_auth import AUTH_HEADERS
 from tests.road_class_fixture import classification, replaced_road_classes, road_classes
 
@@ -73,7 +73,7 @@ def client(app, admin_credentials):
 
 
 def test_list_names_the_surfaces_and_stop_kinds_that_use_a_value(client, declarations, monkeypatch):
-    stop = _declared(tuning.event_seconds_parameter_id("stop", "signal"), tuning.TuningEffect.IMMEDIATE)
+    stop = _declared(stop_events.event_seconds_parameter_id("stop", "signal"), tuning.TuningEffect.IMMEDIATE)
     _declare(monkeypatch, *declarations, stop)
     monkeypatch.setattr(traffic, "POI_COUNT_KINDS", {"signal": "種別K"})
     definitions = road_classes(

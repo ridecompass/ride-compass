@@ -22,6 +22,7 @@ from tests.search_graph_world import (
     make_graph,
     state_index,
 )
+from tests.tuning_fixture import TUNING
 
 
 def transitions(lazy, structure):
@@ -227,8 +228,8 @@ def test_crossing_a_higher_ranked_road_adds_a_wait_split_by_straight_or_turning(
     [
         # 「自分より上位」だけでは足りない——待ちの要る階級に達していなければ足さない。
         (MAJOR - 1, MAJOR - 2, False, 0, 0.0),
-        # 信号のある交差点の待ちは停止密度の材料が運ぶ。ここで足すと同じ待ちを二重に数える。
-        (MAJOR, MAJOR - 1, True, 0, 0.0),
+        # 信号のある交差点では、基本の待ちは停止密度の材料が運び、ここは上位の道を渡る通り方の差だけを足す。
+        (MAJOR, MAJOR - 1, True, 0, TURN_SPEC.minor_signal.expected_seconds),
         # bboxの外へはみ出した上位の道は部分グラフに現れない。DB側の集計値があれば大きい方を採る。
         (MAJOR - 1, MAJOR - 1, False, MAJOR, TURN_SPEC.major_crossing.expected_seconds),
     ],
@@ -249,6 +250,78 @@ def test_crossing_wait_follows_the_node_rank_and_signal(crossing_rank, entering_
         node_db_rank=node_db_rank,
     )
     assert transition_seconds(lazy, structure)[("WC", "CE")] == pytest.approx(expected)
+
+
+@pytest.mark.parametrize(
+    ("rank", "right"),
+    [
+        # 自転車は信号のある交差点で二段階右折するので、右折の出来事の代わりに信号での右折を数える。
+        (MAJOR, TURN_SPEC.signal_right.expected_seconds),
+        # 集まる道が県道クラスに届かない信号では、ふつうの右折のまま。
+        (MAJOR - 1, TURN_SPEC.right.expected_seconds),
+    ],
+)
+def test_a_right_turn_at_a_signal_waits_as_a_two_stage_turn(rank, right):
+    """信号のある交差点の右折は信号での右折の差で数え、左折と直進は基本の待ち（区間が運ぶ）のほかに足さない。"""
+    graph = make_graph(PLUS_NODES, PLUS_EDGES)
+    lazy = lazy_of(graph)
+    signals = np.zeros(lazy.node_count, dtype=bool)
+    signals[lazy.node_id_to_index["C"]] = True
+    _, _, structure = build_all(graph, spec=TURN_SPEC, edge_rank=_plus_ranks(lazy, rank, rank), node_has_signal=signals)
+    seconds = transition_seconds(lazy, structure)
+    assert (seconds[("WC", "CS")], seconds[("WC", "CN")], seconds[("WC", "CE")]) == pytest.approx(
+        (right, TURN_SPEC.left.expected_seconds, 0.0))
+
+
+# 上下線の分かれた幹線を、脇道（W→A→B→E）で直進して渡る。幹線の上り線がAで、下り線がBで脇道と交わり、AとBの両方に信号がある。
+DIVIDED_NODES = {"W": (35.0, 138.99), "A": (35.0, 139.0), "B": (35.0, 139.0003), "E": (35.0, 139.01),
+                 "N": (35.01, 139.0), "S": (34.99, 139.0003)}
+
+
+def divided_edges(between_m):
+    """AとBの間の区間の長さを`between_m`にした、上下線の分かれた幹線と脇道。"""
+    return {
+        "WA": ("W", "A", 900.0, 90.0), "AB": ("A", "B", between_m, 90.0), "BE": ("B", "E", 900.0, 90.0),
+        "AN": ("A", "N", 1000.0, 0.0), "NA": ("N", "A", 1000.0, 180.0),
+        "BS": ("B", "S", 1000.0, 180.0), "SB": ("S", "B", 1000.0, 0.0),
+    }
+
+
+@pytest.mark.parametrize(
+    ("between_m", "at_b"),
+    [
+        # 2つの信号の頂点が停止の点をまとめる距離より近い: 1つの交差点として、上位の道を渡る差は1回だけ。
+        (TUNING["stop.cluster_distance_m"] - 1.0, 0.0),
+        # 離れていれば別の交差点で、それぞれで足す。
+        (TUNING["stop.cluster_distance_m"] + 1.0, TURN_SPEC.minor_signal.expected_seconds),
+    ],
+)
+def test_crossing_a_divided_road_at_a_signal_adds_the_wait_once_per_intersection(between_m, at_b):
+    edges = divided_edges(between_m)
+    graph = make_graph(DIVIDED_NODES, edges)
+    lazy = lazy_of(graph)
+    signals = np.zeros(lazy.node_count, dtype=bool)
+    signals[[lazy.node_id_to_index["A"], lazy.node_id_to_index["B"]]] = True
+    ranks = rank_array(lazy, {edge_id: (MAJOR if edge_id in {"AN", "NA", "BS", "SB"} else MAJOR - 1) for edge_id in edges})
+    _, _, structure = build_all(graph, spec=TURN_SPEC, edge_rank=ranks, node_has_signal=signals)
+    seconds = transition_seconds(lazy, structure)
+    assert (seconds[("WA", "AB")], seconds[("AB", "BE")]) == pytest.approx(
+        (TURN_SPEC.minor_signal.expected_seconds, at_b))
+
+
+def test_a_right_turn_onto_a_divided_road_at_a_signal_adds_only_what_the_crossing_did_not():
+    """下の階級の道から、上下線の分かれた上位の道へ信号で右折する（Aで上り線を渡り、Bで下り線へ右折する）。Aで足した上位の道の
+    横断に、Bでは信号での右折との差だけを足す。Bでふつうの右折を足すと、信号での右折を表す値が使われない。"""
+    edges = divided_edges(TUNING["stop.cluster_distance_m"] - 1.0)
+    graph = make_graph(DIVIDED_NODES, edges)
+    lazy = lazy_of(graph)
+    signals = np.zeros(lazy.node_count, dtype=bool)
+    signals[[lazy.node_id_to_index["A"], lazy.node_id_to_index["B"]]] = True
+    ranks = rank_array(lazy, {edge_id: (MAJOR if edge_id in {"AN", "NA", "BS", "SB"} else MAJOR - 1) for edge_id in edges})
+    _, _, structure = build_all(graph, spec=TURN_SPEC, edge_rank=ranks, node_has_signal=signals)
+    seconds = transition_seconds(lazy, structure)
+    assert (seconds[("WA", "AB")], seconds[("AB", "BS")]) == pytest.approx(
+        (TURN_SPEC.minor_signal.expected_seconds, TURN_SPEC.signal_right_after_crossing.expected_seconds))
 
 
 def test_node_rank_comes_from_roads_that_leave_the_node_too():

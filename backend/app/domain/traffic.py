@@ -13,12 +13,14 @@ from dataclasses import dataclass
 from typing import Literal, get_args
 
 from app.domain.geo import ground_m_sql
-from app.domain.tuning import (
-    TUNING_PARAMETERS_BY_ID,
-    Tuning,
+from app.domain.stop_events import (
+    STOP_EVENT_KIND_OF,
+    STOP_EVENT_KINDS,
+    EventGroup,
     event_seconds_parameter_id,
     event_share_parameter_id,
 )
+from app.domain.tuning import Tuning
 
 #: 交差点（分かれ道）とみなす、ノードに集まる道の本数（`road_nodes.branch_count`）の下限。
 INTERSECTION_DEGREE_THRESHOLD = 3
@@ -107,7 +109,7 @@ STOP_POI_KINDS: frozenset[str] = frozenset(get_args(_StopPoiKind))
 
 
 # 停止要因の集計キー（`edge_counts`・`way_counts`の件数列`poi_<キー>`）と、
-# その日本語ラベル。**キーの単一ソース**で、材料
+# その日本語ラベル。止まる出来事の宣言（`domain/stop_events.py: STOP_EVENT_KINDS`）の停止要因から導き、材料
 # （`domain/material_catalog.py`の`poi_*_per_km`）はこの一覧から生成する。
 #
 # `_StopPoiKind`（取込時の分類）と1対1ではない。分ける基準は「止まる割合と待ちを違えたいか」
@@ -121,13 +123,7 @@ STOP_POI_KINDS: frozenset[str] = frozenset(get_args(_StopPoiKind))
 #   まとめる（自転車にとってはどちらも同じ「線路を渡る点」）
 # - 車止め（`barrier`）と減速構造（`traffic_calming`）は`barrier`へまとめる（どちらも
 #   「構造物のせいで止まる・大きく減速する」点で、重みを分ける根拠がまだ無い）
-POI_COUNT_KINDS: dict[str, str] = {
-    "signal": "信号",
-    "crossing": "横断歩道(信号なし)",
-    "stop": "一時停止・徐行",
-    "level_crossing": "踏切",
-    "barrier": "車止め・減速構造",
-}
+POI_COUNT_KINDS: dict[str, str] = {kind.name: kind.label for kind in STOP_EVENT_KINDS if kind.group == "stop"}
 
 #: 取込時の種別 → 数える種別（`POI_COUNT_KINDS`のキー）。畳み方は上の説明のとおり。
 #: 数える側・地図へ出す側とも、この表と信号の読み替えは`count_kind_sql`・`stop_kind_sql`
@@ -151,18 +147,6 @@ if _UNFOLDED_STOP_KINDS or _UNKNOWN_COUNT_KINDS:
         f"`COUNT_KIND_OF`の欠け: 畳み先の無い種別 {_UNFOLDED_STOP_KINDS}・"
         f"`POI_COUNT_KINDS`に無い畳み先 {_UNKNOWN_COUNT_KINDS}")
 
-# 数える種別すべてに較正値の宣言があることを、読み込みの時点で確かめる。`tuning.py`は
-# こちらをimportできない（循環する）ため、両者の対応を宣言から導けるのはこの向きだけで、
-# 宣言の欠けは「その種別の待ちが0秒」として所要時間から見分けられずに消える。
-_UNDECLARED_STOP_KINDS = tuple(
-    kind for kind in POI_COUNT_KINDS
-    if not {event_seconds_parameter_id("stop", kind), event_share_parameter_id("stop", kind)} <= TUNING_PARAMETERS_BY_ID.keys()
-)
-if _UNDECLARED_STOP_KINDS:
-    raise RuntimeError(
-        f"停止要因の較正値が`domain/tuning.py`に宣言されていない種別: {_UNDECLARED_STOP_KINDS}")
-
-
 def stop_parameter_subjects() -> dict[str, tuple[str, ...]]:
     """停止要因の較正値（割合・待ち）のid → 数える種別の名前。管理画面が較正値の名前へ添える。"""
     return {
@@ -170,10 +154,6 @@ def stop_parameter_subjects() -> dict[str, tuple[str, ...]]:
         for kind, label in POI_COUNT_KINDS.items()
         for parameter_id in (event_share_parameter_id("stop", kind), event_seconds_parameter_id("stop", kind))
     }
-
-
-#: 止まらず減速するだけの出来事（`(group, 種類)`。`group`は`stop`＝停止要因・`turn`＝曲がる所）。ほかは止まる。
-SLOWING_EVENTS = frozenset({("stop", "barrier"), ("turn", "left")})
 
 
 @dataclass(frozen=True)
@@ -196,15 +176,16 @@ class StopEvent:
 NO_EVENT = StopEvent(share=0.0, wait_seconds=0.0, kickoffs=0.0)
 
 
-def stop_event(group: str, name: str, tuning: Tuning) -> StopEvent:
-    """止まる出来事（`group`は`stop`＝停止要因［種類は`POI_COUNT_KINDS`のキー］・`turn`＝曲がる所）を、較正値`tuning`から
-    組む（走ってみて決める値のため、管理画面から変えられる）。減速だけの出来事は巡航速度の
-    `stop.slowed_speed_ratio`倍から戻すので、漕ぎ出しは止まってからの（1 − 割合²）倍。"""
+def stop_event(group: EventGroup, name: str, tuning: Tuning) -> StopEvent:
+    """止まる出来事（種類は`domain/stop_events.py: STOP_EVENT_KINDS`）を、較正値`tuning`から組む（走ってみて決める値のため、
+    管理画面から変えられる）。減速だけの出来事は巡航速度の`stop.slowed_speed_ratio`倍から戻すので、漕ぎ出しは止まってからの
+    （1 − 割合²）倍。"""
+    kind = STOP_EVENT_KIND_OF[(group, name)]
     share = tuning.checked(event_share_parameter_id(group, name), lambda v: 0 <= v <= 1, "0以上1以下")
     slowed = tuning.checked("stop.slowed_speed_ratio", lambda v: -1 <= v <= 1, "-1以上1以下")
     wait_seconds = tuning.checked(event_seconds_parameter_id(group, name), lambda v: v >= 0, "0以上")
     return StopEvent(share=share, wait_seconds=wait_seconds,
-                     kickoffs=share * ((1.0 - slowed * slowed) if (group, name) in SLOWING_EVENTS else 1.0))
+                     kickoffs=share * ((1.0 - slowed * slowed) if kind.slowing else 1.0))
 
 
 def poi_count_column(kind: str) -> str:

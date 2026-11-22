@@ -340,7 +340,8 @@ OpenStreetMapの寺社の分類は、伝統的な寺社と新しい宗教団体�
 集まるノードを前後の区間が0.5ずつ持つ（停止要因と同じ`PLACE_SHARE_PER_END`を読む）。数の列（停止要因・交差点・事故）は小数を持つ——整数へ
 丸めると、端の0.5が1になり、経路上で1か所を2回と数える。
 
-集計キー（`domain/traffic.py: POI_COUNT_KINDS`）は分類器が付ける`kind`と1対1ではない。
+集計キー（`domain/traffic.py: POI_COUNT_KINDS`。止まる出来事の宣言`domain/stop_events.py: STOP_EVENT_KINDS`の停止要因から導く）は
+分類器が付ける`kind`と1対1ではない。
 `give_way`は`stop`へ、車道用と歩道用の踏切は`level_crossing`へ、車止めと減速構造は
 `barrier`へ畳む——いずれも自転車から見て同じ止まり方で、重みを分ける根拠がまだ無い。
 **分類は取込時ではなく派生時**に行うため、キーの切り方を変えても取り直しは要らない。
@@ -715,6 +716,7 @@ PBF取込時にしか変わらないため、再訪時の同一タイル再取�
 | `stop_place.py` | 立ち寄り先の群（`stop_place.py: StopPlaceGroup`。点のタイルの属性`stop_place.py: group`の値）・文化財の所有者から寺社を見分ける語と式・寺社をまとめる距離（`stop_place.py: TEMPLE_SHRINE_SUFFIXES`・`stop_place.py: temple_shrine_owner_sql`・`stop_place.py: HERITAGE_MERGE_RADIUS_M`等）・Overtureの分類の語から群への表と式（`stop_place.py: OVERTURE_GROUP_WORDS`・`stop_place.py: overture_group_sql`）・同じ店をまとめる距離とチェーンの見分け方（`stop_place.py: MERGE_RADIUS_M`・`stop_place.py: CHAIN_WORDS`・`stop_place.py: chain_text_sql`・`stop_place.py: chain_sql`）・群の決め直し（`stop_place.py: CONVENIENCE_CHAINS`・`stop_place.py: BIKE_SHARE_CHAINS`・`stop_place.py: place_group_sql`）・言語違いの同じ場所を連絡先で寄せる群と距離・日本語の名前か・連絡先の比べる形（`stop_place.py: CONTACT_MERGE_RADIUS_M`・`stop_place.py: japanese_name_sql`・`stop_place.py: contacts_sql`）・ATMの地点の名前の直し（`stop_place.py: store_name_sql`）・外の地図へ渡す住所（`stop_place.py: address_sql`）・名前の揃え方（`stop_place.py: normalized_sql`）・地点の検索で打った語を群・チェーンとして読む語と判断と、検索に出さない分類（`stop_place.py: PLACE_GROUP_WORDS`・`stop_place.py: queried_group`・`stop_place.py: queried_chain`・`stop_place.py: SEARCH_EXCLUDED_CATEGORIES`。使い方は[地点の検索](place-search.md)「引き方」）。配布の列と JSON の読み替え（分類の道筋・連絡先の配列・住所の最初の1件）は`infrastructure/source_models.py: OVERTURE_PLACES_SOURCE_SQL`・`BUNKA_HERITAGES_SOURCE_SQL`が持つ |
 | `accident.py` | 警察庁の事故を道路へ帰属させ数えるときの判断。生データの列から判定を組み立てるSQL断片・自転車とみなす当事者種別・帰属の距離・重み付けの定数（本票の度分秒の読み取りは取込のアダプタ`npa_honhyo.py`が、本票の列名と当事者種別のコードの読み替えは`infrastructure/source_models.py`の事故の副問い合わせ（全件の`infrastructure/source_models.py: ACCIDENTS_SOURCE_SQL`と範囲で絞る`infrastructure/source_models.py: accidents_within_sql`が共有する）が持つ） |
 | `traffic.py` | OSMタグの解釈。停止要因POI・補給休憩POIの種別の引き当て（`traffic.py: TAG_KIND_RULES`・`traffic.py: tag_kind_sql`）、信号の判定（`traffic.py: TRAFFIC_SIGNAL_SQL`）、取込が道の頂点でなくても採る補給・休憩のタグ（`traffic.py: SUPPLY_POI_TAGS`・`traffic.py: has_supply_poi_tag`）、停止要因の数える種別への畳み方と信号の読み替え（`traffic.py: COUNT_KIND_OF`・`traffic.py: count_kind_sql`・`traffic.py: stop_kind_sql`・`traffic.py: kinds_shown_as`）、通行方向の解決（`traffic.py: DIRECTION_RULES`・`traffic.py: direction_sql`）と片方向にだけ通れるかの式（`traffic.py: one_way_sql`）・道の形の向きと逆向きのそれぞれに通れるか（`traffic.py: travel_allowed`）、交差点判定の次数しきい値、停止要因の場所・交差点を端で分け持つ割合（`traffic.py: PLACE_SHARE_PER_END`・`traffic.py: place_count_sql`）、停止要因の点のまとめ方（`traffic.py: stop_cluster_sql`）、交差点の階級（`traffic.py: HIGHWAY_RANK`）。取込のタグ（取込のアダプタが1件ずつ当てる）を除き、派生バッチへSQLとして渡す表と式で、タグを読むためだけに行を取り出さない |
+| `stop_events.py` | 止まる出来事（停止要因と曲がる所）の種類の宣言（`stop_events.py: STOP_EVENT_KINDS`）。種類ごとの置き場・名前・止まるか減速するだけか・待ちの較正値の説明を持ち、較正値の宣言・数える種別・出来事の組み立てがここから導く。較正値のidの綴り（`stop_events.py: event_share_parameter_id`・`event_seconds_parameter_id`）も持つ |
 | `divided_carriageway.py` | 上下線が分かれた道の片側かのしきい値と判定のSQL式（`divided_carriageway.py: divided_sql`）。材料`oneway`の値式（`divided_carriageway.py: oneway_material_sql`。地図の一方通行と評価が同じ式を読む）は、片方向にだけ通れる道（`traffic.py: one_way_sql`）から上下線の片側を外す |
 
 `traffic.py: TAG_KIND_RULES`は信号・横断歩道・一時停止・徐行（`highway=*`）・踏切
@@ -739,7 +741,7 @@ PBF取込時にしか変わらないため、再訪時の同一タイル再取�
 派生を流し直すだけでよく、取り直しは要らない**。
 
 停止要因の種別ごとの止まる出来事（止まる割合・止まったときの待ち・止まらず減速するだけか）は`traffic.py: stop_event`が
-返す。値そのものは較正値の宣言（`domain/tuning.py`）が持ち、`domain/leg_costs.py`の走行時間
+返す（減速するだけかは`stop_events.py: STOP_EVENT_KINDS`の宣言が持つ）。値そのものは較正値の宣言（`domain/tuning.py`）が持ち、`domain/leg_costs.py`の走行時間
 合成が、その区間にある停止要因の数（材料`poi_*_per_km`）と掛けて、割合 × 待ちを走行時間へ足し、割合ぶんの漕ぎ出しを
 体力の慣性の費目に書く。`HIGHWAY_RANK`は交差点で
 「自分が走ってきた道より上位の道と交わるか」を判定するための階級順で、**値そのものに

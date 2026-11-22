@@ -14,6 +14,7 @@ import numpy as np
 
 from app.domain import search_graph, turn_structure
 from app.domain.traffic import StopEvent
+from tests.tuning_fixture import TUNING
 
 
 class EdgeSpec(NamedTuple):
@@ -116,12 +117,14 @@ def _event(wait_seconds: float, kickoffs: float = 1.0) -> StopEvent:
 # ターンの費用をすべて0にする仕様（ターン以外の挙動を見るとき用）。
 FLAT_SPEC = turn_structure.TurnCostSpec(
     left=_event(0.0), right=_event(0.0), uturn=_event(0.0), straight_max_deg=180.0,
-    major_crossing=_event(0.0), major_turn=_event(0.0),
+    major_crossing=_event(0.0), major_turn=_event(0.0), signal_right=_event(0.0), minor_signal=_event(0.0),
+    signal_right_after_crossing=_event(0.0),
 )
 # ターンの種別が全部違う値になる仕様。
 TURN_SPEC = turn_structure.TurnCostSpec(
     left=_event(5.0, kickoffs=0.75), right=_event(3.0), uturn=_event(20.0), straight_max_deg=30.0,
-    major_crossing=_event(7.0), major_turn=_event(11.0),
+    major_crossing=_event(7.0), major_turn=_event(11.0), signal_right=_event(13.0), minor_signal=_event(17.0),
+    signal_right_after_crossing=_event(4.0),
 )
 
 
@@ -146,6 +149,7 @@ def build_all(graph, spec=FLAT_SPEC, edge_rank=None, node_has_signal=None, node_
         np.zeros(node_count, dtype=bool) if node_has_signal is None else node_has_signal,
         np.zeros(node_count, dtype=np.int64) if node_db_rank is None else node_db_rank,
         branch_counts(graph.edge_from, graph.edge_to, node_count),
+        np.asarray(graph.distance_m, dtype=np.float64)[lazy.graph.edge_rows], TUNING["stop.cluster_distance_m"],
     )
     return lazy, statics, structure
 

@@ -33,7 +33,7 @@ from app.domain.material_catalog import (
     material_value_sql,
 )
 from app.domain.region import BoundingBox, RoadAt
-from app.domain.tuning import TURN_BEARING_DISTANCE_ID, require_tuning
+from app.domain.tuning import STOP_CLUSTER_DISTANCE_ID, TURN_BEARING_DISTANCE_ID, require_tuning
 from app.infrastructure import derived_data_meta
 from app.infrastructure.material_joins import material_from_clause
 from app.infrastructure.orm_base import declared_metadata
@@ -171,7 +171,7 @@ ORDER BY re.osm_way_id, re.segment_index
 
 
 #: 道路網全体の配列を作る読み出しが読む較正値。値は作り直しに使った値（`get_recorded_tuning`）で、文へ引数で渡る。
-NETWORK_TUNING = (TURN_BEARING_DISTANCE_ID,)
+NETWORK_TUNING = (TURN_BEARING_DISTANCE_ID, STOP_CLUSTER_DISTANCE_ID)
 
 #: 区間の端点全件（`road_edges`の端点は`road_nodes`に行を持ち、`road_nodes`の全行が`node_turns`に行を持つ）。
 #: 座標はノードの生データから読み、生データが無いノードは現れない。
