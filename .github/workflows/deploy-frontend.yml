@@ -1,10 +1,10 @@
-# frontendをRenderへデプロイする。
+# frontendを、backendと同じOracle Cloud VMへデプロイする。
 #
-# CIを通ったコミットのfrontendの像（ci.ymlのfrontend-imageが作り、e2eと全状態の走査が中身を試してGitHubのコンテナの
-# 置き場へ置いたもの）を、Renderのデプロイフックに`imgURL`で渡して出させる。手動の起動では、ここで像を作って置く。Renderではビルドしない（無料のプランのビルドの時間は月500分で、使い切るとその月は出せない）。
-# Renderの自動デプロイは使わない——「After CI Checks Pass」は連携したブランチの最新のコミットだけを、そのコミットの
-# チェックが全部終わってから出すため、masterの先頭に長く動くチェック（workflow_dispatchで動く実行）が付いている間は何も出ない。
-name: Deploy Frontend to Render
+# CIを通ったコミットのfrontendの像（ci.ymlのfrontend-imageがarm64で作り、e2eと全状態の走査が中身を試してGitHubのコンテナの
+# 置き場へ置いたもの）を、VMが置き場から取って入れ替える。手動の起動では、ここで像を作って置く。
+# VMはAmpere A1（arm64）で、像にはCPUの種類ごとの部品が入るので、像はarm64のランナーで作る。
+# VMのnginxが本番のfrontendの宛先のTLSを終端し、127.0.0.1:3000のコンテナへ渡す（docs/architecture/tech-stack.md「本番の宛先」）。
+name: Deploy Frontend to Oracle VM
 
 on:
   # ci.ymlが、masterへのpushで、changesがfrontendを出すと決め、ci-okが通ったときだけ呼ぶ（changesが要らないと
@@ -14,35 +14,53 @@ on:
   # 手動のデプロイ。CIを待たず、選んだrefの先端から像を作ってそのまま出す。
   workflow_dispatch:
 
-# 像をGitHubのコンテナの置き場へ置く。ci.ymlから呼ばれるときは、呼ぶ側のジョブが渡した権限が上限になる。
+# 像をGitHubのコンテナの置き場へ置く（手動の起動）・置き場から取る。ci.ymlから呼ばれるときは、呼ぶ側のジョブが渡した権限が上限になる。
 permissions:
   contents: read
   packages: write
 
 jobs:
   deploy:
-    runs-on: ubuntu-latest
-    timeout-minutes: 40
-    # 判定・デプロイ・反映の待ちを1つのジョブにし、まとめて1本ずつ走らせる。Renderは最後に頼まれたデプロイを
-    # 出すので、反映を待たずに次の判定へ進むと、後から終わった古いCIの実行が新しいコミットを上書きしうる。どの ref から起こしても
-    # 本番（公開先）は1つなので、レーンの鍵は master に決めてある（レーンは docs/architecture/tech-stack.md「CIの実行枠」）。
+    runs-on: ubuntu-24.04-arm
+    # 手動の起動の像の組み立ては arm64 のランナーで約1分半、像の取得と入れ替えは数十秒。止まったジョブを既定の360分まで待たせない。
+    timeout-minutes: 15
+    # 判定・入れ替え・反映の待ちを1つのジョブにし、まとめて1本ずつ走らせる。反映を待たずに次の判定へ進むと、後から終わった
+    # 古いCIの実行が新しいコミットを上書きしうる。どの ref から起こしても本番（公開先）は1つなので、
+    # レーンの鍵は master に決めてある（レーンは docs/architecture/tech-stack.md「CIの実行枠」）。
     concurrency:
       group: master-lane-4
       queue: max
     env:
-      # Renderのサービスに設定した像のURLと、タグ以外が同じでなければならない（フックが断る）。
       IMAGE: ghcr.io/${{ github.repository_owner }}/ride-compass-frontend
     steps:
       - uses: actions/checkout@v5
         with:
           fetch-depth: 0
       - run: echo "VERSION_URL=$(jq -r .frontend production-origins.json)/api/version" >> "$GITHUB_ENV"
+      # 本番のVMへは、ランナーにある ssh で `ssh prod` として入る（deploy-backend.yml と同じ形）。
+      - name: 本番のVMへ入る鍵を置く
+        env:
+          HOST: ${{ secrets.ORACLE_VM_HOST }}
+          KEY: ${{ secrets.ORACLE_VM_SSH_KEY }}
+        run: |
+          mkdir -p -m 700 ~/.ssh
+          install -m 600 /dev/null ~/.ssh/prod_key
+          printf '%s\n' "$KEY" > ~/.ssh/prod_key
+          cat > ~/.ssh/config <<EOF
+          Host prod
+            HostName $HOST
+            User ubuntu
+            IdentityFile ~/.ssh/prod_key
+            StrictHostKeyChecking accept-new
+            ConnectTimeout 20
+            ServerAliveInterval 30
+          EOF
       - name: 本番で動いているコミットを読む
         id: deployed
         run: |
-          # 休止から起き上がる間は429・5xxが返るので、少し待って読み直す。読めなければ空のまま進む
-          # （判定は「分からないので出す」になる）。
-          sha=$(curl -fsS --max-time 30 --retry 6 --retry-all-errors --retry-delay 10 "$VERSION_URL" | jq -r '.commit // empty') || sha=""
+          # 読めなければ空のまま進む（判定は「分からないので出す」になる）。
+          sha=$(ssh prod "sudo docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' ridecompass-frontend" \
+            | sed -n 's/^GIT_COMMIT=//p') || sha=""
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
       - name: 出すかを決める
         id: gate
@@ -67,35 +85,50 @@ jobs:
           echo "$GH_TOKEN" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
           node frontend/scripts/image.mjs "$IMAGE:$GITHUB_SHA" "$GITHUB_SHA"
           docker push "$IMAGE:$GITHUB_SHA"
-      - name: Renderのデプロイフックでこの像を出す
+      - name: VMで像を取って入れ替える
         if: steps.gate.outputs.deploy == 'true'
         env:
-          HOOK: ${{ secrets.RENDER_FRONTEND_DEPLOY_HOOK_URL }}
+          GH_TOKEN: ${{ github.token }}
         run: |
-          if [ -z "$HOOK" ]; then
-            echo "::error::リポジトリの秘密 RENDER_FRONTEND_DEPLOY_HOOK_URL が無い"
-            exit 1
-          fi
-          # フックのURLは鍵を`?key=`で持つので、`imgURL`は`&`で足す。200は今始まった、202は進行中のデプロイの後に始まる。
-          img=$(jq -rn --arg v "$IMAGE:$GITHUB_SHA" '$v | @uri')
-          code=$(curl -sS --max-time 60 -o "$RUNNER_TEMP/hook.json" -w '%{http_code}' -X POST "$HOOK&imgURL=$img") || code=000
-          echo "デプロイフックの応答 $code $(cat "$RUNNER_TEMP/hook.json" 2>/dev/null)"
-          case "$code" in
-            200|202) ;;
-            *) exit 1 ;;
-          esac
-      - name: 本番の/api/versionがこのコミットになるまで待つ
+          # 置き場を読む資格は、このジョブだけで効く鍵を標準入力で渡し、取り終えたら消す（VMに長く効く資格を置かない）。
+          trap 'ssh prod sudo docker logout ghcr.io > /dev/null || true' EXIT
+          printf '%s' "$GH_TOKEN" | ssh prod "sudo docker login ghcr.io -u '${{ github.actor }}' --password-stdin"
+          # VMで流す本文は標準入力で渡す。本文の中で標準入力を読むコマンド（`docker run -i` 等）を使うと、続きの本文を食う。
+          ssh prod bash -s <<'EOF'
+            set -e
+            IMAGE=${{ env.IMAGE }}
+            COMMIT=${{ github.sha }}
+            sudo docker pull -q "$IMAGE:$COMMIT"
+            # 新旧を同時に起こすと3000番を取り合うので、止めてから起こす（入れ替えの間の数秒は nginx が 502 を返す）。
+            sudo docker rm -f ridecompass-frontend 2>/dev/null || true
+            # 上限は、同じVMの backend と DB の資源を食わないため。
+            # --log-driver=journald: ログをVMのjournalへ送り、入れ替えでコンテナを消したあとも読めるようにする（docs/architecture/tech-stack.md「本番のログ」）。
+            sudo docker run -d \
+              --name ridecompass-frontend \
+              --restart unless-stopped \
+              --memory=512m --memory-swap=512m --cpus=0.5 \
+              -p 127.0.0.1:3000:3000 \
+              --log-driver=journald \
+              "$IMAGE:$COMMIT"
+            # 入れ替えたコンテナが今のコミットとして/api/versionに応答するまで待つ。`docker run -d`は起動の成否を見ない。
+            WAIT_SECONDS=60
+            WAIT_STARTED=$SECONDS
+            until curl -fsS --max-time 5 http://127.0.0.1:3000/api/version 2>/dev/null | grep -qF "\"commit\":\"$COMMIT\""; do
+              if [ $((SECONDS - WAIT_STARTED)) -ge $WAIT_SECONDS ]; then
+                echo "入れ替えたコンテナが${WAIT_SECONDS}秒以内に/api/versionへ応答しませんでした commit=$COMMIT"
+                sudo docker inspect -f 'status={{.State.Status}} restarts={{.RestartCount}}' ridecompass-frontend
+                sudo docker logs --tail 200 ridecompass-frontend 2>&1
+                exit 1
+              fi
+              sleep 2
+            done
+            echo "入れ替えたコンテナが/api/versionに応答するまで $((SECONDS - WAIT_STARTED))秒 commit=$COMMIT"
+            # 前のコミットの像を消す（置き場の像はコミットごとのタグで、残すとVMの空きを食う）。
+            sudo docker images "$IMAGE" --format '{{.Repository}}:{{.Tag}}' | grep -vxF "$IMAGE:$COMMIT" | xargs -r sudo docker rmi > /dev/null
+            sudo docker image prune -f > /dev/null
+          EOF
+      - name: 本番の宛先の/api/versionがこのコミットになるのを見る
         if: steps.gate.outputs.deploy == 'true'
         run: |
-          # 上限までに変わらなければ、Renderの像の取得か起動が失敗している（ダッシュボードの Events に出る）。
-          WAIT_SECONDS=1800
-          WAIT_STARTED=$SECONDS
-          until [ "$(curl -fsS --max-time 30 "$VERSION_URL" 2>/dev/null | jq -r '.commit // empty' 2>/dev/null)" = "$GITHUB_SHA" ]; do
-            if [ $((SECONDS - WAIT_STARTED)) -ge $WAIT_SECONDS ]; then
-              echo "::error::本番の/api/versionが${WAIT_SECONDS}秒以内にこのコミットになりませんでした commit=$GITHUB_SHA"
-              curl -sS --max-time 30 "$VERSION_URL" || true
-              exit 1
-            fi
-            sleep 30
-          done
-          echo "本番の/api/versionがこのコミットになるまで $((SECONDS - WAIT_STARTED))秒 commit=$GITHUB_SHA"
+          # VMの中では応答している。ここでは外から nginx・TLS・名前を通って届くかを見る。
+          curl -fsS --max-time 30 --retry 5 --retry-all-errors --retry-delay 5 "$VERSION_URL" | tee /dev/stderr | grep -qF "\"commit\":\"$GITHUB_SHA\""

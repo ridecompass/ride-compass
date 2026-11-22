@@ -371,7 +371,8 @@ jobs:
     concurrency:
       group: ${{ github.head_ref || github.ref_name }}-lane-${{ matrix.lane }}
       queue: max
-    runs-on: ubuntu-latest
+    # 下で広げるアプリは frontend-image が arm64 で作った像の中身で、CPU の種類ごとの部品（sharp）を含むので、同じ arm64 で起こす。
+    runs-on: ubuntu-24.04-arm
     container:
       image: mcr.microsoft.com/playwright:v${{ needs.changes.outputs.playwright }}-noble
       # --user 1001 は公式の文書（https://playwright.dev/docs/ci の GitHub Actions の container の例）のとおり。
@@ -407,15 +408,15 @@ jobs:
           name: playwright-report-${{ matrix.id }}
           path: frontend/playwright-report/
           retention-days: 7
-  # frontendの像を本番と同じDockerfile・同じ引数（backendの宛先を焼き込む）で作り、中のアプリを e2e へ渡し、masterでは
-  # GitHub のコンテナの置き場へ置いて deploy-frontend.yml に出させる。
+  # frontendの像を本番と同じDockerfile・同じ引数（backendの宛先を焼き込む）・同じaarch64（本番のVMはAmpere A1）で作り、
+  # 中のアプリを e2e へ渡し、masterでは GitHub のコンテナの置き場へ置いて deploy-frontend.yml に出させる。
   frontend-image:
     needs: changes
     if: fromJSON(needs.changes.outputs.run)['frontend-image']
     concurrency:
       group: ${{ github.head_ref || github.ref_name }}-lane-3
       queue: max
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04-arm
     timeout-minutes: 3
     permissions:
       contents: read
