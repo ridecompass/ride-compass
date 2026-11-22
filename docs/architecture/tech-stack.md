@@ -143,6 +143,12 @@ VMの公開IPを指し、Cloudflareは中継しない（Proxy statusはDNS only�
 nginxを読み直す。nginxの設定はVMの`/etc/nginx/conf.d/`にある。**VMのnginxやcertbotを入れ替えたら、`certbot renew --dry-run`が通るかを見る**
 （nginxの部品はUbuntuの`nginx`に依るので、nginxを消すと一緒に外れ、更新が黙って失敗し続ける）。
 
+**VMの入口は、OCIのセキュリティリスト（手前の門）とVMのiptables（2枚目の門。`netfilter-persistent`で保存）の両方で同じ形に絞る。**
+外から届くのは、80番・443番（TCP）と443番（UDP。HTTP/3）、22番（SSH。開発機の接続元のIPが動くので絞らない）、
+5432番（DB。開発機の接続元のIPだけ。本番を読む道具が手元から直接繋ぐ）。それ以外は閉じ、backendの8000番とfrontendの3000番は
+外から届かない（前段のnginxが同じVMの中から繋ぐ）。VMに外から届くIPv6の番地は無い。**開発機の接続元のIPが変わったら、
+OCIとiptablesの5432番の行を直す。** 規則は`oci network security-list get`と`sudo iptables -S INPUT`で読む。
+
 **画面がbackendを呼ぶ宛先は、像のビルドのときに埋め込まれる。** ブラウザからのAPIは`NEXT_PUBLIC_API_URL`、タイルは
 `NEXT_PUBLIC_TILE_BASE_URL`（[static-map-layers.md](../modules/frontend/static-map-layers.md)）、rewritesと管理画面の転送の先は
 `BACKEND_INTERNAL_URL`で、`frontend/scripts/image.mjs`が3つともbackendの宛先にして像のビルドへ渡す（撮影の道具も同じ組を使う）。
