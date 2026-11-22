@@ -28,11 +28,11 @@ EXPOSE 8000
 
 # --proxy-headers・--forwarded-allow-ips: per-IPのレート制限のキー（app/api/rate_limit.py:
 # client_id）はrequest.client.hostで、前段のプロキシを通った要求はX-Forwarded-Forを信頼させないと
-# 全員がプロキシのIP1つへ潰れ、共有した上限に地図の操作だけで当たって429になる。uvicornが既定で
-# 信頼する接続元は127.0.0.1だけ。'*'は接続元を問わずヘッダーを信頼するため、前段を通らずに
-# このポートへ届く経路があると、X-Forwarded-Forを偽ってレート制限のキーを選べる（前段の
-# プロキシと着信の制限はVM側の設定で、リポジトリには無い）。
+# 全員がプロキシのIP1つへ潰れ、共有した上限に地図の操作だけで当たって429になる。前段（同じVMのnginx）は
+# 127.0.0.1から繋ぐので、信頼する接続元は127.0.0.1だけにする。信頼する前段が付け足した右端から数えて最初の
+# 信頼しない番地が接続元になり、利用者がX-Forwarded-Forの先頭を偽ってもキーは変わらない。'*'にすると先頭を
+# そのまま使うので、偽ってレート制限のキーを選べる（前段と着信の制限は docs/architecture/tech-stack.md「本番の宛先」）。
 # --no-access-log: アクセスログはapp側のミドルウェア(infrastructure/request_log.py)が
 # リクエストID・所要時間付きの1行サマリとして出すため、uvicorn標準のアクセスログは
 # 二重になるだけの上に情報が少ない(IDも所要時間も無い)ので止める。
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", "--forwarded-allow-ips=*", "--no-access-log"]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", "--forwarded-allow-ips=127.0.0.1", "--no-access-log"]
