@@ -141,7 +141,9 @@ Cloudflareのネームサーバーを使うのが条件。公式の文書[Cloudf
 VMの公開IPを指し、Cloudflareは中継しない（Proxy statusはDNS only）。**VMの公開IPが変わったら、CloudflareのDNSの2行を直す。**
 証明書は2つの名前を1枚に入れたcertbotの`ridecompass.app`で、certbotのnginxの部品（`python3-certbot-nginx`）で更新し、更新のたびに
 nginxを読み直す。nginxの設定はVMの`/etc/nginx/conf.d/`にある。**VMのnginxやcertbotを入れ替えたら、`certbot renew --dry-run`が通るかを見る**
-（nginxの部品はUbuntuの`nginx`に依るので、nginxを消すと一緒に外れ、更新が黙って失敗し続ける）。
+（nginxの部品はUbuntuの`nginx`に依るので、nginxを消すと一緒に外れ、更新が黙って失敗し続ける）。更新の失敗はVMのログにしか
+残らないので、毎日の本番の確かめ（`.github/workflows/prod-route-check.yml`）が2つの宛先の証明書の残りの日数を見て、
+certbotが更新を試み始めてから10日たっても更新されていなければ落ちる（`backend/scripts/prod_cert_check.py`）。
 
 **VMの入口は、OCIのセキュリティリスト（手前の門）とVMのiptables（2枚目の門。`netfilter-persistent`で保存）の両方で同じ形に絞る。**
 外から届くのは、80番・443番（TCP）と443番（UDP。HTTP/3）、22番（SSH。開発機の接続元のIPが動くので絞らない）、
