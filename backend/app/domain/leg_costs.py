@@ -22,7 +22,6 @@ from numba import njit
 from app.domain.stopwatch import add_elapsed_ms, elapsed_ms, start_timer, steps_note
 from app.domain.attributes import CategoricalColumn, MaterialColumn
 from app.domain.cycling_speed import (
-    SEGMENT_SPEED_CONDITIONS,
     STANDARD_TEMPERATURE_C,
     RiderProfile,
     SegmentSpeedModel,
@@ -67,10 +66,7 @@ MISSING_TRAVEL_DATA_WORDING = (
     "分からない区間は平均の値で、標高の無い区間の空気の濃さは海面の高さのもので計算しています。")
 
 #: 所要時間の見積もりが何を足したものかを、利用者に言う文（区間の走行時間・止まる出来事の待ち・曲がる所の時間）。
-DURATION_ESTIMATE_WORDING = (
-    "区間ごとの走行時間に、信号などで止まる時間と、交差点を曲がるのにかかる時間を足した見積もりです。"
-    f"走行時間は、想定した巡航速度と{'・'.join(SEGMENT_SPEED_CONDITIONS)}から計算します。"
-)
+DURATION_ESTIMATE_WORDING = "走る時間に、信号などで止まる時間と曲がる時間を足した見積もりです。"
 
 logger = logging.getLogger("ridecompass.graph")
 

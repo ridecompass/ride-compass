@@ -2956,10 +2956,6 @@
           },
           "map_lens": {
             "$ref": "#/components/schemas/MapLens"
-          },
-          "turn_kickoff_wording": {
-            "type": "string",
-            "title": "Turn Kickoff Wording"
           }
         },
         "additionalProperties": false,
@@ -2967,8 +2963,7 @@
         "required": [
           "axes",
           "total_lens",
-          "map_lens",
-          "turn_kickoff_wording"
+          "map_lens"
         ],
         "title": "CostAxisCatalogResponse"
       },

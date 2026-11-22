@@ -870,8 +870,6 @@ export interface components {
             axes: components["schemas"]["CostAxisCatalogEntry"][];
             total_lens: components["schemas"]["TotalLens"];
             map_lens: components["schemas"]["MapLens"];
-            /** Turn Kickoff Wording */
-            turn_kickoff_wording: string;
         };
         /** CostAxisDefinitions */
         CostAxisDefinitions: {
