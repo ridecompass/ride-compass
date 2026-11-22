@@ -11,7 +11,7 @@ export interface IconProps {
 /** アイコン1つぶん。 */
 export type MapIconComponent = (props: IconProps) => ReactElement;
 
-export const VIEWBOX_SIZE = 20;
+const VIEWBOX_SIZE = 20;
 const STROKE_WIDTH = 1.6;
 /** lucideの形は24単位の枠で描かれているので、同じ比の太さへ直す。 */
 export const LUCIDE_STROKE_WIDTH = (STROKE_WIDTH * 24) / VIEWBOX_SIZE;
@@ -143,8 +143,8 @@ export function UndoAllIcon({ size = 16 }: IconProps) {
   );
 }
 
-/** 一覧の末尾の「消す」「戻す」操作のバツ（右下に置く）。対象の形の右下へ重ね、何を消すのかは対象の形で示す。 */
-export const CLEAR_MARK_PATH = "M12.4 12.4 17.6 17.6M17.6 12.4 12.4 17.6";
+/** 一括で消す操作のバツ（右下に置く）。対象の形の右下へ重ね、何を消すのかは対象の形で示す。 */
+const CLEAR_MARK_PATH = "M12.4 12.4 17.6 17.6M17.6 12.4 12.4 17.6";
 
 /** 全レイヤー一括OFF: 重なり（レイヤー）＋バツ。
  * 「表示」の一覧の末尾には「戻す」操作が複数並ぶため、バツは「消す」の意味だけに使い、
@@ -165,6 +165,28 @@ export function ClearAllFiltersIcon({ size = 16 }: IconProps) {
   return (
     <svg width={size} height={size} {...svgProps}>
       <path d="M1.8 3.4h11.4L8.9 8.3v4.4L6.1 14V8.3L1.8 3.4Z" strokeLinejoin="round" strokeLinecap="butt" />
+      <path d={CLEAR_MARK_PATH} />
+    </svg>
+  );
+}
+
+/** 筆をバツと重ならない左上へ収める、lucideの24単位の枠から自前の枠への縮み。 */
+const CLEAR_LENS_BRUSH_SCALE = 15 / 24;
+
+/** 「負担で塗る」の選択を外す: 入口の筆（lucideの`Paintbrush`と同じ線）＋バツ。一括操作の組の形なので、ほかの組と同じく
+ * 自前に置き、筆も入口の形の線をこの枠へ縮めて描く。 */
+export function ClearLensIcon({ size = 16 }: IconProps) {
+  return (
+    <svg width={size} height={size} {...svgProps}>
+      <g
+        transform={`translate(0 0.4) scale(${CLEAR_LENS_BRUSH_SCALE})`}
+        strokeWidth={STROKE_WIDTH / CLEAR_LENS_BRUSH_SCALE}
+        strokeLinejoin="round"
+      >
+        <path d="m14.622 17.897-10.68-2.913" />
+        <path d="M18.376 2.622a1 1 0 1 1 3.002 3.002L17.36 9.643a.5.5 0 0 0 0 .707l.944.944a2.41 2.41 0 0 1 0 3.408l-.944.944a.5.5 0 0 1-.707 0L8.354 7.348a.5.5 0 0 1 0-.707l.944-.944a2.41 2.41 0 0 1 3.408 0l.944.944a.5.5 0 0 0 .707 0z" />
+        <path d="M9 8c-1.804 2.71-3.97 3.46-6.583 3.948a.507.507 0 0 0-.302.819l7.32 8.883a1 1 0 0 0 1.185.204C12.735 20.405 16 16.792 16 15" />
+      </g>
       <path d={CLEAR_MARK_PATH} />
     </svg>
   );

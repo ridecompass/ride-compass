@@ -9,8 +9,8 @@ import { UNSELECTED_LENS_ID, LENS_NEUTRAL_COLOR, type LensId } from "@/lib/mapDi
 import { Button } from "@/components/ui/Button/Button";
 import { ToggleGroup } from "@/components/ui/ToggleGroup/ToggleGroup";
 import { Dot } from "@/components/ui/Dot/Dot";
-import { ClearAllFiltersIcon } from "@/components/ui/icons/icons";
-import { BurdenPaintIcon, ClearLensIcon } from "@/components/ui/icons/lucideIcons";
+import { ClearAllFiltersIcon, ClearLensIcon } from "@/components/ui/icons/icons";
+import { BurdenPaintIcon } from "@/components/ui/icons/lucideIcons";
 import { cn } from "@/lib/cn";
 import { textVariants } from "@/components/ui/Text/Text";
 import { BURDEN_PAINT_NAME } from "@/lib/screenNames";
