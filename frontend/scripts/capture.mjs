@@ -37,7 +37,7 @@ const MOCKED_API = "http://localhost:8000";
 const LOCAL_PORT = "3300";
 /** --backend の作業ツリーの backend のポート。backend の開発・e2e-live（serve_e2e_live.py）と取り合わない。 */
 const WORKTREE_BACKEND_PORT = "8300";
-/** Render の無料のインスタンスは休止から起きるのに約1分かかる（https://render.com/docs/free）。その3倍まで待つ。 */
+/** 宛先（作業ツリーの backend の起動・本番の宛先）が応答するまで待つ上限。 */
 const WAKE_LIMIT_MS = 3 * 60_000;
 
 /**
@@ -100,7 +100,7 @@ const out = path.join(
 rmSync(out, { recursive: true, force: true });
 mkdirSync(out, { recursive: true });
 
-/** 宛先が 200 の JSON を返すまで待つ。休止中の宛先は、起きるまで応答を待たせるか、起動待ちの画面（HTML）を返す。 */
+/** 宛先が 200 の JSON を返すまで待つ。起動中の宛先は、応答を待たせるか、JSON でない応答（前段の nginx の 502 等）を返す。 */
 async function waitReady(name, url) {
   const deadline = Date.now() + WAKE_LIMIT_MS;
   const started = Date.now();

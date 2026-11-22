@@ -133,8 +133,15 @@ backendのデプロイがCORSの許可へ新しいfrontendの宛先を足す。
 
 | | 宛先 | 中身 |
 |---|---|---|
-| frontend | `https://ride-compass-frontend.onrender.com` | Render。backendのCORSの許可に無ければ、`deploy-backend.yml`がデプロイのたびに足す |
-| backend | `https://193-123-166-150.sslip.io` | Oracle Cloud VM。VMのnginxがTLS（certbot）を終端し、`127.0.0.1:8000`のコンテナへ渡す。名前はVMの公開IPをsslip.ioで引けるようにしたもので、**IPが変わると宛先も変わる**。nginxの設定は`client_max_body_size`を置かず、要求の本文の上限は既定の1MB（超えると413） |
+| frontend | `https://ridecompass.app` | Oracle Cloud VM（backendと同じ）。VMのnginxがTLS（certbot）を終端し、`127.0.0.1:3000`のコンテナへ渡す。backendのCORSの許可に無ければ、`deploy-backend.yml`がデプロイのたびに足す |
+| backend | `https://api.ridecompass.app` | Oracle Cloud VM。VMのnginxがTLS（certbot）を終端し、`127.0.0.1:8000`のコンテナへ渡す。nginxの設定は`client_max_body_size`を置かず、要求の本文の上限は既定の1MB（超えると413） |
+
+**名前と証明書はリポジトリの外にある。** ドメイン`ridecompass.app`はCloudflare Registrarで取り、DNSもCloudflareが持つ（Cloudflare Registrarは
+Cloudflareのネームサーバーを使うのが条件。公式の文書[Cloudflare Registrar](https://developers.cloudflare.com/registrar/)）。2つの名前のAレコードが
+VMの公開IPを指し、Cloudflareは中継しない（Proxy statusはDNS only）。**VMの公開IPが変わったら、CloudflareのDNSの2行を直す。**
+証明書は2つの名前を1枚に入れたcertbotの`ridecompass.app`で、certbotのnginxの部品（`python3-certbot-nginx`）で更新し、更新のたびに
+nginxを読み直す。nginxの設定はVMの`/etc/nginx/conf.d/`にある。**VMのnginxやcertbotを入れ替えたら、`certbot renew --dry-run`が通るかを見る**
+（nginxの部品はUbuntuの`nginx`に依るので、nginxを消すと一緒に外れ、更新が黙って失敗し続ける）。
 
 **画面がbackendを呼ぶ宛先は、像のビルドのときに埋め込まれる。** ブラウザからのAPIは`NEXT_PUBLIC_API_URL`、タイルは
 `NEXT_PUBLIC_TILE_BASE_URL`（[static-map-layers.md](../modules/frontend/static-map-layers.md)）、rewritesと管理画面の転送の先は
@@ -153,7 +160,7 @@ Next.jsのHTMLの404が返る（backendの404はJSON）。本番のAPIを手で�
 
 | | 稼働先 | `commit`の注入元 |
 |---|---|---|
-| frontend | Render | `deploy-frontend.yml`が像のビルドへコミットを渡し、像の`GIT_COMMIT`に入れる（`frontend/Dockerfile`） |
+| frontend | Oracle Cloud VM | `deploy-frontend.yml`が像のビルドへコミットを渡し、像の`GIT_COMMIT`に入れる（`frontend/Dockerfile`） |
 | backend | Oracle Cloud VM | デプロイワークフローがVM上で`git rev-parse HEAD`を実行し、`GIT_COMMIT`として`docker run`へ渡す |
 
 ローカル開発ではどちらの環境変数も無いため`null`になる。`started_at`（プロセス起動時刻、
@@ -215,24 +222,20 @@ importすると、その変更だけが本番へ届かなくなる**（エラー
 `backend/tests/structure/test_deploy_exclusions.py`がその一覧とDockerfileから母集団を
 導いてこれを検査する。
 
-**frontend（Render）のデプロイも、masterのCIが通ったコミットを出す。** `ci.yml`の`deploy-frontend`が、
+**frontendのデプロイも、masterのCIが通ったコミットを出す。** `ci.yml`の`deploy-frontend`が、
 `deploy-backend`と同じ条件で`deploy-frontend.yml`を呼ぶ。像は同じCIの実行の`frontend-image`が`frontend/Dockerfile`で本番と同じ引数で
 作り、e2eと全状態の走査がその中のアプリを試し、GitHubのコンテナの置き場（`ghcr.io/<リポジトリの持ち主>/ride-compass-frontend:<コミット>`）へ
-置いたもの——**本番に出る中身は、CIが試した中身と同じ**。呼ばれた側は作り直さず、Renderのデプロイフックへその像を`imgURL`で渡す（Render公式の[Deploy Hooks](https://render.com/docs/deploy-hooks)。
-フックのURLはリポジトリの秘密`RENDER_FRONTEND_DEPLOY_HOOK_URL`）。
+置いたもの——**本番に出る中身は、CIが試した中身と同じ**。呼ばれた側は作り直さず、VMにその像を置き場から取らせて入れ替える。
 
-- **Renderではビルドしない。** Renderのサービスは、GitHubのリポジトリではなく上の像から出す形にしてある（ダッシュボードの
-  サービスの Settings → Source）。Renderのワークスペースのビルドの時間は無料のプランで月500分で、使い切るとその月の残りは
-  ビルドを止める（Render公式の[Build pipeline](https://render.com/docs/build-pipeline)）。公開のリポジトリのGitHub Actionsは
-  無料なので、ビルドはActionsでする。フックの`imgURL`は、タグ以外がサービスに設定した像のURLと同じでないと断られる
-  （同じDeploy Hooksの文書）ので、リポジトリの持ち主が変わったらサービスの像のURLも直す。
-- **出すかは本番の`/api/version`の`commit`で決める。** CIを通ったコミットが本番のコミットか、その祖先なら出さない
+- **像はarm64で作り、arm64で試す。** VMはAmpere A1（arm64）で、像の中にはCPUの種類ごとの部品（`sharp`）が入るので、
+  `frontend-image`と`e2e`はarm64のランナーで走る（e2eはその像から取り出したアプリを起こすので、像と同じ種類でないと動かない）。
+- **VMに置き場の資格を置かない。** 取るときだけ、そのジョブの`GITHUB_TOKEN`をSSHの標準入力で渡して`docker login`し、取り終えたら`docker logout`する。
+- **出すかはVMで動いているコンテナの`GIT_COMMIT`で決める。** CIを通ったコミットが本番のコミットか、その祖先なら出さない
   （後から終わった古いCIの実行）。本番のコミットが読めない・履歴に無いときは出す。この見分けはbackendと同じ道具
   （`backend/scripts/deploy_gate.py`の`--any-change`）が持つ。このワークフローは変更のパスでは振り分けず、`ci.yml`が`frontend/`の変更があるときだけ呼ぶ（下の「CIの実行枠」）。
-- **出したあと、本番の`/api/version`がそのコミットになるまで待つ。** Renderは最後に頼まれたデプロイを出す
-  （同じ文書の「Handling overlapping deploys」）ので、待たずに次へ進むと古いコミットが新しいコミットを上書きしうる。
-  判定・ビルド・フック・待ちは1つのジョブで1本ずつ走る。上限（30分）までに変わらなければジョブを落とす——Renderの
-  像の取得か起動が失敗している（ダッシュボードの Events に出る）。変わるまでの秒数は毎回ジョブのログに出る。
+- **入れ替えは、止めてから起こす。** 新旧が3000番を取り合うので、入れ替えの数秒はnginxが502を返す。起こしたあと、VMの中で
+  `/api/version`がそのコミットになるまで待ち（上限60秒。待った秒数は毎回ジョブのログに出る）、外からも本番の宛先の`/api/version`を見る。
+  判定・入れ替え・待ちは1つのジョブで1本ずつ走るので、後から終わった古いCIの実行が新しいコミットを上書きしない。
 - 待たずに出す手段は`deploy-frontend.yml`の手動起動（`workflow_dispatch`）で、選んだrefの先端から像を作り、判定なしで出す。
 
 **タイルプロパティを削除する変更はデプロイ順序に制約がある。** backendとfrontendは別
@@ -382,11 +385,9 @@ CIだけに置いているため、CIの分数が尽きると検査そのもの�
 | 同 | `FLOW_BOT_TOKEN` | hidakagit-botが作ったfine-grained。届くのはridecompass/ride-compass-tasksだけ。Contentsは読み書き（担当の手番の記録をリリースへ置く）。期限2027-09-29 | 担当と流れの道具が置き場へ書く。変異テストの全部の測りの定時の起こしが、重なりの候補を消すタスクを置き場へ起こす。開発機ではユーザー環境変数の同じ名前 |
 | 同 | `CLAUDE_CODE_OAUTH_TOKEN` | Claudeの契約のトークン（GitHubのトークンではない） | `claude-task.yml` |
 | 同 | `CLOUDFLARE_API_TOKEN`・`CLOUDFLARE_ACCOUNT_ID` | Cloudflare | ゲートと回答フォームの公開（`ci.yml`の`deploy-gate`） |
-| 同 | `ORACLE_VM_HOST`・`ORACLE_VM_SSH_KEY` | 本番のVM | backendのデプロイ |
-| 同 | `RENDER_FRONTEND_DEPLOY_HOOK_URL` | Render | frontendのデプロイ |
+| 同 | `ORACLE_VM_HOST`・`ORACLE_VM_SSH_KEY` | 本番のVM | backendとfrontendのデプロイ |
 | ゲートのWorker（`ridecompass-gate`） | `APP_ID`・`APP_KEY`・`WEBHOOK_SECRET` | GitHub Appの鍵とWebhookの秘密 | ゲート |
 | 回答フォームのWorker（`ride-compass-answer`） | `APP_ID`・`APP_KEY`・`FORM_TOKEN` | `FORM_TOKEN`はhidakagitが作ったfine-grained `ridecompass-answer-form-2`。Resource ownerはridecompassで、届くのはridecompass/ride-compass-tasksだけ。期限2027-09-29 | 回答フォームの答えをhidakagitの名義で書く |
-| Renderのワークスペースの資格（Container Registry Credentials） | `ghcr-read` | hidakagitが作ったclassic `render-ghcr-read`。`read:packages`だけ（GitHubのコンテナの置き場はclassicのトークンだけを受ける）。期限なし | Renderの`ride-compass-frontend`が、非公開のfrontendのコンテナイメージを取る（サービスの Settings → Image の Credential） |
 
 ## DBの版（本番が正本）
 
@@ -497,5 +498,5 @@ backend・frontendはネイティブで動かす（[setup.md](setup.md)「クラ
 `apt-get`・`npm ci`を含むbackend・frontendのイメージはビルドの途中で止まる（イメージの取得は
 dockerdが行うので通る）。
 
-本番はこの構成をそのまま使わない——backendはOracle Cloud VM上のDockerコンテナ、
-frontendはRender、PostgreSQLとRedisはVMへネイティブに置く。
+本番はこの構成をそのまま使わない——backendとfrontendはOracle Cloud VM上のDockerコンテナ、
+PostgreSQLとRedisは同じVMへネイティブに置く。
