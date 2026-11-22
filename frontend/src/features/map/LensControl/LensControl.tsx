@@ -9,8 +9,8 @@ import { UNSELECTED_LENS_ID, LENS_NEUTRAL_COLOR, type LensId } from "@/lib/mapDi
 import { Button } from "@/components/ui/Button/Button";
 import { ToggleGroup } from "@/components/ui/ToggleGroup/ToggleGroup";
 import { Dot } from "@/components/ui/Dot/Dot";
-import { ClearAllFiltersIcon, ClearAllLayersIcon } from "@/components/ui/icons/icons";
-import { BurdenPaintIcon } from "@/components/ui/icons/lucideIcons";
+import { ClearAllFiltersIcon } from "@/components/ui/icons/icons";
+import { BurdenPaintIcon, ClearLensIcon } from "@/components/ui/icons/lucideIcons";
 import { cn } from "@/lib/cn";
 import { textVariants } from "@/components/ui/Text/Text";
 import { BURDEN_PAINT_NAME } from "@/lib/screenNames";
@@ -198,7 +198,7 @@ export default function LensControl({
               disabled={unselected}
               usage={`選んでいる負担の種類を外します。外すと、ルートを作る前は道路を塗らず、作った後は${totalLabel ?? "1色"}で塗ります。`}
             >
-              <ClearAllLayersIcon />
+              <ClearLensIcon />
             </Button>
             <Button
               size="panelIcon"

@@ -56,7 +56,14 @@ import {
   ZoomIn,
   type LucideIcon,
 } from "lucide-react";
-import { LUCIDE_STROKE_WIDTH, type IconProps, type MapIconComponent } from "./icons";
+import {
+  CLEAR_MARK_PATH,
+  LUCIDE_STROKE_WIDTH,
+  svgProps,
+  VIEWBOX_SIZE,
+  type IconProps,
+  type MapIconComponent,
+} from "./icons";
 
 /** lucideの形を、自前のアイコンと同じ呼び方（`size`だけを受け、既定16px）と
  * 同じ線の太さ（表示の大きさに対する比）にそろえる。 */
@@ -108,6 +115,24 @@ export const RedrawMapIcon = fromLucide(RotateCw);
 export const ChooseItemsIcon = fromLucide(ListChecks);
 /** 負担で道を塗る（「負担で塗る」の入口）。 */
 export const BurdenPaintIcon = fromLucide(Paintbrush);
+
+/** 筆の絵を、バツと重ならない左上へ収める大きさ（自前の枠の単位）。 */
+const CLEAR_LENS_BRUSH_SIZE = 15;
+
+/** 「負担で塗る」の選択を外す: 入口の筆の絵＋バツ（`icons.tsx: CLEAR_MARK_PATH`）。何を消すのかを入口の形で示す。 */
+export function ClearLensIcon({ size = 16 }: IconProps) {
+  return (
+    <svg width={size} height={size} {...svgProps}>
+      <Paintbrush
+        x={0}
+        y={0.4}
+        size={CLEAR_LENS_BRUSH_SIZE}
+        strokeWidth={(LUCIDE_STROKE_WIDTH * VIEWBOX_SIZE) / CLEAR_LENS_BRUSH_SIZE}
+      />
+      <path d={CLEAR_MARK_PATH} />
+    </svg>
+  );
+}
 /** 負担（所要時間に足す代償）の量。 */
 export const BurdenIcon = fromLucide(Weight);
 export const RouteSettingsIcon = fromLucide(SlidersHorizontal);

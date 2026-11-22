@@ -11,7 +11,7 @@ export interface IconProps {
 /** アイコン1つぶん。 */
 export type MapIconComponent = (props: IconProps) => ReactElement;
 
-const VIEWBOX_SIZE = 20;
+export const VIEWBOX_SIZE = 20;
 const STROKE_WIDTH = 1.6;
 /** lucideの形は24単位の枠で描かれているので、同じ比の太さへ直す。 */
 export const LUCIDE_STROKE_WIDTH = (STROKE_WIDTH * 24) / VIEWBOX_SIZE;
@@ -143,6 +143,9 @@ export function UndoAllIcon({ size = 16 }: IconProps) {
   );
 }
 
+/** 一覧の末尾の「消す」「戻す」操作のバツ（右下に置く）。対象の形の右下へ重ね、何を消すのかは対象の形で示す。 */
+export const CLEAR_MARK_PATH = "M12.4 12.4 17.6 17.6M17.6 12.4 12.4 17.6";
+
 /** 全レイヤー一括OFF: 重なり（レイヤー）＋バツ。
  * 「表示」の一覧の末尾には「戻す」操作が複数並ぶため、バツは「消す」の意味だけに使い、
  * 何を消すのかは対象の形（重なり／漏斗）で示す——バツ単体だと対象を表せない。 */
@@ -151,7 +154,7 @@ export function ClearAllLayersIcon({ size = 16 }: IconProps) {
     <svg width={size} height={size} {...svgProps}>
       <path d="M7.5 2.6 13.6 6 7.5 9.4 1.4 6 7.5 2.6Z" strokeLinejoin="round" strokeLinecap="butt" />
       <path d="M1.4 9.6 7.5 13" />
-      <path d="M12.4 12.4 17.6 17.6M17.6 12.4 12.4 17.6" />
+      <path d={CLEAR_MARK_PATH} />
     </svg>
   );
 }
@@ -162,7 +165,7 @@ export function ClearAllFiltersIcon({ size = 16 }: IconProps) {
   return (
     <svg width={size} height={size} {...svgProps}>
       <path d="M1.8 3.4h11.4L8.9 8.3v4.4L6.1 14V8.3L1.8 3.4Z" strokeLinejoin="round" strokeLinecap="butt" />
-      <path d="M12.4 12.4 17.6 17.6M17.6 12.4 12.4 17.6" />
+      <path d={CLEAR_MARK_PATH} />
     </svg>
   );
 }
