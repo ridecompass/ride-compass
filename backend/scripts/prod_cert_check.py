@@ -25,12 +25,15 @@ def not_after(host: str) -> float:
     context = ssl.create_default_context()
     with socket.create_connection((host, 443), timeout=CONNECT_TIMEOUT_SECONDS) as raw:
         with context.wrap_socket(raw, server_hostname=host) as tls:
-            return ssl.cert_time_to_seconds(tls.getpeercert()["notAfter"])
+            expires = (tls.getpeercert() or {}).get("notAfter")
+    if not isinstance(expires, str):
+        raise ssl.SSLError(f"証明書の期限を読めない: {expires!r}")
+    return ssl.cert_time_to_seconds(expires)
 
 
 def problem(origin: str, now: float) -> str | None:
     """`origin`の証明書が更新されていなければその理由を返す。更新されていればNone。"""
-    host = urlsplit(origin).hostname
+    host = urlsplit(origin).hostname or origin
     try:
         expires = not_after(host)
     except OSError as error:
