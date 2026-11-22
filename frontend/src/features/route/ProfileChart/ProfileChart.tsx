@@ -100,128 +100,130 @@ export default function ProfileChart({
 
   return (
     <div className="flex flex-col gap-0.5">
-      {/* 何を描いた図かの見出し（読み上げは図の名前が持つ）。図の右上に重ねる切り替えと同じ高さの段にし、切り替えを図から
-          外す。走行中の図は低い高さで図を大きく見せるので出さない。 */}
-      {!riding && (
-        <p
-          aria-hidden="true"
-          className="m-0 flex min-h-7 items-center text-[length:var(--font-size-xs)] text-[var(--color-muted-strong)]"
-        >
-          {label}
-        </p>
-      )}
-      {/* 距離の目盛りは図の中の下の角に重ね、図の下に段を取らない（スマホのシートの低い高さで図を大きく見せる）。 */}
-      <div className="relative">
-        <svg
-          viewBox={`0 0 ${PROFILE_VIEW_WIDTH} ${PROFILE_VIEW_HEIGHT}`}
-          preserveAspectRatio="none"
-          // 押せる図は縦のなぞりだけをブラウザ（シート・パネルのスクロール）へ渡し、横の動きは地点を選ぶ操作に使う。見るだけの図は
-          // どの動きもブラウザへ渡さない。
-          className="h-[var(--profile-chart-height,7rem)] w-full touch-none rounded-sm data-[pickable=true]:touch-pan-y bg-[var(--color-surface-2)] outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-accent)] data-[pickable=true]:cursor-crosshair"
-          data-pickable={onSelect !== undefined}
-          {...(onSelect === undefined
-            ? { role: "img", "aria-label": label }
-            : {
-                role: "slider",
-                tabIndex: 0,
-                "aria-label": `${label}（動かすと、その地点を地図に出す）`,
-                "data-usage": `${usage}なぞるか押して離すと、その地点の印と区間の小窓を地図に出します。`,
-                "aria-valuemin": 0,
-                "aria-valuemax": roundToDigits(routeKm, 1),
-                "aria-valuenow": roundToDigits(positionKm, 1),
-                "aria-valuetext": `${positionKm.toFixed(1)} km地点`,
-                ...pointerHandlers((event) => selectAt(kmAtPointer(event))),
-                onKeyDown: handleKeyDown,
-              })}
-        >
-          {selectedColumn !== undefined && (
-            <rect
-              x={xOf(selectedColumn.startKm)}
-              y={0}
-              width={Math.max(xOf(selectedColumn.endKm) - xOf(selectedColumn.startKm), 2)}
-              height={PROFILE_VIEW_HEIGHT}
-              fill={palette.semantic.inspected}
-              opacity={0.25}
-            />
-          )}
-          {travelledKm === null ? (
-            children
-          ) : (
-            <>
-              <defs>
-                <clipPath id={`${clipId}-travelled`}>
-                  <rect x={0} y={0} width={xOf(travelledKm)} height={PROFILE_VIEW_HEIGHT} />
-                </clipPath>
-                <clipPath id={`${clipId}-ahead`}>
-                  <rect x={xOf(travelledKm)} y={0} width={PROFILE_VIEW_WIDTH} height={PROFILE_VIEW_HEIGHT} />
-                </clipPath>
-                <filter id={`${clipId}-gray`}>
-                  <feColorMatrix type="saturate" values="0" />
-                </filter>
-              </defs>
-              {/* 走り終えた所は色を抜いて薄め、残りは元の色のまま描く。 */}
-              <g
-                data-progress="travelled"
-                clipPath={`url(#${clipId}-travelled)`}
-                filter={`url(#${clipId}-gray)`}
-                opacity={mapDisplay.route.opacities.travelled}
-              >
-                {children}
-              </g>
-              <g data-progress="ahead" clipPath={`url(#${clipId}-ahead)`}>
-                {children}
-              </g>
-            </>
-          )}
-          {waypoints.map(({ km }, index) => (
-            <line
-              key={index}
-              data-waypoint={index + 1}
-              x1={xOf(km)}
-              x2={xOf(km)}
-              y1={0}
-              y2={PROFILE_VIEW_HEIGHT}
-              className="stroke-[var(--color-muted-strong)]"
-              strokeWidth={1}
-              strokeDasharray="3 2"
-              vectorEffect="non-scaling-stroke"
-              opacity={travelledKm !== null && km <= travelledKm ? mapDisplay.route.opacities.travelled : undefined}
-            />
-          ))}
-          {/* 現在地の線は、標高等の折れ線の色（青）と見分けるため文字の色で引き、青は地図の現在地と同じ丸い印だけに使う。 */}
-          {travelledKm !== null && (
-            <line
-              data-progress="position"
-              x1={xOf(travelledKm)}
-              x2={xOf(travelledKm)}
-              y1={0}
-              y2={PROFILE_VIEW_HEIGHT}
-              className="stroke-[var(--foreground)]"
-              strokeWidth={2}
-              vectorEffect="non-scaling-stroke"
-            />
-          )}
-          {cursorKm !== null && (
-            <line
-              x1={xOf(cursorKm)}
-              x2={xOf(cursorKm)}
-              y1={0}
-              y2={PROFILE_VIEW_HEIGHT}
-              stroke={palette.semantic.inspected}
-              strokeWidth={2}
-              vectorEffect="non-scaling-stroke"
-            />
-          )}
-        </svg>
-        <ProfileMarks
-          xOf={xOf}
-          widthKm={widthKm}
-          waypoints={waypoints}
-          travelledKm={travelledKm}
-          progressMarkY={progressMarkY}
-          valueTicks={valueTicks}
-          riding={riding}
-        />
+      {/* 図の枠。結果の図は上の端に図の名前の帯を持ち（読み上げは図の名前が持つ）、帯の右は置き場が重ねる
+          部品に空けておく。中身は帯の下から描き、帯に重ねた物に隠さない。走行中の図は低い高さで図を大きく見せるので帯を持たない。
+          距離の目盛りは図の中の下の角に重ね、図の下に段を取らない（スマホのシートの低い高さで図を大きく見せる）。 */}
+      <div className="rounded-sm bg-[var(--color-surface-2)]">
+        {!riding && (
+          <p
+            aria-hidden="true"
+            className="m-0 flex h-7 items-center px-1.5 text-[length:var(--font-size-xs)] text-[var(--color-muted-strong)]"
+          >
+            {label}
+          </p>
+        )}
+        <div className="relative">
+          <svg
+            viewBox={`0 0 ${PROFILE_VIEW_WIDTH} ${PROFILE_VIEW_HEIGHT}`}
+            preserveAspectRatio="none"
+            // 押せる図は縦のなぞりだけをブラウザ（シート・パネルのスクロール）へ渡し、横の動きは地点を選ぶ操作に使う。見るだけの図は
+            // どの動きもブラウザへ渡さない。
+            className="block h-[var(--profile-chart-height,7rem)] w-full touch-none rounded-sm data-[pickable=true]:touch-pan-y outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-accent)] data-[pickable=true]:cursor-crosshair"
+            data-pickable={onSelect !== undefined}
+            {...(onSelect === undefined
+              ? { role: "img", "aria-label": label }
+              : {
+                  role: "slider",
+                  tabIndex: 0,
+                  "aria-label": `${label}（動かすと、その地点を地図に出す）`,
+                  "data-usage": `${usage}なぞるか押して離すと、その地点の印と区間の小窓を地図に出します。`,
+                  "aria-valuemin": 0,
+                  "aria-valuemax": roundToDigits(routeKm, 1),
+                  "aria-valuenow": roundToDigits(positionKm, 1),
+                  "aria-valuetext": `${positionKm.toFixed(1)} km地点`,
+                  ...pointerHandlers((event) => selectAt(kmAtPointer(event))),
+                  onKeyDown: handleKeyDown,
+                })}
+          >
+            {selectedColumn !== undefined && (
+              <rect
+                x={xOf(selectedColumn.startKm)}
+                y={0}
+                width={Math.max(xOf(selectedColumn.endKm) - xOf(selectedColumn.startKm), 2)}
+                height={PROFILE_VIEW_HEIGHT}
+                fill={palette.semantic.inspected}
+                opacity={0.25}
+              />
+            )}
+            {travelledKm === null ? (
+              children
+            ) : (
+              <>
+                <defs>
+                  <clipPath id={`${clipId}-travelled`}>
+                    <rect x={0} y={0} width={xOf(travelledKm)} height={PROFILE_VIEW_HEIGHT} />
+                  </clipPath>
+                  <clipPath id={`${clipId}-ahead`}>
+                    <rect x={xOf(travelledKm)} y={0} width={PROFILE_VIEW_WIDTH} height={PROFILE_VIEW_HEIGHT} />
+                  </clipPath>
+                  <filter id={`${clipId}-gray`}>
+                    <feColorMatrix type="saturate" values="0" />
+                  </filter>
+                </defs>
+                {/* 走り終えた所は色を抜いて薄め、残りは元の色のまま描く。 */}
+                <g
+                  data-progress="travelled"
+                  clipPath={`url(#${clipId}-travelled)`}
+                  filter={`url(#${clipId}-gray)`}
+                  opacity={mapDisplay.route.opacities.travelled}
+                >
+                  {children}
+                </g>
+                <g data-progress="ahead" clipPath={`url(#${clipId}-ahead)`}>
+                  {children}
+                </g>
+              </>
+            )}
+            {waypoints.map(({ km }, index) => (
+              <line
+                key={index}
+                data-waypoint={index + 1}
+                x1={xOf(km)}
+                x2={xOf(km)}
+                y1={0}
+                y2={PROFILE_VIEW_HEIGHT}
+                className="stroke-[var(--color-muted-strong)]"
+                strokeWidth={1}
+                strokeDasharray="3 2"
+                vectorEffect="non-scaling-stroke"
+                opacity={travelledKm !== null && km <= travelledKm ? mapDisplay.route.opacities.travelled : undefined}
+              />
+            ))}
+            {/* 現在地の線は、標高等の折れ線の色（青）と見分けるため文字の色で引き、青は地図の現在地と同じ丸い印だけに使う。 */}
+            {travelledKm !== null && (
+              <line
+                data-progress="position"
+                x1={xOf(travelledKm)}
+                x2={xOf(travelledKm)}
+                y1={0}
+                y2={PROFILE_VIEW_HEIGHT}
+                className="stroke-[var(--foreground)]"
+                strokeWidth={2}
+                vectorEffect="non-scaling-stroke"
+              />
+            )}
+            {cursorKm !== null && (
+              <line
+                x1={xOf(cursorKm)}
+                x2={xOf(cursorKm)}
+                y1={0}
+                y2={PROFILE_VIEW_HEIGHT}
+                stroke={palette.semantic.inspected}
+                strokeWidth={2}
+                vectorEffect="non-scaling-stroke"
+              />
+            )}
+          </svg>
+          <ProfileMarks
+            xOf={xOf}
+            widthKm={widthKm}
+            waypoints={waypoints}
+            travelledKm={travelledKm}
+            progressMarkY={progressMarkY}
+            valueTicks={valueTicks}
+            riding={riding}
+          />
+        </div>
       </div>
       {caption}
     </div>

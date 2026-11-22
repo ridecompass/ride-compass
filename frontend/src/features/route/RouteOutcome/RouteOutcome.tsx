@@ -6,7 +6,6 @@ import { SHEET_FIT_END_ATTRIBUTE } from "@/components/BottomSheet/BottomSheet";
 import { GuideText } from "@/components/ui/GuideText/GuideText";
 import { RouteSpliceIcon } from "@/components/ui/icons/icons";
 import { BurdenIcon, FastestRouteIcon } from "@/components/ui/icons/lucideIcons";
-import { MarkLegend, MarkLegendItem } from "@/components/ui/MarkLegend/MarkLegend";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/Tabs/Tabs";
 import { textVariants } from "@/components/ui/Text/Text";
 import { useCostAxisCatalog, type CostAxisCatalog } from "@/hooks/useCostAxisCatalog";
@@ -20,7 +19,11 @@ import { routeClock } from "@/lib/routeClock";
 import { formatPenaltyMinutes } from "@/lib/routePenalty";
 import RouteProfile from "@/features/route/RouteProfile/RouteProfile";
 import type { ProfileLayerSelection } from "@/features/route/RouteProfile/useProfileLayers";
-import { CandidateFiguresInfo, MissingTravelDataNotice } from "@/features/route/RouteOutcome/CandidateFigureNotes";
+import {
+  CANDIDATE_MARKS_WORDING,
+  CandidateFiguresInfo,
+  MissingTravelDataNotice,
+} from "@/features/route/RouteOutcome/CandidateFigureNotes";
 import RouteSplicePanel from "@/features/route/RouteSplicePanel/RouteSplicePanel";
 import { formatDurationShort, MINUTE_UNIT } from "@/lib/duration";
 import EditDifference from "@/features/route/EditDifference/EditDifference";
@@ -31,7 +34,7 @@ import type { RouteResults } from "@/features/route/useRouteResults";
 import type { SpliceSessionView } from "@/features/route/useSpliceSession";
 import type { RouteCandidate } from "@/types/route";
 
-const CANDIDATE_TAB_USAGE = `この候補を地図と内訳に出し、地図に全体を収めます。稲妻の印は最速ルート、合成の印は区間を乗り換えた合成ルート、番号だけは生成した候補です。上の段は距離、下の段は所要時間と負担[重りの印]、下の帯は${LENS_QUANTITY_LABEL}を地図と同じ色で表します。`;
+const CANDIDATE_TAB_USAGE = `この候補を地図と内訳に出し、地図に全体を収めます。${CANDIDATE_MARKS_WORDING}上の段は距離、下の段は所要時間と負担[重りの印]、下の帯は${LENS_QUANTITY_LABEL}を地図と同じ色で表します。`;
 
 /** 名前の列で群を見分ける印と、その意味（指を置いたときの吹き出しと読み上げの名前）。生成した候補は印を持たない。 */
 const GROUP_MARKS: Partial<Record<RouteListGroup, { Icon: typeof FastestRouteIcon; meaning: string }>> = {
@@ -136,10 +139,6 @@ export default function RouteOutcome({ results, generation, splice, profileLayer
   // 道のりのグラフの横軸の右端。候補どうしで同じ物差しにし、面積（負荷）を見比べられるようにする。
   const longestDistanceKm = Math.max(0, ...routes.map((route) => route.distance_km));
   const selectedValue = selectedRouteId ?? routes[0].id;
-  // 見出しに出す印は、並んでいる候補の群のものだけ（最速の無い一覧に稲妻の説明を出さない）。
-  const legendMarks = Object.entries(GROUP_MARKS).flatMap(([group, mark]) =>
-    entries.some((entry) => entry.group === group) ? [mark] : [],
-  );
   const windNotice = windPreviousRunNotice(
     routes.find((route) => route.wind_previous_run_from !== null)?.wind_previous_run_from,
   );
@@ -158,24 +157,28 @@ export default function RouteOutcome({ results, generation, splice, profileLayer
         </p>
       )}
       <Tabs className="flex flex-col gap-2" value={selectedValue} onValueChange={results.selectRoute}>
-        {/* カードの数字と印の見出し。カードの中に語を足すとカードが広がるので、並びの上に1行で置く。 */}
-        <MarkLegend>
-          {legendMarks.map(({ Icon, meaning }) => (
-            <MarkLegendItem key={meaning}>
-              <Icon size={11} />
-              {meaning}
-            </MarkLegendItem>
-          ))}
-          <MarkLegendItem>
-            上: 距離　下: 所要時間・
-            <BurdenIcon size={11} />
-            負担
-          </MarkLegendItem>
-          <CandidateFiguresInfo />
-        </MarkLegend>
         {/* 候補は1枚ずつのカードで横に並べ、幅に収まらない分は一覧の中だけを横へ送る。縦には動かないので、縦のなぞりは
             シート・パネルのスクロールへ渡る（縦に動く所を1つにする）。 */}
         <TabsList ref={listRef} variant="cards" aria-label="ルート結果">
+          {/* カードの数字の見方の見本。カードの中に語を足すとカードが広がるので、並びの先頭に同じ高さで置き、枠を点線にして
+              候補と見分ける。タブではないので押しても候補は選ばれない。印の意味は、カードの印の名前と(i)の説明が持つ。 */}
+          <div
+            role="group"
+            aria-label="カードの数字の見方"
+            className="flex w-[5.25rem] flex-none flex-col justify-start gap-0.5 rounded-sm border border-dashed border-[var(--color-border)] px-1.5 pt-1 text-[length:var(--font-size-xs)] text-[var(--color-muted-strong)]"
+          >
+            <span className="flex items-center justify-between gap-1">
+              <CandidateFiguresInfo />
+              <span>距離</span>
+            </span>
+            <span className="flex items-center justify-between gap-1">
+              <span>所要</span>
+              <span className="inline-flex items-center gap-0.5">
+                <BurdenIcon size={11} />
+                負担
+              </span>
+            </span>
+          </div>
           {entries.map(({ route, group, label }, index) => {
             const mark = GROUP_MARKS[group];
             return (
@@ -233,9 +236,9 @@ export default function RouteOutcome({ results, generation, splice, profileLayer
         {routes.map((route) => (
           <TabsContent
             key={route.id}
-            // 結果の中の道のりのグラフは、走行中の地図の下の図より高くして読みやすくする。
+            // 結果の中の道のりのグラフ（図の名前の帯の下に描く高さ）は、シートを低く保つため走行中の地図の下の図より低くする。
             className="flex flex-col gap-2 data-[state=inactive]:hidden"
-            style={{ "--profile-chart-height": "5.5rem" } as CSSProperties}
+            style={{ "--profile-chart-height": "4.25rem" } as CSSProperties}
             value={route.id}
           >
             <MissingTravelDataNotice share={route.missing_travel_data_share} />

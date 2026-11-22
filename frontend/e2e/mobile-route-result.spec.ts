@@ -62,14 +62,14 @@ test("モバイル: 生成したルートを地図へ収めると、開いた「
   expect((Math.max(...ys) - Math.min(...ys)) / (sheetTop - freeTop)).toBeGreaterThan(0.7);
 });
 
-// 観点1（収まる）: 道のりのグラフの切り替えは、結果のシートの図では図の見出しの段の右に載せて図に掛けず、見出しの無い走行中の
-// 地図の下の図では図の上に段を取らずに図の右上に重ねる。走行中の図は結果のシートの図より高く描いて画面に収める。重なりと高さは
-// 実寸でしか決まらない。
-test("モバイル: 道のりのグラフの切り替えは、結果では見出しの段の右に、走行中は図の右上に重ね、走行中の図は結果の図より高く画面に収まる", async ({
+// 観点1（収まる）: 道のりのグラフの切り替えは、結果のシートの図では図の枠の上の端の名前の帯に図の名前と並んで載り、中身（棒）は
+// 帯の下から描く。帯の無い走行中の地図の下の図では、図の右上に重ねる。走行中の図は結果のシートの図より高く描いて画面に収める。
+// 重なりと高さは実寸でしか決まらない。
+test("モバイル: 道のりのグラフの切り替えは、結果では図の上の帯に名前と並んで載って中身に掛からず、走行中は図の右上に重ね、走行中の図は結果の図より高く画面に収まる", async ({
   page,
 }) => {
   type Box = { x: number; y: number; width: number; height: number };
-  // 切り替えが図の右半分の幅に収まる（左上の値の目盛りに掛からない）。
+  // 切り替えが図の右半分の幅に収まる（左の図の名前・値の目盛りに掛からない）。
   const expectOnRightHalf = (tabs: Box, graph: Box) => {
     expect(tabs.x).toBeGreaterThan(graph.x + graph.width / 2);
     expect(tabs.x + tabs.width).toBeLessThanOrEqual(graph.x + graph.width);
@@ -78,10 +78,24 @@ test("モバイル: 道のりのグラフの切り替えは、結果では見出
   const sheet = await generateRoutes(page);
   const resultGraph = (await sheet.getByRole("slider", { name: /^道のりに沿った負担/ }).boundingBox())!;
   const resultTabs = (await sheet.getByRole("tablist", { name: "道のりのグラフ" }).boundingBox())!;
-  const heading = (await sheet.getByText("道のりに沿った負担", { exact: true }).boundingBox())!;
+  const band = sheet.getByText("道のりに沿った負担", { exact: true });
+  const bandBox = (await band.boundingBox())!;
+  // 帯は図の枠（中身と同じ地の色の面）の上の端で、名前は帯の左に、切り替えは同じ帯の右に載る。
+  const frame = (await band.locator("..").boundingBox())!;
+  expect(bandBox.y).toBe(frame.y);
+  expect(resultGraph.y + resultGraph.height).toBe(frame.y + frame.height);
+  const name = (await band.evaluate((el) => {
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    const { x, width } = range.getBoundingClientRect();
+    return { x, width };
+  }))!;
+  expect(name.x + name.width).toBeLessThan(resultTabs.x);
+  expect(resultTabs.y).toBeGreaterThanOrEqual(frame.y);
   expectOnRightHalf(resultTabs, resultGraph);
-  expect(resultTabs.y).toBeGreaterThanOrEqual(heading.y);
-  expect(resultTabs.y + resultTabs.height).toBeLessThanOrEqual(resultGraph.y);
+  // 中身（棒）は帯の下から描き、名前にも切り替えにも隠れない。
+  expect(resultGraph.y).toBeGreaterThanOrEqual(bandBox.y + bandBox.height);
+  expect(resultGraph.y).toBeGreaterThanOrEqual(resultTabs.y + resultTabs.height);
 
   await sheet.getByRole("button", { name: /このルートで走る/ }).click();
   const ride = page.getByRole("region", { name: "予定ルートのプロファイル" });
@@ -95,8 +109,8 @@ test("モバイル: 道のりのグラフの切り替えは、結果では見出
 });
 
 // 「ルート結果」のシート。高さを決めていなければ、開いたときに見出し・候補・道のりのグラフの下端までが入る高さに合わせ、グラフは
-// シートの幅いっぱいに描く（パターン4 観点1）。
-test("モバイル: 「ルート結果」のシートは開くと、カードの並びの上の見出しとグラフの下端までがスクロールせずに入る", async ({
+// シートの幅いっぱいに描く（パターン4 観点1）。カードの数字の見方は、並びの上に行を取らず、並びの先頭にカードと同じ高さの見本で示す。
+test("モバイル: 「ルート結果」のシートは開くと、カードの並びとグラフの下端までがスクロールせずに入り、数字の見方の見本はカードと同じ段に並ぶ", async ({
   page,
 }) => {
   await openMobileApp(page);
@@ -110,10 +124,15 @@ test("モバイル: 「ルート結果」のシートは開くと、カードの
   expect(sheetBottom - graphBottom).toBeLessThan(48);
   // 本文の左右の余白を除いた幅いっぱい。
   expect(graphBox.width).toBeGreaterThan(sheetBox.width - 48);
-  // カードの並びの上の見出し（その右の(i)）はグラフより上にある。
-  const summaryBox = (await sheet.getByRole("button", { name: "所要時間と負担の説明を表示" }).boundingBox())!;
-  expect(summaryBox.y).toBeGreaterThanOrEqual(sheetBox.y);
-  expect(summaryBox.y + summaryBox.height).toBeLessThanOrEqual(graphBox.y);
+  // 見本は並びの先頭で、候補のカードと同じ段・同じ高さに並ぶ。その(i)は見本の中にある。
+  const sampleBox = (await sheet.getByRole("group", { name: "カードの数字の見方" }).boundingBox())!;
+  const firstCard = (await sheet.getByRole("tablist", { name: "ルート結果" }).getByRole("tab").first().boundingBox())!;
+  expect(sampleBox.x + sampleBox.width).toBeLessThanOrEqual(firstCard.x);
+  expect(sampleBox.y).toBe(firstCard.y);
+  expect(sampleBox.height).toBe(firstCard.height);
+  const infoBox = (await sheet.getByRole("button", { name: "所要時間と負担の説明を表示" }).boundingBox())!;
+  expect(infoBox.y).toBeGreaterThanOrEqual(sampleBox.y);
+  expect(infoBox.y + infoBox.height).toBeLessThanOrEqual(sampleBox.y + sampleBox.height);
 });
 
 // グラフの上から縦になぞるとシートの本文が動き、横になぞると地点を選ぶ（観点2）。本文に送る分があるのは、利用者が

@@ -124,10 +124,10 @@ export default function RouteProfile({
   }));
   return (
     <Tabs value={tab} onValueChange={setTab} className="relative flex flex-col gap-1">
-      {/* 切り替えと見方・出す情報のボタンは右上に重ねる。結果の図では図の見出しの段に載り、見出しの無い走行中の図では図の上に段を
-          取らず図に重なる（低い高さで図を大きく見せる）。図の左上は値の目盛りに空けておく。重ねた部品の外では、図をなぞって地点を選べる。切り替えは地図の「表示」の
+      {/* 切り替えと見方・出す情報のボタンは右上に重ねる。結果の図では図の上の端の名前の帯に載って中身に掛からず、帯の無い走行中の図では
+          図に重なる（低い高さで図を大きく見せる）。図の左上は値の目盛りに空けておく。重ねた部品の外では、図をなぞって地点を選べる。切り替えは地図の「表示」の
           ボタンと「負担で塗る」のピルと同じ絵だけで出し、名前は読み上げに残す。 */}
-      <div className="pointer-events-none absolute top-1 right-1 z-10 flex items-start gap-1 [&>*]:pointer-events-auto">
+      <div className="pointer-events-none absolute top-0.5 right-1 z-10 flex items-start gap-1 [&>*]:pointer-events-auto">
         <TabsList aria-label="道のりのグラフ" variant="overlay">
           <TabsTrigger value="layer" usage="選んだ情報[標高・道の区分等]を、道のりに沿って出します。">
             <LayersStackIcon size={14} />
