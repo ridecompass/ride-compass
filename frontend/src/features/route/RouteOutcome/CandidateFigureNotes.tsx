@@ -6,13 +6,18 @@ import { costAxisNamesNote, useCostAxisCatalog } from "@/hooks/useCostAxisCatalo
 import { ROAD_SETTINGS_TAB_NAME } from "@/lib/screenNames";
 import routeGenerateConfig from "@/types/generated/route-generate-config.json";
 
-/** カードの所要時間と負担の説明（カードの並びの上の見出しの右の(i)）。負担は、避けたいもの（費用の軸）を通る代償を秒にしたもので、
+/** 候補のカードの名前の列の印の意味。 */
+export const CANDIDATE_MARKS_WORDING =
+  "稲妻の印は最速ルート、合成の印は区間を乗り換えた合成ルート、番号だけは生成した候補です。";
+
+/** カードの数字と印の説明（カードの並びの先頭の見本の(i)）。負担は、避けたいもの（費用の軸）を通る代償を秒にしたもので、
  * 種類ごとの内訳と事実は道のりのグラフの右上の一覧が出す。 */
 export function CandidateFiguresInfo() {
   const costAxes = useCostAxisCatalog();
   const turnKickoffNote = costAxes.turnKickoffWording ? `[${costAxes.turnKickoffWording}]` : "";
   return (
     <InfoPopover triggerAriaLabel="所要時間と負担の説明">
+      <p>{`上の段は距離、下の段は所要時間と負担です。${CANDIDATE_MARKS_WORDING}`}</p>
       <p>{`所要時間: ${routeGenerateConfig.duration_estimate_wording}実際の信号のタイミングや走り方で変わります。`}</p>
       <p>
         {`負担: 避けたいもの${costAxisNamesNote(costAxes)}を通る分を時間に直し、所要時間に上乗せしたものです。` +

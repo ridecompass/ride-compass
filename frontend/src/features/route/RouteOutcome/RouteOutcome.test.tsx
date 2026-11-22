@@ -6,7 +6,7 @@
  *   前に出た予報の風で作ったことの知らせ、乗り換えで作った経路と同じ道だったので選んだ候補の知らせと、選んだカードを一覧の横の見える範囲へ送ること
  * - 候補の一覧: 群（最速・生成した候補・合成）の間の区切りの線と名前の印（意味を読み上げの名前に持つ）、カードに出す
  *   名前・距離・所要時間・負担（内訳が無ければ「—」）と、下の帯の色（1kmあたりの負担を
- *   地図の総合のレンズと同じ段の色・内訳が無ければ値の無い色）、並びの上の数字と印の見出しと、その右の(i)の所要時間と負担の説明（費用の軸の一覧の名前と文を差し込む）、選ばれているタブ（選んだ候補・無ければ先頭）と、タブを押したときに上がる操作
+ *   地図の総合のレンズと同じ段の色・内訳が無ければ値の無い色）、並びの先頭の数字の見方の見本（押しても候補を選ばない）と、その(i)のカードの数字と印の説明（費用の軸の一覧の名前と文を差し込む）、選ばれているタブ（選んだ候補・無ければ先頭）と、タブを押したときに上がる操作
  *
  * ここで見ないもの: 選んだ候補の中身（元との違い・道のりのグラフ・内訳・区間の詳しく・編集面） → `RouteOutcome.selected.test.tsx`。
  * 一覧の並び・群・名前の決め方 → `features/route/routeTabLabel.ts`。
@@ -43,13 +43,15 @@ afterEach(() => {
 
 function listTexts(): string[] {
   const list = screen.getByRole("tablist", { name: "ルート結果" });
-  return Array.from(list.children).map((child) =>
-    child.getAttribute("role") === "separator" || child.tagName === "HR" ? "―" : (child.textContent ?? ""),
-  );
+  return Array.from(list.children)
+    .filter((child) => child !== cardSample())
+    .map((child) =>
+      child.getAttribute("role") === "separator" || child.tagName === "HR" ? "―" : (child.textContent ?? ""),
+    );
 }
 
-/** 候補のカードの並びの上の、数字と印の見出し。 */
-const cardLegend = () => screen.getByText(/上: 距離/).parentElement;
+/** 候補のカードの並びの先頭の、数字の見方の見本。 */
+const cardSample = () => screen.getByRole("group", { name: "カードの数字の見方" });
 
 describe("候補が無い間", () => {
   it("生成中は進み方を出す", () => {
@@ -110,14 +112,13 @@ describe("候補の上の知らせ", () => {
 });
 
 describe("候補の一覧", () => {
-  it("最速の印の無い生成は最速を分けず、番号・距離・所要時間・負担の列だけで並べ、区切りの線も群の印も出さず、見出しは数字の見方だけ", () => {
+  it("最速の印の無い生成は最速を分けず、番号・距離・所要時間・負担の列だけで並べ、区切りの線も群の印も出さない", () => {
     renderOutcome({ results: resultsOf({ generated: [FAST, SLOW] }) });
     expect(listTexts()).toEqual(["1 10.0km 30分 負担+5分", "2 20.0km 42分 負担+0分"]);
     expect(within(screen.getByRole("tablist")).queryByRole("img")).not.toBeInTheDocument();
-    expect(cardLegend()).toHaveTextContent(/^上: 距離\s下: 所要時間・負担$/);
   });
 
-  it("最速・生成した候補・合成がそろうと、その順に並べて群の間に線を引き、最速と合成は名前の列の印に意味を持ち、どのカードも自分の所要時間を出し、見出しが印の意味を言う", () => {
+  it("最速・生成した候補・合成がそろうと、その順に並べて群の間に線を引き、最速と合成は名前の列の印に意味を持ち、どのカードも自分の所要時間を出す", () => {
     const edit: EditedRoute = {
       route: route("spliced-1", { distance_km: 12, estimated_duration_seconds: 1620 }),
       originId: "fast",
@@ -131,21 +132,30 @@ describe("候補の一覧", () => {
       "―",
       "1 12.0km 27分 負担+0分",
     ]);
-    expect(cardLegend()).toHaveTextContent(/^最速ルート合成ルート上: 距離/);
     const [fastest, , spliced] = screen.getAllByRole("tab");
     expect(within(fastest).getByRole("img", { name: "最速ルート" })).toHaveAttribute("title", "最速ルート");
     expect(within(spliced).getByRole("img", { name: "合成ルート" })).toHaveAttribute("title", "合成ルート");
   });
 
-  it("見出しの右の(i)を開くと、所要時間の見積もり方と、費用の軸の一覧の名前と曲がる所の漕ぎ出しの文を差し込んだ負担の説明を出す", async () => {
+  it("並びの先頭の見本は、カードの数字の位置に距離と所要・負担を出し、押しても候補を選ばない。その(i)を開くと、段と印の読み方・所要時間の見積もり方と、費用の軸の一覧の名前と曲がる所の漕ぎ出しの文を差し込んだ負担の説明を出す", async () => {
     serveCostAxisCatalog({
       ...costAxisCatalog(costAxisEntry("ascent", { label: "軸ア" }), costAxisEntry("stopping", { label: "軸イ" })),
       turn_kickoff_wording: "漕ぎ出しの文",
     });
-    renderOutcome({ results: resultsOf({ generated: [FAST, SLOW] }) });
-    await userEvent.click(within(cardLegend()!).getByRole("button", { name: "所要時間と負担の説明を表示" }));
+    const results = resultsOf({ generated: [FAST, SLOW] });
+    renderOutcome({ results });
+    expect(cardSample()).toHaveTextContent(/^距離所要負担$/);
+    await userEvent.click(within(cardSample()).getByText("距離"));
+    expect(results.selectRoute).not.toHaveBeenCalled();
+    expect(results.focusRoute).not.toHaveBeenCalled();
+    expect(screen.getByRole("tab", { name: /^1 / })).toHaveAttribute("aria-selected", "true");
+
+    await userEvent.click(within(cardSample()).getByRole("button", { name: "所要時間と負担の説明を表示" }));
     expect(
-      await screen.findByText(`所要時間: ${routeGenerateConfig.duration_estimate_wording}`, { exact: false }),
+      await screen.findByText(/^上の段は距離、下の段は所要時間と負担です。稲妻の印は最速ルート、合成の印は/),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(`所要時間: ${routeGenerateConfig.duration_estimate_wording}`, { exact: false }),
     ).toBeInTheDocument();
     expect(screen.getByText(/^負担: 避けたいもの\[軸ア・軸イ\]を通る分.*\[漕ぎ出しの文\]/)).toBeInTheDocument();
   });
