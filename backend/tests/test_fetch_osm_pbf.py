@@ -14,13 +14,15 @@ from app.batch.source_profile import load_source_profile
 
 def test_default_profile_fetches_the_file_the_ingest_reads(tmp_path, monkeypatch, respx_mock):
     """プロファイルがファイル名を書いていなくても、取込が開くファイルを配布元（Geofabrik の日本の抽出）から取りに行く。
-    応答は配布元のそのファイルの URL にだけ与える（ほかの URL への要求は`respx_mock`が落とす）。"""
+    応答は配布元のそのファイルの URL にだけ与える（ほかの URL への要求は`respx_mock`が落とす）。URL は配布元の今の置き場を
+    そのまま書く——宛先を組む式を写すと、置き場が変わって取得が404で止まっても落ちない。"""
+    published = {"kanto-latest.osm.pbf": "https://download.geofabrik.de/asia/japan/kanto/kanto-latest.osm.pbf"}
     profile = load_source_profile(None)
     specs = [spec for spec in profile.sources if isinstance(spec.rows, osm_pbf.OsmWayRows)]
     ingested = {spec.rows.file for spec in specs}
-    assert ingested
+    assert ingested == set(published)
     for name in ingested:
-        respx_mock.get(f"https://download.geofabrik.de/asia/japan/{name}").respond(content=b"pbf")
+        respx_mock.get(published[name]).respond(content=b"pbf")
     store = tmp_path / "pbf"
     monkeypatch.setattr(osm_pbf, "DATA_DIR", store)
 

@@ -41,9 +41,10 @@ logger = logging.getLogger("ridecompass.ingest.osm_pbf")
 
 DATA_DIR = data_paths.DATA_DIR / "pbf"
 
-#: 配布元。`{name}`は抽出ファイルの名前（`kanto-latest.osm.pbf`等）。
-#: Geofabrikの日本の抽出は`asia/japan/`の下に地方ごとに置かれている。
-PBF_URL = "https://download.geofabrik.de/asia/japan/{name}"
+#: 配布元。`{name}`は抽出ファイルの名前（`kanto-latest.osm.pbf`等）、`{region}`はその頭の地方の名前（`kanto`）。
+#: Geofabrikの日本の抽出は`asia/japan/<地方>/`の下に置かれている。`asia/japan/`の直下の古い宛先は、配布元が
+#: ファイルの無い場所へ転送して404になる。
+PBF_URL = "https://download.geofabrik.de/asia/japan/{region}/{name}"
 
 _READ_TIMEOUT_SECONDS = 60.0
 
@@ -210,7 +211,8 @@ def _osm_way_inputs(spec: SourceSpec, profile: SourceProfile) -> AdapterInputs:
 
 def _fetch_osm_way(spec: SourceSpec, profile: SourceProfile) -> None:
     """wayのソースが読む抽出ファイルを取る。頂点のソースは参照先のwayと同じファイルを読むので、取得を持たない。"""
-    fetch_file(PBF_URL.format(name=spec.rows.file), DATA_DIR / spec.rows.file,
+    name = spec.rows.file
+    fetch_file(PBF_URL.format(region=name.split("-", 1)[0], name=name), DATA_DIR / name,
                read_timeout=_READ_TIMEOUT_SECONDS, logger=logger)
 
 
