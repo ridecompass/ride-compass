@@ -46,7 +46,7 @@ paths:
 | | 実体がRAMに載る | 実体がディスクに載る |
 |---|---|---|
 | **プロセス内**（そのプロセスだけ） | `cachetools`（`TTLCache`／`LRUCache`） | — |
-| **プロセスをまたぐ** | **Redis**（既定） | ディスク（`tile_cache`・`tile_persistent_cache`） |
+| **プロセスをまたぐ** | **Redis**（既定） | ディスク（`tile_cache`） |
 
 **「再起動しても残るか」は軸にならない。** 判断を分けるのは**実体がどこに載るか**と、**上限・退避を誰が持つか**である
 （Redis も本番は RDB スナップショット（`save 3600 1 / 300 100 / 60 10000`・`appendonly no`）で再起動をまたいで戻り、ディスクもホストのディレクトリをマウントしている限り残る）。
@@ -86,14 +86,14 @@ paths:
 
 ディスクを選ぶのは、**大きくて・TTLで自然消滅させたくない**ものである。ディスクを選んだ側は次を**必ず用意する**。
 
-1. **容量の上限と退避**（`tile_persistent_cache.py`・`tile_cache.py`は`diskcache`の`size_limit`と退避の順（`eviction_policy`）で
+1. **容量の上限と退避**（`tile_cache.py`は`diskcache`の`size_limit`と退避の順（`eviction_policy`）で
    持つ。**自前で書かない**。退避の順は読み方で選ぶ——`least-recently-used`は読むたびに書き込みが走るため、
    地図の読み込みで大量に読まれる`tile_cache`は書いた順（`least-recently-stored`）にする）
 2. **世代交代で不要になった実体を消す手段**と、それを**どこで呼ぶか**（上限とは別に要る。[caching-retention.md](caching-retention.md)「無効化」）
 3. 使用量が想定内に収まっているかを確認する方法
 
 鍵・読み書きの骨格・掃除は`infrastructure/`のモジュールが持ち（例: 地域タイルは`region_tile_cache.py`）、`services/`とは値で
-やり取りする。上の層が`tile_cache.py`・`tile_persistent_cache.py`を直にimportすると`lint-imports`が落ちる
+やり取りする。上の層が`tile_cache.py`を直にimportすると`lint-imports`が落ちる
 （[directory-layout.md](../../docs/architecture/directory-layout.md)「backend」）。
 
 現在のディスク保持と掃除:
@@ -104,7 +104,6 @@ paths:
 | `tile_cache`のうち土地被覆タイル（PNG） | 地域のMVTタイルと一緒に捨て（下の行）、起動直後に置き場のラスタ構成でない世代を消す（[caching-retention.md](caching-retention.md)「無効化」）。容量上限の対象でもある（関東本土の全ズームで45MB・21,264枚の見積もり、2026-09-16） |
 | `tile_cache`のうち地域のMVTタイル（路面・点。鍵`region/<系統>/v<形の署名>/…`） | 派生の作り直し・道の区分の書き換えのあとに捨て、起動直後に今のコードの形でない世代を消す（[caching-retention.md](caching-retention.md)「無効化」）。容量上限の対象でもある |
 | `msm`（予報の`.om`ファイル） | 同期のたびに予報窓の外を削除（実測87MB） |
-| `tile_persistent_cache`（way_id別の動的値・タイルのフィーチャーごとの材料のpickle） | 容量上限＋`expire`による失効。材料は地域タイルと一緒に捨てる |
 | `road_network`（取込範囲全体の道路網の配列、世代ごとの置き場。メモリマップで開く） | 作ったときに同じ形の古い世代を削除、起動後に形の違う置き場を削除（実測1.6GB、2026-09-26） |
 | `derived_database`（OSM の派生データベースの書き出しの ZIP。キャッシュではなく配る物で、正本は DB） | 書いたら他の書き出しを消し、最新の1つだけを置く。書き始めに書きかけの残りを消す（[静的道路属性](../../docs/modules/backend/static-road-attributes.md)「派生データベースの書き出し」） |
 

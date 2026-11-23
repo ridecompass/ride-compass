@@ -56,8 +56,9 @@ https://maps.gsi.go.jp/development/hyokochi.html ）に合わせる。平らな�
 この点の間ごとに求め（[経路エンジン](routing-engine.md)）、獲得標高・平均勾配・一番急な所の要約も同じ点の間から出す——
 目的ごとに別の束ね方で持つと、読む所によって値が食い違う。点の間を勾配として数えるかも両方で同じにする。ルート生成と地図のレンズが
 読む要約は、道路網の配列を作るときに断面から出し（`domain/elevation_profile.py: profile_summaries`。判定は所要時間と同じ
-`domain/elevation_profile.py: interval_grade`）、派生の表の要約の列（`domain/attributes.py: elevation_values_sql`）は地図のタイルの
-材料だけが読む。2つの書き方は、同じ断面を両方に通して同じ値を見るテスト（`test_elevation_values.py`）が一致を守る。
+`domain/elevation_profile.py: interval_grade`）、勾配と登りの量の材料もここで出す（材料の出どころが`profile`）。派生の表の要約の列
+（`domain/attributes.py: elevation_values_sql`）は管理画面の欠損割合だけが読む。2つの書き方は、同じ断面を両方に通して同じ値を
+見るテスト（`test_elevation_values.py`）が一致を守る。
 道路網の配列は、向きつきの行ごとの始まりの位置と点の数と、全行をつないだ標高と点の位置（区間の長さに対する割合）の配列で持ち、
 所要時間と体力を解く点の間（`domain/elevation_profile.py: ProfileSpans`）も、配列を作るときに全区間について1回だけ作って持つ
 （`domain/road_network.py: RoadNetwork.elevation_spans`）。

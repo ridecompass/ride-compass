@@ -1,6 +1,7 @@
 """`services/region_service.py`——地域のレイヤー（路面・点のタイル）の配信と、道の窓・押した所に近い道・事故の収録年。
 
-確かめるのは、焼けなかったタイル（範囲外）の空タイル、焼いたタイルを捨てるまでディスクから配るか。差し替えるのはDBの口だけ。
+確かめるのは、焼けなかったタイル（範囲外）の空タイル、焼いたタイルを捨てるまでディスクから配るか。差し替えるのはDBの口だけで、
+路面タイルが焼く地図の線の層の値の元の道路網は、本番と同じ置き場から読ませる（`tests/route_world.py: serve_road_network`）。
 
 ここで見ないもの:
 - キャッシュの読み書きの骨格 → `test_region_tile_cache.py`
@@ -16,6 +17,7 @@ from app.infrastructure.region_tile_cache import discard_region_tiles
 from app.infrastructure.point_tile_layers import POINT_TILE_LAYERS
 from app.infrastructure.vector_tile import ROAD_SURFACE_LAYER_NAME, encode_empty_tile
 from app.services.region_service import RegionService
+from tests.route_world import grid_network, serve_road_network
 
 
 Z, X, Y = 14, 14551, 6447
@@ -23,8 +25,7 @@ POINT_LAYER = next(iter(POINT_TILE_LAYERS.values()))
 
 
 class _TileRepository:
-    """路面・点のMVTを焼く口だけを持つフェイク。取込範囲外はNone。路面タイルが焼く地図の線の層の値の元
-    （タイルの材料）は無い（範囲外）。"""
+    """路面・点のMVTを焼く口だけを持つフェイク。取込範囲外はNone。"""
 
     def __init__(self, tile: bytes | None = None):
         self.tile = tile
@@ -32,11 +33,8 @@ class _TileRepository:
     async def get_road_surface_tile_mvt(self, z, x, y, bbox, layer_values):
         return self.tile
 
-    async def get_accident_years_covered(self):
-        return 1
-
-    async def get_feature_materials_in_tile(self, z, x, y, bbox, accident_years_covered):
-        return None
+    async def get_tile_features(self, z, x, y, bbox):
+        return []
 
     async def get_tile_mvt(self, sql, layer_name, z, x, y, bbox):
         return self.tile
@@ -55,14 +53,16 @@ def _point_tile(service):
     # 点のレイヤーも同じ道で配る。空タイルは自分のsource-layerを名乗る。
     (_point_tile, encode_empty_tile(POINT_LAYER.source_layer)),
 ], ids=["範囲外", "点のレイヤー"])
-async def test_a_tile_outside_the_coverage_is_the_empty_tile_of_its_layer(serve, empty_tile):
+async def test_a_tile_outside_the_coverage_is_the_empty_tile_of_its_layer(serve, empty_tile, road_network_root):
+    serve_road_network(road_network_root, grid_network())
     service = RegionService(repository=_TileRepository(tile=None))
 
     assert await serve(service) == empty_tile
 
 
-async def test_a_baked_tile_is_served_from_disk_until_the_region_tiles_are_discarded():
+async def test_a_baked_tile_is_served_from_disk_until_the_region_tiles_are_discarded(road_network_root):
     """焼いたタイルはDBが変わってもディスクから配り続け、作り直しの終わりに捨てると焼き直す。"""
+    serve_road_network(road_network_root, grid_network())
     repository = _TileRepository(tile=b"first")
     service = RegionService(repository=repository)
     await _road_surface_tile(service)

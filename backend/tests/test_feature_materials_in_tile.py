@@ -1,104 +1,66 @@
-"""地図の配信が評価するタイルの材料（`infrastructure/road_graph_repository.py: RoadGraphRepository.get_feature_materials_in_tile`）が、
-区間単位のズームで、探索が同じ区間に読む材料（`RoadGraphRepository.get_edge_material_arrays`）と同じ値になること。断面から
-決まる材料は、探索の側は道路網の配列を作るときに断面から同じ規則で求め直す（2つの書き方の一致は`test_elevation_values.py`）。
+"""地図の路面タイル（DBが焼く形とフィーチャーの鍵。`infrastructure/road_tile_sql.py: ROAD_SURFACE_TILE_MVT_SQL`）のフィーチャーが、
+値を引く鍵の読み出し（`RoadGraphRepository.get_tile_features`）と同じで、どれも道路網の配列に行を持つこと（`domain/road_features.py:
+feature_rows`）。食い違うと、その道は地図で色が付かない。
 
-区間は道路網の形の導出（`batch/derive_topology.py`）が切り、勾配・密度の件数は派生の段（`batch/derive_elevation.py`・
-`batch/derive_counts.py`）が出したものを使う——区間と区間の値の行を手で書くと、2つの読み出しが同じ表を読むという前提を
-テストが書き写すことになる。密度は区間の長さで割るので、件数の付いた区間を置く（長さを道1本から取り違えると値が変わる）。
+道と点は取込の入口から入れ、派生の作り直し（`batch/derive_cli.py: run`）で区間と材料と道路網の配列まで作る（区間と区間の値の行を手で
+書くと、2つの読み出しが同じ鍵を作るという前提をテストが書き写すことになる）。
 
 ここで見ないもの:
 - 材料ごとの値式が返す値 → `test_material_values.py`
-- 取込範囲の外・式が実在の列だけを読むこと → `test_material_values.py`（読み出しの経路の節）
-- 読んだ材料のキャッシュ → `test_feature_materials.py`
+- 鍵ごとの値の集め方と層の値 → `test_feature_materials.py`
 """
 
-import functools
-
+import mapbox_vector_tile
 import numpy as np
 import pytest
 
-from app.batch import derive_topology
-from app.domain.gsi_tiles import PRODUCT_PRIORITY
-from app.batch.ingest import SourceRecord
-from app.domain.attributes import CategoricalColumn, EdgeMaterialArrays
-from app.domain.region import EDGE_UNIT_MIN_ZOOM, BoundingBox
-from app.domain.search_graph import EDGE_VALUE_DTYPE
-from tests.conftest import raw_connection
-from tests.source_ingest import (
-    dem_tile_records,
-    derive_counts_at_default_tuning,
-    derive_elevation_at_default_step,
-    derive_nodes_at_default_radius,
-    ingest_records,
-    point_record,
-    way_record,
-)
+from app.batch import derive_cli
+from app.domain.region import EDGE_UNIT_MIN_ZOOM, ROAD_TILE_MIN_ZOOM, BoundingBox, tile_bounds_lonlat, tile_position
+from app.domain.road_features import feature_materials, feature_rows
+from app.infrastructure import road_network_store
+from app.infrastructure.vector_tile import ROAD_SURFACE_LAYER_NAME
+from tests.conftest import postgis_database_url
+from tests.source_ingest import abr_prefecture_record, ingest_records, point_record, way_record
 
 pytestmark = pytest.mark.asyncio(loop_scope="module")
 
 AREA = BoundingBox(min_latitude=35.67, min_longitude=139.69, max_latitude=35.69, max_longitude=139.72)
-ACCIDENT_YEARS = 1
-
-
-def _climbing_north(lon: float, lat: float) -> float:
-    return 100.0 + (lat - AREA.min_latitude) * 111_000 * 0.4
-
-
-@functools.cache
-def _dem_records() -> list[SourceRecord]:
-    """`AREA`を覆う`_climbing_north`の標高のタイル。画素ごとに標高を求めるので、テストごとに作り直さない。"""
-    return dem_tile_records(PRODUCT_PRIORITY[0], 15, AREA, _climbing_north)
+#: 道1は2区間（ノード2で道2と交わる）、道2は1区間。ノード3は横断歩道。
+_WAYS = [
+    way_record(1, [(139.700, 35.680), (139.705, 35.6805), (139.6995, 35.681)], [1, 2, 3],
+               {"highway": "secondary", "surface": "asphalt"}),
+    way_record(2, [(139.705, 35.6805), (139.706, 35.6795)], [2, 4], {"highway": "track"}),
+]
 
 
 async def _derive_world() -> None:
-    await ingest_records("osm_way", [
-        way_record(1, [(139.700, 35.680), (139.705, 35.6805), (139.6995, 35.681)], [1, 2, 3],
-                   {"highway": "secondary", "surface": "asphalt", "lit": "yes", "maxspeed": "40"}),
-        way_record(2, [(139.705, 35.6805), (139.706, 35.6795)], [2, 9], {"highway": "track", "tracktype": "grade3"}),
-    ], bbox=AREA)
-    await ingest_records("osm_node", [point_record(3, 139.6995, 35.681, {"highway": "crossing"})])
-    await ingest_records("dem", _dem_records())
-    async with raw_connection() as conn:
-        await derive_topology.derive(conn)
-        await derive_elevation_at_default_step(conn)
-        await derive_nodes_at_default_radius(conn)
-        await derive_counts_at_default_tuning(conn)
+    await ingest_records("osm_way", _WAYS, bbox=AREA)
+    await ingest_records("osm_node", [point_record(n, lon, lat, {"highway": "crossing"} if n == 3 else None)
+                                      for n, (lon, lat) in ((1, (139.700, 35.680)), (2, (139.705, 35.6805)),
+                                                            (3, (139.6995, 35.681)), (4, (139.706, 35.6795)))])
+    await ingest_records("abr", [abr_prefecture_record("130001", "東京都", 139.700, 35.680)])
+    assert await derive_cli.run(postgis_database_url()) == 0
 
 
-def _columns(arrays: EdgeMaterialArrays) -> dict[str, np.ndarray | CategoricalColumn]:
-    """探索が読む材料の配列の、材料id→列。"""
-    return {
-        **dict(zip(arrays.numeric_ids, arrays.numeric_values.T)),
-        **dict(zip(arrays.categorical_ids, arrays.categorical_columns)),
-    }
-
-
-async def test_a_segment_on_the_map_has_the_materials_the_search_reads_for_it(road_graph_repository):
-    """違うと、地図で良く見えた道を探索が避ける（同じ道に別の得点が付く）。"""
+@pytest.mark.parametrize("z", [EDGE_UNIT_MIN_ZOOM, ROAD_TILE_MIN_ZOOM], ids=["区間で塗るズーム", "道1本で塗るズーム"])
+async def test_every_keyed_feature_on_the_map_has_its_materials_in_the_road_network(
+        road_graph_repository, road_network_root, z):
     await _derive_world()
+    x, y = (int(v) for v in tile_position(139.7025, 35.6805, z))
 
-    tile = await road_graph_repository.get_feature_materials_in_tile(EDGE_UNIT_MIN_ZOOM, 0, 0, AREA, ACCIDENT_YEARS)
+    tile = await road_graph_repository.get_road_surface_tile_mvt(z, x, y, tile_bounds_lonlat(z, x, y), {})
+    keys = {feature["properties"]["feature_key"]
+            for feature in mapbox_vector_tile.decode(tile)[ROAD_SURFACE_LAYER_NAME]["features"]}
+    features = await road_graph_repository.get_tile_features(z, x, y, tile_bounds_lonlat(z, x, y))
+    network = road_network_store.current()
+    edge_rows, way_rows = feature_rows(network, [f.osm_way_id for f in features], [f.segment_index for f in features])
+    materials = feature_materials(network, tuple(f.feature_key for f in features), edge_rows, way_rows)
 
-    assert tile is not None
-    segments = [tuple(map(int, key.split("-"))) for key in tile.feature_keys]
-    assert len(segments) == 3
-    search = await road_graph_repository.get_edge_material_arrays(
-        [way for way, _ in segments], [index for _, index in segments], [True] * len(segments), ACCIDENT_YEARS)
-    expected = _columns(search)
-    assert set(tile.columns) == set(expected)
-    assert np.nanmax(expected["poi_crossing_per_km"]) > 0
-    categorical = {material_id: column for material_id, column in tile.columns.items()
-                   if isinstance(column, CategoricalColumn)}
-    numeric = {material_id: column for material_id, column in tile.columns.items() if material_id not in categorical}
-    assert categorical and numeric
-    rows = range(len(segments))
-    assert {material_id: [column.value_at(row) for row in rows] for material_id, column in categorical.items()} == {
-        material_id: [expected[material_id].value_at(row) for row in rows] for material_id in categorical}
-    for material_id, column in numeric.items():  # 探索は材料を EDGE_VALUE_DTYPE で持つので、その型で比べる
-        np.testing.assert_array_equal(np.asarray(column, dtype=EDGE_VALUE_DTYPE), expected[material_id], err_msg=material_id)
-
-
-def _rows(distance_m, columns: dict, rows) -> list[tuple]:
-    """区間の長さと材料の値の組を、並びに依らずに比べられるように並べる（値の無い材料は-infで並べる）。"""
-    return sorted(tuple(float(column[row]) if not np.isnan(column[row]) else -np.inf
-                        for column in [distance_m, *columns.values()]) for row in rows)
+    assert {"1-0", "1-1"} <= keys if z >= EDGE_UNIT_MIN_ZOOM else {"1", "2"} <= keys
+    assert set(materials.feature_keys) == keys
+    assert np.all((edge_rows >= 0) | (way_rows >= 0))
+    highway = materials.columns["highway"]
+    assert {key: highway.value_at(row) for row, key in enumerate(materials.feature_keys) if key in keys} == {
+        key: "track" if key.split("-")[0] == "2" else "secondary" for key in keys}
+    crossings = dict(zip(materials.feature_keys, np.asarray(materials.columns["poi_crossing_per_km"]).tolist()))
+    assert crossings["1-1" if z >= EDGE_UNIT_MIN_ZOOM else "1"] > 0

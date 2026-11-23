@@ -152,8 +152,9 @@ _EDGE_COUNTS_COVERAGE = EdgeMaterialCoverageSpec(
 MaterialDType = Literal["numeric", "boolean", "categorical"]
 
 #: 材料の値の出どころ。`db`はDBの値式（`MaterialSpec.value_sql`）で求める。`road_class`は道の区分から都度作る
-#: （`domain/road_classes.py: class_columns`）。
-_MaterialSource = Literal["db", "road_class"]
+#: （`domain/road_classes.py: class_columns`）。`profile`は道路網の配列を作るときに区間の断面から求める
+#: （`domain/road_network_build.py`）。
+_MaterialSource = Literal["db", "road_class", "profile"]
 
 
 class MaterialSpec(StrictModel):
@@ -168,7 +169,7 @@ class MaterialSpec(StrictModel):
     unit: str = ""
     # MVTタイルへ既に焼き込み済みのプロパティ名。Noneは「タイル非依存」（GSI標高の都度取得、
     # 気象の動的取得、レシピ合成値等）。
-    # タイルの列は、この名前と`value_sql`から組み立てる（`tile_column_sql`）。
+    # 押した道の小窓は、この名前で道路網の配列の値を出す（`domain/feature_materials.py: FeatureMaterials.tile_properties`）。
     tile_property: str | None
     # この材料の由来となる一次属性。`domain/primary_attributes.py: PRIMARY_ATTRIBUTES`の要素そのものを、表の中で付けた名前で指す
     # （表の外の宣言は`_check_primary_attribute_is_declared`が断る）。
@@ -213,10 +214,9 @@ class MaterialSpec(StrictModel):
         黙って何も出さない（対訳の効かない値）。"""
         if self.value_labels and self.dtype != "categorical":
             raise ValueError(f"{self.material_id}: value_labelsはcategorical材料の値にだけ付く")
-        if self.tile_property is not None and self.value_sql is None:
-            # タイルの列は値式から組む（`tile_column_sql`）。式を持たない材料の列は手で書くしかなく、
-            # 地図と評価が別々の求め方になる。
-            raise ValueError(f"{self.material_id}: タイルへ焼く材料は値式（value_sql）を持つ")
+        if self.tile_property is not None and self.source == "road_class":
+            # タイルの名前で出す値は、道路網の配列の列から読む。道の区分から作る材料は配列に列が無い。
+            raise ValueError(f"{self.material_id}: 道の区分から作る材料はタイルの名前を持たない")
         return self
 
     @model_validator(mode="after")
@@ -225,9 +225,9 @@ class MaterialSpec(StrictModel):
         都度の値と二重になり、値式を持たないのにDBとした材料は行列に列が無く、どの軸でも黙って欠損になる。"""
         if (self.source == "db") != (self.value_sql is not None):
             raise ValueError(f"{self.material_id}: 値式（value_sql）は出どころがdbの材料だけが持つ")
-        if self.source != "db" and not isinstance(self.coverage, CoverageExcluded):
-            # 欠損率はDBの値を数えるので、DBに値を持たない材料には数える相手が無い。
-            raise ValueError(f"{self.material_id}: 出どころがdbでない材料は欠損率を測らない（CoverageExcluded）")
+        if self.source == "road_class" and not isinstance(self.coverage, CoverageExcluded):
+            # 欠損率はDBの元データを数えるので、道の区分から作る材料には数える相手が無い（断面から求める材料は、断面の表を数える）。
+            raise ValueError(f"{self.material_id}: 道の区分から作る材料は欠損率を測らない（CoverageExcluded）")
         return self
 
 
@@ -322,7 +322,7 @@ MATERIAL_CATALOG: dict[str, MaterialSpec] = {
         # レンズ（`services/lens_service.py`）が辿る向きの値で乗せる。
         tile_property=None,
         primary_attribute=ATTR_ELEVATION,
-        value_sql="em.average_grade",
+        source="profile",
         coverage=EdgeMaterialCoverageSpec(
                 present_condition="em.average_grade IS NOT NULL",
                 source="edge_elevation.average_grade の有無",
@@ -342,7 +342,7 @@ MATERIAL_CATALOG: dict[str, MaterialSpec] = {
         unit="m/km",
         tile_property=None,
         primary_attribute=ATTR_ELEVATION,
-        value_sql=per_km_value_sql("em.elevation_gain_m"),
+        source="profile",
         coverage=EdgeMaterialCoverageSpec(
             present_condition="em.elevation_gain_m IS NOT NULL",
             source="区間の標高の表（edge_elevation）に行があるか",
@@ -646,7 +646,7 @@ def material_array_columns() -> tuple[tuple[str, ...], tuple[str, ...]]:
     行列の列がどう並ぶかの唯一の定義。組み立てる側と読む側が別々に並べると、
     材料を1つ足したときに列の意味が静かにずれる。
     """
-    ids = sorted(material_value_sql())
+    ids = sorted(material_id for material_id, spec in MATERIAL_CATALOG.items() if spec.source != "road_class")
     return (
         tuple(m for m in ids if MATERIAL_CATALOG[m].dtype != "categorical"),
         tuple(m for m in ids if MATERIAL_CATALOG[m].dtype == "categorical"),
@@ -692,25 +692,4 @@ def display_axis_missing_semantics(attr: PrimaryAttributeSpec, tile_property: st
         ),
         None,
     )
-
-
-def tile_column_sql(spec: MaterialSpec) -> str:
-    """材料をタイルの列へ焼く式。値式を包むだけで、値の求め方を書かない——地図と評価が同じ式を読む。
-
-    真偽は該当だけを`true`で載せ、非該当はNULLにしてフィーチャーからキーを省く（タイルが軽くなる）。
-    それ以外は値をそのまま載せる。
-    """
-    value = f"({spec.value_sql})"
-    if spec.dtype == "boolean":
-        return f"CASE WHEN {value} THEN true END"
-    return value
-
-
-def material_tile_columns() -> dict[str, str]:
-    """タイルのプロパティ名→焼く式。`tile_property`を持つ全材料から導く（別に列を並べない）。"""
-    return {
-        spec.tile_property: tile_column_sql(spec)
-        for spec in MATERIAL_CATALOG.values()
-        if spec.tile_property is not None
-    }
 

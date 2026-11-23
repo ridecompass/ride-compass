@@ -51,8 +51,8 @@ describe("buildMapLayers（レイヤーの一覧）", () => {
 
   it("土地被覆の説明は、配られた帯の幅を言う（届くまでは幅に触れない）", () => {
     const withRing = buildMapLayers(mapCatalogFor(undefined, { client_tuning: { "landcover.ring_outer_m": 60 } }));
-    expect(layer(withRing, "landcover").panelHint).toContain("道路の周囲60mの割合");
-    expect(layer(layers, "landcover").panelHint).toContain("道路の周囲の割合");
+    expect(layer(withRing, "landcover").panelHint).toContain("道の周り60mの割合");
+    expect(layer(layers, "landcover").panelHint).toContain("道の周りの割合");
   });
 
   it("道の線の層は配られた分だけチップになり、知らない中分類はどのグループにも入れず、知らないアイコンの鍵には道路の絵を出す", () => {

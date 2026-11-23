@@ -1,24 +1,11 @@
 // 地図のレイヤーと費用の軸の、このアプリ固有の形（自前のSVG）。
 import { svgProps, type IconProps } from "./icons";
 
-/** 標高図: 色別標高図のイメージに合わせた山並みのシルエット */
+/** 標高: 色別標高図のイメージに合わせた山並みのシルエット */
 export function ElevationIcon({ size = 16 }: IconProps) {
   return (
     <svg width={size} height={size} {...svgProps}>
       <path d="M1.5 15.5 6 8l3 3.5 2.5-4 5.5 8H1.5Z" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
-/** 起伏（陰影）: 同じ山並みの片斜面だけに陰が乗った形。ElevationIcon（輪郭だけの山並み＝
- * 標高そのもの）と対にして、「塗るのは斜面だけ」を形で示す。 */
-export function HillshadeIcon({ size = 16 }: IconProps) {
-  return (
-    <svg width={size} height={size} {...svgProps}>
-      <path d="M1.5 15.5 6 8l3 3.5 2.5-4 5.5 8H1.5Z" fill="currentColor" opacity="0.28" stroke="none" />
-      <path d="M1.5 15.5 6 8l3 3.5 2.5-4 5.5 8H1.5Z" strokeLinejoin="round" />
-      <path d="M6 8 1.5 15.5h4.7Z" fill="currentColor" stroke="none" />
-      <path d="M11.5 7.5 9 11.5h5Z" fill="currentColor" stroke="none" />
     </svg>
   );
 }
@@ -170,7 +157,7 @@ export function AccidentIcon({ size = 16 }: IconProps) {
   );
 }
 
-/** 停止要因: 信号機のシルエット（3灯） */
+/** 信号・一時停止: 信号機のシルエット（3灯） */
 export function StopPoiIcon({ size = 16 }: IconProps) {
   return (
     <svg width={size} height={size} {...svgProps}>
@@ -183,7 +170,7 @@ export function StopPoiIcon({ size = 16 }: IconProps) {
   );
 }
 
-/** 補給・休憩ポイント: 買い物袋のシルエット */
+/** 補給・休憩: 買い物袋のシルエット */
 export function SupplyPoiIcon({ size = 16 }: IconProps) {
   return (
     <svg width={size} height={size} {...svgProps}>

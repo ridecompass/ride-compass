@@ -115,7 +115,7 @@ describe("ルートの近くの点", () => {
 
   it("ルートを選んでいる間は、「表示」で出した点の層をルート全体の近くだけに描き、区間を選んでも変えず、「範囲と色」で地図全体を選ぶと地図全体へ戻す", async () => {
     const { user } = renderHome();
-    await showLayers(user, ["補給・休憩ポイント"]);
+    await showLayers(user, ["補給・休憩"]);
     await generateNear(user);
     const nearRoute = {
       [SUPPLY]: [
@@ -150,13 +150,13 @@ describe("ルートの近くの点", () => {
     await generateNear(user);
     expect(pointsOnMap()).toEqual({});
 
-    // 停止要因は縮尺15から描く層で、それより引いた地図では内訳に行を出さない。
+    // 信号・一時停止は縮尺15から描く層で、それより引いた地図では内訳に行を出さない。
     act(() => mapOnScreen().moveTo(ROUTE_VIEW, 16));
-    await showLayers(user, ["停止要因", "補給・休憩ポイント"]);
+    await showLayers(user, ["信号・一時停止", "補給・休憩"]);
     await waitFor(() => expect(pointsOnMap()).toHaveProperty(STOP));
     await user.click(screen.getByRole("button", { name: "地図に出す情報" }));
-    await user.click(screen.getByRole("button", { name: "停止要因の凡例" }));
-    const details = screen.getByRole("region", { name: "停止要因の内訳" });
+    await user.click(screen.getByRole("button", { name: "信号・一時停止の凡例" }));
+    const details = screen.getByRole("region", { name: "信号・一時停止の内訳" });
     await user.click(within(details).getByRole("checkbox", { name: /^信号/ }));
 
     await waitFor(() => expect(pointsOnMap()).not.toHaveProperty(STOP));
@@ -165,7 +165,7 @@ describe("ルートの近くの点", () => {
 
   it("描いた名前のある点を押すと、道からの距離を添えた点の小窓を出して区間へ戻れ、名前の無い点を押すと種類の名前で点の小窓を開く", async () => {
     const { user } = renderHome();
-    await showLayers(user, ["補給・休憩ポイント"]);
+    await showLayers(user, ["補給・休憩"]);
     await generateNear(user);
     pressSecondSegment();
     const drawn = (name: string | undefined): PointedFeature => {
@@ -205,7 +205,7 @@ describe("ルートの近くの点", () => {
     });
     const geolocation = installGeolocation(HERE);
     const { user } = renderHome();
-    await showLayers(user, ["補給・休憩ポイント"]);
+    await showLayers(user, ["補給・休憩"]);
     jobs.respond([OUT_AND_BACK], LOOP_CONDITIONS);
     await generate(user);
     await waitFor(() => expect(candidateTabs()).toHaveLength(1));

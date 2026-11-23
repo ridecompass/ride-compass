@@ -1,93 +1,146 @@
-"""地図の配信が評価するタイルの材料を読む口（`services/feature_materials.py: FeatureMaterialService`）が、読んだ材料を
-読み方の署名ごとに持つことと、地図の線の層の値をフィーチャーごとに配ること。差し替えるのはDB（リポジトリ）だけで、ディスクの置き場は`conftest.py`の
-autouseがテストごとの一時ディレクトリへ差し替える。
+"""地図のフィーチャー（路面タイルの`feature_key`の単位）の材料を、鍵で道路網の配列から引くこと（`domain/road_features.py:
+feature_rows`・`feature_materials`）と、そこから地図の線の層の値を配ること（`domain/road_features.py: road_layer_values`）、押した道の
+小窓へ出すタイルの名前の材料（`domain/feature_materials.py: FeatureMaterials.tile_properties`）。
+
+道路網は`tests/road_network_fixture.py`。東西に並ぶ道10（2区間）と道20（1区間）と、区間を持たない道30がある。
 
 ここで見ないもの:
-- 読み出しのSQLが返す材料 → `test_feature_materials_in_tile.py`・`test_material_values.py`
+- 路面タイルの形と、焼いた値が鍵のフィーチャーへ載ること → `test_road_tile_sql.py`。タイルのフィーチャーの鍵が配列と噛み合うこと →
+  `test_feature_materials_in_tile.py`
+- 配列に材料を読み込むこと → `test_road_network_store.py`
 """
 
-import functools
-
 import numpy as np
+import pytest
 
 from app.domain.attributes import CategoricalColumn
 from app.domain.feature_materials import FeatureMaterials
 from app.domain.hard_filters import HARD_FILTER_PROPERTY
-from app.domain.road_classes import EMPTY_ROAD_CLASSES
-from app.infrastructure import debug_log
-from app.infrastructure.road_graph_repository import RoadGraphRepository
-from app.services import feature_materials
-from app.services.feature_materials import FeatureMaterialService
-from tests.bound_fake import bound
+from app.domain.material_catalog import ELEVATION_GAIN_PER_KM, GRADIENT_PERCENT
+from app.domain.road_features import feature_materials, feature_rows, road_layer_values
+from app.domain.road_network_build import EdgelessWays
 from tests.road_class_fixture import classification, fact_is, map_layer, road_classes
+from tests.road_network_fixture import road_network
 
-Z, X, Y = 14, 14551, 6447
-
-
-def _materials(value: float) -> FeatureMaterials:
-    return FeatureMaterials(feature_keys=("1-0",), columns={"num_a": np.array([value])})
-
-
-class FakeFeatureMaterialsRepository:
-    """RoadGraphRepositoryのうち、タイルの材料と事故の収録年数だけを答えるフェイク。引数は本物の定義へ当てて照合する。"""
-
-    def __init__(self, materials: FeatureMaterials):
-        self.materials = materials
-
-    async def get_accident_years_covered(self):
-        return 1
-
-    @functools.partial(bound, RoadGraphRepository.get_feature_materials_in_tile)
-    async def get_feature_materials_in_tile(self, *args, **kwargs):
-        return self.materials
+#: 道10の2区間（東へ約91m・約273m）、道20、区間を持たない道30。どれも北緯35度の上。
+_COORDINATES = {1: (35.0, 139.000), 2: (35.0, 139.001), 3: (35.0, 139.004), 4: (35.0, 139.005), 5: (35.0, 139.006)}
+_SEGMENTS = {(10, 0): (1, 2), (10, 1): (2, 3), (20, 0): (4, 5)}
+_EDGELESS_WAY = 30
 
 
-async def _num_a(service: FeatureMaterialService) -> float:
-    materials = await service.materials(Z, X, Y, EMPTY_ROAD_CLASSES)
-    assert materials is not None
-    return float(materials.columns["num_a"][0])
+def _network():
+    """区間ごとの数値の材料`num_a`（道10の区間は10と40、道20は値なし）と、分類の材料。道10は短い区間が`a`、長い区間が`b`、
+    道20は自転車が通れない（`bicycle=no`）。区間を持たない道30は、`num_a`が7で`cat_a`が`a`。"""
+    by_edge = {(10, 0): (10.0, "a", None), (10, 1): (40.0, "b", None), (20, 0): (np.nan, None, "no")}
+
+    def column(index):
+        return lambda rows: [by_edge[(int(w), int(s))][index] for w, s in zip(rows.way, rows.segment, strict=True)]
+
+    edgeless = EdgelessWays(
+        osm_way_id=np.array([_EDGELESS_WAY]), numeric_values=np.array([[7.0, np.nan]]),
+        categorical_codes=np.array([[1, 0]], dtype=np.int16))
+    return road_network(
+        _COORDINATES, _SEGMENTS, numeric={"num_a": column(0)},
+        categorical={"cat_a": column(1), "bicycle": column(2)},
+        edgeless=edgeless)
 
 
-async def test_a_tile_read_once_is_served_from_the_cache():
-    """DBの中身が変わっても、捨てるまでは前に読んだ材料を返す。外した1回と当たった1回が、運用の統計の
-    ヒット率に載る（集計はプロセスの寿命の間に足されるだけなので差で見る）。"""
-    repository = FakeFeatureMaterialsRepository(_materials(1.0))
-    service = FeatureMaterialService(repository)
-    before = debug_log.get_stats().external.get("region:feature-materials")
-
-    first = await _num_a(service)
-    repository.materials = _materials(2.0)
-    second = await _num_a(service)
-
-    assert (first, second) == (1.0, 1.0)
-    after = debug_log.get_stats().external["region:feature-materials"]
-    counted_before = (before.cache_misses, before.cache_hits) if before else (0, 0)
-    assert (after.cache_misses - counted_before[0], after.cache_hits - counted_before[1]) == (1, 1)
+#: 区間で塗るズームのフィーチャー（区間と、区間を持たない道）と、道1本で塗るズームのフィーチャー（道）。道99は配列に無い。
+_BY_SEGMENT = (("10-0", 10, 0), ("10-1", 10, 1), ("20-0", 20, 0), ("30", 30, None), ("99-0", 99, 0))
+_BY_WAY = (("10", 10, None), ("20", 20, None), ("30", 30, None), ("99", 99, None))
 
 
-async def test_a_deploy_that_changes_how_the_materials_are_read_reads_the_tile_again(monkeypatch):
-    """読み出しのSQLを変えたデプロイはDBを作り直さない。署名が鍵に届いていないと、前の読み方の材料がTTLの間返り続ける。"""
-    repository = FakeFeatureMaterialsRepository(_materials(1.0))
-    service = FeatureMaterialService(repository)
-    await _num_a(service)
-
-    repository.materials = _materials(2.0)
-    monkeypatch.setattr(feature_materials, "FEATURE_MATERIALS_VALUE_SHAPE", "another-reading")
-
-    assert await _num_a(service) == 2.0
+def _materials(network, features) -> FeatureMaterials:
+    keys, ways, segments = zip(*features)
+    return feature_materials(network, keys, *feature_rows(network, ways, segments))
 
 
-async def test_road_layer_values_are_served_per_feature_without_roads_outside_every_class():
+def _values(materials: FeatureMaterials, material_id: str) -> dict:
+    column = materials.columns[material_id]
+    if isinstance(column, CategoricalColumn):
+        return {key: column.value_at(row) for row, key in enumerate(materials.feature_keys)}
+    return {key: None if np.isnan(value) else float(value) for key, value in zip(materials.feature_keys, column.tolist())}
+
+
+def test_a_feature_painted_by_segment_has_its_segments_values_and_a_way_without_segments_has_the_ways():
+    """区間で塗るズームは、区間ごとの値と、区間を持たない道1本の値を持つ（区間を持たない道を落とすと、拡大したときだけその道が
+    地図から消える）。配列に無いフィーチャーは値を持たない。"""
+    materials = _materials(_network(), _BY_SEGMENT)
+
+    assert _values(materials, "num_a") == {"10-0": 10.0, "10-1": 40.0, "20-0": None, "30": 7.0, "99-0": None}
+
+
+def test_a_feature_painted_by_way_gathers_the_way_from_its_segments_by_length():
+    """道1本で塗るズームの値は、区間の値を区間の長さで重みを付けて集めたもの: 数値は値のある区間の平均、分類は長さの和が一番長い
+    値（値の無い区間は数えず、どの区間にも値が無ければ値無し）。"""
+    network = _network()
+    short, long = (float(d) for d in network.distance_m[[0, 2]])
+
+    materials = _materials(network, _BY_WAY)
+
+    assert _values(materials, "num_a") == pytest.approx({"10": (10 * short + 40 * long) / (short + long), "20": None,
+                                                         "30": 7.0, "99": None})
+    assert _values(materials, "cat_a") == {"10": "b", "20": None, "30": "a", "99": None}
+
+
+#: 道40は東へ2区間（どちらも約91m）。区間0は両向きで10m登り、区間1は逆向き（西）にしか走れない一方通行で、東へ20m登る。
+_SLOPE_COORDINATES = {6: (35.0, 139.010), 7: (35.0, 139.011), 8: (35.0, 139.012)}
+_SLOPE_SEGMENTS = {(40, 0): (6, 7), (40, 1): (7, 8)}
+
+
+def test_the_values_are_read_in_the_direction_the_road_is_drawn_even_where_it_runs_only_against_it():
+    """地図・小窓・書き出しの値は、どれも道の向き（形の始点から終点）に走った値。逆向きにしか走れない一方通行の区間は、走れる向き
+    の行しか持たないので、勾配の符号を返し、登りの量はその行の下りの量を読む——読み替えないと、東へ登る道が区間ごとに登りと下りに
+    分かれて描かれ、道1本の値でも打ち消し合う。"""
+    network = road_network(_SLOPE_COORDINATES, _SLOPE_SEGMENTS, backward=[(40, 1)],
+                           elevation_of={(40, 0): (0.0, 10.0), (40, 1): (10.0, 30.0)},
+                           numeric={ELEVATION_GAIN_PER_KM: lambda rows: np.full(len(rows.way), np.nan)})
+    km = float(network.distance_m[0]) / 1000.0
+
+    materials = _materials(network, (("40-0", 40, 0), ("40-1", 40, 1), ("40", 40, None)))
+
+    assert _values(materials, GRADIENT_PERCENT) == pytest.approx(
+        {"40-0": 1.0 / km, "40-1": 2.0 / km, "40": 1.5 / km}, rel=1e-3)
+    assert _values(materials, ELEVATION_GAIN_PER_KM) == pytest.approx(
+        {"40-0": 10.0 / km, "40-1": 20.0 / km, "40": 15.0 / km}, rel=1e-3)
+
+
+def test_a_way_is_a_flag_where_the_longer_part_of_it_is():
+    """道1本の真偽は、区間の長さの和が長い方の値（1.0か0.0）。割合のままだと、小窓は0でない値を該当として出し、区分は1.0だけを
+    該当として塗るので、同じ道が小窓と地図で食い違う。"""
+    lit = {(10, 0): 1.0, (10, 1): 0.0, (20, 0): 1.0}
+    network = road_network(_COORDINATES, _SEGMENTS, numeric={"lit": lambda rows: [
+        lit[(int(w), int(s))] for w, s in zip(rows.way, rows.segment, strict=True)]})
+
+    materials = _materials(network, (("10", 10, None), ("20", 20, None)))
+
+    assert _values(materials, "lit") == {"10": 0.0, "20": 1.0}
+
+
+def test_a_network_without_segments_has_no_rows_for_any_feature():
+    """区間を1本も持たない道路網（取込の直後）でも、フィーチャーを引くと値の無いフィーチャーになる。"""
+    network = road_network({}, {})
+
+    edge_rows, way_rows = feature_rows(network, [10, 10], [0, None])
+
+    assert (edge_rows.tolist(), way_rows.tolist()) == ([-1, -1], [-1, -1])
+
+
+def test_road_layer_values_are_served_per_feature_without_roads_outside_every_class():
     """地図は道ごとの層の値で道の線を塗り、0次ハードフィルタに当たる道を「通らない」の色で塗る。区分の外の道の層を載せると、
     地図はその道を区分の色で塗れない値として受け取る。"""
-    tile = FeatureMaterials(feature_keys=("1-0", "2-0", "3-0"), columns={
-        "cat_a": CategoricalColumn.encode(["a", "b", "b"]),
-        "highway": CategoricalColumn.encode([None, None, None]),
-        "motorroad": CategoricalColumn.encode([None, None, None]),
-        "bicycle": CategoricalColumn.encode([None, None, "no"]),
-    })
     definitions = road_classes({"k": classification({"is_a": [fact_is("cat_a", "a")]})}, map_layers={"k": map_layer()})
 
-    values = await FeatureMaterialService(FakeFeatureMaterialsRepository(tile)).road_layer_values(Z, X, Y, definitions)
+    keys, ways, segments = zip(*_BY_SEGMENT)
+    values = road_layer_values(_network(), keys, ways, segments, definitions)
 
-    assert values == {"1-0": {"k": "is_a"}, "3-0": {HARD_FILTER_PROPERTY: "no_bicycle"}}
+    assert values == {"10-0": {"k": "is_a"}, "20-0": {HARD_FILTER_PROPERTY: "no_bicycle"}, "30": {"k": "is_a"}}
+
+
+def test_the_popup_shows_the_values_by_their_tile_names_and_only_true_flags():
+    """小窓は無い値を「値なし」として読むので、値の無い材料と非該当の真偽は出さない。"""
+    materials = FeatureMaterials(feature_keys=("1", "2"), columns={
+        "bridge": np.array([1.0, 0.0]), "surface": CategoricalColumn.encode(["asphalt", None]),
+    })
+
+    assert [materials.tile_properties(row) for row in range(2)] == [{"bridge": True, "surface": "asphalt"}, {}]

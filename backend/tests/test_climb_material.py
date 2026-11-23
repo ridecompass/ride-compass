@@ -1,9 +1,8 @@
-"""登りの量の材料（`elevation_gain_m_per_km`）が、派生した区間の標高から、進行方向に登った量として材料の読み出しに届くこと。
+"""登りの量の材料（`elevation_gain_m_per_km`）が、派生した区間の標高から、進行方向に登った量として道路網の配列に届くこと。
 
-区間は道路網の形の導出（`batch/derive_topology.py`）が切り、標高は派生の段（`batch/derive_elevation.py`）が出したものを
-材料の読み出し（`infrastructure/road_graph_repository.py: RoadGraphRepository.get_edge_material_arrays`。地図のタイルと同じ式）で
-読む。探索が読む道路網の配列は、同じ材料を断面から同じ規則で求め直す（2つの書き方の一致は`test_elevation_values.py`）。道は
-東へ登って下る1本で、途中の頂点に別の道を付けると、そこで2区間に切れる。
+区間は道路網の形の導出（`batch/derive_topology.py`）が切り、標高は派生の段（`batch/derive_elevation.py`）が出したものを、道路網の
+配列を組むとき（`infrastructure/road_network_store.py: build`）に区間の断面から1kmあたりの登りにする。道は東へ登って下る1本で、
+途中の頂点に別の道を付けると、そこで2区間に切れる。
 
 ここで見ないもの:
 - 区間の中の頂点から獲得標高を積むこと → `test_elevation_values.py`
@@ -18,9 +17,14 @@ from app.batch import derive_topology
 from app.domain.gsi_tiles import PRODUCT_PRIORITY
 from app.batch.ingest import SourceRecord
 from app.domain.region import BoundingBox
-from app.infrastructure.road_graph_repository import RoadGraphRepository
+from app.infrastructure import derived_data_meta, road_network_store
+from app.infrastructure.road_graph_repository import NETWORK_TUNING, RoadGraphRepository
 from tests.conftest import raw_connection
-from tests.source_ingest import dem_tile_records, derive_elevation_at_default_step, ingest_records, way_record
+from tests.source_ingest import (
+    dem_tile_records, derive_elevation_at_default_step, derive_nodes_at_default_radius, ingest_records, point_record,
+    way_record,
+)
+from tests.tuning_fixture import TUNING
 
 pytestmark = pytest.mark.asyncio(loop_scope="module")
 
@@ -55,10 +59,14 @@ async def _derive(*, cut_at_the_peak: bool) -> None:
     if cut_at_the_peak:
         ways.append(way_record(2, [(LONS[2], LAT), (LONS[2], LAT + 0.002)], [3, 6], {"highway": "residential"}))
     await ingest_records("osm_way", ways, bbox=AREA)
+    await ingest_records("osm_node", [point_record(n, lon, LAT) for n, lon in enumerate(LONS, start=1)]
+                         + [point_record(6, LONS[2], LAT + 0.002)])
     await ingest_records("dem", _dem_records())
     async with raw_connection() as conn:
         await derive_topology.derive(conn)
+        await derive_nodes_at_default_radius(conn)
         await derive_elevation_at_default_step(conn, profile_step_m=PROFILE_STEP_M)
+        await derived_data_meta.replace_tuning(conn, {param_id: TUNING[param_id] for param_id in NETWORK_TUNING})
 
 
 async def _climb_of_way_1(session, *, cut_at_the_peak: bool, forward: bool) -> tuple[np.ndarray, np.ndarray]:
@@ -69,10 +77,10 @@ async def _climb_of_way_1(session, *, cut_at_the_peak: bool, forward: bool) -> t
         segments = [row["segment_index"] for row in await conn.fetch(
             "SELECT segment_index FROM road_edges WHERE osm_way_id = 1 ORDER BY segment_index")]
     assert len(segments) == (2 if cut_at_the_peak else 1)
-    arrays = await RoadGraphRepository(session).get_edge_material_arrays(
-        [1] * len(segments), segments, [forward] * len(segments), 1)
+    network = await road_network_store.build(RoadGraphRepository(session), revision=0)
     await session.rollback()
-    return arrays.numeric_values[:, arrays.numeric_ids.index(CLIMB)], arrays.distance_m
+    rows = np.flatnonzero((network.edge_way_id == 1) & (network.edge_forward == forward))
+    return network.numeric_values[rows, network.numeric_ids.index(CLIMB)], network.distance_m[rows]
 
 
 @pytest.mark.parametrize(("forward", "climbed_m"), [

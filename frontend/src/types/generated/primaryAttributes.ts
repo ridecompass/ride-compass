@@ -122,7 +122,7 @@ export const primaryAttributes = [
   },
   {
     "attr_id": "elevation",
-    "label": "標高図",
+    "label": "標高",
     "geometry": "area",
     "point_facts": [],
     "tile_kind": null,
@@ -134,7 +134,7 @@ export const primaryAttributes = [
   },
   {
     "attr_id": "stop_poi",
-    "label": "停止要因",
+    "label": "信号・一時停止",
     "geometry": "point",
     "point_facts": [],
     "tile_kind": "poi",
@@ -226,7 +226,7 @@ export const primaryAttributes = [
   },
   {
     "attr_id": "accident_point",
-    "label": "事故[警察庁統計]",
+    "label": "事故の地点",
     "geometry": "point",
     "point_facts": [
       {
@@ -325,7 +325,7 @@ export const primaryAttributes = [
   },
   {
     "attr_id": "supply_poi",
-    "label": "補給・休憩ポイント",
+    "label": "補給・休憩",
     "geometry": "point",
     "point_facts": [],
     "tile_kind": "poi",

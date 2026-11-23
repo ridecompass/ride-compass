@@ -58,7 +58,7 @@ function serveWind() {
 }
 
 describe("画面の枠", () => {
-  it("地図の表示をまとめて戻す: 「表示」の一覧で行を全部消すとルートのほかの地図のレイヤーが消える", async () => {
+  it("地図の表示をまとめて戻す: 「表示」の一覧で行を全部消すと、一覧の外のもの（ルートの線・起伏の陰影）のほかの地図のレイヤーが消える", async () => {
     const { user } = renderHome();
     const fromList = async <T,>(name: string, inspect: (button: HTMLButtonElement) => Promise<T> | T) => {
       await user.click(screen.getByRole("button", { name: "地図に出す情報" }));
@@ -67,19 +67,12 @@ describe("画面の枠", () => {
       return result;
     };
     const run = (name: string) => fromList(name, (button) => user.click(button));
-    // ルートの線は一覧の先頭の行が出し入れし、まとめて消す操作では消さない。
-    const nonRouteLayers = () =>
-      mapOnScreen()
-        .visibleLayerIds()
-        .filter((id) => !id.startsWith("route-"));
+    // 一覧の外のもの（ルートの線・起伏の陰影）は、まとめて消す操作では消さない。
+    const outsideList = mapOnScreen().visibleLayerIds();
     await showRoadSurface(user);
-    expect(nonRouteLayers()).not.toEqual([]);
-    const routeLayers = mapOnScreen()
-      .visibleLayerIds()
-      .filter((id) => id.startsWith("route-"));
+    expect(mapOnScreen().visibleLayerIds()).not.toEqual(outsideList);
     await run("表示中の情報をすべて非表示");
-    expect(nonRouteLayers()).toEqual([]);
-    expect(mapOnScreen().visibleLayerIds()).toEqual(routeLayers);
+    expect(mapOnScreen().visibleLayerIds()).toEqual(outsideList);
   });
 
   it("地図の中央の「地図を読み込み中…」の札は、時間では外れず、基礎地図が描けた（`load`）ときに外れる", () => {
@@ -182,7 +175,7 @@ describe("画面の枠", () => {
     const dark = themedPaint({ theme: "dark", muted: false }, basemap[0].paint)["background-color"];
     const { user, unmount } = renderHome();
     await user.click(screen.getByRole("button", { name: "地図に出す情報" }));
-    await user.click(screen.getByRole("checkbox", { name: "風[矢印]" }));
+    await user.click(screen.getByRole("checkbox", { name: "風" }));
     await user.click(screen.getByRole("tab", { name: "範囲と色" }));
     await user.click(screen.getByRole("radio", { name: "暗い" }));
     await user.keyboard("{Escape}");
@@ -221,7 +214,7 @@ describe("画面の枠", () => {
     serveWind();
     const { user, unmount } = renderHome();
     await user.click(screen.getByRole("button", { name: "地図に出す情報" }));
-    await user.click(screen.getByRole("checkbox", { name: "風[矢印]" }));
+    await user.click(screen.getByRole("checkbox", { name: "風" }));
     await user.keyboard("{Escape}");
     act(() => mapOnScreen().moveTo(NEAR, 12));
     await user.click(await screen.findByRole("button", { name: "俯瞰図を開く" }));
