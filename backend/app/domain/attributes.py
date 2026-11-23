@@ -145,7 +145,7 @@ class EdgeMaterialColumns:
 #: `EdgeMaterialArrays`のうち、区間の行をそのまま並べる配列の欄。区間の束を継ぐ・行を切り出す側はこれを回し、
 #: 欄の名前を並べ直さない。分類の材料は列ごとに語彙が違うので含めない。
 EDGE_ROW_ARRAY_FIELDS: tuple[str, ...] = tuple(
-    field.name for field in fields(EdgeMaterialArrays) if field.type is np.ndarray
+    field.name for field in fields(EdgeMaterialArrays) if field.type in (np.ndarray, EdgeValues)
 )
 
 
