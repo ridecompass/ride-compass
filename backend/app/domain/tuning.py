@@ -430,10 +430,11 @@ TUNING_PARAMETERS: tuple[TuningParameter, ...] = (
         "有限なので、走った道を戻るほかに道が無い所（袋小路等）は通れる。",
     ),
     # --- 地図の評価 ---
-    # 地図は費用の軸の一覧（`/api/cost-axes`の`map_lens.formula`）の木でこの幅を読むので、一覧を取り直す（画面を読み込み直す）と効く。
+    # どちらも backend が費用の軸の一覧（`/api/cost-axes`）を組むときに読み、画面は値そのものを読まない（画面へ配らない）。
+    # 地図に効くのは、画面が一覧を取り直した（読み込み直した）とき。
     TuningParameter(
         "gradient.perpendicular_band_deg",
-        "勾配を示さない直角からの幅", "度", TuningEffect.CLIENT_RELOAD,
+        "勾配を示さない直角からの幅", "度", TuningEffect.IMMEDIATE,
         "走る向きに対して直角からこの角度以内の道は、どちら向きに辿るか決まらないため、その向きでの勾配を示さない"
         "（地図では勾配の段で塗らない）。広げるほど勾配を示さない道が増える。",
     ),
