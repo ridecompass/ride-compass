@@ -5,8 +5,8 @@
 
 曲がる所の時間は、2つの和で決める。
 - 曲がりの減速の層: 曲がり方（左・右）だけで決まる、曲がるために速さを落とす分。
-- 待ちの表: 制御（`CONTROLS`）× 立場（`STANDINGS`）× 動き（`MOVEMENTS`）の升ごとの、待つ分。升は3つの鍵の組み合わせから導き、
-  基準の通り方（`REFERENCE_PASSAGES`）だけは升を持たない。
+- 待ちの表: 交差点の2つの事実（信号`SIGNALS`・大きさ`SIZES`）× 通り方の2つの事実（立場`STANDINGS`・動き`MOVEMENTS`）の
+  升ごとの、待つ分。升は鍵の組み合わせから導き、基準の通り方（`REFERENCE_PASSAGES`）だけは升を持たない。
 """
 from dataclasses import dataclass
 from itertools import product
@@ -42,8 +42,8 @@ class StopEventKind:
 
 
 @dataclass(frozen=True)
-class Control:
-    """待ちの表の制御1つ。"""
+class Signal:
+    """待ちの表の、信号の事実の値1つ。"""
 
     label: str
     #: 升の値（基準より増える分）を、実走で測った通り方の全体から求めるときに引くもの。
@@ -51,40 +51,45 @@ class Control:
 
 
 _SIGNAL_ID = event_seconds_parameter_id("stop", "signal")
-#: 待ちの表の鍵（キー → 中身）。制御: 交差点の待ちを決める仕組み。信号は、集まる道の最大の階級が県道クラス以上の信号の
-#: 交差点（それ未満の信号の交差点は、待ちの表では信号なしとして引く。信号の基本の待ちは道の側が数える）。
-CONTROLS: dict[str, Control] = {
-    "signal": Control("信号", f"信号の基本の待ち（{_SIGNAL_ID}。道の側で数える）と曲がりの減速"),
-    "unsignalized": Control("信号なし", "曲がりの減速"),
+#: 待ちの表の鍵（キー → 中身）。交差点の事実は地図だけで決まり、通り方の事実は入る道と出る道で決まる。
+#: 信号: 交差点に信号があるか。
+SIGNALS: dict[str, Signal] = {
+    "signal": Signal("信号あり", f"信号の基本の待ち（{_SIGNAL_ID}。道の側で数える）と曲がりの減速"),
+    "unsignalized": Signal("信号なし", "曲がりの減速"),
 }
-#: 立場: その動きで、入る道より上位の、待ちの要る階級の道を渡る・入るか。
+#: 大きさ: 交差点に、大きな交差点とみなす階級（`domain/traffic.py: MAJOR_CROSSING_MIN_RANK`）以上の道が集まるか。
+SIZES: dict[str, str] = {"large": "大きな交差点", "small": "小さな交差点"}
+#: 立場: 入る道が、交差点に集まる道の最大の階級より下か。
 STANDINGS: dict[str, str] = {"priority": "上位の道を渡らない", "yield": "上位の道を渡る・入る"}
 #: 動き。キーは曲がる所の曲がり方（`domain/turn_structure.py: TurnKind`）の名前の小文字。
 MOVEMENTS: dict[str, str] = {"straight": "直進", "left": "左折", "right": "右折"}
-#: 升を持たない基準の通り方。信号の主の直進は、どう通っても掛かる分として道の側の信号（`stop.signal`）が数え、信号なしの
-#: 主の直進は何も起きない通り方。
-REFERENCE_PASSAGES: frozenset[tuple[str, str, str]] = frozenset({
-    ("signal", "priority", "straight"), ("unsignalized", "priority", "straight")})
+#: 待ちの表の升の鍵（信号, 大きさ, 立場, 動き）。
+Passage = tuple[str, str, str, str]
+#: 升を持たない基準の通り方（上位の道を渡らずに直進）。信号ありは、どう通っても掛かる分として道の側の信号（`stop.signal`）が
+#: 数え、信号なしは何も起きない通り方。
+REFERENCE_PASSAGES: frozenset[Passage] = frozenset(
+    (signal, size, "priority", "straight") for signal in SIGNALS for size in SIZES)
 
-#: 待ちの表の升（制御, 立場, 動き）。宣言の順に並ぶ。
-WAIT_PASSAGES: tuple[tuple[str, str, str], ...] = tuple(
-    key for key in product(CONTROLS, STANDINGS, MOVEMENTS) if key not in REFERENCE_PASSAGES)
+#: 待ちの表の升。宣言の順に並ぶ。
+WAIT_PASSAGES: tuple[Passage, ...] = tuple(
+    key for key in product(SIGNALS, SIZES, STANDINGS, MOVEMENTS) if key not in REFERENCE_PASSAGES)
 
 
-def wait_event_name(passage: tuple[str, str, str]) -> str:
-    """待ちの表の升（制御, 立場, 動き）の出来事の名前（較正値のidの一部）。"""
+def wait_event_name(passage: Passage) -> str:
+    """待ちの表の升の出来事の名前（較正値のidの一部）。"""
     return "wait_" + "_".join(passage)
 
 
 _SLOWING = "曲がるために速さを落として失う時間（止まらず減速する出来事）。信号の有無によらず、曲がった所で数える。"
 
 
-def _wait_kind(passage: tuple[str, str, str]) -> StopEventKind:
-    control, standing, movement = CONTROLS[passage[0]], STANDINGS[passage[1]], MOVEMENTS[passage[2]]
+def _wait_kind(passage: Passage) -> StopEventKind:
+    signal, size, standing, movement = (SIGNALS[passage[0]], SIZES[passage[1]], STANDINGS[passage[2]],
+                                        MOVEMENTS[passage[3]])
     return StopEventKind(
-        "turn", wait_event_name(passage), f"{control.label}・{standing}・{movement}", False,
-        f"{control.label}の交差点を{movement}で通り、{standing}ときの待ちのうち、{control.subtracted}に足す分。"
-        f"実走で測ったこの通り方の全体から、{control.subtracted}を引いて求める（止まる割合も、全体から引いた増える分を入れる）。")
+        "turn", wait_event_name(passage), f"{signal.label}・{size}・{standing}・{movement}", False,
+        f"{signal.label}の{size}を{movement}で通り、{standing}ときの待ちのうち、{signal.subtracted}に足す分。"
+        f"実走で測ったこの通り方の全体から、{signal.subtracted}を引いて求める（止まる割合も、全体から引いた増える分を入れる）。")
 
 
 #: 止まる出来事の種類。曲がる所の並びは較正値の管理画面の並びになる。停止要因の並びは数える種別の並び

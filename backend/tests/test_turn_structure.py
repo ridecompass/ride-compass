@@ -46,9 +46,9 @@ def transition_search_seconds(lazy, structure):
     return {pair: search for pair, (_kind, _seconds, search) in transitions(lazy, structure).items()}
 
 
-def wait(control, standing, movement):
+def wait(signal, size, standing, movement):
     """`TURN_SPEC`の待ちの表の升の、1回あたりの時間。"""
-    return TURN_SPEC.waits[(control, standing, movement)].expected_seconds
+    return TURN_SPEC.waits[(signal, size, standing, movement)].expected_seconds
 
 
 def rank_array(lazy, by_edge_id):
@@ -218,21 +218,24 @@ def test_crossing_a_higher_ranked_road_adds_a_wait_split_by_straight_or_turning(
         graph, spec=TURN_SPEC, edge_rank=_plus_ranks(lazy, MAJOR, MAJOR - 1)
     )
     seconds = transition_seconds(lazy, structure)
-    assert seconds[("WC", "CE")] == pytest.approx(wait("unsignalized", "yield", "straight"))
-    assert seconds[("WC", "CN")] == pytest.approx(TURN_SPEC.slow_left.expected_seconds + wait("unsignalized", "yield", "left"))
-    assert seconds[("WC", "CS")] == pytest.approx(TURN_SPEC.slow_right.expected_seconds + wait("unsignalized", "yield", "right"))
+    assert seconds[("WC", "CE")] == pytest.approx(wait("unsignalized", "large", "yield", "straight"))
+    assert seconds[("WC", "CN")] == pytest.approx(
+        TURN_SPEC.slow_left.expected_seconds + wait("unsignalized", "large", "yield", "left"))
+    assert seconds[("WC", "CS")] == pytest.approx(
+        TURN_SPEC.slow_right.expected_seconds + wait("unsignalized", "large", "yield", "right"))
     assert transition_search_seconds(lazy, structure)[("WC", "CW")] == pytest.approx(TURN_SPEC.uturn.expected_seconds)
 
 
 @pytest.mark.parametrize(
     ("crossing_rank", "entering_rank", "signal", "db_rank", "expected"),
     [
-        # 「自分より上位」だけでは足りない——待ちの要る階級に達していなければ足さない。
-        (MAJOR - 1, MAJOR - 2, False, 0, 0.0),
-        # 信号のある交差点では、信号の升を引く（基本の待ちは停止密度の材料が運ぶ）。
-        (MAJOR, MAJOR - 1, True, 0, wait("signal", "yield", "straight")),
+        # 上位の道が待ちの要る階級に届かなければ、小さな交差点の升を引く。
+        (MAJOR - 1, MAJOR - 2, False, 0, wait("unsignalized", "small", "yield", "straight")),
+        # 信号のある交差点では、信号の升を引く（基本の待ちは停止密度の材料が運ぶ）。交差点の大きさで別の升。
+        (MAJOR, MAJOR - 1, True, 0, wait("signal", "large", "yield", "straight")),
+        (MAJOR - 1, MAJOR - 2, True, 0, wait("signal", "small", "yield", "straight")),
         # bboxの外へはみ出した上位の道は部分グラフに現れない。DB側の集計値があれば大きい方を採る。
-        (MAJOR - 1, MAJOR - 1, False, MAJOR, wait("unsignalized", "yield", "straight")),
+        (MAJOR - 1, MAJOR - 1, False, MAJOR, wait("unsignalized", "large", "yield", "straight")),
     ],
 )
 def test_crossing_wait_follows_the_node_rank_and_signal(crossing_rank, entering_rank, signal, db_rank, expected):
@@ -256,11 +259,11 @@ def test_crossing_wait_follows_the_node_rank_and_signal(crossing_rank, entering_
 @pytest.mark.parametrize(
     ("rank", "left", "right"),
     [
-        # 信号のある交差点（県道クラス以上）では、曲がりの減速に信号の升の待ちを足す（右折は二段階右折）。
-        (MAJOR, TURN_SPEC.slow_left.expected_seconds + wait("signal", "priority", "left"),
-         TURN_SPEC.slow_right.expected_seconds + wait("signal", "priority", "right")),
-        # 集まる道が県道クラスに届かない信号は、待ちの表では信号なしとして引く。
-        (MAJOR - 1, TURN_SPEC.slow_left.expected_seconds, TURN_SPEC.slow_right.expected_seconds),
+        # 信号のある交差点では、曲がりの減速に、交差点の大きさの升の待ちを足す（右折は二段階右折）。
+        (MAJOR, TURN_SPEC.slow_left.expected_seconds + wait("signal", "large", "priority", "left"),
+         TURN_SPEC.slow_right.expected_seconds + wait("signal", "large", "priority", "right")),
+        (MAJOR - 1, TURN_SPEC.slow_left.expected_seconds + wait("signal", "small", "priority", "left"),
+         TURN_SPEC.slow_right.expected_seconds + wait("signal", "small", "priority", "right")),
     ],
 )
 def test_a_turn_at_a_signal_adds_the_signal_wait_to_the_slowing(rank, left, right):
@@ -294,7 +297,7 @@ def divided_edges(between_m):
         # 2つの信号の頂点が停止の点をまとめる距離より近い: 1つの交差点として、待ちの表は1回だけ引く。
         (TUNING["stop.cluster_distance_m"] - 1.0, 0.0),
         # 離れていれば別の交差点で、それぞれで引く。
-        (TUNING["stop.cluster_distance_m"] + 1.0, wait("signal", "yield", "straight")),
+        (TUNING["stop.cluster_distance_m"] + 1.0, wait("signal", "large", "yield", "straight")),
     ],
 )
 def test_crossing_a_divided_road_at_a_signal_adds_the_wait_once_per_intersection(between_m, at_b):
@@ -306,7 +309,8 @@ def test_crossing_a_divided_road_at_a_signal_adds_the_wait_once_per_intersection
     ranks = rank_array(lazy, {edge_id: (MAJOR if edge_id in {"AN", "NA", "BS", "SB"} else MAJOR - 1) for edge_id in edges})
     _, _, structure = build_all(graph, spec=TURN_SPEC, edge_rank=ranks, node_has_signal=signals)
     seconds = transition_seconds(lazy, structure)
-    assert (seconds[("WA", "AB")], seconds[("AB", "BE")]) == pytest.approx((wait("signal", "yield", "straight"), at_b))
+    assert (seconds[("WA", "AB")], seconds[("AB", "BE")]) == pytest.approx(
+        (wait("signal", "large", "yield", "straight"), at_b))
 
 
 def test_a_signal_just_before_the_junction_on_the_same_road_does_not_hide_the_junction_wait():
@@ -319,7 +323,7 @@ def test_a_signal_just_before_the_junction_on_the_same_road_does_not_hide_the_ju
     signals[[lazy.node_id_to_index["A"], lazy.node_id_to_index["B"]]] = True
     ranks = rank_array(lazy, {edge_id: (MAJOR if edge_id in {"BS", "SB"} else MAJOR - 1) for edge_id in edges})
     _, _, structure = build_all(graph, spec=TURN_SPEC, edge_rank=ranks, node_has_signal=signals)
-    assert transition_seconds(lazy, structure)[("AB", "BE")] == pytest.approx(wait("signal", "yield", "straight"))
+    assert transition_seconds(lazy, structure)[("AB", "BE")] == pytest.approx(wait("signal", "large", "yield", "straight"))
 
 
 def test_a_right_turn_inside_a_signal_intersection_counts_only_the_slowing():
@@ -334,7 +338,7 @@ def test_a_right_turn_inside_a_signal_intersection_counts_only_the_slowing():
     _, _, structure = build_all(graph, spec=TURN_SPEC, edge_rank=ranks, node_has_signal=signals)
     seconds = transition_seconds(lazy, structure)
     assert (seconds[("WA", "AB")], seconds[("AB", "BS")]) == pytest.approx(
-        (wait("signal", "yield", "straight"), TURN_SPEC.slow_right.expected_seconds))
+        (wait("signal", "large", "yield", "straight"), TURN_SPEC.slow_right.expected_seconds))
 
 
 def test_node_rank_comes_from_roads_that_leave_the_node_too():
@@ -352,7 +356,8 @@ def test_node_rank_comes_from_roads_that_leave_the_node_too():
         },
     )
     _, _, structure = build_all(graph, spec=TURN_SPEC, edge_rank=ranks)
-    assert transition_seconds(lazy, structure)[("WC", "CE")] == pytest.approx(wait("unsignalized", "yield", "straight"))
+    assert transition_seconds(lazy, structure)[("WC", "CE")] == pytest.approx(
+        wait("unsignalized", "large", "yield", "straight"))
 
 
 def test_a_turn_onto_a_major_road_waits_for_both_but_kicks_off_once():
@@ -365,7 +370,7 @@ def test_a_turn_onto_a_major_road_waits_for_both_but_kicks_off_once():
 
     right, left = entries[("WC", "CS")], entries[("WC", "CN")]
     assert float(structure.turn_seconds[right]) == pytest.approx(
-        TURN_SPEC.slow_right.expected_seconds + wait("unsignalized", "yield", "right"))
+        TURN_SPEC.slow_right.expected_seconds + wait("unsignalized", "large", "yield", "right"))
     assert (float(structure.turn_kickoffs[right]), float(structure.turn_kickoffs[left])) == pytest.approx((1.0, 1.0))
 
 

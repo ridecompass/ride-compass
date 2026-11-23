@@ -128,10 +128,14 @@ FLAT_SPEC = turn_structure.TurnCostSpec(
 TURN_SPEC = turn_structure.TurnCostSpec(
     slow_left=_event(5.0, kickoffs=0.75), slow_right=_event(3.0), uturn=_event(20.0), straight_max_deg=30.0,
     waits=_waits({
-        ("unsignalized", "yield", "straight"): 7.0, ("unsignalized", "yield", "left"): 11.0,
-        ("unsignalized", "yield", "right"): 13.0, ("signal", "priority", "left"): 2.0,
-        ("signal", "priority", "right"): 19.0, ("signal", "yield", "straight"): 17.0,
-        ("signal", "yield", "left"): 29.0, ("signal", "yield", "right"): 23.0,
+        ("unsignalized", "large", "yield", "straight"): 7.0, ("unsignalized", "large", "yield", "left"): 11.0,
+        ("unsignalized", "large", "yield", "right"): 13.0, ("unsignalized", "small", "yield", "straight"): 1.0,
+        ("unsignalized", "small", "yield", "left"): 1.5, ("unsignalized", "small", "yield", "right"): 2.5,
+        ("signal", "large", "priority", "left"): 2.0, ("signal", "large", "priority", "right"): 19.0,
+        ("signal", "large", "yield", "straight"): 17.0, ("signal", "large", "yield", "left"): 29.0,
+        ("signal", "large", "yield", "right"): 23.0, ("signal", "small", "priority", "left"): 3.0,
+        ("signal", "small", "priority", "right"): 4.0, ("signal", "small", "yield", "straight"): 31.0,
+        ("signal", "small", "yield", "left"): 37.0, ("signal", "small", "yield", "right"): 41.0,
     }),
 )
 

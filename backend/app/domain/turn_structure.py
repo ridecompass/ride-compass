@@ -6,12 +6,22 @@
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from enum import IntEnum
+from itertools import product
 
 import numpy as np
 
 from app.domain.geo import LatLonPoint, bearing_between
 from app.domain.search_graph import EDGE_VALUE_DTYPE, SEARCH_INDEX_DTYPE, CsrGraphStructure, LazyRoadGraph
-from app.domain.stop_events import CONTROLS, MOVEMENTS, REFERENCE_PASSAGES, STANDINGS, WAIT_PASSAGES, wait_event_name
+from app.domain.stop_events import (
+    MOVEMENTS,
+    REFERENCE_PASSAGES,
+    SIGNALS,
+    SIZES,
+    STANDINGS,
+    WAIT_PASSAGES,
+    Passage,
+    wait_event_name,
+)
 from app.domain.traffic import INTERSECTION_DEGREE_THRESHOLD, MAJOR_CROSSING_MIN_RANK, NO_EVENT, StopEvent, stop_event
 from app.domain.tuning import Tuning
 
@@ -29,8 +39,8 @@ class TurnCostSpec:
     slow_right: StopEvent
     uturn: StopEvent
     straight_max_deg: float
-    # 待ちの表の全部の升（制御, 立場, 動き）→ 出来事。基準の通り方（`REFERENCE_PASSAGES`）は何も起きない出来事。
-    waits: Mapping[tuple[str, str, str], StopEvent]
+    # 待ちの表の全部の升（信号, 大きさ, 立場, 動き）→ 出来事。基準の通り方（`REFERENCE_PASSAGES`）は何も起きない出来事。
+    waits: Mapping[Passage, StopEvent]
 
 
 def turn_cost(tuning: Tuning) -> TurnCostSpec:
@@ -209,20 +219,24 @@ def build_turn_expanded_structure(
     node_rank = np.maximum(node_rank, node_db_rank)
     via_node = edge_to[source]
     target_node_rank = node_rank[via_node]
+    # 交差点の事実（地図だけで決まる）と、通り方の事実（入る区間で決まる）。
     signal = node_has_signal[via_node]
-    major_road = target_node_rank >= MAJOR_CROSSING_MIN_RANK
-    signal_junction = signal & major_road
+    large = target_node_rank >= MAJOR_CROSSING_MIN_RANK
+    below = branch & ~is_uturn & (target_node_rank > edge_rank[source])
+    # 同じ信号の交差点の中を進む遷移: 入る区間の始点も信号のある分かれ道で、区間がまとめる距離より短い。
     from_node = edge_from[source]
-    in_place = (node_has_signal[from_node] & (node_branch_count[from_node] >= INTERSECTION_DEGREE_THRESHOLD)
+    in_place = (signal & node_has_signal[from_node] & (node_branch_count[from_node] >= INTERSECTION_DEGREE_THRESHOLD)
                 & (np.asarray(edge_distance_m, dtype=np.float64)[source] < same_place_m))
-    control = np.where(signal_junction & in_place, _Control.INSIDE,
-                       np.where(signal_junction, _Control.SIGNAL, _Control.UNSIGNALIZED))
-    standing = np.where(branch & ~is_uturn & (target_node_rank > edge_rank[source]) & major_road,
-                        _Standing.YIELD, _Standing.PRIORITY)
-    # 遷移の時間と漕ぎ出しは、曲がり方（`TurnKind`）× 制御 × 立場の表から引く——遷移の数（探索の範囲で約200万）の配列を
+    group = np.ravel_multi_index(
+        (np.where(signal, _SIGNAL_KEYS.index("signal"), _SIGNAL_KEYS.index("unsignalized")),
+         np.where(large, _SIZE_KEYS.index("large"), _SIZE_KEYS.index("small")),
+         np.where(below, _STANDING_KEYS.index("yield"), _STANDING_KEYS.index("priority"))),
+        _GROUP_SHAPE)
+    group = np.where(in_place, _INSIDE, group)
+    # 遷移の時間と漕ぎ出しは、曲がり方（`TurnKind`）× 事実の組の表から引く——遷移の数（探索の範囲で約200万）の配列を
     # 組み直さない。
     seconds_table, kickoffs_table = _turn_tables(spec)
-    code = (wait_kind + len(TurnKind) * (control * len(_Standing) + standing)).astype(np.intp)
+    code = (wait_kind + len(TurnKind) * group).astype(np.intp)
 
     return TurnExpandedStructure(
         state_count=state_count, indptr=new_indptr.astype(SEARCH_INDEX_DTYPE),
@@ -250,25 +264,29 @@ def _penalty_table(spec: TurnCostSpec) -> np.ndarray:
                      for kind, event in zip(TurnKind, _turn_events(spec), strict=True)], dtype=EDGE_VALUE_DTYPE)
 
 
-#: 待ちの表の制御（`domain/stop_events.py: CONTROLS`の順。名前の小文字がそのキー）と、表を引かない「同じ信号の交差点の中」。
-_Control = IntEnum("_Control", [*(key.upper() for key in CONTROLS), "INSIDE"], start=0)
-#: 待ちの表の立場（`domain/stop_events.py: STANDINGS`の順。名前の小文字がそのキー）。
-_Standing = IntEnum("_Standing", [key.upper() for key in STANDINGS], start=0)
+#: 待ちの表の鍵（`domain/stop_events.py`の宣言の順）。表の添字は（信号, 大きさ, 立場）の組の並びの位置で、組の数の次の位置
+#: `_INSIDE`は、表を引かない「同じ信号の交差点の中」。
+_SIGNAL_KEYS = tuple(SIGNALS)
+_SIZE_KEYS = tuple(SIZES)
+_STANDING_KEYS = tuple(STANDINGS)
+_GROUPS = tuple(product(_SIGNAL_KEYS, _SIZE_KEYS, _STANDING_KEYS))
+#: 組の添字を（信号, 大きさ, 立場）の位置から出す形（`product`と同じく、後ろの鍵ほど速く回る並び）。
+_GROUP_SHAPE = (len(_SIGNAL_KEYS), len(_SIZE_KEYS), len(_STANDING_KEYS))
+_INSIDE = len(_GROUPS)
 
 
 def _turn_tables(spec: TurnCostSpec) -> tuple[np.ndarray, np.ndarray]:
-    """曲がり方（`TurnKind`の値）＋ 4 ×（制御 × 立場の数 ＋ 立場）を添字にした、遷移の時間（秒。罰の曲がりの罰は入れない）と
+    """曲がり方（`TurnKind`の値）＋ 4 × 事実の組（`_GROUPS`の位置）を添字にした、遷移の時間（秒。罰の曲がりの罰は入れない）と
     漕ぎ出しの回数の表。時間は曲がりの減速と待ちの表の升の和で、漕ぎ出しは同じ所で1回しか起きないので大きい方だけを数える。
     Uターンと同じ交差点の中は、表を引かない。"""
     penalties = _penalty_table(spec)
     seconds, kickoffs = [], []
-    for control in _Control:
-        for standing in _Standing:
-            for kind, slowing in zip(TurnKind, _turn_events(spec), strict=True):
-                wait = (NO_EVENT if control is _Control.INSIDE or kind.name.lower() not in MOVEMENTS
-                        else spec.waits[(control.name.lower(), standing.name.lower(), kind.name.lower())])
-                seconds.append(slowing.expected_seconds - float(penalties[kind]) + wait.expected_seconds)
-                kickoffs.append(max(slowing.kickoffs, wait.kickoffs))
+    for group in (*_GROUPS, None):
+        for kind, slowing in zip(TurnKind, _turn_events(spec), strict=True):
+            wait = (NO_EVENT if group is None or kind.name.lower() not in MOVEMENTS
+                    else spec.waits[(*group, kind.name.lower())])
+            seconds.append(slowing.expected_seconds - float(penalties[kind]) + wait.expected_seconds)
+            kickoffs.append(max(slowing.kickoffs, wait.kickoffs))
     return np.array(seconds, dtype=EDGE_VALUE_DTYPE), np.array(kickoffs, dtype=EDGE_VALUE_DTYPE)
 
 

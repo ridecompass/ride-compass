@@ -3,6 +3,7 @@
 テストは`conftest.py`がテストごとにこの値を置く。テストはこの値から入力を組み、値を差し替えない。値で受ける計算には束`TUNED`を渡す。
 """
 
+from app.domain.stop_events import WAIT_PASSAGES, event_seconds_parameter_id, event_share_parameter_id, wait_event_name
 from app.domain.tuning import Tuning
 
 TUNING = {
@@ -13,26 +14,6 @@ TUNING = {
     'turn.uturn_share': 1.0,
     'turn.uturn_seconds': 60.0,
     'turn.straight_max_deg': 30.0,
-    'turn.wait_signal_priority_left_share': 0.0,
-    'turn.wait_signal_priority_left_seconds': 0.0,
-    'turn.wait_signal_priority_right_share': 0.5,
-    'turn.wait_signal_priority_right_seconds': 30.0,
-    'turn.wait_signal_yield_straight_share': 0.2,
-    'turn.wait_signal_yield_straight_seconds': 50.0,
-    'turn.wait_signal_yield_left_share': 0.0,
-    'turn.wait_signal_yield_left_seconds': 0.0,
-    'turn.wait_signal_yield_right_share': 0.5,
-    'turn.wait_signal_yield_right_seconds': 30.0,
-    'turn.wait_unsignalized_priority_left_share': 0.0,
-    'turn.wait_unsignalized_priority_left_seconds': 0.0,
-    'turn.wait_unsignalized_priority_right_share': 0.0,
-    'turn.wait_unsignalized_priority_right_seconds': 0.0,
-    'turn.wait_unsignalized_yield_straight_share': 1.0,
-    'turn.wait_unsignalized_yield_straight_seconds': 8.0,
-    'turn.wait_unsignalized_yield_left_share': 1.0,
-    'turn.wait_unsignalized_yield_left_seconds': 15.0,
-    'turn.wait_unsignalized_yield_right_share': 1.0,
-    'turn.wait_unsignalized_yield_right_seconds': 15.0,
     'stop.signal_share': 0.5,
     'stop.signal_seconds': 42.0,
     'stop.crossing_share': 0.0,
@@ -88,5 +69,19 @@ TUNING = {
     'gradient.perpendicular_band_deg': 15.0,
     'splice.min_stretch_km': 0.2,
 }
+
+#: 待ちの表の升の（割合, 待ち）。書かない升は止まらない。
+_WAITS = {
+    ("signal", "large", "priority", "right"): (0.5, 30.0),
+    ("signal", "large", "yield", "straight"): (0.2, 50.0),
+    ("signal", "large", "yield", "right"): (0.5, 30.0),
+    ("unsignalized", "large", "yield", "straight"): (1.0, 8.0),
+    ("unsignalized", "large", "yield", "left"): (1.0, 15.0),
+    ("unsignalized", "large", "yield", "right"): (1.0, 15.0),
+}
+for _passage in WAIT_PASSAGES:
+    _share, _seconds = _WAITS.get(_passage, (0.0, 0.0))
+    TUNING[event_share_parameter_id("turn", wait_event_name(_passage))] = _share
+    TUNING[event_seconds_parameter_id("turn", wait_event_name(_passage))] = _seconds
 
 TUNED = Tuning(TUNING)
