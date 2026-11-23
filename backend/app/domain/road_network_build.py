@@ -34,7 +34,8 @@ def build_road_network(
     edge_profile_points: np.ndarray, profile_elevation_m: np.ndarray, profile_position: np.ndarray, **facts: Any,
 ) -> RoadNetwork:
     """道の事実から`RoadNetwork`を組む。区間は有向の行（`RoadNetwork`の行順）で、端のそばの向きは形から決まらない区間がNaN。
-    形と断面の点は、区間ごとに道の順方向に1回だけ、区間の行の順に隙間なく並べ、両向きの行が同じ点を指す。`facts`はそのまま
+    形と断面の点は、区間ごとに道の順方向に1回だけ、区間の行の順に隙間なく並べ、両向きの行が同じ点を指す。材料の行列`numeric_values`の
+    断面から決まる列は、渡した行列の中で書き換える。`facts`はそのまま
     写す`RoadNetwork`の欄。"""
     distance = np.asarray(distance_m, dtype=np.float64)
     first_of_edge = run_starts(edge_way_id) | run_starts(edge_segment)
@@ -60,7 +61,8 @@ def build_road_network(
         profile_start, profile_points.astype(np.int64), np.asarray(edge_forward, dtype=np.bool_), elevation, position,
         distance, STEEPEST_MIN_INTERVAL_M).T, strict=True))
 
-    values = np.array(numeric_values, dtype=np.float64)
+    # 材料の行列は取込範囲全体で道路網の配列の大半を占めるので、写さずに断面から決まる列だけを書き換える。
+    values = np.asarray(numeric_values, dtype=np.float64)
     gain_per_km = np.divide(summaries["elevation_gain_m"], distance / 1000.0, out=np.full(len(distance), np.nan),
                             where=distance > 0)
     for material_id, column in ((GRADIENT_PERCENT, summaries.pop("average_grade")), (ELEVATION_GAIN_PER_KM, gain_per_km)):
