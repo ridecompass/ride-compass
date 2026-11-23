@@ -32,6 +32,7 @@ from app.domain.material_catalog import GRADIENT_PERCENT
 from app.domain.msm import MsmGrid
 from app.domain.region import ROAD_TILE_MIN_ZOOM, tile_bounds_lonlat
 from app.domain.road_classes import RoadClassDefinitions, class_columns, layer_columns
+from app.domain.search_graph import EdgeValues
 from app.domain.stopwatch import elapsed_ms, start_timer
 from app.domain.tuning import RIDER_HEIGHT_ID, ROUGHNESS_CAP_ID, Tuning
 from app.domain.wind_height import ROUGHNESS_LENGTH_M, WindHeights, height_factors
@@ -88,7 +89,7 @@ class RoadNetwork:
 
     # 材料（`EdgeMaterialArrays`と同じ列。区間と同じ行順）。
     numeric_ids: tuple[str, ...]
-    numeric_values: np.ndarray  # (区間, 列) `domain/search_graph.py: EDGE_VALUE_DTYPE`, NaN=欠損
+    numeric_values: EdgeValues  # (区間, 列), NaN=欠損
     categorical_ids: tuple[str, ...]
     categorical_codes: np.ndarray  # (区間, 列) int16。0は値なし
     categorical_vocab: tuple[tuple[str | None, ...], ...]  # 列ごとの語彙。先頭は必ずNone
