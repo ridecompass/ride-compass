@@ -19,6 +19,8 @@ export interface MapPaintDeclaration {
   boundaries: readonly number[];
   unit: string;
   bandLabels: readonly string[];
+  /** 段の名前が値の範囲を持っているか（持っていれば、名前に`unit`の範囲を添えない）。 */
+  labelsCarryRange?: boolean;
 }
 
 function hue2rgb(p: number, q: number, tIn: number): number {
@@ -94,6 +96,7 @@ export function valueBands(paint: MapPaintDeclaration): ValueBand[] {
   const labels = bandLabelsForBandCount(bandLabels, colors.length);
   return buildRangeLegendBands(boundaries, colors, unit, labels).map((band, index) => ({
     ...band,
+    ...(paint.labelsCarryRange && labels ? { label: labels[index] } : {}),
     lowerBound: index === 0 ? Number.NEGATIVE_INFINITY : boundaries[index - 1],
   }));
 }

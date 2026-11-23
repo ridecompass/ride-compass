@@ -17,9 +17,7 @@ import numpy as np
 
 from app.domain.attributes import CategoricalColumn
 from app.domain.axis_templates import evaluate_breakpoint_linear
-from app.domain.cost_axes import (
-    EFFORT_AXES, HEADWIND_FACT_LABEL, STOPS_FACT_LABEL, AxisPresentation, CategoricalBurden, LensBands, LensScale,
-)
+from app.domain.cost_axes import EFFORT_AXES, AxisPresentation, CategoricalBurden, LensBands, LensScale
 from app.domain.cost_preference import CostPreference
 from app.domain.cycling_speed import STANDARD_TEMPERATURE_C, RiderProfile, SegmentSpeedModel, crr_for_surface
 from app.domain.elevation_profile import FLAT, ElevationProfiles, along_fractions
@@ -48,16 +46,16 @@ def lens_bands(settings: ModelSettings) -> dict[str, LensBands]:
     def seconds_of(axis_id: str) -> Callable[..., np.ndarray]:
         return lambda **road: _axis_seconds_per_km(settings, parameters, axis_id, **road)
 
-    result = {TOTAL_LENS_ID: _bands_of(axes.total_lens, lambda scale: _numeric(scale, "", _SECONDS_UNIT, lambda v: v))}
+    result = {TOTAL_LENS_ID: _bands_of(axes.total_lens, lambda scale: _numeric(scale, _SECONDS_UNIT, lambda v: v))}
     for axis_id, item in EFFORT_AXES.items():
         seconds = seconds_of(axis_id)
         facts: _Facts
         if item == "gravity":
-            facts = lambda scale: _numeric(scale, "斜度", "%", lambda v: seconds(grade_percent=v))  # noqa: E731
+            facts = lambda scale: _numeric(scale, "%", lambda v: seconds(grade_percent=v))  # noqa: E731
         elif item == "air":
-            facts = lambda scale: _numeric(scale, HEADWIND_FACT_LABEL, "m/s", lambda v: seconds(headwind_ms=v))  # noqa: E731
+            facts = lambda scale: _numeric(scale, "m/s", lambda v: seconds(headwind_ms=v))  # noqa: E731
         elif item == "inertia":
-            facts = lambda scale: _numeric(scale, STOPS_FACT_LABEL, "回/km", lambda v: seconds(kickoffs=v))  # noqa: E731
+            facts = lambda scale: _numeric(scale, "回/km", lambda v: seconds(kickoffs=v))  # noqa: E731
         else:
             classification = road_classes.rolling_resistance_classification or ""
             keys = list(road_classes.rolling_resistance_classes.get(classification, {}))
@@ -76,7 +74,7 @@ def lens_bands(settings: ModelSettings) -> dict[str, LensBands]:
             spec = MATERIAL_CATALOG.get(burden.material)
             points = burden.points
             facts = lambda scale: _numeric(  # noqa: E731
-                scale, "", spec.unit if spec else "", lambda v: seconds(burden=evaluate_breakpoint_linear(v, points)))
+                scale, spec.unit if spec else "", lambda v: seconds(burden=evaluate_breakpoint_linear(v, points)))
         result[axis_id] = _bands_of(axis, facts)
     return result
 
@@ -89,14 +87,14 @@ def _bands_of(presentation: AxisPresentation, facts: _Facts) -> LensBands:
     return presentation.lens
 
 
-def _numeric(scale: LensScale, fact: str, unit: str, seconds_of: Callable[[np.ndarray], np.ndarray]) -> LensBands:
+def _numeric(scale: LensScale, unit: str, seconds_of: Callable[[np.ndarray], np.ndarray]) -> LensBands:
     """緑の端から赤の端までを`_STEPS`に等分した事実の値（緑の端を除く）ごとに境目を置いた段（名前は事実の値の範囲）。"""
     ticks = np.linspace(float(scale.green), float(scale.red), _STEPS + 1)
     seconds = np.maximum.accumulate(np.asarray(seconds_of(ticks), dtype=np.float64))
     text = [f"{round(float(value), 1):g}" for value in ticks]
-    head = f"{fact} " if fact else ""
-    # 緑の端より小さい値は最初の段（一番緑）に入れ、赤の端より大きい値は最後の段（一番赤）に入れる。
-    names = [f"{head}{text[1]}{unit}未満"] + [f"{head}{low}〜{high}{unit}" for low, high in zip(text[1:], text[2:])]         + [f"{head}{text[-1]}{unit}以上"]
+    # 緑の端より小さい値は最初の段（一番緑）に入れ、赤の端より大きい値は最後の段（一番赤）に入れる。名前は軸の名前を繰り返さない。
+    names = [f"{text[1]}{unit}未満"] + [f"{low}〜{high}{unit}" for low, high in zip(text[1:], text[2:])] \
+        + [f"{text[-1]}{unit}以上"]
     return _distinct([float(value) for value in seconds[1:]], names)
 
 
@@ -105,12 +103,12 @@ def _classes(scale: LensScale, keys: list[str], labels: dict[str, str], seconds:
     区分の道は端の段で塗るので、その段の名前に入れる。"""
     by_key = dict(zip(keys, (float(value) for value in seconds), strict=True))
     low, high = sorted((by_key[str(scale.green)], by_key[str(scale.red)]))
-    ordered = sorted((value, labels.get(key, key)) for key, value in by_key.items())
-    chosen = [(value, name) for value, name in ordered if low <= value <= high]
-    names = [name for _, name in chosen]
-    names[0] = "・".join([name for value, name in ordered if value < low] + [names[0]])
-    names[-1] = "・".join([names[-1]] + [name for value, name in ordered if value > high])
-    return _distinct([value for value, _ in chosen[1:]], names)
+    # 同じ秒の区分は1段（名前を並べる）。端より軽い・重い区分は端の段に入れる。
+    groups: dict[float, list[str]] = {}
+    for key, value in sorted(by_key.items(), key=lambda item: item[1]):
+        groups.setdefault(min(max(value, low), high), []).append(labels.get(key, key))
+    values = sorted(groups)
+    return LensBands(thresholds=values[1:], band_labels=["・".join(groups[value]) for value in values])
 
 
 def _distinct(thresholds: list[float], names: list[str]) -> LensBands:

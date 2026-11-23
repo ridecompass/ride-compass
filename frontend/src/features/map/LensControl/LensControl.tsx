@@ -68,44 +68,9 @@ export default function LensControl({
       : UNSELECTED_LABEL
     : (selected?.label ?? lens);
   const pillColor = selected?.color ?? LENS_NEUTRAL_COLOR;
-  // 色の帯は色の段だけを並べる（受け皿の「データなし」「向きで決まらない」は帯の下に並べる）。
+  // 帯は色の段だけを並べる（受け皿の「データなし」「向きで決まらない」は除く）。右端の段の名前（一番濃い色の値）を帯の右に添える。
   const bands = legend.filter((entry) => !entry.isFallback);
-  const extras = legend.filter((entry) => entry.isFallback);
-
-  // 選んでいる行の ▶ の中身。色の帯と、両端の段の名前（事実の値の範囲）と、受け皿の段と、前提の文。
-  const legendPanel =
-    legend.length > 0 || caveat ? (
-      <div className="flex flex-col gap-1" data-usage="色の帯は左ほど小さく、右ほど大きい負担です。">
-        {bands.length > 0 && (
-          <>
-            <span className="flex h-2.5 overflow-hidden rounded-[2px]" aria-hidden="true">
-              {bands.map((entry) => (
-                <span key={entry.key} className="flex-1" style={{ background: legendSwatchBackground(entry) }} />
-              ))}
-            </span>
-            <span className="flex justify-between gap-2 text-[length:var(--font-size-xs)] text-[var(--color-muted-strong)]">
-              <span>{bands[0].label}</span>
-              {bands.length > 1 && <span>{bands[bands.length - 1].label}</span>}
-            </span>
-          </>
-        )}
-        {extras.length > 0 && (
-          <span className="flex flex-wrap gap-x-3 text-[length:var(--font-size-xs)] text-[var(--color-muted)]">
-            {extras.map((entry) => (
-              <span key={entry.key} className="inline-flex items-center gap-1">
-                <span
-                  aria-hidden="true"
-                  className={cn("h-2 w-3 rounded-[1px]", LEGEND_SWATCH_RING_CLASS)}
-                  style={{ background: legendSwatchBackground(entry) }}
-                />
-                {entry.label}
-              </span>
-            ))}
-          </span>
-        )}
-        {caveat && <p className={cn(textVariants({ variant: "warning" }), "m-0")}>{caveat}</p>}
-      </div>
-    ) : null;
+  const reddest = bands.length > 1 ? bands[bands.length - 1].label : null;
 
   return (
     <div className="pointer-events-auto min-w-0 max-w-56">
@@ -118,7 +83,7 @@ export default function LensControl({
             className="max-w-full flex-row items-center gap-1.5 border-0 px-2.5 py-1 text-[length:var(--font-size-sm)] whitespace-nowrap focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-accent-strong)]"
             aria-label={`${LENS_SCREEN_NAME}: ${pillLabel}（タップで変更）`}
             title={statusLabel}
-            usage={`選んだ負担の種類の${LENS_QUANTITY_LABEL}で、地図の道路[ルートを作った後はルートの線]を塗ります。横の帯は負担の凡例で、左ほど小さく、右ほど大きい負担です。`}
+            usage={`選んだ負担の種類の${LENS_QUANTITY_LABEL}で、地図の道路[ルートを作った後はルートの線]を塗ります。横の帯は左ほど小さく、右ほど大きい負担で、右の値から一番濃い色です。道を押すと、その道の値が出ます。`}
           >
             {/* 道のりのグラフの「負担で塗る」の切り替えと同じ絵で、どちらも同じ入口と分かるようにする。 */}
             <BurdenPaintIcon size={14} />
@@ -129,20 +94,18 @@ export default function LensControl({
             />
             <span className="flex-shrink-0 font-semibold">{pillLabel}</span>
             {dataStatus && <Dot aria-hidden="true" tone={dataStatus} />}
-            {/* 段の数に依らず固定の幅で等分し、段の多い軸でもピルを横に伸ばさない。地図が狭いときは名前より先に縮める。
-                段は負担の小さい順に並ぶので、両端に向きを添える。 */}
+            {/* 段の数に依らず固定の幅で等分し、段の多い軸でもピルを横に伸ばさない。地図が狭いときは名前より先に縮める。 */}
             {bands.length > 0 && (
               <span
                 className="flex min-w-0 shrink-[8] items-center gap-0.5 text-[0.65rem] text-[var(--color-muted-strong)]"
                 aria-hidden="true"
               >
-                小
                 <span className="flex h-1.5 w-12 min-w-0 shrink overflow-hidden rounded-[1px]">
                   {bands.map((entry) => (
                     <span key={entry.key} className="flex-1" style={{ background: legendSwatchBackground(entry) }} />
                   ))}
                 </span>
-                大
+                {reddest !== null && <span className="truncate">{reddest}</span>}
               </span>
             )}
             <span aria-hidden="true" className="text-[0.7rem] text-[var(--color-muted)]">
@@ -162,6 +125,7 @@ export default function LensControl({
               {statusNotice}
             </p>
           )}
+          {caveat && <p className={cn(textVariants({ variant: "warning" }), "mb-1.5")}>{caveat}</p>}
           {catalogNotice !== null && (
             <p className="mb-1.5 text-[length:var(--font-size-sm)]" role="status">
               {catalogNotice}
@@ -178,7 +142,7 @@ export default function LensControl({
             usage={`押した負担の種類の${LENS_QUANTITY_LABEL}で、地図の道路[ルートを作った後はルートの線]を塗ります。選んでいる行をもう一度押すと外れます。`}
           >
             {axisOptions.map((option) => (
-              <LensRow key={option.id} option={option} panel={option.id === lens ? legendPanel : null} />
+              <LensRow key={option.id} option={option} />
             ))}
           </ToggleGroup>
           <div className="mt-1.5 flex justify-end gap-1 border-t border-[var(--color-border)] pt-1.5">

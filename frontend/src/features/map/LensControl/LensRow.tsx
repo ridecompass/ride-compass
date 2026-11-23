@@ -1,7 +1,7 @@
 "use client";
 
 import { createElement, type ReactElement } from "react";
-import { RowMarksNote, useRowDescription, useRowPanel } from "@/features/map/LegendCheckboxList/LegendRow";
+import { RowMarksNote, useRowDescription } from "@/features/map/LegendCheckboxList/LegendRow";
 import type { LensId } from "@/lib/mapDisplay/routeStyleModes";
 import type { WayValueCondition } from "@/lib/mapDisplay/mapLens";
 import { ToggleGroupItem } from "@/components/ui/ToggleGroup/ToggleGroup";
@@ -37,7 +37,7 @@ export function LensMarksNote({ options }: { options: readonly LensOption[] }) {
       const { Icon, name } = CONDITION_MARKS[condition];
       return { key: condition, mark: <Icon size={12} />, meaning: `${name}で変わる` };
     });
-  return <RowMarksNote marks={marks} />;
+  return <RowMarksNote marks={marks} panel={false} />;
 }
 
 // 部品は費用の軸のアイコンの固定の辞書から引くので描くたびに作られないが、`const Icon = …; <Icon />`の形は
@@ -47,9 +47,8 @@ function AxisIcon({ iconId }: { iconId?: string }) {
 }
 
 /** 選択肢の1行。チェックの代わりに1つだけ選ぶ印を出し、(i) は説明を、▶（選んでいる行だけ）は凡例を、行のすぐ下に開く。 */
-export function LensRow({ option, panel }: { option: LensOption; panel: ReactElement | null }) {
+export function LensRow({ option }: { option: LensOption }) {
   const hint = useRowDescription(option.label, option.description, "この負担の種類の説明を、行のすぐ下に開きます。");
-  const legend = useRowPanel(option.label, panel);
   return (
     <div className="flex w-full flex-col text-[length:var(--font-size-sm)]">
       <div className="flex items-center gap-1">
@@ -80,10 +79,8 @@ export function LensRow({ option, panel }: { option: LensOption; panel: ReactEle
           })}
         </ToggleGroupItem>
         {hint.toggle}
-        {legend.toggle}
       </div>
       {hint.text}
-      {legend.region}
     </div>
   );
 }
