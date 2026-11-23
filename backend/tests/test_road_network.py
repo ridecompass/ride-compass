@@ -28,6 +28,7 @@ from hypothesis import strategies as st
 from app.domain.material_catalog import GRADIENT_PERCENT
 from app.domain.region import ROAD_TILE_MAX_ZOOM, ROAD_TILE_MIN_ZOOM, tile_bounds_lonlat, tile_position
 from app.domain.road_classes import class_material_id
+from app.domain.road_network_build import filled_bearings
 from app.domain.road_network import (
     edge_profile,
     edge_row_of,
@@ -208,3 +209,13 @@ def test_both_directions_of_an_edge_read_one_shape_and_profile_in_the_order_they
 )
 def test_an_edge_is_found_by_its_way_segment_and_direction(way, segment, forward, expected):
     assert edge_row_of(network(), way, segment, forward) == expected
+
+
+def test_only_an_edge_whose_shape_gives_no_bearing_faces_from_its_start_node_to_its_end_node():
+    """端のそばの向きが形から決まらない（NaNの）区間だけを始点の頂点から終点の頂点を見た向きで埋め、形から決まった向きは残す。"""
+    lat, lon = np.array([35.0, 35.0, 35.001]), np.array([139.0, 139.001, 139.0])
+
+    bearing = filled_bearings(np.array([10.0, np.nan]), lat, lon, np.array([0, 0]), np.array([2, 1]))
+
+    assert bearing[0] == 10.0
+    assert bearing[1] == pytest.approx(90.0, abs=0.01)  # 東の頂点へ向かう
