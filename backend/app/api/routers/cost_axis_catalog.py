@@ -17,42 +17,41 @@ from app.domain.cost_preference import STANDARD_COST_FACTOR, CostPreference, Req
 from app.domain.lens_total import TOTAL_LENS_ID
 from app.domain.ledger_costs import ledger_parameters
 from app.domain.lens_equivalents import LensEquivalents, lens_equivalents
-from app.domain.lens_values import LENS_MATERIAL_CONDITIONS, lens_way_formula
+from app.domain.lens_values import MapLens, lens_conditions, map_lens
 from app.domain.model_settings import current_model_settings
 from app.domain.strict_model import StrictModel
-from app.domain.way_value_formula import WayValueConditionName, WayValueFormula
 
 router = APIRouter()
 
 
-class MapLens(StrictModel):
-    """地図が道をレンズで塗る決まり。道ごとの材料は`/api/region/lens/{lens_id}/...`（`lens_id`は`total_lens.lens_id`か
-    軸id）で、要求には`material_conditions`の走る条件を載せる。道の値は`formula`へ材料と走行方位を入れたもの。"""
+class CostAxisCatalogItem(CostAxisCatalogEntry):
+    """費用の軸1本の見せ方と、地図がその軸のレンズ（`lens_id`は軸id）で道を塗る決まり。"""
 
-    formula: WayValueFormula
-    material_conditions: list[WayValueConditionName]
+    map_lens: MapLens
 
 
 class TotalLens(AxisPresentation):
     """総合のレンズ（軸ごとの代償の秒の和）。軸ではないので倍率を持たない。"""
 
     lens_id: str
+    map_lens: MapLens
 
 
 class CostAxisCatalogResponse(StrictModel):
-    axes: list[CostAxisCatalogEntry]
+    axes: list[CostAxisCatalogItem]
     total_lens: TotalLens
-    map_lens: MapLens
 
 
 @router.get("/api/cost-axes", response_model=CostAxisCatalogResponse)
 async def get_cost_axis_catalog() -> CostAxisCatalogResponse:
     settings = current_model_settings()
     definitions = settings.cost_axes
+    conditions = lens_conditions(definitions)
     return CostAxisCatalogResponse(
-        axes=cost_axis_catalog(definitions),
-        total_lens=TotalLens(lens_id=TOTAL_LENS_ID, **definitions.total_lens.model_dump()),
-        map_lens=MapLens(formula=lens_way_formula(settings.tuning), material_conditions=list(LENS_MATERIAL_CONDITIONS)),
+        axes=[CostAxisCatalogItem(**entry.model_dump(), map_lens=map_lens(conditions[entry.axis_id], settings.tuning))
+              for entry in cost_axis_catalog(definitions)],
+        total_lens=TotalLens(lens_id=TOTAL_LENS_ID, map_lens=map_lens(conditions[TOTAL_LENS_ID], settings.tuning),
+                             **definitions.total_lens.model_dump()),
     )
 
 

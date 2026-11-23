@@ -930,11 +930,12 @@
           {
             "name": "speed_kmh",
             "in": "query",
-            "required": true,
+            "required": false,
             "schema": {
               "type": "number",
               "maximum": 60.0,
               "minimum": 5.0,
+              "default": 20.0,
               "title": "Speed Kmh"
             }
           },
@@ -2895,7 +2896,7 @@
         ],
         "title": "Coordinates"
       },
-      "CostAxisCatalogEntry": {
+      "CostAxisCatalogItem": {
         "properties": {
           "axis_id": {
             "type": "string",
@@ -2927,6 +2928,9 @@
           },
           "lens": {
             "$ref": "#/components/schemas/LensBands"
+          },
+          "map_lens": {
+            "$ref": "#/components/schemas/MapLens"
           }
         },
         "additionalProperties": false,
@@ -2938,32 +2942,29 @@
           "description",
           "icon_id",
           "color",
-          "lens"
+          "lens",
+          "map_lens"
         ],
-        "title": "CostAxisCatalogEntry"
+        "title": "CostAxisCatalogItem"
       },
       "CostAxisCatalogResponse": {
         "properties": {
           "axes": {
             "items": {
-              "$ref": "#/components/schemas/CostAxisCatalogEntry"
+              "$ref": "#/components/schemas/CostAxisCatalogItem"
             },
             "type": "array",
             "title": "Axes"
           },
           "total_lens": {
             "$ref": "#/components/schemas/TotalLens"
-          },
-          "map_lens": {
-            "$ref": "#/components/schemas/MapLens"
           }
         },
         "additionalProperties": false,
         "type": "object",
         "required": [
           "axes",
-          "total_lens",
-          "map_lens"
+          "total_lens"
         ],
         "title": "CostAxisCatalogResponse"
       },
@@ -6453,6 +6454,9 @@
           "lens_id": {
             "type": "string",
             "title": "Lens Id"
+          },
+          "map_lens": {
+            "$ref": "#/components/schemas/MapLens"
           }
         },
         "additionalProperties": false,
@@ -6462,7 +6466,8 @@
           "description",
           "icon_id",
           "lens",
-          "lens_id"
+          "lens_id",
+          "map_lens"
         ],
         "title": "TotalLens"
       },

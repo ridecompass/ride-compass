@@ -96,7 +96,7 @@ export async function fetchRoadInspection(
   });
 }
 
-/** 費用の軸のレンズの道ごとの材料の要求の条件（想定速度は要る。`/api/cost-axes`の`map_lens.material_conditions`）。 */
+/** 費用の軸のレンズの道ごとの材料の要求の条件（`/api/cost-axes`のレンズごとの`map_lens.material_conditions`）。 */
 export type LensMaterialsQuery = paths["/api/region/lens/{lens_id}/{z}/{x}/{y}"]["get"]["parameters"]["query"];
 
 /** 路面タイルと同じz/x/yの中の道ごとの、レンズ`lensId`（総合か費用の軸）の材料（道の向き・逆向きに辿った1kmあたりの

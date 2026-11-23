@@ -84,8 +84,8 @@ function bySource(tiles: Watch["jmaTiles"]): Map<string, { even: Buffer[]; odd: 
 
 test("S3 時刻で変わる入力", async ({ page }) => {
   const catalog = await fetchCatalog();
-  // 時刻を材料の要求へ載せるのは、どのレンズも同じ（費用の軸の一覧の`map_lens.material_conditions`）。
-  const timed = catalog.lensConditions.includes("at") ? catalog.lenses : [];
+  // 時刻を材料の要求へ載せるレンズ（費用の軸の一覧のレンズごとの`map_lens.material_conditions`）。
+  const timed = catalog.lenses.filter((lens) => lens.materialConditions.includes("at"));
   const statsBefore = await externalErrors();
   const watch = await openLive(page, { storedState: allLayersOn(catalog.config.road_classes.map_layers) });
   // 地図のタイルをブラウザのキャッシュから出さず、ズームごとに取り直させる（取り直した応答の中身を見る）。

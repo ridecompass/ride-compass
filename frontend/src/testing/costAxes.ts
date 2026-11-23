@@ -20,14 +20,30 @@ export function costAxisEntry(axisId: string, overrides: Partial<CostAxisEntry> 
     icon_id: "",
     color: axisIdColor(axisId),
     lens: { thresholds: [], band_labels: ["段"] },
+    map_lens: ALL_CONDITIONS_LENS,
     ...overrides,
   };
 }
 
 /** 道の向きの値をそのまま塗る式の木（向きの選び方は backend の木が持ち、ここでは見ない）。 */
-const ALONG_FORMULA: CostAxisCatalogResponse["map_lens"]["formula"] = {
+export const ALONG_FORMULA: CostAxisEntry["map_lens"]["formula"] = {
   value: { op: "feature", name: "lens_along" },
   undetermined: { op: "const", value: 0 },
+};
+/** 走行方位で、道の向きの値を読むか逆向きの値を読むかを選ぶ木（走行方位で値が変わるレンズ）。 */
+export const BEARING_FORMULA: CostAxisEntry["map_lens"]["formula"] = {
+  value: {
+    op: "case",
+    when: { op: "lt", left: { op: "condition", name: "bearing_deg" }, right: { op: "const", value: 180 } },
+    then: { op: "feature", name: "lens_along" },
+    otherwise: { op: "feature", name: "lens_against" },
+  },
+  undetermined: { op: "const", value: 0 },
+};
+/** 出発時刻と想定速度を材料の要求へ載せるレンズの塗る決まり（雛形の既定）。 */
+const ALL_CONDITIONS_LENS: CostAxisEntry["map_lens"] = {
+  formula: ALONG_FORMULA,
+  material_conditions: ["at", "speed_kmh"],
 };
 
 export function costAxisCatalog(...axes: CostAxisEntry[]): CostAxisCatalogResponse {
@@ -39,8 +55,8 @@ export function costAxisCatalog(...axes: CostAxisEntry[]): CostAxisCatalogRespon
       description: "負担の秒の和",
       icon_id: "",
       lens: { thresholds: [10], band_labels: ["軽い", "重い"] },
+      map_lens: ALL_CONDITIONS_LENS,
     },
-    map_lens: { formula: ALONG_FORMULA, material_conditions: ["at", "speed_kmh"] },
   };
 }
 

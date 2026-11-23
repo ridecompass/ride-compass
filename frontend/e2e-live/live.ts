@@ -24,14 +24,14 @@ export const LIVE_POINT = (() => {
 interface LiveLens {
   lensId: string;
   label: string;
+  /** レンズの材料の要求へ載せる走る条件。 */
+  materialConditions: CostAxisCatalogResponse["total_lens"]["map_lens"]["material_conditions"];
 }
 
-/** backendの画面の設定と、費用の軸の一覧から並べたレンズ（総合を先に、続けて軸の順。画面の選択肢と同じ並び）。
- * `lensConditions`は、レンズの材料の要求へ載せる走る条件（どのレンズも同じ）。 */
+/** backendの画面の設定と、費用の軸の一覧から並べたレンズ（総合を先に、続けて軸の順。画面の選択肢と同じ並び）。 */
 export interface LiveCatalog {
   config: ClientConfigResponse;
   lenses: LiveLens[];
-  lensConditions: CostAxisCatalogResponse["map_lens"]["material_conditions"];
 }
 
 async function fetchJson<T>(path: string, label: string): Promise<T> {
@@ -48,10 +48,17 @@ export async function fetchCatalog(): Promise<LiveCatalog> {
   return {
     config,
     lenses: [
-      { lensId: costAxes.total_lens.lens_id, label: costAxes.total_lens.label },
-      ...costAxes.axes.map((axis) => ({ lensId: axis.axis_id, label: axis.label })),
+      {
+        lensId: costAxes.total_lens.lens_id,
+        label: costAxes.total_lens.label,
+        materialConditions: costAxes.total_lens.map_lens.material_conditions,
+      },
+      ...costAxes.axes.map((axis) => ({
+        lensId: axis.axis_id,
+        label: axis.label,
+        materialConditions: axis.map_lens.material_conditions,
+      })),
     ],
-    lensConditions: costAxes.map_lens.material_conditions,
   };
 }
 

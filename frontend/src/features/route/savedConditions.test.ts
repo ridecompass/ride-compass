@@ -11,6 +11,7 @@ import { describe, expect, it } from "vitest";
 import type { CostAxisCatalog } from "@/hooks/useCostAxisCatalog";
 import { EMPTY_CLIENT_CONFIG } from "@/lib/clientConfig";
 import { AVOIDANCE_LEVELS, avoidanceRow, clientConfigOf, roadClassCatalog } from "@/testing/clientConfig";
+import { TWO_COST_AXES } from "@/testing/costAxes";
 
 import { describeConditions, suggestedConditionName, withSavedCondition, type SavedCondition } from "./savedConditions";
 import { STANDARD_COST_PREFERENCE } from "@/lib/costPreference";
@@ -41,6 +42,7 @@ const COST_CATALOG: CostAxisCatalog = {
       description: "",
       iconId: "",
       lens: NO_BANDS,
+      mapLens: TWO_COST_AXES.total_lens.map_lens,
     },
     {
       axisId: "vibration",
@@ -49,6 +51,7 @@ const COST_CATALOG: CostAxisCatalog = {
       description: "",
       iconId: "",
       lens: NO_BANDS,
+      mapLens: TWO_COST_AXES.total_lens.map_lens,
     },
   ],
   axisColors: {},
