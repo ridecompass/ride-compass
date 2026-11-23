@@ -34,7 +34,7 @@ from app.domain.time_zone import JST
 from tests.tuning_fixture import TUNED, TUNING
 from tests.route_world import (
     BAD_MATERIAL, CALM, COORDINATES, CENTER, NODE_OF, NORTH_EAST, SOUTH_WEST, WAYS, Weather, at, edges_of, generator_for, road_network,
-    serve_road_network, ways_of,
+    TileFeatures, serve_road_network, ways_of,
 )
 
 #: 段の境目（1kmあたりの代償の秒）。
@@ -68,7 +68,7 @@ def cost_axes():
 
 @pytest.fixture
 async def client(override_dependency, road_network_root):
-    override_dependency(dependencies.get_lens_service, lambda: LensService(Weather()))
+    override_dependency(dependencies.get_lens_service, lambda: LensService(Weather(), TileFeatures()))
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
         yield client
@@ -146,7 +146,7 @@ async def test_the_route_and_the_map_lens_climb_in_the_same_air_of_the_forecast(
     candidates = (await generator_for(road_network_root, network, HOT).generate_via_waypoints(
         at(NODE_OF[0, 1]), [], destination=at(CENTER), max_routes=3, start_time=datetime(2026, 5, 1, 9, tzinfo=JST))).candidates
     standard = (await _lens(client, "ascent"))[str(CLIMBING_WAY)][LENS_ALONG_LEAF]
-    override_dependency(dependencies.get_lens_service, lambda: LensService(Weather(HOT)))
+    override_dependency(dependencies.get_lens_service, lambda: LensService(Weather(HOT), TileFeatures()))
     hot = (await _lens(client, "ascent"))[str(CLIMBING_WAY)][LENS_ALONG_LEAF]
     (row,) = np.flatnonzero((network.edge_way_id == CLIMBING_WAY) & network.edge_forward)
     km = float(network.distance_m[row]) / 1000.0
@@ -171,7 +171,7 @@ async def test_the_route_and_the_map_lens_lower_the_forecast_wind_to_the_rider_b
         way: cover("trees_percent" if way == CLIMBING_WAY else "water_percent") for way in WAYS})
     candidates = (await generator_for(road_network_root, network, NORTH_WIND).generate_via_waypoints(
         at(NODE_OF[0, 1]), [], destination=at(CENTER), max_routes=3, start_time=datetime(2026, 5, 1, 9, tzinfo=JST))).candidates
-    service = LensService(Weather(NORTH_WIND))
+    service = LensService(Weather(NORTH_WIND), TileFeatures())
     at_departure = datetime(2026, 5, 1, 9, tzinfo=JST)
     lens = await service.way_materials("headwind", Z, X, Y, at_departure, ASSUMED_SPEED_KMH, CostPreference())
     inspection = await service.inspect(str(CLIMBING_WAY), Z, X, Y, 0.0, at_departure, ASSUMED_SPEED_KMH, CostPreference())
@@ -244,7 +244,7 @@ async def test_the_inspector_gives_both_directions_and_the_facts_behind_them(cos
     出す。北へ走る地図では、南から北へ向く道を道の向きで塗る。登坂の事実は辿る向きの登り、数の材料の軸はその材料の値。"""
     network = road_network(WAYS, COORDINATES, bad_ways=(CLIMBING_WAY,), elevation_of={CLIMBING_WAY: (10.0, 70.0)})
     serve_road_network(road_network_root, network)
-    service = LensService(Weather())
+    service = LensService(Weather(), TileFeatures())
 
     inspection = await service.inspect(str(CLIMBING_WAY), Z, X, Y, 0.0, None, ASSUMED_SPEED_KMH, CostPreference())
     total = await service.way_materials("total", Z, X, Y, None, ASSUMED_SPEED_KMH, CostPreference())
@@ -288,7 +288,7 @@ async def test_the_lens_tells_that_it_painted_the_wind_of_a_previous_run(
     """配信元が新しいrunを出さない間も前に出たrunの風で塗り、画面が但し書きを出せるよう、その終わりの時刻を返す。08:29は
     08:00の風を引く。"""
     override_dependency(dependencies.get_lens_service,
-                        lambda: LensService(Weather(replace(CALM, latest_run_end=latest_run_end))))
+                        lambda: LensService(Weather(replace(CALM, latest_run_end=latest_run_end)), TileFeatures()))
     serve_road_network(road_network_root, road_network(WAYS, COORDINATES))
 
     response = await client.get(f"/api/region/lens/total/{Z}/{X}/{Y}",

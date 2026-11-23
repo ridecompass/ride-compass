@@ -6,7 +6,7 @@ DBを使うテストは、道とノードを取込の入口から入れ、派生
 （本番で作れる行だけを使う。.claude/rules/testing-backend.md パターン8）。
 
 ここで見ないもの:
-- 材料の値そのもの（書き出しはタイルと同じ値式で読む） → `test_material_values.py`・`test_feature_materials_in_tile.py`
+- 材料の値そのもの（書き出しは地図と同じ道路網の配列のフィーチャーの値を読む） → `test_material_values.py`・`test_feature_materials.py`
 - 区間の切り方 → `test_derive_topology.py`
 """
 

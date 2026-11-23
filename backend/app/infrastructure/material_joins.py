@@ -9,7 +9,6 @@ import re
 from collections.abc import Iterable
 
 from sqlalchemy import Column
-from sqlalchemy.dialects import postgresql
 
 from app.infrastructure.derived_models import RoadEdgeRow
 from app.infrastructure.orm_base import derived_tables
@@ -77,14 +76,12 @@ _MATERIAL_REFERENCE = re.compile(r"(?<![\w.])(em|wm)\.(\w+)")
 
 def material_from_clause(
     expressions: Iterable[str], way_id: str, segment_index: str | None = None, *,
-    forward: str | None = None, way_when_no_segment: bool = False,
+    forward: str | None = None,
 ) -> str:
     """`expressions`が読む`em`・`wm`の列を与えるJOINの並び。読む列を持つ表だけを、主キーで`way_id`
     （と`segment_index`）の式へ外部結合する。呼び出し側はFROM句の行の後ろへそのまま続ける。
 
-    `em`は、`segment_index`を渡せば区間の値、Noneなら道1本の値（区間の表と同じ名前の道の列。道に無い列はNULL）。
-    `way_when_no_segment`は、`segment_index`の式がNULLの行を道1本の値で読む（区間と道丸ごとが混ざるタイル）。区間の行か
-    道丸ごとの行のどちらかでしか読まない表は、その行のときだけ引く。
+    `em`は区間の値で、読むなら`segment_index`を渡す。
     `forward`（真なら順方向）を渡すと、`em`の向きで変わる列を逆向きの行で入れ替え・符号反転する。
 
     式が宣言に無い列を読めば送出する——SQLの実行まで気づかないと、その経路の読み出しが材料ぶん丸ごと落ちる。
@@ -95,58 +92,34 @@ def material_from_clause(
             if name not in (_EDGE_MATERIAL_COLUMNS if alias == "em" else _WAY_MATERIAL_COLUMNS):
                 raise ValueError(f"材料の式が宣言に無い列を読む: {alias}.{name}")
             names[alias].add(name)
+    if names["em"] and segment_index is None:
+        raise ValueError(f"区間の値（em）を区間の番号の式なしに読む: {sorted(names['em'])}")
 
-    # 表ごとの、読む行の種類（区間の行だけ・道丸ごとの行だけ・どちらも=None）。
-    tables: dict = {}
+    # 読む表（並びは結ぶ順に使わない。名前の順に結ぶ）。
+    tables: set = set()
 
-    def read(column: Column, rows: str | None = None) -> str:
-        table = column.table
-        tables[table] = rows if tables.get(table, rows) == rows else None
-        return f"t_{table.name}.{column.name}"
-
-    edge_rows = "segment" if way_when_no_segment else None
+    def read(column: Column) -> str:
+        tables.add(column.table)
+        return f"t_{column.table.name}.{column.name}"
 
     def edge_value(name: str) -> str:
-        value = read(_EDGE_MATERIAL_COLUMNS[name], edge_rows)
+        value = read(_EDGE_MATERIAL_COLUMNS[name])
         if forward is None or name not in _REVERSED_EDGE_COLUMNS:
             return value
         partner, negated = _REVERSED_EDGE_COLUMNS[name]
-        reverse = ("-" if negated else "") + read(_EDGE_MATERIAL_COLUMNS[partner], edge_rows)
+        reverse = ("-" if negated else "") + read(_EDGE_MATERIAL_COLUMNS[partner])
         return f"CASE WHEN {forward} THEN {value} ELSE {reverse} END"
 
-    def way_value(name: str, rows: str | None = None) -> str | None:
-        column = _WAY_MATERIAL_COLUMNS.get(name)
-        return None if column is None else read(column, rows)
-
-    selects: dict[str, list[str]] = {"em": [], "wm": []}
-    for name in sorted(names["em"]):
-        if segment_index is None:
-            value = way_value(name) or (
-                f"CAST(NULL AS {_EDGE_MATERIAL_COLUMNS[name].type.compile(dialect=postgresql.dialect())})")
-        elif way_when_no_segment:
-            way = way_value(name, "way")
-            value = (f"CASE WHEN {segment_index} IS NOT NULL THEN {edge_value(name)}"
-                     + (f" ELSE {way}" if way is not None else "") + " END")
-        else:
-            value = edge_value(name)
-        selects["em"].append(f"{value} AS {name}")
+    selects: dict[str, list[str]] = {"em": [f"{edge_value(name)} AS {name}" for name in sorted(names["em"])], "wm": []}
     for name in sorted(names["wm"]):
         selects["wm"].append(f"{read(_WAY_MATERIAL_COLUMNS[name])} AS {name}")
 
     lines = []
-    for table, rows in sorted(tables.items(), key=lambda item: item[0].name):
+    for table in sorted(tables, key=lambda table: table.name):
         on = f"t_{table.name}.osm_way_id = {way_id}"
         if tuple(column.name for column in table.primary_key.columns) == _EDGE_KEY:
             on += f" AND t_{table.name}.segment_index = {segment_index}"
-        if rows is None:
-            lines.append(f"LEFT JOIN {table.name} t_{table.name} ON {on}")
-            continue
-        # 片方の種類の行でしか読まない表は、その行のときだけ引く。結合の条件に足すだけでは、もう片方の行でも
-        # 主キーを引きにいく。`OFFSET 0`は副問い合わせを外へ畳ませないためのもの——畳まれると同じことになる。
-        on = on.replace(f"t_{table.name}.", "x.")
-        when = f"{segment_index} IS {'NOT ' if rows == 'segment' else ''}NULL"
-        lines.append(f"LEFT JOIN LATERAL (SELECT * FROM {table.name} x WHERE {on} AND {when} OFFSET 0)"
-                     f" t_{table.name} ON true")
+        lines.append(f"LEFT JOIN {table.name} t_{table.name} ON {on}")
     lines += [f"CROSS JOIN LATERAL (SELECT {', '.join(select)}) {alias}"
               for alias, select in selects.items() if select]
     return "".join(f"\n{line}" for line in lines) + "\n"

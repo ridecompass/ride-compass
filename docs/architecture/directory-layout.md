@@ -90,7 +90,7 @@ CI・フック・開発環境の用意のスクリプト）・`tools/`（アプ�
   - **Redisの接続（`redis_client.py`・`redis_json_cache.py`）を読むのはこの層だけ**。上の層
     （`main.py`・`api/`・`services/`・`batch/`）が直にimportすると、`backend/.importlinter`の
     `forbidden`契約で`lint-imports`が落ちる。この層のモジュールを通して読むのはよい。
-  - **ディスクのキャッシュ（`tile_cache.py`・`tile_persistent_cache.py`）も同じ**で、上の層は鍵・骨格を持つこの層の
+  - **ディスクのキャッシュ（`tile_cache.py`）も同じ**で、上の層は鍵・骨格を持つこの層の
     モジュール（例: 地域タイルは`region_tile_cache.py`）を通して読む。
 - **`config.py`**: 環境変数から読む設定。`domain/`は読まない。
 - **`domain/`**: 外部I/Oと環境（設定）を持たない純粋なロジックと語彙の正本。費用の軸・材料・一次属性の

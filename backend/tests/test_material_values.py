@@ -9,11 +9,11 @@ SQLの中の条件はPythonのカバレッジに現れないので、式をテ�
 - 区間（`re`）・区間の値（`em`）: 派生の段が書く表の行の型（`road_edges`と、区間の値の表を並べたもの）で値を与える。
   値そのものの出し方（件数を数える等）は派生の段の責務なので、ここでは作らない。
 
-部品の節は架空のタグで、タイルへの載せ方の節は架空の材料で確かめる。カタログの節は、カタログに直に書かれた式（部品を使わないもの）を
+部品の節は架空のタグで確かめる。カタログの節は、カタログに直に書かれた式（部品を使わないもの）を
 本物の材料のidで引く——そこでは、その材料が何を返すかがテストの関心である。
 
 カタログの全部の式が、読み出しの各経路（`infrastructure/road_graph_repository.py: RoadGraphRepository`の区間の材料・
-道1本・道の標本・路面タイル・押した所に近い道・タイルのフィーチャーごとの材料・土地被覆の内訳）の中で実在の列だけを読むことも見る。上の節は別名を値で与えるので、
+道1本・道の標本・路面タイル・押した所に近い道・土地被覆の内訳）の中で実在の列だけを読むことも見る。上の節は別名を値で与えるので、
 綴りの合わない列や、経路に無い別名を読む式を見つけられない。道の標本の経路は、範囲を絞ると抽選しないことも見る
 （セッションを差し替える契約のテストには、SQLが返す値が現れない）。
 
@@ -29,8 +29,7 @@ import pytest
 from sqlalchemy import text
 
 from app.domain import material_sql
-from app.domain.material_catalog import ACCIDENT_COUNT_PER_KM_YEAR, MaterialSpec, material_value_sql, tile_column_sql
-from app.domain.material_coverage_spec import CoverageExcluded
+from app.domain.material_catalog import ACCIDENT_COUNT_PER_KM_YEAR, material_value_sql
 from app.domain.region import BoundingBox
 from app.infrastructure.source_models import WAYS_SOURCE_SQL
 from tests.source_ingest import ingest_records, parallel_way_record
@@ -143,21 +142,6 @@ async def test_a_shared_pedestrian_path_is_a_footway_or_path_that_lets_bicycles_
     assert values == {1: True, 2: False, 3: False, 4: False}
 
 
-# --- タイルへの載せ方（domain/material_catalog.py: tile_column_sql） ---------------------------
-
-
-async def test_a_value_goes_on_the_tile_in_the_form_the_map_reads(road_graph_session):
-    """非該当の真偽はキーごと省く（地図は欠損を非該当として読む）。"""
-    column = tile_column_sql(MaterialSpec(
-        material_id="material_a", label="材料A", description="説明", dtype="boolean", tile_property="material_a",
-        value_sql="em.accident_count > 0", coverage=CoverageExcluded(reason="試し", missing_semantics="definite")))
-
-    baked = await _edge_value(road_graph_session, f"ARRAY[pg_typeof({column})::text, ({column})::text]",
-                              distance_m=4000.0, accident_count=0.0)
-
-    assert baked == ["boolean", None]
-
-
 # --- 読み出しの経路（infrastructure/road_graph_repository.py） -----------------------------
 
 
@@ -171,4 +155,3 @@ async def test_every_declared_expression_reads_only_what_each_reading_path_provi
     # 取込範囲の外なので焼かずにNoneを返すが、タイルの列は先に解決される。
     assert await road_graph_repository.get_road_surface_tile_mvt(14, 14552, 6451, area, {}) is None
     assert await road_graph_repository.roads_at(139.005, 35.005, 14, 10.0, 1) == []
-    assert await road_graph_repository.get_feature_materials_in_tile(14, 14552, 6451, area, 1) is None

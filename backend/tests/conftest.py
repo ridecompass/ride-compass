@@ -34,7 +34,6 @@ from app.infrastructure import (
     redis_client,
     road_network_store,
     tile_cache,
-    tile_persistent_cache,
 )
 from app.infrastructure.orm_base import derived_tables
 from app.infrastructure.orm_base import declared_metadata
@@ -244,7 +243,7 @@ def _restore_tuning():
     TUNING_VALUES.update(before)
 
 
-_DISK_CACHES = {"tile_persistent_cache": tile_persistent_cache, "tile_cache": tile_cache}
+_DISK_CACHES = {"tile_cache": tile_cache}
 
 
 @contextmanager
@@ -266,7 +265,7 @@ def _disk_caches_in(patch: pytest.MonkeyPatch, directory_of):
 
 @pytest.fixture(autouse=True, scope="session")
 def _keep_disk_caches_out_of_the_checkout(tmp_path_factory):
-    """ディスクのキャッシュ（infrastructure/tile_persistent_cache.py・tile_cache.py）の置き場を、
+    """ディスクのキャッシュ（infrastructure/tile_cache.py）の置き場を、
     ワーカーごとの一時ディレクトリへ差し替える。
 
     キャッシュを消す・書くフィクスチャはテストファイル側にも多数あり、関数スコープの
