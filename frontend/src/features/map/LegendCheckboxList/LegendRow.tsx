@@ -46,21 +46,31 @@ export function useRowDescription(label: string, description: string | undefined
 /** 行の右端の凡例を開く印。一覧の頭の印の凡例（`RowMarksNote`）も同じ印で書く。 */
 const PANEL_TOGGLE_MARK = "▶";
 
-/** 一覧の行に並ぶ印の意味を、一覧の頭に1行で読ませる（行の印は名前を持たず、`title`はスマホで出ない）。凡例を開く印は
- * どの一覧にもあるので、いつも最後に並べる。 */
-export function RowMarksNote({ marks = [] }: { marks?: readonly { key: string; mark: ReactNode; meaning: string }[] }) {
+/** 一覧の行に並ぶ印の意味を、一覧の頭に1行で読ませる（行の印は名前を持たず、`title`はスマホで出ない）。凡例を開く印は、
+ * 行が凡例を持つ一覧（`panel`）でだけ最後に並べる。 */
+export function RowMarksNote({
+  marks = [],
+  panel = true,
+}: {
+  marks?: readonly { key: string; mark: ReactNode; meaning: string }[];
+  panel?: boolean;
+}) {
   const all = [
     ...marks,
-    {
-      key: "panel",
-      // 行の▶と同じ丸い枠で書く（群の見出しの開け閉めの▶と見分ける）。
-      mark: (
-        <span className="inline-flex size-4 items-center justify-center rounded-full border border-[var(--color-border)] text-[0.5rem] leading-none">
-          {PANEL_TOGGLE_MARK}
-        </span>
-      ),
-      meaning: "凡例を開く",
-    },
+    ...(panel
+      ? [
+          {
+            key: "panel",
+            // 行の▶と同じ丸い枠で書く（群の見出しの開け閉めの▶と見分ける）。
+            mark: (
+              <span className="inline-flex size-4 items-center justify-center rounded-full border border-[var(--color-border)] text-[0.5rem] leading-none">
+                {PANEL_TOGGLE_MARK}
+              </span>
+            ),
+            meaning: "凡例を開く",
+          },
+        ]
+      : []),
   ];
   return (
     <MarkLegend className="mb-1">

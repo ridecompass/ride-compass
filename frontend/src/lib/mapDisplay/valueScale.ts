@@ -12,13 +12,15 @@ function evaluationAnchors(ground: MapTheme): readonly string[] {
   return [semantic.evaluation_good, semantic.evaluation_mid, semantic.evaluation_bad, semantic.evaluation_extreme];
 }
 
-/** 地図が値を塗る宣言。`boundaries`は段の境界で、凡例は同じ境界と`unit`で範囲を書く。`bandLabels`は段ごとの体感ラベル
+/** 地図が値を塗る宣言。`boundaries`は段の境界で、凡例は同じ境界と`unit`で範囲を書く（`labelsCarryRange`なら名前だけ）。`bandLabels`は段ごとの体感ラベル
  * （件数が段の数と合わなければ数値の範囲だけ）。`ground`は色を載せる地の明るさ。段は`valueBands`だけが求める。 */
 export interface MapPaintDeclaration {
   ground: MapTheme;
   boundaries: readonly number[];
   unit: string;
   bandLabels: readonly string[];
+  /** 段の名前が値の範囲を持っているか（持っていれば、名前に`unit`の範囲を添えない）。 */
+  labelsCarryRange?: boolean;
 }
 
 function hue2rgb(p: number, q: number, tIn: number): number {
@@ -94,6 +96,7 @@ export function valueBands(paint: MapPaintDeclaration): ValueBand[] {
   const labels = bandLabelsForBandCount(bandLabels, colors.length);
   return buildRangeLegendBands(boundaries, colors, unit, labels).map((band, index) => ({
     ...band,
+    ...(paint.labelsCarryRange && labels ? { label: labels[index] } : {}),
     lowerBound: index === 0 ? Number.NEGATIVE_INFINITY : boundaries[index - 1],
   }));
 }

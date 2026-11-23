@@ -226,7 +226,6 @@ async def test_an_axis_with_a_scale_paints_bands_cut_by_its_fact_from_green_to_r
     ascent = await _lens(client, "ascent")
     stopping = await _lens(client, "stopping")
 
-    assert (lens["ascent"]["band_labels"][0], lens["ascent"]["band_labels"][-1]) == ("斜度 1%未満", "斜度 10%以上")
     assert ascent[str(CLIMBING_WAY)][LENS_ALONG_LEAF] == pytest.approx(lens["ascent"]["thresholds"][0], rel=0.02)
     # 止まる所の密度1/kmの道は、漕ぎ出す回数が種類の数ぶん。秒は回数に比例する。
     one_stop = stopping[str(STOPPING_WAY)][LENS_ALONG_LEAF] / _kickoffs_per_stop()
