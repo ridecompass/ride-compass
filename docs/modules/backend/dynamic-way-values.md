@@ -56,7 +56,7 @@ SQLと式の木の材料では作れない体力（走行の模型）を、backe
   風は区間の中点に最も近い予報の格子点の、指定時刻の値を引く（探索と同じ選び方。格子はタイルと区間の中点の両方を覆う）。
   風を読めない・予報の範囲の外の時刻は、無風で求めずに失敗する（`MsmUnavailableError`。口は503）。
 - **段**（`domain/lens_equivalents.py: lens_bands`）: 軸の定義は、色の物差し（緑の端と一番濃い赤の端を軸の事実の値で。
-  `domain/cost_axes.py: LensScale`）を持つ。端の値は較正で、本番の定義が持つ。`GET /api/cost-axes`は、緑から赤までを事実の値で刻んだ所に
+  `domain/cost_axes.py: LensScale`）を持つ。端の値は較正で、本番の定義が持つ。`GET /api/cost-axes`は、緑から赤までを事実の値で較正値の数に刻んだ所に
   境目を置いた段（境目は標準の人・標準の利用者の値・無風の1kmの道の秒、名前は数で言える事実の値の範囲だけで、区分の軸と総合には付けない。地図は色で大小を見せ、色の理由を文で言わない）を配る。事実の値の道を同じ費用の式へ
   通して秒を求める——別の換算の式を持たない。物差しを書く前の定義は、定義の段のまま配る。レンズの量の名前と単位
   （`domain/cost_axes.py: LENS_QUANTITY_LABEL`・`domain/cost_axes.py: LENS_UNIT`）は、生成物`route-generate-config.json`で画面へ配る。

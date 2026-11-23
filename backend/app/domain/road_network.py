@@ -33,6 +33,7 @@ from app.domain.msm import MsmGrid
 from app.domain.region import ROAD_TILE_MIN_ZOOM, tile_bounds_lonlat
 from app.domain.road_classes import RoadClassDefinitions, class_columns, layer_columns
 from app.domain.stopwatch import elapsed_ms, start_timer
+from app.domain.tuning import RIDER_HEIGHT_ID, ROUGHNESS_CAP_ID, Tuning
 from app.domain.wind_height import ROUGHNESS_LENGTH_M, WindHeights, height_factors
 
 #: 風の高さの倍率（`RoadNetwork.wind_height_factors`）を求める計算を1本に並べる。全区間の計算は重く、道路網を入れ替えた直後に
@@ -167,19 +168,20 @@ class RoadNetwork:
             means[material_id] = float((values[known] * distance).sum()) / total if total > 0 else np.nan
         return means
 
-    def wind_height_factors(self, grid: MsmGrid) -> np.ndarray:
+    def wind_height_factors(self, grid: MsmGrid, tuning: Tuning) -> np.ndarray:
         """全区間の、予報の10mの風を乗り手の高さへ直す倍率（`domain/wind_height.py: height_factors`）。土地被覆の割合の欠けは、
         ほかの数値の材料と同じく取込範囲全体の平均で埋める（`MaterialFills`）。格子の側の粗度が全区間から決まるので、格子ごとに
-        1回だけ求め、最後の格子の分を道路網と同じ寿命で持つ。"""
+        1回だけ求め、最後の格子と較正値の分を道路網と同じ寿命で持つ。"""
         with _WIND_HEIGHTS_LOCK:
             # 凍った型なので、`cached_property`と同じくインスタンスの辞書へ直に持つ。
             cached = self.__dict__.get("_wind_heights")
-            if cached is None or cached[0] != grid:
+            key = (grid, tuning.value(RIDER_HEIGHT_ID), tuning.value(ROUGHNESS_CAP_ID))
+            if cached is None or cached[0] != key:
                 fills = MaterialFills(numeric_means=self.numeric_means)
                 percent = {field: fills.fill(field, self.numeric_values[:, self.numeric_ids.index(field)])
                            for field in ROUGHNESS_LENGTH_M}
                 started = start_timer()
-                cached = (grid, height_factors(percent, self.distance_m, self.mid_lat, self.mid_lon, grid))
+                cached = (key, height_factors(percent, self.distance_m, self.mid_lat, self.mid_lon, grid, tuning))
                 logger.info("wind_height_factors edges=%d ms=%d", self.edge_count, elapsed_ms(started))
                 self.__dict__["_wind_heights"] = cached
             return cached[1]
@@ -402,7 +404,7 @@ class _SliceMaterials(Mapping[str, MaterialColumn]):
         return None
 
 
-def material_arrays_of(road: RoadSlice) -> EdgeMaterialColumns:
+def material_arrays_of(road: RoadSlice, tuning: Tuning) -> EdgeMaterialColumns:
     """切り出した区間（行は`road.rows`の順）の材料。材料の列は読まれたときに切り出す（`_SliceMaterials`）。"""
     network, rows = road.network, road.rows
     return EdgeMaterialColumns(
@@ -412,7 +414,7 @@ def material_arrays_of(road: RoadSlice) -> EdgeMaterialColumns:
         mid_lat=np.asarray(network.mid_lat[rows]),
         mid_lon=np.asarray(network.mid_lon[rows]),
         elevation_profiles=network.elevation_profiles.take(rows),
-        wind_heights=WindHeights(network.wind_height_factors, rows),
+        wind_heights=WindHeights(lambda grid: network.wind_height_factors(grid, tuning), rows),
     )
 
 

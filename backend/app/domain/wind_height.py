@@ -16,17 +16,12 @@ import numpy as np
 
 from app.domain.landcover import LANDCOVER_CLASSES
 from app.domain.msm import MsmBlock, MsmGrid
+from app.domain.tuning import RIDER_HEIGHT_ID, ROUGHNESS_CAP_ID, Tuning
 
 #: 予報の風の高さ（m）。MSM の地上10mの風。
 FORECAST_HEIGHT_M = 10.0
 #: 上流の風と道の側の風が混ざる高さ（m）。WMO-No.8（Guide to Instruments and Methods of Observation）の式5.3。
 BLENDING_HEIGHT_M = 60.0
-#: 乗り手の高さ（m）。定義で、出典は無い。踏み増しの向かい風の効きの元の実測（Pérez Castro ら 2026）の風が、自転車に付けた
-#: 風速計の値なので、その高さに揃える。
-RIDER_HEIGHT_M = 1.0
-#: 粗度長の頭打ち（m）。標準の模型ではない仮の定義で、WMO-No.8 が式5.3 で補正してよいとする粗度長の上限。市街（WRF の
-#: 0.80m）だけが越える。格子の側・道の側の両方に掛ける。
-ROUGHNESS_CAP_M = 0.5
 #: 道路網のどの区間にも土地被覆が無いときの粗度長（m）。WMO-No.8 が地上10mの風を測る標準とする、開けた平地の値。
 OPEN_TERRAIN_ROUGHNESS_M = 0.03
 
@@ -53,11 +48,12 @@ _SUMMER_DAYS = (105, 288)
 
 
 def height_factors(percent: Mapping[str, np.ndarray], distance_m: np.ndarray, mid_lat: np.ndarray, mid_lon: np.ndarray,
-                   grid: MsmGrid) -> np.ndarray:
+                   grid: MsmGrid, tuning: Tuning) -> np.ndarray:
     """区間ごとの、予報の10mの風を乗り手の高さの風へ直す倍率（`(区間, 2)`の float32。列は夏・冬）。`percent`は土地被覆の
     割合の列の名前（`ROUGHNESS_LENGTH_M`の鍵の全部）→ 区間ごとの割合（%。欠けは埋めて渡す）、`distance_m`・`mid_lat`・`mid_lon`は
     区間の長さと中点。格子の側の粗度は、中点に一番近い MSM の格子`grid`の格子点（格子の外の中点は端の格子点）が同じ区間の組で
     求める。割合の無い区間（渡した全区間に土地被覆が無い）は、開けた平地の粗度長の道とする。"""
+    cap, rider = tuning.value(ROUGHNESS_CAP_ID), math.log(tuning.value(RIDER_HEIGHT_ID))
     distance = np.asarray(distance_m, dtype=np.float64)
     nearest = MsmBlock(grid=grid, row0=0, col0=0, rows=grid.n_lat, cols=grid.n_lon).points_of(mid_lat, mid_lon)
     _, points = np.unique(nearest, return_inverse=True)
@@ -65,7 +61,7 @@ def height_factors(percent: Mapping[str, np.ndarray], distance_m: np.ndarray, mi
     blending = math.log(BLENDING_HEIGHT_M)
     factors = np.empty((len(distance), 2), dtype=np.float32)
     for season in (0, 1):
-        weighted = sum(np.asarray(percent[field], dtype=np.float64) * math.log(min(roughness[season], ROUGHNESS_CAP_M))
+        weighted = sum(np.asarray(percent[field], dtype=np.float64) * math.log(min(roughness[season], cap))
                        for field, roughness in ROUGHNESS_LENGTH_M.items())
         total = sum(np.asarray(percent[field], dtype=np.float64) for field in ROUGHNESS_LENGTH_M)
         road = np.divide(weighted, total, out=np.full(len(distance), math.log(OPEN_TERRAIN_ROUGHNESS_M)),
@@ -73,7 +69,7 @@ def height_factors(percent: Mapping[str, np.ndarray], distance_m: np.ndarray, mi
         mean = np.divide(np.bincount(points, weights=distance * road), lengths, out=np.zeros_like(lengths), where=lengths > 0)
         grid_side = np.where(lengths[points] > 0, mean[points], road)  # 長さ0の区間だけの格子点は、その区間の粗度
         factors[:, season] = ((blending - grid_side) / (math.log(FORECAST_HEIGHT_M) - grid_side)
-                              * (math.log(RIDER_HEIGHT_M) - road) / (blending - road))
+                              * (rider - road) / (blending - road))
     return factors
 
 

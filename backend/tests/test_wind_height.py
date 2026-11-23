@@ -1,8 +1,8 @@
-"""`domain/wind_height.py`——予報の地上10mの風を、区間の周りと格子点の周りの土地被覆の粗度長で乗り手の高さ（1m）の風へ直す倍率
+"""`domain/wind_height.py`——予報の地上10mの風を、区間の周りと格子点の周りの土地被覆の粗度長で乗り手の高さの風へ直す倍率
 （`height_factors`）と、通る日の季節の倍率（`seasonal_factors`）。土地被覆の欠けた道は、道路網の倍率
 （`domain/road_network.py: RoadNetwork.wind_height_factors`）で見る。
 
-期待値は換算の約束（WMO-No.8 の式5.3 の2段の対数則・WRF の粗度長の表・市街の0.5mの頭打ち）から取る。
+期待値は換算の約束（WMO-No.8 の式5.3 の2段の対数則・WRF の粗度長の表）と、足場の較正値の乗り手の高さ・粗度長の頭打ちから取る。
 
 ここで見ないもの:
 - 探索と地図のレンズが同じ区間で同じ倍率を引き、ルートの事実と道の窓が乗り手の高さの風を出すこと → `test_region_lens.py`
@@ -18,6 +18,7 @@ from app.domain.landcover import LANDCOVER_CLASSES
 from app.domain.msm import MsmGrid
 from app.domain.wind_height import height_factors, seasonal_factors
 from tests.road_network_fixture import road_network
+from tests.tuning_fixture import TUNED
 
 #: 0.1度刻みの格子（区間の中点はどれも、置いた格子点のすぐ近く）。
 GRID = MsmGrid(lat_min=35.0, lon_min=139.0, d_lat=0.1, d_lon=0.1, n_lat=10, n_lon=10)
@@ -41,7 +42,7 @@ def _factors(percent, *, points, distance=None) -> np.ndarray:
     lat = np.array([GRID.lat_min + row * GRID.d_lat for row, _ in points])
     lon = np.array([GRID.lon_min + col * GRID.d_lon for _, col in points])
     return height_factors(percent, np.ones(len(points)) if distance is None else np.asarray(distance, dtype=float),
-                          lat + 0.01, lon - 0.01, GRID)
+                          lat + 0.01, lon - 0.01, GRID, TUNED)
 
 
 @pytest.mark.parametrize(("cover", "season", "expected"), [
@@ -49,7 +50,7 @@ def _factors(percent, *, points, distance=None) -> np.ndarray:
     ("crops_percent", SUMMER, 0.45),
     ("crops_percent", WINTER, _log_law(CROPS_WINTER, CROPS_WINTER)),
     ("trees_percent", SUMMER, 0.23),
-    # 市街は WRF の 0.80m を 0.5m で頭打ちにし、森と同じ倍率になる。
+    # 市街は WRF の 0.80m を足場の較正値の頭打ちで抑え、森と同じ倍率になる。
     ("built_percent", SUMMER, 0.23),
 ], ids=["水面", "作物の夏", "作物の冬", "森", "市街の頭打ち"])
 def test_a_road_inside_one_cover_lowers_the_wind_by_the_log_law_of_its_roughness(cover, season, expected):
@@ -92,7 +93,7 @@ def test_a_road_without_landcover_runs_in_the_mean_roughness_of_the_network(cove
         for cls in LANDCOVER_CLASSES})
     km = {int(way): float(length) for way, length in zip(network.edge_way_id, network.distance_m, strict=True)}
 
-    factors = network.wind_height_factors(GRID)
+    factors = network.wind_height_factors(GRID, TUNED)
 
     overall = overall_of(km)
     (row, *_) = np.flatnonzero(network.edge_way_id == 2)

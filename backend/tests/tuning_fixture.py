@@ -68,6 +68,10 @@ TUNING = {
     'search.retrace_penalty_multiplier': 8.0,
     'gradient.perpendicular_band_deg': 15.0,
     'splice.min_stretch_km': 0.2,
+    'wind.rider_height_m': 1.0,
+    'wind.roughness_cap_m': 0.5,
+    'search.max_snap_correction_km': 1.0,
+    'lens.scale_steps': 10,
 }
 
 #: 待ちの表の升の（割合, 待ち）。書かない升は止まらない。

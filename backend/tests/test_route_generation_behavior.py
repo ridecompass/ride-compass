@@ -32,7 +32,6 @@ from tests.cost_axes_fixture import cost_axes, cost_axes_declared
 from app.domain.road_classes import AvoidanceClassification, ConditionTerm
 from tests.road_class_fixture import classification, fact_is, map_layer, replaced_road_classes, road_classes
 from app.domain.route_request import FixedPoints
-from app.domain.route_search import MAX_SNAP_CORRECTION_KM
 from tests.tuning_fixture import TUNING
 from tests.route_world import (
     BAD_MATERIAL,
@@ -219,8 +218,8 @@ async def test_a_spliced_route_is_refused_when_the_destination_cannot_be_snapped
     (candidate, *_) = (await generator.generate_via_waypoints(
         at(SOUTH_WEST), [], destination=at(NORTH_EAST), max_routes=1, start_time=DEPARTURE)).candidates
     corner = at(NORTH_EAST)
-    # 寄せてよい距離（`domain/route_search.py: MAX_SNAP_CORRECTION_KM`）より北の、道の無い地点。
-    nowhere = Coordinates(latitude=corner.latitude + 2 * MAX_SNAP_CORRECTION_KM / KM_PER_DEGREE_LATITUDE, longitude=corner.longitude)
+    # 寄せてよい距離より北の、道の無い地点。
+    nowhere = Coordinates(latitude=corner.latitude + 2 * TUNING["search.max_snap_correction_km"] / KM_PER_DEGREE_LATITUDE, longitude=corner.longitude)
 
     assert (await generator.generate_spliced_route(
         at(SOUTH_WEST), FixedPoints(waypoints=[], destination=nowhere), candidate.edge_ids, start_time=DEPARTURE)).candidates == []

@@ -53,12 +53,6 @@ def distance_tolerance_km(distance_km: float, tuning: Tuning) -> float:
     return distance_km * tuning.value("search.distance_tolerance_ratio")
 
 
-#: 利用者が置いた点（出発地・経由地・目的地）を、出て戻れるNodeへ寄せてよい上限（km）。狙いは、道のすぐそばに
-#: 置いた点や、置いた先が本線から孤立した小塊・一方通行の袋だった点をすぐ近くの本線へ移すことなので、それより遠くへ
-#: 動かすと利用者が指した覚えのない場所を通るルートになる（目的地の補正後の座標は`corrected_destination`として
-#: 返すが、動いたことが分かっても指した場所とは別物である事実は変わらない）。
-MAX_SNAP_CORRECTION_KM = 1.0
-
 #: 学習する迂回率の実測に使う到達Nodeの、起点からの道なり距離の下限（m）。直線距離が短いNodeほど
 #: 比が大きくぶれるため、起点のすぐ近くを除く（目的地ルートの前向き木が使う）。
 DETOUR_RATIO_MIN_ROAD_M = 1000.0

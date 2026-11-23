@@ -37,6 +37,7 @@ from app.domain.road_network import (
 )
 from tests.east_west_network import EDGES, NODES, network
 from tests.road_class_fixture import classification, fact_is, road_classes
+from tests.tuning_fixture import TUNED
 
 @pytest.mark.parametrize(
     "broken",
@@ -115,7 +116,7 @@ def test_the_materials_and_road_classes_of_a_slice_follow_its_rows():
     classes = road_class_columns(whole, road_classes({"k": classification({"is_y": [fact_is("cat_a", "y")]})}))
     road = slice_network(whole, classes, 139.015, 34.99, 139.11, 35.01)
 
-    columns = material_arrays_of(road).columns
+    columns = material_arrays_of(road, TUNED).columns
 
     assert columns["num_a"].tolist() == [20.0, 30.0]
     assert [columns["cat_a"].value_at(i) for i in range(2)] == ["y", None]

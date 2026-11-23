@@ -116,6 +116,10 @@ _CRR_COBBLESTONE_ID = "speed.crr_cobblestone"
 _UNSOURCED = "値は根拠なし（出典のある実測が無い）。"
 #: 標準の人の好みの定義（物理の較正値ではないもの）の説明の末尾。
 _PREFERENCE_DEFINITION = "物理の較正値ではなく、標準の人の好みの定義（出典は無い）。"
+RIDER_HEIGHT_ID = "wind.rider_height_m"
+ROUGHNESS_CAP_ID = "wind.roughness_cap_m"
+SNAP_CORRECTION_ID = "search.max_snap_correction_km"
+LENS_SCALE_STEPS_ID = "lens.scale_steps"
 _TURNAROUND_OVERLAP_ID = "search.turnaround_max_overlap_ratio"
 _TURNAROUND_RELAXED_OVERLAP_ID = "search.turnaround_relaxed_overlap_ratio"
 _LOOP_RATIO_MIN_ID = "search.loop_to_outbound_ratio_min"
@@ -236,6 +240,16 @@ TUNING_PARAMETERS: tuple[TuningParameter, ...] = (
     ),
     # --- 走行モデル ---
     TuningParameter(
+        RIDER_HEIGHT_ID, "乗り手の高さ", "m", TuningEffect.IMMEDIATE,
+        "予報の地上の風を、この高さの風へ直して走行の模型に使う。踏み増しの向かい風の効きの元の実測の風（自転車に付けた風速計）の"
+        "高さに揃える。" + _UNSOURCED,
+    ),
+    TuningParameter(
+        ROUGHNESS_CAP_ID, "粗度長の頭打ち", "m", TuningEffect.IMMEDIATE,
+        "風を乗り手の高さへ直すときの、土地被覆の粗度長の上限（格子の側・道の側の両方に掛ける）。下げるほど、市街の風が弱まりにくい。"
+        + _UNSOURCED,
+    ),
+    TuningParameter(
         "speed.cda_m2",
         "空気抵抗 CdA", "m²", TuningEffect.IMMEDIATE,
         "走る姿勢の空気抵抗の係数と前面投影面積の積。" + _UNSOURCED,
@@ -341,6 +355,10 @@ TUNING_PARAMETERS: tuple[TuningParameter, ...] = (
     ),
     # --- 候補の選び方 ---
     TuningParameter(
+        SNAP_CORRECTION_ID, "置いた点を道へ寄せてよい距離", "km", TuningEffect.IMMEDIATE,
+        "置いた点から出て戻れる道の点までがこの距離を超えると、寄せずに断る。広げるほど、利用者が指した覚えのない場所を通りやすい。",
+    ),
+    TuningParameter(
         _TURNAROUND_OVERLAP_ID,
         "折返し点の往路の重なりの上限", "", TuningEffect.IMMEDIATE,
         "採用済みの折返し点と往路が、距離の割合でこれより重なる折返し点は飛ばす。同じ道筋の折返し点が上位を"
@@ -418,6 +436,10 @@ TUNING_PARAMETERS: tuple[TuningParameter, ...] = (
         "勾配を示さない直角からの幅", "度", TuningEffect.CLIENT_RELOAD,
         "走る向きに対して直角からこの角度以内の道は、どちら向きに辿るか決まらないため、その向きでの勾配を示さない"
         "（地図では勾配の段で塗らない）。広げるほど勾配を示さない道が増える。",
+    ),
+    TuningParameter(
+        LENS_SCALE_STEPS_ID, "色の物差しを刻む数", "段", TuningEffect.CLIENT_RELOAD,
+        "負担で塗る色を、緑の端から赤の端までこの数に刻む。",
     ),
     # --- 画面が使う値（カタログ取得でフロントへ配る） ---
     TuningParameter(
