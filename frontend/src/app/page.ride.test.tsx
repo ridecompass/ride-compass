@@ -145,7 +145,7 @@ describe("走行モード", () => {
     await user.click(screen.getByRole("button", { name: "走行モード" }));
 
     await user.click(screen.getByRole("button", { name: "地図に出す情報" }));
-    await user.click(screen.getByRole("checkbox", { name: "風[矢印]" }));
+    await user.click(screen.getByRole("checkbox", { name: "風" }));
     await user.keyboard("{Escape}");
     act(() => mapOnScreen().moveTo({ west: 139.68, south: 35.69, east: 139.72, north: 35.71 }, 12));
     await user.click(await screen.findByRole("button", { name: "俯瞰図を開く" }));

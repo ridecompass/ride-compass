@@ -73,7 +73,7 @@ describe("地図の小窓", () => {
   async function openSegmentPopup() {
     const { user } = renderHome();
     await user.click(screen.getByRole("button", { name: "地図に出す情報" }));
-    await user.click(screen.getByRole("checkbox", { name: "補給・休憩ポイント" }));
+    await user.click(screen.getByRole("checkbox", { name: "補給・休憩" }));
     await user.keyboard("{Escape}");
     jobs.respond([FIRST], LOOP_CONDITIONS);
     await generate(user);
@@ -246,7 +246,7 @@ describe("地図の小窓", () => {
     };
     const { user } = renderHome();
     await user.click(screen.getByRole("button", { name: "地図に出す情報" }));
-    await user.click(screen.getByRole("checkbox", { name: "補給・休憩ポイント" }));
+    await user.click(screen.getByRole("checkbox", { name: "補給・休憩" }));
     await user.keyboard("{Escape}");
     jobs.respond([east], LOOP_CONDITIONS);
     await generate(user);

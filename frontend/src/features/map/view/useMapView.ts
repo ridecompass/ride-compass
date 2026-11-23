@@ -10,7 +10,6 @@ import { useMemo, useState, type ComponentProps } from "react";
 
 import type LensControl from "@/features/map/LensControl/LensControl";
 import {
-  buildDefaultLayerVisibility,
   deriveFetchLayerStatus,
   ROAD_LINE_MIN_ZOOM,
   TILE_ZOOM_TOO_WIDE_NOTICE,
@@ -120,15 +119,11 @@ export function useMapView({
   const mapCatalog = useMapCatalog(mapTheme);
   const costCatalog = useCostAxisCatalog();
   const lenses = mapCatalog.lenses;
-  // 保存するのは触った層の真偽だけで、既定は層の一覧（道の線の層は画面の設定が届いてから決まる）から重ねる。
-  const [storedVisibility, setLayerVisibility] = useStoredState<MapLayerVisibility>(
+  // 保存するのは触った層の真偽だけで、触っていない層は出さない（最初は何も点いていない）。
+  const [layerVisibility, setLayerVisibility] = useStoredState<MapLayerVisibility>(
     "ridecompass:layer-visibility",
     "地図に出す情報",
     NO_STORED_VALUES,
-  );
-  const layerVisibility = useMemo(
-    () => ({ ...buildDefaultLayerVisibility(mapCatalog.layers), ...storedVisibility }),
-    [mapCatalog.layers, storedVisibility],
   );
   const totalLens = costCatalog.lenses?.totalLens ?? null;
   // 数える軸が1つも無い間は総合も数えないので、総合を選べず、総合の名前と凡例を出さず、ルートの線も負担で塗らず、選べる負担が

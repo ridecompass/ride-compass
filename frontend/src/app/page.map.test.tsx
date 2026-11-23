@@ -153,7 +153,7 @@ describe("地図で扱えること", () => {
   it("効いているパネルが別のパネルへ移ると、前のパネルで地図に出した選択（選んだ区間・小窓）を外し、閉じるだけなら外さない", async () => {
     const { user } = renderHome();
     await user.click(screen.getByRole("button", { name: "地図に出す情報" }));
-    await user.click(screen.getByRole("checkbox", { name: "補給・休憩ポイント" }));
+    await user.click(screen.getByRole("checkbox", { name: "補給・休憩" }));
     await user.keyboard("{Escape}");
     await selectDestination(user);
     const shop: PointedFeature = {
