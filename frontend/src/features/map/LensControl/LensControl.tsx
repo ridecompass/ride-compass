@@ -101,7 +101,7 @@ export default function LensControl({
                 className="flex min-w-0 shrink-[8] items-center gap-0.5 text-[0.65rem] text-[var(--color-muted-strong)]"
                 aria-hidden="true"
               >
-                <span className="flex h-1.5 w-12 min-w-6 shrink overflow-hidden rounded-[1px]">
+                <span className="flex h-1.5 w-12 min-w-0 shrink overflow-hidden rounded-[1px]">
                   {bands.map((entry) => (
                     <span key={entry.key} className="flex-1" style={{ background: legendSwatchBackground(entry) }} />
                   ))}
