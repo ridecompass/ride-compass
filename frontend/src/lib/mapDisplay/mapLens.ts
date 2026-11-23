@@ -4,7 +4,7 @@
 import type { MapPaintDeclaration } from "./valueScale";
 import type { components } from "@/types/generated/api";
 
-type MapLensFormula = components["schemas"]["CostAxisCatalogResponse"]["map_lens"];
+type MapLensFormula = components["schemas"]["MapLens"];
 
 /** 地図の式の木が読む走る条件の名前。 */
 export type WayValueCondition = MapLensFormula["material_conditions"][number];
@@ -21,6 +21,6 @@ export interface MapLens {
   materialConditions: readonly WayValueCondition[];
   /** 地図に塗る段。 */
   display: MapPaintDeclaration;
-  /** 道の値を求める式の木（辿る向きを走行方位で選ぶ）。 */
+  /** 道の値を求める式の木（走行方位で値が変わるレンズは、辿る向きを走行方位で選ぶ）。 */
   formula: MapLensFormula["formula"];
 }

@@ -11,25 +11,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { LENS_LINK_DESCRIPTION } from "@/lib/lensLink";
 import { serveCostAxisCatalog } from "@/testing/backendServer";
-import { TWO_COST_AXES } from "@/testing/costAxes";
+import { ALONG_FORMULA, BEARING_FORMULA, TWO_COST_AXES } from "@/testing/costAxes";
 import { renderHome, serveHome } from "@/testing/homePage";
 import { mapOnScreen } from "@/testing/maplibre";
-import type { CostAxisCatalogResponse } from "@/types/route";
 
 vi.mock("maplibre-gl", () => import("@/testing/maplibre"));
-
-type LensFormula = CostAxisCatalogResponse["map_lens"]["formula"];
-
-/** 走行方位で、道の向きの値を読むか逆向きの値を読むかを選ぶ木。 */
-const BY_BEARING: LensFormula = {
-  value: {
-    op: "case",
-    when: { op: "lt", left: { op: "condition", name: "bearing_deg" }, right: { op: "const", value: 180 } },
-    then: { op: "feature", name: "lens_along" },
-    otherwise: { op: "feature", name: "lens_against" },
-  },
-  undetermined: { op: "const", value: 0 },
-};
 
 beforeEach(() => {
   serveHome();
@@ -37,10 +23,14 @@ beforeEach(() => {
 
 describe("右上の方位磁針と拡大・縮小", () => {
   it.each([
-    ["走行方位の節を持つ", BY_BEARING, LENS_LINK_DESCRIPTION],
-    ["走行方位の節を持たない", TWO_COST_AXES.map_lens.formula, null],
+    ["走行方位の節を持つ", BEARING_FORMULA, LENS_LINK_DESCRIPTION],
+    ["走行方位の節を持たない", ALONG_FORMULA, null],
   ])("塗っているレンズの式の木が%sなら、右上の方位磁針の連動の印は %s", async (_, formula, description) => {
-    serveCostAxisCatalog({ ...TWO_COST_AXES, map_lens: { ...TWO_COST_AXES.map_lens, formula } });
+    const ascent = TWO_COST_AXES.axes[0];
+    serveCostAxisCatalog({
+      ...TWO_COST_AXES,
+      axes: [{ ...ascent, map_lens: { ...ascent.map_lens, formula } }, ...TWO_COST_AXES.axes.slice(1)],
+    });
     const { user } = renderHome();
     await user.click(screen.getByRole("button", { name: /^負担で塗る: / }));
     await user.click(await screen.findByRole("radio", { name: /登坂/ }));

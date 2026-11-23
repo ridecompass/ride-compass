@@ -19,16 +19,27 @@ import type { MapViewport } from "@/features/map/view/mapLook";
 import { useWayMaterials } from "./useWayMaterials";
 import { STANDARD_COST_PREFERENCE } from "@/lib/costPreference";
 
-/** 総合・登坂・振動のレンズ。材料の要求へは出発時刻と想定速度を載せる（一覧の`map_lens.material_conditions`）。 */
+/** 総合・登坂・振動のレンズ。材料の要求へは出発時刻と想定速度を載せる（一覧のレンズごとの`map_lens.material_conditions`）。 */
 const { lenses: LENSES } = mapCatalogFor();
 const ASCENT = LENSES.find((lens) => lens.lensId === "ascent")!;
 const VIBRATION = LENSES.find((lens) => lens.lensId === "vibration")!;
 /** 登坂と振動（同じ参照を渡し続ける。hook は呼び出し側が安定した参照を渡す約束）。 */
 const TWO_LENSES = [ASCENT, VIBRATION];
-/** 材料の要求へ出発時刻を載せない一覧の、登坂のレンズ。 */
+/** 材料の要求へ出発時刻を載せない（速度だけを載せる）登坂のレンズ。 */
 const UNTIMED_ASCENT = mapCatalogFor({
   ...TWO_COST_AXES,
-  map_lens: { ...TWO_COST_AXES.map_lens, material_conditions: ["speed_kmh"] },
+  axes: [
+    { ...TWO_COST_AXES.axes[0], map_lens: { ...TWO_COST_AXES.axes[0].map_lens, material_conditions: ["speed_kmh"] } },
+    ...TWO_COST_AXES.axes.slice(1),
+  ],
+}).lenses.find((lens) => lens.lensId === "ascent")!;
+/** どの走る条件でも値が変わらない（材料の要求へ何も載せない）レンズ。 */
+const UNCONDITIONED_ASCENT = mapCatalogFor({
+  ...TWO_COST_AXES,
+  axes: [
+    { ...TWO_COST_AXES.axes[0], map_lens: { ...TWO_COST_AXES.axes[0].map_lens, material_conditions: [] } },
+    ...TWO_COST_AXES.axes.slice(1),
+  ],
 }).lenses.find((lens) => lens.lensId === "ascent")!;
 // z14で横2枚×縦1枚のタイルにまたがる範囲
 const VIEWPORT: MapViewport = { west: 139.76, south: 35.68, east: 139.77, north: 35.685, zoom: 14, bearing: 0 };
@@ -103,16 +114,17 @@ describe("useWayMaterials（道ごとの材料）", () => {
   });
 
   it.each([
-    ["載せると宣言した一覧", ASCENT, AT.toISOString()],
-    ["載せない一覧", UNTIMED_ASCENT, "-"],
-  ])("出発時刻は、%sのレンズの要求にだけ載せ、想定速度はいつも載せる", async (_, lens, at) => {
+    ["出発時刻と想定速度を載せる", ASCENT, `${AT.toISOString()}@20`],
+    ["想定速度だけを載せる", UNTIMED_ASCENT, "-@20"],
+    ["何も載せない", UNCONDITIONED_ASCENT, "-@-"],
+  ])("出発時刻と想定速度は、レンズが載せると宣言したものだけを要求に載せる: %s", async (_, lens, expected) => {
     const { result } = render({ axes: [lens], viewport: VIEWPORT, conditions: CONDITIONS });
     await fetched(result);
 
     const conditions = new Set(
       wayKeys(result.current.get("ascent")?.materials).map((key) => key.split("@").slice(2).join("@")),
     );
-    expect(conditions).toEqual(new Set([`${at}@20`]));
+    expect(conditions).toEqual(new Set([expected]));
   });
 
   it("出発時刻が変わると取り直し、取り直す間は前の材料を残して読み込み中にする", async () => {

@@ -58,7 +58,7 @@
 同じ宣言を`valueBands`へ渡す。
 
 - **同じ塗りの部品を通す**: レンズは費用の軸の一覧から`features/map/costLens.ts: costLenses`が組み、地図の一覧
-  （`features/map/useMapCatalog.ts: useMapCatalog`）に載る。式の木（backendが`map_lens.formula`で配る。どのレンズも同じ木）・段・
+  （`features/map/useMapCatalog.ts: useMapCatalog`）に載る。式の木（backendがレンズごとの`map_lens.formula`で配る。走行方位で変わらないレンズは向きを選ばない木）・段・
   凡例・取得の状態はどのレンズも同じ部品が持つ。
 - **段の目安**: 凡例の下に、段の境目の秒が地図と同じ利用者の値でどれだけの事実に当たるかの目安
   （`GET /api/cost-axes/lens-equivalents`。`features/map/useLensEquivalents.ts`）を書く。目安は目安と分かる見出しを付け、その道の
@@ -325,6 +325,6 @@ features/map/view/useMapView.ts
 | `MapLayerId`・`MapLayerDescriptor`（地図UIからの除外を含む） | 地図の一覧の`layers`（`buildMapLayers`） |
 | MapLibreの線レイヤー・色式・濃さ・feature-state | `scene/sceneInputs.ts: sceneInputsFrom`が`lenses`をレンズの線（`scene/groups/axisLines.ts`）の入力へ移す |
 | 表示ON/OFF（レンズ選択） | レンズと周りを出すか（`useMapView`の`surroundingsShown`）から`scene/sceneInputs.ts`が導く |
-| 道ごとの材料のフェッチと走る条件の取捨 | `useWayMaterials` + 一覧の`map_lens.material_conditions` |
-| 道の値の式 | 一覧の`map_lens.formula`（`scene/wayValueFormula.ts`が地図の式へ置き換える） |
+| 道ごとの材料のフェッチと走る条件の取捨 | `useWayMaterials` + 一覧のレンズごとの`map_lens.material_conditions` |
+| 道の値の式 | 一覧のレンズごとの`map_lens.formula`（`scene/wayValueFormula.ts`が地図の式へ置き換える） |
 | 塗る段・凡例・ルートの線のモード | `costLenses`（レンズの`display`）・`lensLegend`・`costRouteStyleModes` |

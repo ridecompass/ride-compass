@@ -43,8 +43,8 @@ const EMPTY_RESULTS: ReadonlyMap<string, WayMaterialsFetch> = new Map();
 
 type TileResult = QueryObserverResult<Awaited<ReturnType<typeof fetchLensMaterials>>>;
 
-/** レンズの材料の要求（問い合わせの鍵にも載せる）と、タイル1枚の取り方。レンズが宣言した条件と、想定速度と利用者の値
- * （生成の要求と同じつまみと倍率）を載せる。 */
+/** レンズの材料の要求（問い合わせの鍵にも載せる）と、タイル1枚の取り方。レンズが宣言した条件（出発時刻・想定速度）と利用者の値
+ * （生成の要求と同じつまみと倍率）を載せる。宣言に無い条件は、変えても値が変わらないので載せない（変えても取り直さない）。 */
 function lensMaterials(
   lens: MapLens,
   conditions: RideConditions,
@@ -54,7 +54,7 @@ function lensMaterials(
   const names = lens.materialConditions;
   const query: LensMaterialsQuery = {
     ...(names.includes("at") ? { at: conditions.at.toISOString() } : {}),
-    speed_kmh: conditions.speedKmh,
+    ...(names.includes("speed_kmh") ? { speed_kmh: conditions.speedKmh } : {}),
     ...lensPreferenceQuery(costPreference, lens.lensId, lens.lensId === totalLensId),
   };
   return { query, fetch: (tile: TileXY) => fetchLensMaterials(lens.lensId, tile.z, tile.x, tile.y, query) };
@@ -76,7 +76,7 @@ function lensFetch(results: readonly TileResult[], truncated: boolean): WayMater
 
 /** 地図が塗るレンズの道ごとの材料を、間引いた表示範囲を覆うタイルごとに取り、レンズid→結果のMapを返す。レンズの件数は
  * 実行時に決まるので、レンズごとにフックを呼ばず配列で受ける。`lenses`と`conditions`は呼び出し側がuseMemoで安定した参照を
- * 渡すこと。要求と問い合わせの鍵へ載せる走る条件は、レンズが宣言した名前（`materialConditions`）と想定速度。利用者の値
+ * 渡すこと。要求と問い合わせの鍵へ載せる走る条件は、レンズが宣言した名前（`materialConditions`）だけ。利用者の値
  * `costPreference`（生成の要求へ送る形）も載せ、総合のレンズ`totalLensId`だけが全部の軸の倍率を載せる。 */
 export function useWayMaterials(
   lenses: readonly MapLens[],

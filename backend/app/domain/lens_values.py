@@ -17,6 +17,8 @@ from typing import Literal
 import numpy as np
 
 from app.domain.attributes import MaterialColumn
+from app.domain.cost_axes import EFFORT_AXES, CostAxisDefinitions, EffortItem
+from app.domain.road_classes import CLASS_MATERIAL_PREFIX
 from app.domain.cycling_speed import STANDARD_TEMPERATURE_C
 from app.domain.lens_total import TOTAL_LENS_ID, lens_values_with_total
 from app.domain.elevation_profile import ElevationProfiles
@@ -32,14 +34,62 @@ from app.domain.road_network import MaterialFills, RoadNetwork, rows_in_tile
 from app.domain.strict_model import StrictModel
 from app.domain.tuning import Tuning
 from app.domain.route import AxisFact, elevation_gain
-from app.domain.way_value_formula import WayValueConditionName, WayValueFormula, evaluate_formula, feature
+from app.domain.way_value_formula import (
+    FALSE,
+    Unary,
+    WayValueConditionName,
+    WayValueFormula,
+    case,
+    evaluate_formula,
+    feature,
+)
 
 
 #: 道ごとの材料の名前（地図の式の木の葉）。道の向きに辿った値・逆向きに辿った値。
 LENS_ALONG_LEAF = "lens_along"
 LENS_AGAINST_LEAF = "lens_against"
-#: 道ごとの材料の要求へ載せる走る条件（風の時刻と、平地の出力を決める想定速度）。走行方位は式の木が読む。
-LENS_MATERIAL_CONDITIONS: tuple[WayValueConditionName, ...] = ("at", "speed_kmh")
+#: 走る条件の並び（レンズの条件はこの順に並べる）。走行方位は式の木が読み、ほかは道ごとの材料の要求へ載せる。
+_CONDITION_ORDER: tuple[WayValueConditionName, ...] = ("bearing_deg", "speed_kmh", "at")
+#: 体力の費目ごとの、値が変わる走る条件（`domain/cycling_speed.py: SegmentSpeedModel.ride`が読む入力）。漕ぎ出しの慣性は、止まる
+#: 回数と巡航速度（½mv² と平地の出力）だけで決まる。ほかの費目は、平地を越えて踏む出力を勾配（走る向き）・空気（風と気温、つまり
+#: 時刻）・転がりの増えた抵抗の比で分け合うので、どれも向き・速度・時刻で変わる。
+_EFFORT_ITEM_CONDITIONS: dict[EffortItem, tuple[WayValueConditionName, ...]] = {
+    "gravity": _CONDITION_ORDER,
+    "air": _CONDITION_ORDER,
+    "rolling": _CONDITION_ORDER,
+    "inertia": ("speed_kmh",),
+}
+
+
+class MapLens(StrictModel):
+    """地図がレンズで道を塗る決まり。道ごとの材料は`/api/region/lens/{lens_id}/...`で、要求には`material_conditions`の走る条件を
+    載せる（載せない条件では値が変わらない）。道の値は`formula`へ材料と走行方位を入れたもの。"""
+
+    formula: WayValueFormula
+    material_conditions: list[WayValueConditionName]
+
+
+def lens_conditions(definitions: CostAxisDefinitions) -> dict[str, tuple[WayValueConditionName, ...]]:
+    """レンズid（総合と軸id）→ そのレンズの値が変わる走る条件。道のストレスの軸は材料 × 1kmあたりの重さ × 距離で、速度と時刻では
+    変わらない。区分の材料（道の区分は道1本の性質）なら向きでも変わらず、数値の材料は勾配のように進む向きで値が変わりうるので
+    向きで変わるとみなす。総合は、どれかの軸の値が変わる条件（利用者が無効にした軸も数える。一覧は利用者に依らない）。"""
+    by_axis = {axis_id: _EFFORT_ITEM_CONDITIONS[item] for axis_id, item in EFFORT_AXES.items()}
+    by_axis |= {axis_id: () if axis.burden.material.startswith(CLASS_MATERIAL_PREFIX) else ("bearing_deg",)
+                for axis_id, axis in definitions.burden.items()}
+    total = tuple(name for name in _CONDITION_ORDER if any(name in names for names in by_axis.values()))
+    return {TOTAL_LENS_ID: total, **by_axis}
+
+
+def map_lens(conditions: tuple[WayValueConditionName, ...], tuning: Tuning) -> MapLens:
+    """値が変わる走る条件が`conditions`のレンズの塗り方。走行方位で変わるなら辿る向きを走行方位で選び（`lens_way_formula`）、
+    変わらないなら辿れる向きの値をそのまま塗る（どちらの向きも同じ値で、向きで決まらない道は無い。一方通行の道も、走れない向きへ
+    地図を向けたまま辿れる向きの値で塗る）。"""
+    if "bearing_deg" in conditions:
+        formula = lens_way_formula(tuning)
+    else:
+        along, against = feature(LENS_ALONG_LEAF), feature(LENS_AGAINST_LEAF)
+        formula = WayValueFormula(value=case(Unary(op="is_missing", arg=along), against, along), undetermined=FALSE)
+    return MapLens(formula=formula, material_conditions=[name for name in conditions if name != "bearing_deg"])
 
 
 def lens_way_formula(tuning: Tuning) -> WayValueFormula:
