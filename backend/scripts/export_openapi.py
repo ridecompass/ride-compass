@@ -69,7 +69,6 @@ from app.domain.map_display import (
     LEGEND_SHARED_ROWS,
     MAP_LAYER_CATEGORIES,
     MAP_LAYERS,
-    OVERLAY_GROUP_INITIAL_ITEMS,
     map_layer_label,
     MapLayerSpec,
     ROUTE_ARROW_HALO_SCALE,
@@ -383,8 +382,9 @@ def main() -> None:
         MAP_DISPLAY_PATH,
         "mapDisplay",
         {
-            "overlayGroups": [g._asdict() for g in MAP_OVERLAY_GROUPS],
-            "overlayGroupInitialItems": OVERLAY_GROUP_INITIAL_ITEMS,
+            "overlayGroups": [
+                {"key": g.key, "label": g.label, "initialItems": g.initial_items} for g in MAP_OVERLAY_GROUPS
+            ],
             # 凡例の受け皿の行の名前と説明。
             "legendSharedRows": {key: row._asdict() for key, row in LEGEND_SHARED_ROWS.items()},
             "layerCategories": [c._asdict() for c in MAP_LAYER_CATEGORIES],

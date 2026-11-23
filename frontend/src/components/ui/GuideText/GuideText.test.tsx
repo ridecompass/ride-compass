@@ -3,6 +3,7 @@
  *
  * 見るもの: 知っているボタンの名前はかぎ括弧ごとアイコンに替わり（ボタンが文字を添えるものは同じ文字も添える）、名前は読み上げと
  * 吹き出しに残ること、知らない名前はかぎ括弧ごと文字のまま残ること。改行は段落に、続く「・」の行は1つの箇条書きになること。
+ * 文の字を変えずに、言葉のまとまりの間にだけ折り返せる印を置くこと（どこで分けるかは BudouX が決めるので見ない）。
  */
 import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
@@ -10,6 +11,20 @@ import { describe, expect, it } from "vitest";
 import { GuideText } from "./GuideText";
 
 describe("GuideText", () => {
+  it("文の字は変えず、字の間では折らずに、言葉のまとまりの間にだけ折り返せる印を置く", () => {
+    const text = "雨の降っている所と、この先の雨雲を、時刻を動かして見られます。";
+    render(
+      <p data-testid="guide">
+        <GuideText text={text} />
+      </p>,
+    );
+
+    const guide = screen.getByTestId("guide");
+    expect(guide).toHaveTextContent(text);
+    expect(guide.querySelectorAll("wbr").length).toBeGreaterThan(0);
+    expect(guide.firstElementChild).toHaveClass("break-keep");
+  });
+
   it("知っているボタンの名前だけをアイコン（と、ボタンが添える文字）に替え、名前は読み上げと吹き出しに残す", () => {
     render(
       <p data-testid="guide">

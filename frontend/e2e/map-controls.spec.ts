@@ -91,9 +91,11 @@ test("スマホ: ルート設定のシートを開いたまま「表示」の一
   await openMobileApp(page);
   const sheet = await openMobileSheet(page, "ルート設定");
   await page.getByRole("button", { name: "地図に出す情報", exact: true }).click();
-  const last = page
-    .getByRole("dialog", { name: "地図に出す情報", exact: true })
-    .getByRole("button", { name: "絞り込みをすべて解除" });
+  const list = page.getByRole("dialog", { name: "地図に出す情報", exact: true });
+  // 最初に並ぶ項目だけでは一覧が短く、シートと重ならない。ⓘを全部開いて、一覧を画面の下端まで伸ばす。
+  const info = list.getByRole("button", { name: /の説明を表示$/ });
+  while ((await info.count()) > 0) await info.first().click();
+  const last = list.getByRole("button", { name: "絞り込みをすべて解除" });
   await last.scrollIntoViewIfNeeded();
 
   const sheetTop = (await sheet.boundingBox())!.y;

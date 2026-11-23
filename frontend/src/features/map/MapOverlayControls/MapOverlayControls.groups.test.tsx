@@ -10,11 +10,14 @@ import { screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { categoriesOf, chip, LIST_NAME, ROAD, rowNames, setup } from "@/testing/mapOverlayControls";
-import { MAP_OVERLAY_GROUP_LABELS, MAP_OVERLAY_GROUP_ORDER } from "@/features/map/layers/mapLayers";
-import { mapDisplay } from "@/types/generated/mapDisplay";
+import {
+  MAP_OVERLAY_GROUP_INITIAL_ITEMS,
+  MAP_OVERLAY_GROUP_LABELS,
+  MAP_OVERLAY_GROUP_ORDER,
+} from "@/features/map/layers/mapLayers";
 
 const ROAD_LABEL = MAP_OVERLAY_GROUP_LABELS[ROAD];
-const INITIAL = mapDisplay.overlayGroupInitialItems;
+const INITIAL = MAP_OVERLAY_GROUP_INITIAL_ITEMS[ROAD];
 const chooser = () => screen.getByRole("button", { name: /^項目を選ぶ/ });
 
 afterEach(() => {

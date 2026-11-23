@@ -3,18 +3,20 @@ export const mapDisplay = {
   "overlayGroups": [
     {
       "key": "road",
-      "label": "道路"
+      "label": "道路",
+      "initialItems": 3
     },
     {
       "key": "environment",
-      "label": "天気と地形"
+      "label": "天気と地形",
+      "initialItems": 2
     },
     {
       "key": "spot",
-      "label": "スポット"
+      "label": "スポット",
+      "initialItems": 3
     }
   ],
-  "overlayGroupInitialItems": 3,
   "legendSharedRows": {
     "other": {
       "label": "その他",

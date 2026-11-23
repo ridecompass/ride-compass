@@ -150,8 +150,8 @@ describe("候補の一覧", () => {
     expect(screen.getByRole("tab", { name: /^1 / })).toHaveAttribute("aria-selected", "true");
 
     await userEvent.click(within(cardSample()).getByRole("button", { name: "所要時間と負担の説明を表示" }));
-    expect(await screen.findByText("・上の段: 距離")).toBeInTheDocument();
-    expect(screen.getByText("・稲妻の印: 最速ルート")).toBeInTheDocument();
+    const items = (await screen.findAllByRole("listitem")).map((item) => item.textContent);
+    expect(items).toEqual(expect.arrayContaining(["・上の段: 距離", "・稲妻の印: 最速ルート"]));
     expect(screen.getByText(`所要時間: ${routeGenerateConfig.duration_estimate_wording}`)).toBeInTheDocument();
     expect(screen.getByText("負担: 避けたいもの[軸ア・軸イ]を通る分を時間に直したものです。")).toBeInTheDocument();
     expect(
