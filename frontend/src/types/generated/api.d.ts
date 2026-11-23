@@ -845,8 +845,8 @@ export interface components {
             /** Longitude */
             longitude: number;
         };
-        /** CostAxisCatalogEntry */
-        CostAxisCatalogEntry: {
+        /** CostAxisCatalogItem */
+        CostAxisCatalogItem: {
             /** Axis Id */
             axis_id: string;
             /**
@@ -863,13 +863,13 @@ export interface components {
             /** Color */
             color: string;
             lens: components["schemas"]["LensBands"];
+            map_lens: components["schemas"]["MapLens"];
         };
         /** CostAxisCatalogResponse */
         CostAxisCatalogResponse: {
             /** Axes */
-            axes: components["schemas"]["CostAxisCatalogEntry"][];
+            axes: components["schemas"]["CostAxisCatalogItem"][];
             total_lens: components["schemas"]["TotalLens"];
-            map_lens: components["schemas"]["MapLens"];
         };
         /** CostAxisDefinitions */
         CostAxisDefinitions: {
@@ -1948,6 +1948,7 @@ export interface components {
             lens: components["schemas"]["LensBands"];
             /** Lens Id */
             lens_id: string;
+            map_lens: components["schemas"]["MapLens"];
         };
         /** TuningParameterView */
         TuningParameterView: {
@@ -2592,8 +2593,8 @@ export interface operations {
     };
     region_lens_api_region_lens__lens_id___z___x___y__get: {
         parameters: {
-            query: {
-                speed_kmh: number;
+            query?: {
+                speed_kmh?: number;
                 at?: string | null;
                 strength?: number;
                 multipliers?: string | null;

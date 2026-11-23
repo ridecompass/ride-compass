@@ -18,17 +18,17 @@ import { formulaConditions } from "@/features/map/scene/wayValueFormula";
 
 type LensPresentation = CostLensCatalog["totalLens"];
 
-function mapLens(presentation: LensPresentation, lenses: CostLensCatalog, ground: MapTheme): MapLens {
-  const conditions = lenses.mapLens.material_conditions;
+function mapLens(presentation: LensPresentation, ground: MapTheme): MapLens {
+  const conditions = presentation.mapLens.material_conditions;
   return {
     lensId: presentation.axisId,
     label: presentation.label,
     description: presentation.description,
     iconId: presentation.iconId,
-    conditions: [...new Set([...conditions, ...formulaConditions(lenses.mapLens.formula)])],
+    conditions: [...new Set([...conditions, ...formulaConditions(presentation.mapLens.formula)])],
     materialConditions: conditions,
     display: costLensPaint(presentation, ground),
-    formula: lenses.mapLens.formula,
+    formula: presentation.mapLens.formula,
   };
 }
 
@@ -36,7 +36,7 @@ function mapLens(presentation: LensPresentation, lenses: CostLensCatalog, ground
 export function costLenses(catalog: CostAxisCatalog, ground: MapTheme): MapLens[] {
   const { lenses } = catalog;
   if (lenses === null) return [];
-  return [lenses.totalLens, ...catalog.axes].map((presentation) => mapLens(presentation, lenses, ground));
+  return [lenses.totalLens, ...catalog.axes].map((presentation) => mapLens(presentation, ground));
 }
 
 /** ルートの線のレンズのモード（総合を先に、続けて軸の順。どれも区間の1kmあたりの代償の秒を地図と同じ段で塗る）。レンズを

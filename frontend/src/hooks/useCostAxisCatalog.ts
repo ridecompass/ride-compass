@@ -20,12 +20,13 @@ export interface CostAxis {
   iconId: string;
   /** 地図のレンズの段（境目は1kmあたりの代償の秒。目安は`features/map/useLensEquivalents.ts`が利用者の値で引く）。 */
   lens: CostAxisEntry["lens"];
+  /** 地図がこの軸のレンズで道を塗る決まり（道の値の式の木と、材料の要求へ載せる走る条件）。 */
+  mapLens: CostAxisEntry["map_lens"];
 }
 
-/** 地図のレンズのうち、軸に属さないもの（総合のレンズと、道の値を求める決まり）。総合は軸と同じ見せ方の欄を持つ。 */
+/** 地図のレンズのうち、軸に属さないもの（総合のレンズ）。総合は軸と同じ見せ方の欄と塗る決まりを持つ。 */
 export interface CostLensCatalog {
-  totalLens: Pick<CostAxis, "axisId" | "label" | "description" | "iconId" | "lens">;
-  mapLens: CostAxisCatalogResponse["map_lens"];
+  totalLens: Pick<CostAxis, "axisId" | "label" | "description" | "iconId" | "lens" | "mapLens">;
 }
 
 export interface CostAxisCatalog {
@@ -58,6 +59,7 @@ export function costAxisCatalogFromResponse(response: CostAxisCatalogResponse): 
     description: entry.description,
     iconId: entry.icon_id,
     lens: entry.lens,
+    mapLens: entry.map_lens,
   }));
   return {
     axes,
@@ -69,8 +71,8 @@ export function costAxisCatalogFromResponse(response: CostAxisCatalogResponse): 
         description: response.total_lens.description,
         iconId: response.total_lens.icon_id,
         lens: response.total_lens.lens,
+        mapLens: response.total_lens.map_lens,
       },
-      mapLens: response.map_lens,
     },
     loaded: true,
     failed: false,
