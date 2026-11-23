@@ -1,5 +1,5 @@
-"""地図のフィーチャー（路面タイルの`feature_key`の単位）の材料を、鍵で道路網の配列から引くこと（`domain/road_network.py:
-feature_rows`・`feature_materials`）と、そこから地図の線の層の値を配ること（`services/region_service.py: road_layer_values`）、押した道の
+"""地図のフィーチャー（路面タイルの`feature_key`の単位）の材料を、鍵で道路網の配列から引くこと（`domain/road_features.py:
+feature_rows`・`feature_materials`）と、そこから地図の線の層の値を配ること（`domain/road_features.py: road_layer_values`）、押した道の
 小窓へ出すタイルの名前の材料（`domain/feature_materials.py: FeatureMaterials.tile_properties`）。
 
 道路網は`tests/road_network_fixture.py`。東西に並ぶ道10（2区間）と道20（1区間）と、区間を持たない道30がある。
@@ -16,9 +16,9 @@ import pytest
 from app.domain.attributes import CategoricalColumn
 from app.domain.feature_materials import FeatureMaterials
 from app.domain.hard_filters import HARD_FILTER_PROPERTY
-from app.domain.road_network import feature_materials, feature_rows
+from app.domain.material_catalog import ELEVATION_GAIN_PER_KM, GRADIENT_PERCENT
+from app.domain.road_features import feature_materials, feature_rows, road_layer_values
 from app.domain.road_network_build import EdgelessWays
-from app.services.region_service import road_layer_values
 from tests.road_class_fixture import classification, fact_is, map_layer, road_classes
 from tests.road_network_fixture import road_network
 
@@ -81,6 +81,49 @@ def test_a_feature_painted_by_way_gathers_the_way_from_its_segments_by_length():
     assert _values(materials, "num_a") == pytest.approx({"10": (10 * short + 40 * long) / (short + long), "20": None,
                                                          "30": 7.0, "99": None})
     assert _values(materials, "cat_a") == {"10": "b", "20": None, "30": "a", "99": None}
+
+
+#: 道40は東へ2区間（どちらも約91m）。区間0は両向きで10m登り、区間1は逆向き（西）にしか走れない一方通行で、東へ20m登る。
+_SLOPE_COORDINATES = {6: (35.0, 139.010), 7: (35.0, 139.011), 8: (35.0, 139.012)}
+_SLOPE_SEGMENTS = {(40, 0): (6, 7), (40, 1): (7, 8)}
+
+
+def test_the_values_are_read_in_the_direction_the_road_is_drawn_even_where_it_runs_only_against_it():
+    """地図・小窓・書き出しの値は、どれも道の向き（形の始点から終点）に走った値。逆向きにしか走れない一方通行の区間は、走れる向き
+    の行しか持たないので、勾配の符号を返し、登りの量はその行の下りの量を読む——読み替えないと、東へ登る道が区間ごとに登りと下りに
+    分かれて描かれ、道1本の値でも打ち消し合う。"""
+    network = road_network(_SLOPE_COORDINATES, _SLOPE_SEGMENTS, backward=[(40, 1)],
+                           elevation_of={(40, 0): (0.0, 10.0), (40, 1): (10.0, 30.0)},
+                           numeric={ELEVATION_GAIN_PER_KM: lambda rows: np.full(len(rows.way), np.nan)})
+    km = float(network.distance_m[0]) / 1000.0
+
+    materials = _materials(network, (("40-0", 40, 0), ("40-1", 40, 1), ("40", 40, None)))
+
+    assert _values(materials, GRADIENT_PERCENT) == pytest.approx(
+        {"40-0": 1.0 / km, "40-1": 2.0 / km, "40": 1.5 / km}, rel=1e-3)
+    assert _values(materials, ELEVATION_GAIN_PER_KM) == pytest.approx(
+        {"40-0": 10.0 / km, "40-1": 20.0 / km, "40": 15.0 / km}, rel=1e-3)
+
+
+def test_a_way_is_a_flag_where_the_longer_part_of_it_is():
+    """道1本の真偽は、区間の長さの和が長い方の値（1.0か0.0）。割合のままだと、小窓は0でない値を該当として出し、区分は1.0だけを
+    該当として塗るので、同じ道が小窓と地図で食い違う。"""
+    lit = {(10, 0): 1.0, (10, 1): 0.0, (20, 0): 1.0}
+    network = road_network(_COORDINATES, _SEGMENTS, numeric={"lit": lambda rows: [
+        lit[(int(w), int(s))] for w, s in zip(rows.way, rows.segment, strict=True)]})
+
+    materials = _materials(network, (("10", 10, None), ("20", 20, None)))
+
+    assert _values(materials, "lit") == {"10": 0.0, "20": 1.0}
+
+
+def test_a_network_without_segments_has_no_rows_for_any_feature():
+    """区間を1本も持たない道路網（取込の直後）でも、フィーチャーを引くと値の無いフィーチャーになる。"""
+    network = road_network({}, {})
+
+    edge_rows, way_rows = feature_rows(network, [10, 10], [0, None])
+
+    assert (edge_rows.tolist(), way_rows.tolist()) == ([-1, -1], [-1, -1])
 
 
 def test_road_layer_values_are_served_per_feature_without_roads_outside_every_class():

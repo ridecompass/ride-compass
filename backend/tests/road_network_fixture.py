@@ -36,13 +36,13 @@ CategoricalMaterial = Callable[[EdgeRows], Sequence[str | None]]
 def road_network(
     coordinates: Mapping[int, tuple[float, float]],
     segments: Mapping[tuple[int, int], tuple[int, int]],
-    *, oneway: Sequence[tuple[int, int]] = (), elevation_of: Mapping[tuple[int, int], tuple[float, float]] | None = None,
+    *, oneway: Sequence[tuple[int, int]] = (), backward: Sequence[tuple[int, int]] = (), elevation_of: Mapping[tuple[int, int], tuple[float, float]] | None = None,
     numeric: Mapping[str, NumericMaterial] | None = None, categorical: Mapping[str, CategoricalMaterial] | None = None,
     signal_nodes: Sequence[int] = (), edgeless: EdgelessWays | None = None, revision: int = 1,
 ) -> RoadNetwork:
     """`coordinates`はノード（osm_node_id → (緯度, 経度)）、`segments`は区間（(道, 区間番号) → (始点, 終点)のノード）。
 
-    `oneway`の区間は始点→終点の向きだけを持つ。`elevation_of`（区間 → (始点, 終点)の標高m）の区間だけ標高を持ち、
+    `oneway`の区間は始点→終点の向きだけを、`backward`の区間は終点→始点の向きだけを持つ。`elevation_of`（区間 → (始点, 終点)の標高m）の区間だけ標高を持ち、
     ほかは標高も勾配の値も無い。`numeric`・`categorical`は材料のid → 行ごとの値。集まる道の本数は、区間の端として
     現れる回数。`edgeless`は区間を持たない道（材料の列は`numeric`の順に`GRADIENT_PERCENT`を足した並びと、`categorical`の並び）。"""
     node_ids = np.array(sorted({osm for pair in segments.values() for osm in pair}), dtype=np.int64)
@@ -51,10 +51,10 @@ def road_network(
     lon = np.array([coordinates[int(osm)][1] for osm in node_ids], dtype=np.float64)
 
     ordered = sorted(segments.items())
-    one_direction = set(oneway)
+    without = {(edge, False) for edge in oneway} | {(edge, True) for edge in backward}
     directed = [(way, segment, forward, (start, end) if forward else (end, start), edge)
                 for edge, ((way, segment), (start, end)) in enumerate(ordered)
-                for forward in (True, False) if forward or (way, segment) not in one_direction]
+                for forward in (True, False) if ((way, segment), forward) not in without]
     rows = EdgeRows(np.array([way for way, *_ in directed], dtype=np.int64),
                     np.array([segment for _, segment, *_ in directed], dtype=np.int32),
                     np.array([forward for _, _, forward, *_ in directed], dtype=bool))

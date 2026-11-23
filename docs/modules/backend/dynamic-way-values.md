@@ -11,12 +11,10 @@
 
 | レイヤー | ファイル |
 |---|---|
-| domain | `way_value_formula.py`（中立の式の木の型と、numpyでの評価）・`gradient.py`（道を辿る向きを走行方位で選ぶ木と、勾配の桁）・`lens_values.py`（タイルのフィーチャーと辿る向きで網の行を束ね、1kmあたりの代償の秒にする・地図の式の木・押した道の区間の秒と事実）・`lens_equivalents.py`（色の物差しの緑の端〜赤の端を、事実の値で刻んだ段にする）・`lens_total.py`（総合のレンズのidと、軸ごとの値から総合を出す決まり。ルートの線も読む）・`feature_materials.py`（地図のフィーチャーごとの材料の型と、押した道の小窓へタイルの名前で出す材料） |
-| services | `lens_service.py`（タイル1枚のレンズの値と、押した道のレンズの値と事実）・`region_service.py: road_layer_values`（タイルのフィーチャーごとの地図の線の層の値）・`region_service.py: RoadInspectorService`（道の窓） |
+| domain | `way_value_formula.py`（中立の式の木の型と、numpyでの評価）・`gradient.py`（道を辿る向きを走行方位で選ぶ木と、勾配の桁）・`lens_values.py`（タイルのフィーチャーと辿る向きで網の行を束ね、1kmあたりの代償の秒にする・地図の式の木・押した道の区間の秒と事実）・`lens_equivalents.py`（色の物差しの緑の端〜赤の端を、事実の値で刻んだ段にする）・`lens_total.py`（総合のレンズのidと、軸ごとの値から総合を出す決まり。ルートの線も読む）・`feature_materials.py`（地図のフィーチャーごとの材料の型と、押した道の小窓へタイルの名前で出す材料）・`road_features.py`（地図のフィーチャーの、道路網の配列の行と道の向きに走った材料と、地図の線の層の値） |
+| services | `lens_service.py`（タイル1枚のレンズの値と、押した道のレンズの値と事実）・`region_service.py: RoadInspectorService`（道の窓） |
 | api | `region.py`（`GET /api/region/lens/{lens_id}/...`・`POST /api/region/road-inspector`）・`dependencies.py`（`dependencies.py: get_lens_service`・`dependencies.py: get_road_inspector_service`） |
 
-フィーチャーごとの材料を道路網の配列から鍵で引く`domain/road_network.py: feature_materials`は[routing-engine.md](routing-engine.md)が
-主管するファイルに属する。
 
 ## 地図へ配る式の木（`domain/way_value_formula.py`）
 
@@ -41,11 +39,12 @@ SQLと式の木の材料では作れない体力（走行の模型）を、backe
 - **探索と同じ所から読む**: 値は、取込範囲全体の道の網（`infrastructure/road_network_store.py: current`）の有向の区間について、
   探索と同じ部品——走行の模型の入力（`domain/leg_costs.py: travel_inputs`）・道のストレスの1kmあたりの重さ（`domain/leg_costs.py: burden_weights`）・
   軸ごとの代償の秒（`domain/ledger_costs.py: LedgerCosts.penalty_by_axis`）・欠けを埋める取込範囲全体の平均——で求め、
-  フィーチャーと辿る向き（道の向き・逆向き）ごとに足して長さで割る。DBは読まない。避け方の倍率は道の値ではなく、曲がる所の漕ぎ出しは
+  フィーチャーと辿る向き（道の向き・逆向き）ごとに足して長さで割る。値を求めるのにDBは読まない。避け方の倍率は道の値ではなく、曲がる所の漕ぎ出しは
   来た道と曲がる向き（通る道筋）で決まるので入れない。
-- **フィーチャー**: タイルに区間の外接矩形が掛かる区間から、路面タイルと同じ鍵（区間で塗るズームは区間、引いたズームは道）で
-  束ねる。道1本で塗るズームでは、タイルの外の区間も含めた道の全区間で1つの値にする（どのタイルから見ても同じ値）。
-  区間を1本も持たない道（路面タイルは道丸ごとで焼く）は値を持たない。
+- **フィーチャー**: 路面タイルと同じ選び方でDBからタイルのフィーチャーの鍵を読み（`RoadGraphRepository.get_tile_features`。区間で
+  塗るズームは区間、引いたズームは道）、その鍵で網の区間の行を束ねる（`domain/lens_values.py: lens_features`）。道1本で塗るズームでは、
+  タイルの外の区間も含めた道の全区間で1つの値にする（どのタイルから見ても同じ値）。区間を1本も持たない道（路面タイルは道丸ごとで焼く）
+  と網に行の無いフィーチャーは値を持たない。
 - **向き**: 地図の向きでどちらを塗るかは式の木（`domain/lens_values.py: lens_way_formula`）が選ぶ。地図を回しても取り直さない。
   一方通行の逆向きは値を載せない。
 - **条件**: レンズごとに、値が変わる走る条件だけを配る（`domain/lens_values.py: lens_conditions`。体力の軸は費目の式が読む入力で決め、
@@ -91,20 +90,24 @@ SQLと式の木の材料では作れない体力（走行の模型）を、backe
 - 静的な路面タイル（`/api/region/road-surface-tiles`、MVT）とは別経路——フロントは同じz/x/yに対して両方を取得し、
   MapLibreの`setFeatureState`で合成する（[map-axis-coloring.md](../frontend/map-axis-coloring.md)参照）。
 - 路面・点のタイルと同じレート制限・座標検証を共有し、レンズの値は同時実行の上限のsemaphore
-  （`api/routers/_tile_http.py: region_tile_semaphore`、`config.py: road_tile_max_concurrent`）も共有する（レンズはDBを読まないが、
-  タイルごとの計算がルート生成と共有のスレッドの置き場を埋めないように待たせる）。道の窓は押すたびの
+  （`api/routers/_tile_http.py: region_tile_semaphore`、`config.py: road_tile_max_concurrent`）も共有する（レンズもタイルのフィーチャーの鍵をDBから読み、
+  タイルごとの計算はルート生成と共有のスレッドの置き場を使うので、同じ上限で待たせる）。道の窓は押すたびの
   単発の要求なので専用の上限を持つ。
 
-## タイルの材料（`domain/road_network.py: feature_materials`）
+## タイルの材料（`domain/road_features.py`）
 
 タイル1枚ぶんのフィーチャーは、路面タイルと同じ選び方で DB から鍵だけを読み（`infrastructure/road_tile_sql.py: TILE_FEATURES_SQL`）、
-その鍵で全部の材料を道路網の配列から引く——どのフィーチャーがタイルに入るかを決めるのは DB の道の形だけにする。路面タイルが焼く地図の線の層の値
-（`services/region_service.py: road_layer_values`。`services/region_service.py: RegionService.get_road_surface_tile`が読む）は、これに
+その鍵で全部の材料を道路網の配列から引く（`domain/road_features.py: feature_materials`）——どのフィーチャーがタイルに入るかを決めるのは
+DB の道の形だけにする。地図のレンズも、同じ鍵のフィーチャーの区間の行を束ねる（`domain/lens_values.py: lens_features`）。
+路面タイルが焼く地図の線の層の値（`domain/road_features.py: road_layer_values`。
+`services/region_service.py: RegionService.get_road_surface_tile`が読む）は、これに
 区分の列（`domain/road_classes.py: class_columns`）を読むたびに当てて求める——配列に区分を含めないので、区分を書き換えても配列を
 作り直さずに済む（路面タイルは区分の書き換えのあとに捨てて焼き直す。`infrastructure/region_tile_cache.py: discard_region_tiles`）。
 
 - フィーチャーの単位と鍵は路面タイルと同じ（区間で塗るズームは区間の一番若い行の値と、区間を持たない道1本の値。道1本で塗る
-  ズームは道1本の値）。道1本の値の集め方は`domain/road_network_build.py`のモジュールの説明が持つ。
+  ズームは道1本の値）。値はどれも道の向き（形の始点から終点）に走った値で、逆向きにしか走れない一方通行の区間も、逆向きの行の
+  勾配の符号を返し、登りの量を下りの量に読み替える（`domain/road_network_build.py: along_way`）。道1本の値の集め方は
+  `domain/road_network_build.py`のモジュールの説明が持つ。
 - 値を引く鍵が路面タイルのフィーチャーと同じで、どれも配列に行を持つことは`tests/test_feature_materials_in_tile.py`が見る。配列に
   行の無いフィーチャー（端点のノードが無く配列が落とした区間と、そういう区間しか持たない道）は値なしで描く。
 - 配列に無い材料（テストの道路網）は、値の無い列として読む（`domain/search_materials.py: ColumnsOrEmpty`）。

@@ -38,6 +38,7 @@ from app.infrastructure.road_tile_sql import (
     TILE_FEATURES_SQL,
     ROAD_SURFACE_TILE_MVT_SQL,
     ROADS_AT_SQL,
+    edgeless_way_sql,
 )
 from app.infrastructure.source_models import (
     INGESTED_BBOX_SQL,
@@ -178,7 +179,7 @@ ORDER BY nm.osm_node_id
 _EDGELESS_WAYS_SQL = text(f"""
 SELECT w.osm_way_id
 FROM {WAYS_SOURCE_SQL} w
-WHERE NOT EXISTS (SELECT 1 FROM road_edges re WHERE re.osm_way_id = w.osm_way_id)
+WHERE {edgeless_way_sql("w")}
 ORDER BY w.osm_way_id
 """)
 
@@ -321,9 +322,11 @@ class RoadGraphRepository:
             for name in raw:
                 raw[name].extend(getattr(row, f"c_{name}") or [])
 
-        numeric_values = np.empty((n, len(numeric_ids)), dtype=np.float64)
+        # 断面から求める材料（`MaterialSpec.source`が`profile`）は値式を持たず、列は値を持たない（NaN）。
+        numeric_values = np.full((n, len(numeric_ids)), np.nan)
         for i, material_id in enumerate(numeric_ids):
-            numeric_values[:, i] = float_array(raw[material_id])
+            if material_id in raw:
+                numeric_values[:, i] = float_array(raw[material_id])
 
         return EdgeMaterialArrays(
             numeric_ids=numeric_ids, numeric_values=numeric_values,

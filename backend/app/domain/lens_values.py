@@ -1,7 +1,7 @@
 """地図のレンズの、道ごとの値（ルートを出す前の地図の道と道の窓が読む）。
 
-取込範囲全体の道の網（`domain/road_network.py: RoadNetwork`）の有向の区間を、路面タイルのフィーチャー（区間で塗るズームなら
-区間、道1本で塗るズームなら道の全区間。`domain/region.py: EDGE_UNIT_MIN_ZOOM`）と辿る向き（道の向き・逆向き）で束ね、
+取込範囲全体の道の網（`domain/road_network.py: RoadNetwork`）の有向の区間を、路面タイルのフィーチャー（区間か、道1本なら道の
+全区間。どのフィーチャーかは呼ぶ側が渡す）と辿る向き（道の向き・逆向き）で束ね、
 区間ごとの値を足して1kmあたりにする。区間ごとの値は探索と同じ部品（`domain/leg_costs.py: travel_inputs`・`burden_weights`、
 `domain/ledger_costs.py: LedgerCosts.penalty_by_axis`）で求める——レンズ・探索・ルートは同じ量を同じ所から読む。
 
@@ -10,7 +10,7 @@
 漕ぎ出しは入れない（ルートの内訳では、その費目を持つ軸の秒に入る）。
 """
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Literal
 
@@ -22,14 +22,13 @@ from app.domain.road_classes import CLASS_MATERIAL_PREFIX
 from app.domain.cycling_speed import STANDARD_TEMPERATURE_C
 from app.domain.lens_total import TOTAL_LENS_ID, lens_values_with_total
 from app.domain.elevation_profile import ProfileSpans
-from app.domain.graph import edge_feature_key
 from app.domain.gradient import ROAD_BEARING_LEAF, travel_direction_formula
 from app.domain.ledger_costs import LedgerCosts, LedgerParameters
 from app.domain.leg_costs import axis_facts, burden_weights, travel_inputs
 from app.domain.model_settings import ModelSettings
 from app.domain.msm_grid import ForecastTime
-from app.domain.region import EDGE_UNIT_MIN_ZOOM
-from app.domain.road_network import MaterialFills, RoadNetwork, rows_in_tile
+from app.domain.road_features import feature_row_ranges
+from app.domain.road_network import MaterialFills, RoadNetwork
 from app.domain.strict_model import StrictModel
 from app.domain.tuning import Tuning
 from app.domain.route import AxisFact, elevation_gain
@@ -127,37 +126,24 @@ class LensFeatures:
                             feature=np.zeros(int(mine.sum()), dtype=np.int64), direction=self.direction[mine])
 
 
-def tile_features(network: RoadNetwork, z: int, x: int, y: int) -> LensFeatures:
-    """タイルに掛かる区間（形の外接矩形が重なるもの）のフィーチャー。道1本で塗るズームは、タイルの外の区間も含めた道の全区間で
-    1つのフィーチャーにする（どのタイルから見ても道1本の値が同じ）。"""
-    hit = rows_in_tile(network, z, x, y)
-    way_ids = np.asarray(network.edge_way_id)
-    if z >= EDGE_UNIT_MIN_ZOOM:
-        rows = hit
-        segments = np.asarray(network.edge_segment[rows], dtype=np.int64)
-        ids, feature = np.unique(np.stack([way_ids[rows], segments], axis=1), axis=0, return_inverse=True)
-        keys = tuple(edge_feature_key(int(way), int(segment)) for way, segment in ids)
-    else:
-        ways = np.unique(way_ids[hit])
-        # 網の行は道の番号の昇順に並ぶので、道ごとの行の範囲を二分探索で引く。
-        starts = np.searchsorted(way_ids, ways, side="left")
-        ends = np.searchsorted(way_ids, ways, side="right")
-        counts = ends - starts
-        feature = np.repeat(np.arange(len(ways)), counts)
-        # 道ごとの範囲 [始まり, 終わり) をつないだ行（道の先頭からの位置 ＋ 道の始まり）。
-        rows = np.arange(int(counts.sum())) - np.repeat(np.cumsum(counts) - counts, counts) + np.repeat(starts, counts)
-        keys = tuple(str(way) for way in ways)
-    rows = np.asarray(rows, dtype=np.int64)
-    feature = np.asarray(feature, dtype=np.int64).reshape(-1)
+def lens_features(network: RoadNetwork, feature_keys: Sequence[str], way_ids: Sequence[int],
+                  segment_indexes: Sequence[int | None]) -> LensFeatures:
+    """路面タイルのフィーチャー（鍵と、道・区間の番号。道1本のフィーチャーの区間の番号はNone）のうち、網に行を持つもの。区間の
+    フィーチャーはその区間の両向きの行、道1本のフィーチャーはタイルの外の区間も含めた道の全区間の行で1つにする（どのタイルから
+    見ても道1本の値が同じ）。"""
+    start, stop = feature_row_ranges(network, way_ids, segment_indexes)
+    has_rows = stop > start
+    is_edge = np.array([segment is not None for segment in segment_indexes], dtype=bool)[has_rows]
+    keys = tuple(key for key, kept in zip(feature_keys, has_rows.tolist(), strict=True) if kept)
+    start, counts = start[has_rows], (stop - start)[has_rows]
+    feature = np.repeat(np.arange(len(keys), dtype=np.int64), counts)
+    # フィーチャーごとの範囲 [始まり, 終わり) をつないだ行（フィーチャーの先頭からの位置 ＋ 範囲の始まり）。
+    rows = np.arange(int(counts.sum()), dtype=np.int64) - np.repeat(np.cumsum(counts) - counts, counts) + np.repeat(start, counts)
     forward = np.asarray(network.edge_forward[rows], dtype=bool)
-    # フィーチャーごとの一番若い行（行は昇順で、区間の順方向の行は逆向きの行より前にある）。どのフィーチャーも行を持つ。
-    _, first_of_feature = np.unique(feature, return_index=True)
-    first = rows[first_of_feature]
-    if z >= EDGE_UNIT_MIN_ZOOM:
-        bearing = np.asarray(network.bearing_deg[first], dtype=np.float64)
-        bearing = np.where(network.edge_forward[first], bearing, (bearing + 180.0) % 360.0)
-    else:
-        bearing = np.asarray(network.edge_way_bearing_deg[first], dtype=np.float64)
+    # 範囲の始まりは、フィーチャーの一番若い行（区間の順方向の行は逆向きの行より前にある）。
+    edge_bearing = np.asarray(network.bearing_deg[start], dtype=np.float64)
+    edge_bearing = np.where(network.edge_forward[start], edge_bearing, (edge_bearing + 180.0) % 360.0)
+    bearing = np.where(is_edge, edge_bearing, np.asarray(network.edge_way_bearing_deg[start], dtype=np.float64))
     return LensFeatures(keys=keys, bearing_deg=bearing, rows=rows, feature=feature,
                         direction=np.where(forward, ALONG, AGAINST))
 

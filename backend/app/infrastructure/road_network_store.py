@@ -57,8 +57,8 @@ ROOT = DATA_DIR / "road_network"
 NETWORK_SHAPE = shape_digest(RoadNetwork, *NETWORK_SQL_SOURCES, HIGHWAY_RANK, material_array_columns(), *(
     inspect.getsource(code) for code in (
         sys.modules[__name__], app.domain.road_network_build, app.domain.elevation_profile, bearings_between,
-        highway_rank, travel_allowed, EdgeMaterialArrays, CategoricalColumn.encode, float_array,
-        RoadGraphRepository.stream_network_nodes, RoadGraphRepository.stream_network_edges,
+        highway_rank, travel_allowed, positions_in, EdgeMaterialArrays, CategoricalColumn.encode, float_array,
+        RoadGraphRepository.get_edgeless_ways, RoadGraphRepository.stream_network_nodes, RoadGraphRepository.stream_network_edges,
         RoadGraphRepository.get_network_tuning, RoadGraphRepository.get_edge_material_arrays,
         RoadGraphRepository.get_edge_elevation_profiles)))
 

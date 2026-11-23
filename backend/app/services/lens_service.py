@@ -1,16 +1,17 @@
 """地図のレンズの道ごとの値の配信（ルートを出す前の地図の道と道の窓）。
 
-取込範囲全体の道の網（`infrastructure/road_network_store.py: current`）から、タイルのフィーチャーの値を探索と同じ部品で求める
-（`domain/lens_values.py`）。DBは読まない。値は風の時刻と想定速度で変わり、タイル1枚分の区間で走行の模型を解くだけなので
-キャッシュしない。
+タイルに入るフィーチャーは路面タイルと同じ選び方でDBから鍵だけを読み（`RoadGraphRepository.get_tile_features`）、その値を
+取込範囲全体の道の網（`infrastructure/road_network_store.py: current`）から探索と同じ部品で求める（`domain/lens_values.py`）。
+値は風の時刻と想定速度で変わり、タイル1枚分の区間で走行の模型を解くだけなのでキャッシュしない。
 """
 
 import asyncio
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 
 import numpy as np
+from sqlalchemy import Row
 
 from app.domain.cost_axes import cost_axis_ids
 from app.domain.lens_total import TOTAL_LENS_ID
@@ -29,17 +30,18 @@ from app.domain.lens_values import (
     LensTable,
     lens_inspection,
     lens_table,
+    lens_features,
     painted_direction,
-    tile_features,
 )
 from app.domain.region import BoundingBox, tile_bounds_lonlat
-from app.domain.attributes import EdgeMaterialColumns
 from app.domain.road_network import MaterialFills, material_arrays_of, slice_rows
+from app.domain.attributes import EdgeMaterialColumns
 from app.domain.time_zone import JST, as_series_time
 from app.domain.wind import WindForecastSeries
 from app.infrastructure import road_network_store
 from app.infrastructure.debug_log import log_external_call
 from app.infrastructure.msm_client import MsmUnavailableError
+from app.infrastructure.road_graph_repository import RoadGraphRepository
 from app.services.graph_service import network_burden_fills, network_classes
 from app.services.weather_service import WeatherService
 
@@ -55,8 +57,9 @@ class _TileLens:
 
 
 class LensService:
-    def __init__(self, weather_service: WeatherService):
+    def __init__(self, weather_service: WeatherService, repository: RoadGraphRepository):
         self._weather_service = weather_service
+        self._repository = repository
 
     async def way_materials(self, lens_id: str, z: int, x: int, y: int, at: datetime | None,
                             speed_kmh: float, preference: CostPreference) -> LensMaterials | None:
@@ -88,7 +91,8 @@ class LensService:
                     preference: CostPreference, only: str | None = None) -> _TileLens | None:
         """タイルのレンズの値。`only`を渡すとそのフィーチャーだけで求める（無ければNone）。"""
         with log_external_call(_CATEGORY, z=z, x=x, y=y) as fields:
-            prepared = await asyncio.to_thread(_prepare, z, x, y, settings, only)
+            tile = await self._repository.get_tile_features(z, x, y, tile_bounds_lonlat(z, x, y))
+            prepared = await asyncio.to_thread(_prepare, tile, settings, only)
             if prepared is None:
                 return None
             features, materials, fills, burden_fills, elevation_gain_m = prepared
@@ -115,13 +119,15 @@ class LensService:
         return series, target
 
 
-def _prepare(z: int, x: int, y: int, settings: ModelSettings, only: str | None
+def _prepare(tile: Sequence[Row], settings: ModelSettings, only: str | None
              ) -> tuple[LensFeatures, EdgeMaterialColumns, MaterialFills, Mapping[str, float], np.ndarray] | None:
-    """風に依らない入力（フィーチャーと行・材料・欠けを埋める材料の平均と道のストレスの重さの平均・行の向きの登り）。道路網を
-    読むのと、道路網ごとの初回にタイルの区間の表と取込範囲全体の区分の列と平均を求めるのを含むので、イベントループの外で呼ぶ。"""
+    """タイルのフィーチャー（`RoadGraphRepository.get_tile_features`の行）の、風に依らない入力（フィーチャーと行・材料・欠けを
+    埋める材料の平均と道のストレスの重さの平均・行の向きの登り）。道路網を読むのと、道路網ごとの初回に取込範囲全体の区分の列と
+    平均を求めるのを含むので、イベントループの外で呼ぶ。"""
     network = road_network_store.current()
-    tile = tile_features(network, z, x, y)
-    features = tile if only is None else tile.only(only)
+    in_tile = lens_features(network, [row.feature_key for row in tile], [row.osm_way_id for row in tile],
+                            [row.segment_index for row in tile])
+    features = in_tile if only is None else in_tile.only(only)
     if features is None:
         return None
     materials = material_arrays_of(slice_rows(network, network_classes(network), features.rows), settings.tuning)

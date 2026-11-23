@@ -1,5 +1,5 @@
 """地図の路面タイル（DBが焼く形とフィーチャーの鍵。`infrastructure/road_tile_sql.py: ROAD_SURFACE_TILE_MVT_SQL`）のフィーチャーが、
-値を引く鍵の読み出し（`RoadGraphRepository.get_tile_features`）と同じで、どれも道路網の配列に行を持つこと（`domain/road_network.py:
+値を引く鍵の読み出し（`RoadGraphRepository.get_tile_features`）と同じで、どれも道路網の配列に行を持つこと（`domain/road_features.py:
 feature_rows`）。食い違うと、その道は地図で色が付かない。
 
 道と点は取込の入口から入れ、派生の作り直し（`batch/derive_cli.py: run`）で区間と材料と道路網の配列まで作る（区間と区間の値の行を手で
@@ -16,7 +16,7 @@ import pytest
 
 from app.batch import derive_cli
 from app.domain.region import EDGE_UNIT_MIN_ZOOM, ROAD_TILE_MIN_ZOOM, BoundingBox, tile_bounds_lonlat, tile_position
-from app.domain.road_network import feature_materials, feature_rows
+from app.domain.road_features import feature_materials, feature_rows
 from app.infrastructure import road_network_store
 from app.infrastructure.vector_tile import ROAD_SURFACE_LAYER_NAME
 from tests.conftest import postgis_database_url

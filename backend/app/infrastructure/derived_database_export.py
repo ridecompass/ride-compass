@@ -8,6 +8,7 @@
 ものが既にあれば書かない。書き終えるまでは読み手が拾わない名前（先頭が`.`）に書き、最後に名前を付け替えてから古いものを消す。
 """
 
+import asyncio
 import csv
 import html
 import io
@@ -24,8 +25,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.domain.attributes import CategoricalColumn
 from app.domain.feature_materials import FeatureMaterials
 from app.domain.map_display import DERIVED_DATABASE_ATTRIBUTIONS
-from app.domain.material_catalog import MATERIAL_CATALOG, material_value_sql
-from app.domain.road_network import RoadNetwork, feature_materials, feature_rows
+from app.domain.material_catalog import MATERIAL_CATALOG, material_array_columns
+from app.domain.road_features import feature_materials, feature_rows
+from app.domain.road_network import RoadNetwork
 from app.infrastructure import road_network_store
 from app.infrastructure.cache_identity import shape_digest
 from app.infrastructure.data_paths import DATA_DIR
@@ -38,8 +40,8 @@ logger = logging.getLogger("ridecompass.derived_database")
 #: （testing.md「確かめる高さ」の (c)）。
 ROOT = DATA_DIR / "derived_database"
 
-#: 書き出す材料（値式を持つ全材料。値は道路網の配列のフィーチャーの値で、地図とルートが読むのと同じ）。
-DERIVED_DATABASE_MATERIAL_IDS = tuple(sorted(material_value_sql()))
+#: 書き出す材料（道路網の配列が持つ全材料。値は道路網の配列のフィーチャーの値で、地図とルートが読むのと同じ）。
+DERIVED_DATABASE_MATERIAL_IDS = tuple(sorted(material_id for ids in material_array_columns() for material_id in ids))
 COLUMNS = ("osm_way_id", "segment_index", "length_m", "name", "ref", *DERIVED_DATABASE_MATERIAL_IDS, "geometry_wkt")
 DATA_FILE = "roads.csv"
 README_FILE = "README.txt"
@@ -135,7 +137,8 @@ async def _write(repository: RoadGraphRepository, target: Path) -> None:
 
 
 async def _write_zip(repository: RoadGraphRepository, path: Path, check_space: Callable[[], None]) -> int:
-    network = road_network_store.current()
+    # 道路網を読むのは、イベントループの外で行う。
+    network = await asyncio.to_thread(road_network_store.current)
     rows = 0
     started = last_progress = time.perf_counter()
     with zipfile.ZipFile(path, "w", compression=zipfile.ZIP_DEFLATED) as archive:

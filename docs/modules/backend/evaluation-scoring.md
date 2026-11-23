@@ -15,28 +15,27 @@
 | api | `material_catalog.py`（材料の欠損割合のエンドポイント）・`cost_axis_catalog.py`（`GET /api/cost-axes`で費用の軸の見せ方・総合のレンズ・色の物差しから刻んだ段を画面へ配る。地図のレンズの要求の利用者の値の受け口`cost_preference_query`も持つ）・`cost_axis_admin.py`・`road_class_admin.py`（どちらも全体の読みと入れ替えの管理API）・`client_config.py`（`GET /api/client-config`。較正値・事故の収録年・道の区分を画面へ配る） |
 
 `material_sql.py`が**domainにある**のは、材料が何から導かれるかがdomainの知識だから。
-[routing-engine.md](routing-engine.md)の`ROAD_SURFACE_TILE_MVT_SQL`と本モジュールの
+道路網の配列を作る読み出し（`road_graph_repository.py: get_edge_material_arrays`）と本モジュールの
 `material_coverage.py`が同じ式を参照する——infrastructureの各所がそれぞれSQLを書くと、
 一方だけ変わったときに気付けない。
 
-**材料の導出は`MaterialSpec.value_sql`1本**。探索・地図タイル配信・欠損率の集計は、すべて同じ式を読む。入力に対する
-あるべき値は`tests/test_material_values.py`が期待値の表で固定する。式が実在の列と、読み出しの経路ごとのFROM句に
+**材料の導出は、出どころ（`MaterialSpec.source`）ごとに1本**。DBの材料は値式（`MaterialSpec.value_sql`）、断面から決まる
+勾配と登りの量（`profile`）は道路網の配列を作るときの計算（`domain/road_network_build.py`）、道の区分から作る材料（`road_class`）は
+区分の定義。探索・地図・派生データベースの書き出しは道路網の配列の同じ値を読み、欠損率の集計はDBの元データを数える。値式の
+入力に対するあるべき値は`tests/test_material_values.py`が期待値の表で固定する。式が実在の列と、読み出しのFROM句に
 ある別名だけを読むことも同じファイルが見る——値の表は別名を値で与えるため、綴りの合わない列や、
-経路に無い別名（路面タイルの`re`等）を読む式は、値の表だけでは見つからない。
+読み出しに無い別名を読む式は、値の表だけでは見つからない。
 
 **地図は材料を道路網の配列から読む**。路面タイルは地図の線の層の値（配列の材料に区分を当てたもの）を焼き、押した道の小窓は
 `tile_property`の名前で配列の値を出す（`domain/feature_materials.py: FeatureMaterials.tile_properties`）——材料を1つ足せば配列にも
 列が増え、式を直せば地図と探索が一緒に変わる（配列の形の署名も変わり、配信中のタイルは作り直しになる）。
-`tile_property`を持つ材料は値式を必ず持つ（宣言の検証が断る）。載せ方は型ごとに決まる:
+道の区分から作る材料は配列に列が無いので、`tile_property`を持てない（宣言の検証が断る）。小窓への載せ方は型ごとに決まる:
 
 | 型 | 載せ方 |
 |---|---|
-| 真偽 | `CASE WHEN (value_sql) THEN true END`。「該当しない」をNULLへ畳み、フィーチャーからキーを省いてタイルを軽くする。タグの不在を「不明」とする真偽の材料（`coverage.missing_semantics`が`"unknown"`）はこの載せ方の対象外で、タイルへ焼くなら「不明」を値として持つ分類の材料にする（例: 路面の見込み） |
-| 真偽でないもの | 値式をそのまま |
-
-タイルの文は、値式が読む別名をフィーチャーの単位で与える。区間単位のフィーチャーは`em`が区間の値・
-`re`の長さが区間の長さ、way丸ごとのフィーチャーは`em`が道1本の値の同じ名前の列（無い列はNULL）・`re`の長さが
-wayの長さ（0はNULL）になる——件数と長さは必ず同じ側から取る。
+| 真偽 | 該当（1.0）のときだけ`true`。「該当しない」と値の無いものは載せない。タグの不在を「不明」とする真偽の材料（`coverage.missing_semantics`が`"unknown"`）は「不明」と「該当しない」が区別できなくなるので、小窓へ出すなら「不明」を値として持つ分類の材料にする（例: 路面の見込み） |
+| 分類 | 値の文字列（値の無いものは載せない） |
+| 数値 | 値（値の無いものは載せない） |
 
 ## 0次ハードフィルタと道の行ごとの避け方（`domain/hard_filters.py`・`domain/road_avoidance.py`）
 
@@ -81,11 +80,10 @@ wayの長さ（0はNULL）になる——件数と長さは必ず同じ側から
 
 | 経路 | 入口 | 粒度 |
 |---|---|---|
-| 探索の材料 | `road_graph_repository.py: get_edge_material_arrays` | 区間群（取込範囲の道路網） |
+| 道路網の配列の材料 | `road_graph_repository.py: get_edge_material_arrays` | 有向の区間（取込範囲の道路網）と、区間を持たない道 |
 
-区間の値を持つ`em`は、道1本を単位に読む文脈では道1本の値の同じ名前の列を引く別名になる——**区間の値をway1本へ
-落としているのではなく、way粒度の値を同じ名前で読んでいる**（way側の値は
-`derive_landcover`等の段が区間から集約して持つ）。
+区間の値を持つ`em`は、区間の番号の式を渡して読む（`material_joins.py: material_from_clause`。渡さずに読む式は断る）。
+道1本の値は、配列を作るときに区間の値から集める（`domain/road_network_build.py`のモジュールの説明）。
 
 **暗黙の前提**: 取込はタグを絞らない（`batch/source_adapters/osm_pbf.py`がタグを全部`attrs`へ入れる）。どのキーも
 `attrs`に在るため、値式はそこから読んでよい。**捨てると後から解釈を変えられない**という
