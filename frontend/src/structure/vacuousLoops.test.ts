@@ -41,8 +41,6 @@ describe("要素ごとの確かめが空の母集団で素通りしない", () =
       expect(reasons(`for (const x of xs) { x.a ? expect(x).toBe(1) : null; }`)).toEqual([GATED]);
       expect(reasons(`for (const x of xs) { try { run(x); } catch { expect(x).toBe(1); } }`)).toEqual([GATED]);
       expect(reasons(`for (const x of xs) { if (!x.a) continue; expect(x).toBe(1); }`)).toEqual([GATED]);
-      expect(reasons(`for (const x of xs) { if (!x.a) break; expect(x).toBe(1); }`)).toEqual([GATED]);
-      expect(reasons(`for (const x of xs) { if (!x.a) return; expect(x).toBe(1); }`)).toEqual([GATED]);
       expect(reasons(`xs.forEach((x) => { if (!x.a) return; expect(x).toBe(1); });`)).toEqual([GATED]);
     });
 

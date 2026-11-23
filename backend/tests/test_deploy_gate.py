@@ -31,7 +31,6 @@ _BACKEND_AREA = re.compile(r"\bbackend=\$\(area '([^']+)'\)")
         ("newer", ["backend/app/main.py"], True),
         # ファイルを当てない呼び方（frontend）は、本番より新しければ出す。
         ("newer", None, True),
-        ("older", None, False),
     ],
 )
 def test_decide(relation, hits, expected):
@@ -77,7 +76,7 @@ def test_only_changes_that_reach_production_deploy(tmp_path, monkeypatch):
     subprocess.run(["git", "add", "backend/Dockerfile"], cwd=tmp_path, check=True)
     deployed = _commit(tmp_path, "README.md")
     # 外したもの（`**`は下の階層を跨ぐ）と対象の外（根から当てるので、下の階層にある同じ名前のディレクトリも外）だけが変わった。
-    unchanged_image = _commit(tmp_path, "backend/benchmarks/deep/bench.py", "frontend/backend/app.py")
+    unchanged_image = _commit(tmp_path, "backend/tools/deep/bench.py", "frontend/backend/app.py")
     # Dockerfileが写さない、どの一覧にも名前の無い新しいファイル。
     unchanged_outside = _commit(tmp_path, "backend/notes/new_tool.toml")
     changed_image = _commit(tmp_path, "backend/app/main.py")

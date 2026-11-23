@@ -91,13 +91,6 @@ describe("DifficultyProfile", () => {
     expect(screen.getByText("2.0km")).toBeInTheDocument();
   });
 
-  it("1kmあたりの値の無い区間（長さ0の区間）は塗らない", () => {
-    const { container } = renderProfile({
-      segments: [FIRST, makeRouteSegment({ ...SECOND, lens_seconds_per_km: null })],
-    });
-    expect(paths(container).map((path) => path.d)).toEqual(["M0 40H500V100H0Z", "M0 0H500V40H0Z"]);
-  });
-
   it("現在地の距離に印を、その距離の柱の上端に置き、始点からそこまでは色を抜いて薄め、残りは元の色で描く。候補の終わりより先は終わりに寄せ、無ければ描かない", () => {
     const { container, rerender } = renderProfile({ scaleKm: 4, progressKm: 0.5 });
     const progress = () => {

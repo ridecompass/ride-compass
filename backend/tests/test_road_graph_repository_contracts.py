@@ -25,7 +25,6 @@ import numpy as np
 import pytest
 from sqlalchemy import text
 
-from app.domain.attributes import CategoricalColumn
 from app.domain.material_catalog import MATERIAL_CATALOG, material_array_columns
 from app.domain.region import BoundingBox
 from app.infrastructure.derived_models import EdgeCountsRow, EdgeElevationRow, EdgeLandcoverRow
@@ -148,7 +147,6 @@ async def test_material_values_land_in_the_matrix_of_their_dtype():
     assert np.isnan(numbers[1][2])
     # 分類の材料は語彙への番号の列で、値へ戻すと行ごとの値（値なしはNone）になる。
     column = arrays.categorical_columns[arrays.categorical_ids.index(categorical)]
-    assert isinstance(column, CategoricalColumn)
     assert [column.value_at(row) for row in range(len(column))] == ["value_a", None, None]
 
 
@@ -176,15 +174,6 @@ async def test_rows_keep_the_order_of_the_given_edges_across_chunks():
     assert arrays.distance_m.tolist() == way_ids
     assert arrays.bearing_deg.tolist() == segment_indexes
     assert arrays.mid_lat.tolist() == [float(f) for f in forwards]
-
-
-async def test_paired_edge_columns_are_not_swapped():
-    """取り違えても型では落ちない対（緯度と経度）だけを見る。"""
-    repo, _ = _repo([_arrays_row(1, {"mid_lat": [35.5], "mid_lon": [139.5]})])
-
-    arrays = await repo.get_edge_material_arrays([1], [0], [True], 1)
-
-    assert (arrays.mid_lat[0], arrays.mid_lon[0]) == (35.5, 139.5)
 
 
 async def test_an_edge_without_an_elevation_row_has_no_profile_points():

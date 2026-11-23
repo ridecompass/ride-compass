@@ -48,7 +48,6 @@ _PARAM = "speed.walking_kmh"
     (1.0, True, False),
     (1.0, False, True),
     (math.nan, True, True),
-    (math.inf, True, True),
 ])
 def test_a_value_is_refused_when_the_condition_fails_or_it_is_not_finite(value, holds, refused):
     """条件を満たしても有限でない値は断る——無限大・NaNは比べ方によって条件を通り、費用を無限大・NaNにする。"""

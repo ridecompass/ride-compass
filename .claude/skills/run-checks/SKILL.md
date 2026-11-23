@@ -76,7 +76,7 @@ description: "検査とテストを手元・作業ブランチのCI・masterのC
 設定は`backend/mypy.ini`、実行は`backend/`で`python -m mypy`（引数なし。対象は設定の`files`が決める）。
 設定の理由はここに書く。
 
-- **対象はapp・scripts・benchmarksで、testsは入れない**（テストの偽物を本物の型の引数へ渡す書き方が誤検知になる）。
+- **対象はapp・scriptsで、testsは入れない**（テストの偽物を本物の型の引数へ渡す書き方が誤検知になる）。
 - **型注釈の無い関数の中身も見る**（`check_untyped_defs`。見ないと、注釈の無い呼び出し側の食い違いが止まらない）。
 - **ファイルやモジュールを検査から外さない。**
 - 型情報（`py.typed`）を配っていないライブラリは、まず型のスタブ（typeshedの`types-*`等）を探し、
