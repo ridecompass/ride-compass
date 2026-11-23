@@ -18,7 +18,7 @@ export interface CostAxis {
   label: string;
   description: string;
   iconId: string;
-  /** 地図のレンズの段（境目は1kmあたりの代償の秒。目安は`features/map/useLensEquivalents.ts`が利用者の値で引く）。 */
+  /** 地図のレンズの段（境目は標準の人の1kmあたりの代償の秒、名前は事実の値の範囲）。 */
   lens: CostAxisEntry["lens"];
   /** 地図がこの軸のレンズで道を塗る決まり（道の値の式の木と、材料の要求へ載せる走る条件）。 */
   mapLens: CostAxisEntry["map_lens"];

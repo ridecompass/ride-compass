@@ -468,22 +468,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/cost-axes/lens-equivalents": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["get_lens_equivalents_api_cost_axes_lens_equivalents_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/admin/material-catalog/coverage": {
         parameters: {
             query?: never;
@@ -723,7 +707,8 @@ export interface components {
             description: string;
             /** Icon Id */
             icon_id: string;
-            lens: components["schemas"]["LensBands"];
+            scale?: components["schemas"]["LensScale"] | null;
+            lens?: components["schemas"]["LensBands"] | null;
         };
         /** Binary */
         Binary: {
@@ -745,7 +730,8 @@ export interface components {
             description: string;
             /** Icon Id */
             icon_id: string;
-            lens: components["schemas"]["LensBands"];
+            scale?: components["schemas"]["LensScale"] | null;
+            lens?: components["schemas"]["LensBands"] | null;
             /** Burden */
             burden: components["schemas"]["CategoricalBurden"] | components["schemas"]["LinearBurden"];
         };
@@ -953,16 +939,6 @@ export interface components {
             /** Debug Mode */
             debug_mode: boolean;
             msm: components["schemas"]["MsmFreshnessResponse"] | null;
-        };
-        /** ExampleEquivalents */
-        ExampleEquivalents: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            kind: "examples";
-            /** Examples */
-            examples: components["schemas"]["SecondsExample"][];
         };
         /** ExternalCallStats */
         ExternalCallStats: {
@@ -1202,6 +1178,13 @@ export interface components {
             };
             /** Wind Previous Run From */
             wind_previous_run_from: string | null;
+        };
+        /** LensScale */
+        LensScale: {
+            /** Green */
+            green: number | string;
+            /** Red */
+            red: number | string;
         };
         /** LinearBurden */
         LinearBurden: {
@@ -1856,13 +1839,6 @@ export interface components {
             /** Areas */
             areas: components["schemas"]["RouteAreaTimeline"][];
         };
-        /** SecondsExample */
-        SecondsExample: {
-            /** Label */
-            label: string;
-            /** Seconds Per Km */
-            seconds_per_km: number;
-        };
         /** SucceededRunCounts */
         SucceededRunCounts: {
             /** Id */
@@ -1891,20 +1867,6 @@ export interface components {
             needs_attention: boolean;
             /** Note */
             note: string;
-        };
-        /** ThresholdEquivalents */
-        ThresholdEquivalents: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            kind: "thresholds";
-            /** Fact */
-            fact: string;
-            /** Unit */
-            unit: string;
-            /** Values */
-            values: (number | null)[];
         };
         /**
          * TimelineKind
@@ -1939,6 +1901,8 @@ export interface components {
         };
         /** TotalLens */
         TotalLens: {
+            /** Lens Id */
+            lens_id: string;
             /** Label */
             label: string;
             /** Description */
@@ -1946,8 +1910,6 @@ export interface components {
             /** Icon Id */
             icon_id: string;
             lens: components["schemas"]["LensBands"];
-            /** Lens Id */
-            lens_id: string;
             map_lens: components["schemas"]["MapLens"];
         };
         /** TuningParameterView */
@@ -2978,41 +2940,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CostAxisCatalogResponse"];
-                };
-            };
-        };
-    };
-    get_lens_equivalents_api_cost_axes_lens_equivalents_get: {
-        parameters: {
-            query?: {
-                strength?: number;
-                multipliers?: string | null;
-                disabled_axes?: string | null;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: components["schemas"]["ThresholdEquivalents"] | components["schemas"]["ExampleEquivalents"];
-                    };
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

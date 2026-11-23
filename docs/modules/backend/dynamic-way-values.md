@@ -11,7 +11,7 @@
 
 | レイヤー | ファイル |
 |---|---|
-| domain | `way_value_formula.py`（中立の式の木の型と、numpyでの評価）・`gradient.py`（道を辿る向きを走行方位で選ぶ木と、勾配の桁）・`lens_values.py`（タイルのフィーチャーと辿る向きで網の行を束ね、1kmあたりの代償の秒にする・地図の式の木・押した道の区間の秒と事実）・`lens_equivalents.py`（段の境目の秒の、標準の条件での事実の目安）・`lens_total.py`（総合のレンズのidと、軸ごとの値から総合を出す決まり。ルートの線も読む）・`feature_materials.py`（タイル1枚のフィーチャーごとの材料の型） |
+| domain | `way_value_formula.py`（中立の式の木の型と、numpyでの評価）・`gradient.py`（道を辿る向きを走行方位で選ぶ木と、勾配の桁）・`lens_values.py`（タイルのフィーチャーと辿る向きで網の行を束ね、1kmあたりの代償の秒にする・地図の式の木・押した道の区間の秒と事実）・`lens_equivalents.py`（色の物差しの緑の端〜赤の端を、事実の値で刻んだ段にする）・`lens_total.py`（総合のレンズのidと、軸ごとの値から総合を出す決まり。ルートの線も読む）・`feature_materials.py`（タイル1枚のフィーチャーごとの材料の型） |
 | services | `lens_service.py`（タイル1枚のレンズの値と、押した道のレンズの値と事実）・`feature_materials.py`（タイルのフィーチャーごとの材料を読み、ディスクへ持つ。地図の線の層の値）・`region_service.py: RoadInspectorService`（道の窓） |
 | infrastructure | `feature_material_cache.py`（タイルのフィーチャーごとの材料。ディスク経由）・`tile_persistent_cache.py`（呼び出し元が設計したタプルの鍵でPythonオブジェクトを置く汎用のディスクキャッシュ。`diskcache`の包み。名前空間ごとに捨てられる、24時間持つ口`tile_persistent_cache.py: set_tile_entry`も持つ） |
 | api | `region.py`（`GET /api/region/lens/{lens_id}/...`・`POST /api/region/road-inspector`）・`dependencies.py`（`dependencies.py: get_lens_service`・`dependencies.py: get_road_inspector_service`） |
@@ -55,10 +55,10 @@ SQLと式の木の材料では作れない体力（走行の模型）を、backe
   （`domain/lens_values.py: map_lens`。向きで決まらない道は無く、一方通行の道も辿れる向きの値で塗る）。載せない条件では値が変わらないので、口は時刻を今、速度を画面の既定で求める。
   風は区間の中点に最も近い予報の格子点の、指定時刻の値を引く（探索と同じ選び方。格子はタイルと区間の中点の両方を覆う）。
   風を読めない・予報の範囲の外の時刻は、無風で求めずに失敗する（`MsmUnavailableError`。口は503）。
-- **段の境目の目安**（`domain/lens_equivalents.py`）: `GET /api/cost-axes/lens-equivalents`（軸id→目安。地図のレンズと同じ
-  `strength`・`multipliers`のクエリ）は、段の境目の秒が、標準の人・利用者のつまみと倍率・無風の1kmの道でどれだけの事実に当たるか（登坂は斜度、向かい風は風速、停止は止まる回数、路面の抵抗と
-  道のストレスは区分・折れ点ごとの秒）。事実の値を刻んだ道を並べて同じ費用の式へ通し、秒から引き戻す——別の換算の式を持たない。
-  条件を利用者に言う文（`domain/lens_equivalents.py: LENS_EQUIVALENTS_CONDITION_WORDING`）と、レンズの量の名前と単位
+- **段**（`domain/lens_equivalents.py: lens_bands`）: 軸の定義は、色の物差し（緑の端と一番濃い赤の端を軸の事実の値で。
+  `domain/cost_axes.py: LensScale`）を持つ。端の値は較正で、本番の定義が持つ。`GET /api/cost-axes`は、緑から赤までを事実の値で刻んだ所に
+  境目を置いた段（境目は標準の人・標準の利用者の値・無風の1kmの道の秒、名前は事実の値の範囲）を配る。事実の値の道を同じ費用の式へ
+  通して秒を求める——別の換算の式を持たない。物差しを書く前の定義は、定義の段のまま配る。レンズの量の名前と単位
   （`domain/cost_axes.py: LENS_QUANTITY_LABEL`・`domain/cost_axes.py: LENS_UNIT`）は、生成物`route-generate-config.json`で画面へ配る。
 - **キャッシュしない**: 値は風の時刻・想定速度で変わり、タイル1枚の区間で走行の模型を1回解くだけ。欠けを埋める道のストレスの
   重さの平均だけは全区間を数えるので、道の網・区分の列・道のストレスの軸の費目の組ごとにプロセスに1つ持つ

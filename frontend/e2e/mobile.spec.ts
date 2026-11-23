@@ -1,5 +1,4 @@
 import { expect, test } from "@playwright/test";
-import { costAxisCatalog, costAxisEntry } from "@/testing/costAxes";
 import {
   MOBILE_VIEWPORT,
   doneJobFixture,
@@ -29,59 +28,6 @@ test("モバイル: 観測値の取得に失敗してもヘッダーが幅に収
   const menu = await page.getByRole("button", { name: "メニュー" }).boundingBox();
   expect(menu).not.toBeNull();
   expect((menu?.x ?? 0) + (menu?.width ?? 0)).toBeLessThanOrEqual(MOBILE_VIEWPORT.width);
-});
-
-/** 段階が細かく、凡例の1行（「とても少ない[0.125〜0.375秒/km]」）が長くなる軸。
- * 本番の軸名・値は使わない。 */
-const FINE_STEP_AXIS_LABEL = "段階の細かい軸";
-
-// レンズの凡例は段階の細かい軸ほど1行が長い。グリッドのセルに収まらないと、値の右側が読めなくなる。
-test("モバイル: レンズの凡例が、段階の細かい軸でも幅に収まる", async ({ page }) => {
-  await openMobileApp(page, {
-    routes: (page) =>
-      page.route("**/api/cost-axes", (route) =>
-        route.fulfill({
-          json: costAxisCatalog(
-            costAxisEntry("fine_steps", {
-              ledger: "burden",
-              label: FINE_STEP_AXIS_LABEL,
-              lens: {
-                band_labels: [
-                  "ほとんど無い",
-                  "とても少ない",
-                  "かなり少ない",
-                  "やや少ない",
-                  "ふつう",
-                  "やや多い",
-                  "かなり多い",
-                  "とても多い",
-                  "非常に多い",
-                ],
-                thresholds: [0.125, 0.375, 0.625, 0.875, 1.125, 1.375, 1.625, 1.875],
-              },
-            }),
-          ),
-        }),
-      ),
-  });
-
-  await page.getByRole("button", { name: /^負担で塗る:/ }).click();
-  await page.getByRole("radio", { name: FINE_STEP_AXIS_LABEL }).click();
-  await page.getByRole("button", { name: `${FINE_STEP_AXIS_LABEL}の凡例` }).click();
-  await expect(page.getByLabel("凡例の全段階をまとめて表示/非表示")).toBeVisible();
-
-  const rows = await page.evaluate(() => {
-    const header = [...document.querySelectorAll("label")].find((el) => el.textContent?.trim() === "凡例");
-    const list = header?.parentElement?.lastElementChild;
-    return [...((list?.children ?? []) as HTMLCollectionOf<HTMLElement>)].map((row) => ({
-      label: row.textContent?.trim() ?? "",
-      overflowPx: row.scrollWidth - row.clientWidth,
-      beyondViewportPx: Math.round(row.getBoundingClientRect().right - window.innerWidth),
-    }));
-  });
-
-  expect(rows.length).toBeGreaterThan(0);
-  expect(rows.filter((row) => row.overflowPx > 0 || row.beyondViewportPx > 0)).toEqual([]);
 });
 
 /** 候補0件の理由。1行に収まらない長さにして、折り返した全体が見えるかを見る（本番の文は使わない）。 */

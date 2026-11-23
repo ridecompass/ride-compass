@@ -2,11 +2,9 @@
 
 import { createElement, type ReactElement } from "react";
 import { RowMarksNote, useRowDescription, useRowPanel } from "@/features/map/LegendCheckboxList/LegendRow";
-import { FILTERED_LABEL } from "@/features/map/MapOverlayControls/OverlayLayerRow";
 import type { LensId } from "@/lib/mapDisplay/routeStyleModes";
 import type { WayValueCondition } from "@/lib/mapDisplay/mapLens";
 import { ToggleGroupItem } from "@/components/ui/ToggleGroup/ToggleGroup";
-import { textVariants } from "@/components/ui/Text/Text";
 import { axisIconFor } from "@/components/ui/icons/axisIconPalette";
 import { CompassNeedleIcon } from "@/components/ui/icons/icons";
 import { ClockIcon, SpeedGaugeIcon } from "@/components/ui/icons/lucideIcons";
@@ -49,15 +47,7 @@ function AxisIcon({ iconId }: { iconId?: string }) {
 }
 
 /** 選択肢の1行。チェックの代わりに1つだけ選ぶ印を出し、(i) は説明を、▶（選んでいる行だけ）は凡例を、行のすぐ下に開く。 */
-export function LensRow({
-  option,
-  panel,
-  filtered,
-}: {
-  option: LensOption;
-  panel: ReactElement | null;
-  filtered: boolean;
-}) {
+export function LensRow({ option, panel }: { option: LensOption; panel: ReactElement | null }) {
   const hint = useRowDescription(option.label, option.description, "この負担の種類の説明を、行のすぐ下に開きます。");
   const legend = useRowPanel(option.label, panel);
   return (
@@ -88,7 +78,6 @@ export function LensRow({
               </span>
             );
           })}
-          {filtered && <span className={textVariants({ variant: "note" })}>{FILTERED_LABEL}</span>}
         </ToggleGroupItem>
         {hint.toggle}
         {legend.toggle}

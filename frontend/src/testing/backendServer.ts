@@ -96,8 +96,6 @@ export function serveClientConfig(response: ClientConfigResponse = clientConfigR
 /** 費用の軸の一覧の取得に`response`を返す。 */
 export function serveCostAxisCatalog(response: CostAxisCatalogResponse = TWO_COST_AXES): void {
   onBackend("GET", "/api/cost-axes", () => Response.json(response));
-  // 凡例の目安（利用者の値で引く別の口）。目安を見るテストは自分で応える。
-  onBackend("GET", "/api/cost-axes/lens-equivalents", () => Response.json({}));
 }
 
 /** 届いた順に`responses`を返す（尽きたら最後のものを返し続ける）。 */

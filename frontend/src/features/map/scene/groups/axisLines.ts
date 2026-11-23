@@ -16,7 +16,7 @@ import { declareGroup, type SceneLayerEntry, type SceneSourceEntry } from "@/fea
 import { featureStatesByName } from "@/features/map/scene/sceneBuilders";
 import { LENS_LAYER_MIN_ZOOM } from "@/features/map/layers/mapLayers";
 import { missingExpression, wayValueExpressions, type WayValueFormula } from "@/features/map/scene/wayValueFormula";
-import { LEGEND_NO_DATA_KEY, NO_DATA_LEGEND_BAND, UNDETERMINED_LEGEND_BAND } from "@/lib/mapDisplay/mapColorLegend";
+import { NO_DATA_LEGEND_BAND, UNDETERMINED_LEGEND_BAND } from "@/lib/mapDisplay/mapColorLegend";
 import { bandStep, type ValueBand } from "@/lib/mapDisplay/valueScale";
 
 import { ROAD_LINE_SOURCE_ID } from "./roadLines";
@@ -39,8 +39,6 @@ export type AxisLineState = {
     readonly materials: WayMaterials;
     /** 今の範囲の材料を取りに行っている間か。 */
     readonly loading: boolean;
-    /** 凡例で隠した段の鍵。 */
-    readonly hiddenBandKeys: readonly string[];
   }[];
   readonly conditions: WayConditions;
   readonly sourceLayer: string;
@@ -67,7 +65,7 @@ function expressionsOf(axis: AxisLine) {
 
 /** 値の無い道を破線の線が描くか。取得中は取得中の色を見せる。 */
 function dashesMissing(axis: AxisLine): boolean {
-  return !axis.loading && !axis.hiddenBandKeys.includes(LEGEND_NO_DATA_KEY);
+  return !axis.loading;
 }
 
 /** 道の値を `let` で束ね、向きで決まらない道・値の無い道・それ以外の順に場合分けする。値の無い道を先に分けるので、
@@ -87,20 +85,13 @@ function byWayValue(
   ];
 }
 
-/** 段ごとの色。値が無い道と、まだ来ていない道は別の色にする。凡例で隠した段は透明にして下の路面の線を見せる。 */
+/** 段ごとの色。値が無い道と、まだ来ていない道は別の色にする。 */
 function colorExpression(axis: AxisLine): unknown {
-  const shown = (key: string, color: string) => (axis.hiddenBandKeys.includes(key) ? palette.semantic.hidden : color);
-  // 取得中の色は「値なし」を隠していても残す——消すと「まだ来ていない」と「隠した」が区別できなくなる。
-  // 破線の線が値の無い道を描くときは、実線の側は透明にする（重ねると破線が実線に埋もれる）。
-  const missingColor = axis.loading
-    ? palette.semantic.loading
-    : dashesMissing(axis)
-      ? palette.semantic.hidden
-      : shown(LEGEND_NO_DATA_KEY, NO_DATA_LEGEND_BAND.color);
+  // 値の無い道は破線の線が描くので、実線の側は透明にする（重ねると破線が実線に埋もれる）。
   return byWayValue(axis, (value) => ({
-    undetermined: shown(UNDETERMINED_LEGEND_BAND.key, UNDETERMINED_LEGEND_BAND.color),
-    missing: missingColor,
-    otherwise: bandStep(axis.bands, value, (band) => shown(band.key, band.color)),
+    undetermined: UNDETERMINED_LEGEND_BAND.color,
+    missing: axis.loading ? palette.semantic.loading : palette.semantic.hidden,
+    otherwise: bandStep(axis.bands, value, (band) => band.color),
   }));
 }
 

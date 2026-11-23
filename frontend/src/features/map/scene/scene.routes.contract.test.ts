@@ -65,20 +65,6 @@ function bindCurrentImplementation(map: unknown) {
 }
 
 describe("ルートの描画", () => {
-  // 3枚のどれかだけが絞られると、隠した段に縁取りだけが残るか、見えない段を押せてしまう。
-  it("凡例で段を隠すと、区間の縁取り・色分け線・当たり判定が同じ段を隠す", () => {
-    const { map, handle } = createRecordingMap();
-    const tell = bindCurrentImplementation(map);
-    const filter = ["!=", ["get", "band"], "hard"] as RouteState["hiddenBandFilter"];
-
-    tell({ segments: [SEGMENT] });
-    tell({ hiddenBandFilter: filter });
-
-    for (const role of ["detailCasing", "detailLine", "detailHit"]) {
-      expect(handle.layer(routeSceneLayerId(role))?.filter).toEqual(filter);
-    }
-  });
-
   // 重なると、往復で後に描く帰りの濃い線が、走り終えて薄めた行きの線を覆い、地図で走り終えた所が見えない。
   it("往復で同じ道を逆向きに通る区間の線は、進む向きの左へ縁取りの半分以上ずれて、行きと帰りが重ならずに並ぶ", () => {
     const { map, handle } = createRecordingMap();

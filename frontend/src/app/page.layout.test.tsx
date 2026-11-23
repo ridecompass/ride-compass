@@ -58,7 +58,7 @@ function serveWind() {
 }
 
 describe("画面の枠", () => {
-  it("地図の表示をまとめて戻す: 「表示」の一覧で行を全部消すとルートのほかの地図のレイヤーが消え、その一覧の絞り込みの解除は「負担で塗る」の凡例を数えず、そちらは「負担で塗る」の解除で戻す。右上のメニューの再描画は地図の描き直しを求める", async () => {
+  it("地図の表示をまとめて戻す: 「表示」の一覧で行を全部消すとルートのほかの地図のレイヤーが消える。右上のメニューの再描画は地図の描き直しを求める", async () => {
     const { user } = renderHome();
     const fromList = async <T,>(name: string, inspect: (button: HTMLButtonElement) => Promise<T> | T) => {
       await user.click(screen.getByRole("button", { name: "地図に出す情報" }));
@@ -66,7 +66,6 @@ describe("画面の枠", () => {
       await user.keyboard("{Escape}");
       return result;
     };
-    const canRun = (name: string) => fromList(name, (button) => !button.disabled);
     const run = (name: string) => fromList(name, (button) => user.click(button));
     // ルートの線は一覧の先頭の行が出し入れし、まとめて消す操作では消さない。
     const nonRouteLayers = () =>
@@ -81,18 +80,6 @@ describe("画面の枠", () => {
     await run("表示中の情報をすべて非表示");
     expect(nonRouteLayers()).toEqual([]);
     expect(mapOnScreen().visibleLayerIds()).toEqual(routeLayers);
-
-    expect(await canRun("絞り込みをすべて解除")).toBe(false);
-    await user.click(screen.getByRole("button", { name: /^負担で塗る: / }));
-    await user.click(await screen.findByRole("radio", { name: /登坂/ }));
-    await user.click(screen.getByRole("button", { name: "登坂の凡例" }));
-    await user.click(await screen.findByRole("checkbox", { name: "凡例の全段階をまとめて表示/非表示" }));
-    await user.keyboard("{Escape}");
-    expect(await canRun("絞り込みをすべて解除")).toBe(false);
-    await user.click(screen.getByRole("button", { name: /^負担で塗る: / }));
-    await user.click(screen.getByRole("button", { name: "絞り込みをすべて解除" }));
-    expect(screen.getByRole("button", { name: "絞り込みをすべて解除" })).toBeDisabled();
-    await user.keyboard("{Escape}");
 
     const before = mapOnScreen().styles.length;
     await user.click(screen.getByRole("button", { name: "メニュー" }));

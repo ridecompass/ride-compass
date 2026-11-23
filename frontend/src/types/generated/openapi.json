@@ -1483,95 +1483,6 @@
         }
       }
     },
-    "/api/cost-axes/lens-equivalents": {
-      "get": {
-        "operationId": "get_lens_equivalents_api_cost_axes_lens_equivalents_get",
-        "parameters": [
-          {
-            "name": "strength",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "number",
-              "default": 1.0,
-              "title": "Strength"
-            }
-          },
-          {
-            "name": "multipliers",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Multipliers"
-            }
-          },
-          {
-            "name": "disabled_axes",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Disabled Axes"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "additionalProperties": {
-                    "oneOf": [
-                      {
-                        "$ref": "#/components/schemas/ThresholdEquivalents"
-                      },
-                      {
-                        "$ref": "#/components/schemas/ExampleEquivalents"
-                      }
-                    ],
-                    "discriminator": {
-                      "propertyName": "kind",
-                      "mapping": {
-                        "thresholds": "#/components/schemas/ThresholdEquivalents",
-                        "examples": "#/components/schemas/ExampleEquivalents"
-                      }
-                    }
-                  },
-                  "title": "Response Get Lens Equivalents Api Cost Axes Lens Equivalents Get"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/api/admin/material-catalog/coverage": {
       "get": {
         "operationId": "get_material_coverage_api_admin_material_catalog_coverage_get",
@@ -2272,8 +2183,25 @@
             "type": "string",
             "title": "Icon Id"
           },
+          "scale": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LensScale"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "lens": {
-            "$ref": "#/components/schemas/LensBands"
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LensBands"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "additionalProperties": false,
@@ -2281,8 +2209,7 @@
         "required": [
           "label",
           "description",
-          "icon_id",
-          "lens"
+          "icon_id"
         ],
         "title": "AxisPresentation"
       },
@@ -2454,8 +2381,25 @@
             "type": "string",
             "title": "Icon Id"
           },
+          "scale": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LensScale"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "lens": {
-            "$ref": "#/components/schemas/LensBands"
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LensBands"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "burden": {
             "oneOf": [
@@ -2482,7 +2426,6 @@
           "label",
           "description",
           "icon_id",
-          "lens",
           "burden"
         ],
         "title": "BurdenAxis"
@@ -3187,30 +3130,6 @@
           "msm"
         ],
         "title": "DebugStatsResponse"
-      },
-      "ExampleEquivalents": {
-        "properties": {
-          "kind": {
-            "type": "string",
-            "const": "examples",
-            "title": "Kind",
-            "default": "examples"
-          },
-          "examples": {
-            "items": {
-              "$ref": "#/components/schemas/SecondsExample"
-            },
-            "type": "array",
-            "title": "Examples"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "kind",
-          "examples"
-        ],
-        "title": "ExampleEquivalents"
       },
       "ExternalCallStats": {
         "properties": {
@@ -4066,6 +3985,39 @@
           "wind_previous_run_from"
         ],
         "title": "LensMaterials"
+      },
+      "LensScale": {
+        "properties": {
+          "green": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "title": "Green"
+          },
+          "red": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "title": "Red"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "green",
+          "red"
+        ],
+        "title": "LensScale"
       },
       "LinearBurden": {
         "properties": {
@@ -6214,25 +6166,6 @@
         ],
         "title": "RouteWarningTimeline"
       },
-      "SecondsExample": {
-        "properties": {
-          "label": {
-            "type": "string",
-            "title": "Label"
-          },
-          "seconds_per_km": {
-            "type": "number",
-            "title": "Seconds Per Km"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "label",
-          "seconds_per_km"
-        ],
-        "title": "SecondsExample"
-      },
       "SucceededRunCounts": {
         "properties": {
           "id": {
@@ -6318,47 +6251,6 @@
         ],
         "title": "TableEntry"
       },
-      "ThresholdEquivalents": {
-        "properties": {
-          "kind": {
-            "type": "string",
-            "const": "thresholds",
-            "title": "Kind",
-            "default": "thresholds"
-          },
-          "fact": {
-            "type": "string",
-            "title": "Fact"
-          },
-          "unit": {
-            "type": "string",
-            "title": "Unit"
-          },
-          "values": {
-            "items": {
-              "anyOf": [
-                {
-                  "type": "number"
-                },
-                {
-                  "type": "null"
-                }
-              ]
-            },
-            "type": "array",
-            "title": "Values"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "kind",
-          "fact",
-          "unit",
-          "values"
-        ],
-        "title": "ThresholdEquivalents"
-      },
       "TimelineKind": {
         "type": "string",
         "enum": [
@@ -6435,9 +6327,12 @@
       },
       "TotalLens": {
         "properties": {
+          "lens_id": {
+            "type": "string",
+            "title": "Lens Id"
+          },
           "label": {
             "type": "string",
-            "minLength": 1,
             "title": "Label"
           },
           "description": {
@@ -6451,10 +6346,6 @@
           "lens": {
             "$ref": "#/components/schemas/LensBands"
           },
-          "lens_id": {
-            "type": "string",
-            "title": "Lens Id"
-          },
           "map_lens": {
             "$ref": "#/components/schemas/MapLens"
           }
@@ -6462,11 +6353,11 @@
         "additionalProperties": false,
         "type": "object",
         "required": [
+          "lens_id",
           "label",
           "description",
           "icon_id",
           "lens",
-          "lens_id",
           "map_lens"
         ],
         "title": "TotalLens"

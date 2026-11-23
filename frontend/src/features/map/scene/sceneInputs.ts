@@ -43,7 +43,6 @@ import type { BasemapLook } from "@/features/map/basemapTheme";
 import type { AvoidanceChoice } from "@/lib/roadAvoidance";
 import type { RouteState } from "./groups/routes";
 import { weatherElementKey, type WeatherState } from "./groups/weather";
-import { buildLegendFilterExpression } from "./sceneBuilders";
 import type { SceneInputs } from "./buildScene";
 
 /** ベクタタイル内のレイヤー名。源泉が配る値をそのまま使う。 */
@@ -109,7 +108,6 @@ type SceneWiringProps = {
   readonly routePath: readonly (readonly [number, number])[] | null;
 };
 
-const NO_KEYS: readonly string[] = [];
 const NO_MATERIALS: WayMaterials = new Map();
 
 function routeStateFrom(props: SceneWiringProps): RouteState {
@@ -123,10 +121,6 @@ function routeStateFrom(props: SceneWiringProps): RouteState {
   const composite = props.splicedRoute;
   const picked = props.selectedRouteSegment;
   const pickedSegment = picked !== null && segments.includes(picked.segment) ? picked.segment : null;
-  const hiddenBandFilter = buildLegendFilterExpression(
-    mode.legend,
-    look.hiddenLegendKeys[look.lens] ?? NO_KEYS,
-  ) as maplibregl.FilterSpecification | null;
   return {
     candidates: props.routes.map((route) => ({
       routeId: route.id,
@@ -158,7 +152,6 @@ function routeStateFrom(props: SceneWiringProps): RouteState {
     ...(mode.noDataExpression === undefined
       ? {}
       : { segmentNoData: mode.noDataExpression as maplibregl.ExpressionSpecification }),
-    ...(hiddenBandFilter === null ? {} : { hiddenBandFilter }),
     spliceBands: bands.map((band) => ({
       path: band.coordinates,
       properties: { index: band.index },
@@ -181,7 +174,6 @@ function axisStateFrom(props: SceneWiringProps, sourceLayer: string): AxisLineSt
       formula: lens.formula,
       materials: fetched?.materials ?? NO_MATERIALS,
       loading: fetched?.loading === true,
-      hiddenBandKeys: look.hiddenLegendKeys[lens.lensId] ?? NO_KEYS,
     };
   });
   return { axes, conditions: look.wayConditions, sourceLayer };

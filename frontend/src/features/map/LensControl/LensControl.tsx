@@ -2,14 +2,13 @@
 
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/Popover/Popover";
 import { useState } from "react";
-import LegendCheckboxList from "@/features/map/LegendCheckboxList/LegendCheckboxList";
 import { LEGEND_SWATCH_RING_CLASS, legendSwatchBackground, type LegendEntry } from "@/lib/mapDisplay/legendFilter";
 import { LAYER_DATA_STATUS_LABELS, layerDataStatusNotice, type LayerDataStatus } from "@/features/map/layers/mapLayers";
 import { UNSELECTED_LENS_ID, LENS_NEUTRAL_COLOR, type LensId } from "@/lib/mapDisplay/routeStyleModes";
 import { Button } from "@/components/ui/Button/Button";
 import { ToggleGroup } from "@/components/ui/ToggleGroup/ToggleGroup";
 import { Dot } from "@/components/ui/Dot/Dot";
-import { ClearAllFiltersIcon, ClearLensIcon } from "@/components/ui/icons/icons";
+import { ClearLensIcon } from "@/components/ui/icons/icons";
 import { BurdenPaintIcon } from "@/components/ui/icons/lucideIcons";
 import { cn } from "@/lib/cn";
 import { textVariants } from "@/components/ui/Text/Text";
@@ -26,15 +25,8 @@ interface LensControlProps {
   totalLabel: string | null;
   /** 今のレンズの凡例（ルートの前は道路、後はルートの線。どちらも呼ぶ側が組む）。 */
   legend: readonly LegendEntry[];
-  /** 凡例で隠している段（ルートの前後で共有する）。 */
-  hiddenLegendKeys: readonly string[];
-  onToggleLegendKey: (key: string) => void;
-  /** 全部の段をまとめて置き換える（段の細かい軸で「1つだけ見たい」を1つずつ外させない）。 */
-  onSetHiddenLegendKeys: (hiddenKeys: string[]) => void;
   /** ルート確定済みか（レンズを選んでいないときのピルの名前が、ルートの前後で変わる）。 */
   hasDetail: boolean;
-  /** 凡例の下に書く、周りの道の色の前提（`features/map/costLens.ts: costLensPremises`）。 */
-  premises: readonly string[];
   /** 周りの道の塗りが引いている値の扱いの但し書き（前に出た予報の風で塗っている等）。無ければnull。 */
   caveat: string | null;
   /** 選べるレンズが無い理由（費用の軸の一覧が届くまで・取れない間）。届いていればnull。 */
@@ -59,11 +51,7 @@ export default function LensControl({
   axisOptions,
   totalLabel,
   legend,
-  hiddenLegendKeys,
-  onToggleLegendKey,
-  onSetHiddenLegendKeys,
   hasDetail,
-  premises,
   caveat,
   catalogNotice,
   dataStatus,
@@ -80,29 +68,41 @@ export default function LensControl({
       : UNSELECTED_LABEL
     : (selected?.label ?? lens);
   const pillColor = selected?.color ?? LENS_NEUTRAL_COLOR;
-  // ピルの帯は色の段だけを並べる（受け皿の「データなし」は除く）。
+  // 色の帯は色の段だけを並べる（受け皿の「データなし」「向きで決まらない」は帯の下に並べる）。
   const bands = legend.filter((entry) => !entry.isFallback);
+  const extras = legend.filter((entry) => entry.isFallback);
 
-  // 選んでいる行の ▶ の中身。「表示」の一覧の凡例と同じ形（見出しのチェックと段ごとのチェック）と、前提の文。
+  // 選んでいる行の ▶ の中身。色の帯と、両端の段の名前（事実の値の範囲）と、受け皿の段と、前提の文。
   const legendPanel =
-    legend.length > 0 || premises.length > 0 || caveat ? (
-      <div
-        className="flex flex-col gap-1"
-        data-usage="チェックを外した段階は地図から隠れます。見出しのチェックで、その全部をまとめて切り替えます。"
-      >
-        {legend.length > 0 && (
-          <LegendCheckboxList
-            legend={legend}
-            hiddenKeys={hiddenLegendKeys}
-            onToggle={onToggleLegendKey}
-            onSetHidden={onSetHiddenLegendKeys}
-          />
+    legend.length > 0 || caveat ? (
+      <div className="flex flex-col gap-1" data-usage="色の帯は左ほど小さく、右ほど大きい負担です。">
+        {bands.length > 0 && (
+          <>
+            <span className="flex h-2.5 overflow-hidden rounded-[2px]" aria-hidden="true">
+              {bands.map((entry) => (
+                <span key={entry.key} className="flex-1" style={{ background: legendSwatchBackground(entry) }} />
+              ))}
+            </span>
+            <span className="flex justify-between gap-2 text-[length:var(--font-size-xs)] text-[var(--color-muted-strong)]">
+              <span>{bands[0].label}</span>
+              {bands.length > 1 && <span>{bands[bands.length - 1].label}</span>}
+            </span>
+          </>
         )}
-        {premises.map((premise) => (
-          <p key={premise} className="m-0 text-[length:var(--font-size-xs)] text-[var(--color-neutral)]">
-            {premise}
-          </p>
-        ))}
+        {extras.length > 0 && (
+          <span className="flex flex-wrap gap-x-3 text-[length:var(--font-size-xs)] text-[var(--color-muted)]">
+            {extras.map((entry) => (
+              <span key={entry.key} className="inline-flex items-center gap-1">
+                <span
+                  aria-hidden="true"
+                  className={cn("h-2 w-3 rounded-[1px]", LEGEND_SWATCH_RING_CLASS)}
+                  style={{ background: legendSwatchBackground(entry) }}
+                />
+                {entry.label}
+              </span>
+            ))}
+          </span>
+        )}
         {caveat && <p className={cn(textVariants({ variant: "warning" }), "m-0")}>{caveat}</p>}
       </div>
     ) : null;
@@ -139,11 +139,7 @@ export default function LensControl({
                 小
                 <span className="flex h-1.5 w-12 min-w-0 shrink overflow-hidden rounded-[1px]">
                   {bands.map((entry) => (
-                    <span
-                      key={entry.key}
-                      className={cn("flex-1", hiddenLegendKeys.includes(entry.key) && "opacity-25")}
-                      style={{ background: legendSwatchBackground(entry) }}
-                    />
+                    <span key={entry.key} className="flex-1" style={{ background: legendSwatchBackground(entry) }} />
                   ))}
                 </span>
                 大
@@ -182,12 +178,7 @@ export default function LensControl({
             usage={`押した負担の種類の${LENS_QUANTITY_LABEL}で、地図の道路[ルートを作った後はルートの線]を塗ります。選んでいる行をもう一度押すと外れます。`}
           >
             {axisOptions.map((option) => (
-              <LensRow
-                key={option.id}
-                option={option}
-                panel={option.id === lens ? legendPanel : null}
-                filtered={option.id === lens && hiddenLegendKeys.length > 0}
-              />
+              <LensRow key={option.id} option={option} panel={option.id === lens ? legendPanel : null} />
             ))}
           </ToggleGroup>
           <div className="mt-1.5 flex justify-end gap-1 border-t border-[var(--color-border)] pt-1.5">
@@ -199,15 +190,6 @@ export default function LensControl({
               usage={`選んでいる負担の種類を外します。外すと、ルートを作る前は道路を塗らず、作った後は${totalLabel ?? "1色"}で塗ります。`}
             >
               <ClearLensIcon />
-            </Button>
-            <Button
-              size="panelIcon"
-              aria-label="絞り込みをすべて解除"
-              onClick={() => onSetHiddenLegendKeys([])}
-              disabled={hiddenLegendKeys.length === 0}
-              usage="凡例のチェックを外して隠した段階を、まとめて地図に戻します。"
-            >
-              <ClearAllFiltersIcon />
             </Button>
           </div>
         </PopoverContent>

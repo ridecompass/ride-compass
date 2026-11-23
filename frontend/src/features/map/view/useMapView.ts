@@ -25,7 +25,7 @@ import { isLegendFiltered } from "@/features/map/MapOverlayControls/OverlayLayer
 import { mapDisplay } from "@/types/generated/mapDisplay";
 import { useClientConfig } from "@/hooks/useClientConfig";
 import { useCostAxisCatalog } from "@/hooks/useCostAxisCatalog";
-import { costLensOptions, costLensPremises } from "@/features/map/costLens";
+import { costLensOptions } from "@/features/map/costLens";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { useWayMaterials } from "@/features/map/useWayMaterials";
 import { useDynamicWeatherLayers } from "@/features/map/useDynamicWeatherLayers";
@@ -36,24 +36,23 @@ import { avoidanceChoiceOf, type RoadTabMap } from "@/lib/roadAvoidance";
 import type { MapTheme } from "@/lib/mapTheme";
 import type { RideConditions } from "@/features/map/regionApi";
 import { snapDeg } from "@/lib/cardinalLabel";
-import { countsAxis, DISABLED_LABEL } from "@/lib/costPreference";
+import { countsAxis, DISABLED_LABEL, STANDARD_COST_FACTOR } from "@/lib/costPreference";
 import type { WayValueCondition } from "@/lib/mapDisplay/mapLens";
 import { useMapCatalog } from "@/features/map/useMapCatalog";
 import { initiallyHiddenLegendKeys } from "@/features/map/scene/legends";
 import { WAY_BEARING_STEP_DEG } from "@/features/map/mapHeading";
 
-import { hiddenKeysOf, presentHiddenKeys, toggleHiddenKey, withHiddenKeys } from "./legendFilters";
+import { hiddenKeysOf, toggleHiddenKey, withHiddenKeys } from "./legendFilters";
 import { lensLegend } from "./lens";
 import type { HiddenLegendKeys, MapLook } from "./mapLook";
 import { overlayChips } from "./overlayChips";
 import type { CostPreference } from "@/types/route";
-import { useLensEquivalents } from "@/features/map/useLensEquivalents";
 import { useHazardRanges } from "@/features/map/useHazardRanges";
 import { DISASTER_LAYER_ID } from "@/features/map/layers/dynamicWeather";
 
 /** 凡例のチェックを地図の絞り込みへ反映するまでの遅れ。連続で何行も外す操作を、描き直し
  * 1回へまとめる（チェックの見た目は即座に変わる）。 */
-export const LEGEND_FILTER_DEBOUNCE_MS = 400;
+const LEGEND_FILTER_DEBOUNCE_MS = 400;
 
 const NO_STORED_VALUES = {};
 interface MapViewInputs {
@@ -182,7 +181,6 @@ export function useMapView({
   const painted = surroundingsShown ? lens : null;
   // 道ごとの材料は、全道路を塗っているレンズの分だけ取る（塗っていないレンズの値は地図に出ない。表示中のものだけ叩く）。
   const fetchLenses = useMemo(() => lenses.filter((candidate) => candidate.lensId === painted), [lenses, painted]);
-  const lensEquivalents = useLensEquivalents(costPreference, fetchLenses.length > 0);
   // 走っていない間の走る向きは、地図の上の向きそのもの。向きを段に丸めるのは、回転や走行中の細かな向きの揺れのたびに式の木を
   // 解き直さないため。式の木と道の窓は同じ丸めた向きで値を求める。
   const bearingDeg = snapDeg(riding?.bearingDeg ?? viewport?.bearing ?? 0, WAY_BEARING_STEP_DEG);
@@ -245,7 +243,6 @@ export function useMapView({
   );
 
   const legend = totalCounted ? lensLegend(lens, hasDetail, mapCatalog) : [];
-  const lensHidden = presentHiddenKeys(legend, hiddenKeysOf(hidden, lens));
   const lensFetch = wayMaterials.get(lens);
   const chips = overlayChips({
     layers: mapCatalog.layers,
@@ -260,9 +257,6 @@ export function useMapView({
   const setHiddenFor = (key: string, keys: readonly string[]) => setHidden((prev) => withHiddenKeys(prev, key, keys));
   const toggleHiddenFor = (key: string, rowKey: string) => setHidden((prev) => toggleHiddenKey(prev, key, rowKey));
 
-  // 色分けの凡例が隠した段の保存先の鍵（色分けの選択肢）。「表示」の絞り込みの解除は、これ以外の鍵だけを戻す。
-  const lensKeys = new Set<string>([...lenses.map((candidate) => candidate.lensId), UNSELECTED_LENS_ID]);
-
   return {
     look,
     lensControl: {
@@ -274,12 +268,20 @@ export function useMapView({
       ),
       totalLabel: totalCounted ? (totalLens?.label ?? null) : null,
       legend,
-      hiddenLegendKeys: lensHidden,
-      onToggleLegendKey: (key) => toggleHiddenFor(lens, key),
-      onSetHiddenLegendKeys: (keys) => setHiddenFor(lens, keys),
       hasDetail,
-      premises: costLensPremises(painted, costCatalog, lensEquivalents),
-      caveat: windPreviousRunNotice(lensFetch?.windPreviousRunFrom),
+      caveat:
+        [
+          // 段の名前の事実は、標準の負担の割合で求めたもの。軸のレンズは割合を変えると同じ事実の道が別の段で塗られる。
+          painted !== null &&
+          painted !== totalLens?.axisId &&
+          (costPreference.strength !== STANDARD_COST_FACTOR ||
+            (costPreference.multipliers[painted] ?? STANDARD_COST_FACTOR) !== STANDARD_COST_FACTOR)
+            ? "凡例の事実は標準の負担の割合での値です。いまは「負担」タブで割合を変えているので、色はその割合で塗っています。"
+            : null,
+          windPreviousRunNotice(lensFetch?.windPreviousRunFrom),
+        ]
+          .filter((line) => line !== null)
+          .join(" ") || null,
       catalogNotice: !costCatalog.loaded
         ? costCatalog.failed
           ? "負担の種類の一覧を取得できないため、塗る負担を選べません。"
@@ -313,13 +315,9 @@ export function useMapView({
           ...prev,
           ...Object.fromEntries(chips.map((chip) => [chip.id, false])),
         })),
-      // 「表示」の絞り込みだけを数え、戻す（色分けの凡例は色分けの中で戻す）。
       anyLegendHidden: chips.some(isLegendFiltered),
       // 最初に隠す行を持つ層も、空の並びで「出す」と覚える。
-      onShowAllLegendRows: () =>
-        setHidden((prev) =>
-          Object.fromEntries(Object.entries(prev).map(([key, keys]) => [key, lensKeys.has(key) ? keys : []])),
-        ),
+      onShowAllLegendRows: () => setHidden((prev) => Object.fromEntries(Object.keys(prev).map((key) => [key, []]))),
     },
     lensConditions: lenses.find((candidate) => candidate.lensId === painted)?.conditions ?? [],
     redrawMap: () => setRefreshToken((token) => token + 1),

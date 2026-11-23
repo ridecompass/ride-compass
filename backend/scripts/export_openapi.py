@@ -155,7 +155,6 @@ from app.domain.region import (
 from app.domain.leg_costs import DURATION_ESTIMATE_WORDING, MISSING_TRAVEL_DATA_WORDING
 from app.domain.route_search import CANDIDATE_ORDER_WORDING
 from app.domain.cost_axes import LENS_QUANTITY_LABEL, LENS_UNIT
-from app.domain.lens_equivalents import LENS_EQUIVALENTS_CONDITION_WORDING
 from app.config import Settings
 from app.domain.cost_preference import COST_MULTIPLIER_LEVELS, COST_STRENGTH_LEVELS, DISABLED_LABEL, STANDARD_COST_FACTOR
 from app.domain.tuning import client_tuning_ids
@@ -623,10 +622,9 @@ def main() -> None:
             "candidate_order_wording": CANDIDATE_ORDER_WORDING,
             # 所要時間の計算が値の無い区間をどう数えるかの文。結果の「平均で計算した道のり」の注意の詳しい説明に出す。
             "missing_travel_data_wording": MISSING_TRAVEL_DATA_WORDING,
-            # 地図のレンズ（総合と費用の軸ごと）の量の名前と単位と、凡例の目安の条件の文。レンズを述べる画面の文が差し込む。
+            # 地図のレンズ（総合と費用の軸ごと）の量の名前と単位。レンズを述べる画面の文が差し込む。
             "lens_quantity_label": LENS_QUANTITY_LABEL,
             "lens_unit": LENS_UNIT,
-            "lens_equivalents_condition_wording": LENS_EQUIVALENTS_CONDITION_WORDING,
             # フロントが使う較正値のid（値は持たない。フロントはidの型にだけ使う）。効いている値はGET /api/client-configが
             # 返し、取れるまではその値を使う機能を出さない。
             "client_tuning": dict.fromkeys(client_tuning_ids()),
