@@ -16,6 +16,7 @@ from app.api.dependencies import get_amedas_service, get_jma_tile_prewarm
 from app.api.routers import api_router
 from app.config import settings
 from app.infrastructure.database import get_session_factory
+from app.infrastructure.debug_log import log_window_summary
 from app.infrastructure.debug_control import install_ring_buffer_handler
 from app.infrastructure.http_client import get_http_client
 from app.infrastructure import region_tile_cache, road_network_store
@@ -158,10 +159,14 @@ async def lifespan(app: FastAPI):
         run_date=datetime.now(),
         id="prune_stale_disk_generations",
     )
+    # 時計の10分ちょうどで区切り、本番のログの行が同じ区切りで並ぶようにする。
+    scheduler.add_job(log_window_summary, trigger="cron", minute="*/10", id="log_window_summary")
     scheduler.start()
     yield
     # 先に定期ジョブを止める。逆にすると、閉じたあとに走り出したジョブが閉じたクライアントで外部を呼ぶ。
     scheduler.shutdown(wait=False)
+    # デプロイで入れ替わる直前の区切りの分も、前後の比べに残す。
+    log_window_summary()
     await close_process_resources()
     # lifespanは1プロセスで何度も通りうる（テスト等）。凍らせたものを戻し、通るたびに循環のゴミが溜まらないようにする。
     gc.unfreeze()

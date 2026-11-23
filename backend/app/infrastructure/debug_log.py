@@ -2,10 +2,13 @@
 （ログレベルの方針は .claude/rules/logging.md）。
 
 失敗はdebug_modeに関わらず常時WARNINGで出す。集計はプロセス内カウンタに持ち、`/api/debug/stats`が読む。
+同じ記録を区切りごとにも集め、`log_window_summary`が区切りの間の分をカテゴリごとに1行のINFOで出す。
 """
 
 import logging
+import math
 import threading
+from bisect import bisect_left
 from collections import defaultdict
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -75,6 +78,56 @@ _lock = threading.Lock()
 _external_stats: defaultdict[str, ExternalCallStats] = defaultdict(_empty_stats)
 _rate_limit_rejections: defaultdict[str, int] = defaultdict(int)
 
+# 区切りの所要の分布の刻みの上端（ミリ秒）。区切りの中の値を全部持たずに分位点を出すため、度数だけを持つ。
+# 隣の刻みとの比が1.1なので、分位点は刻みの上端で、真の値より最大で1割大きく出る。最後の刻みより遅い値は最大の値で表す。
+LATENCY_BUCKET_UPPER_MS: tuple[int, ...] = tuple(sorted({math.ceil(1.1**k) for k in range(121)}))
+
+
+class _LatencyHistogram:
+    def __init__(self) -> None:
+        self.counts = [0] * (len(LATENCY_BUCKET_UPPER_MS) + 1)
+        self.n = 0
+        self.max_ms = 0
+
+    def add(self, ms: int) -> None:
+        self.counts[bisect_left(LATENCY_BUCKET_UPPER_MS, ms)] += 1
+        self.n += 1
+        self.max_ms = max(self.max_ms, ms)
+
+    def quantile_ms(self, q: float) -> int:
+        """`q`分位点を含む刻みの上端（最大の値を超えない）。"""
+        rank = max(1, math.ceil(q * self.n))
+        seen = 0
+        for index, count in enumerate(self.counts):
+            seen += count
+            if seen >= rank:
+                break
+        upper = LATENCY_BUCKET_UPPER_MS[index] if index < len(LATENCY_BUCKET_UPPER_MS) else self.max_ms
+        return min(upper, self.max_ms)
+
+    def note(self) -> str:
+        return f"n:{self.n},p50:{self.quantile_ms(0.5)},p90:{self.quantile_ms(0.9)},max:{self.max_ms}"
+
+
+class _WindowStats:
+    """カテゴリ1つの、1区切りの間の集計。所要は持ちに当たった・当たらなかった・持ちを見ない要求で分ける。"""
+
+    def __init__(self) -> None:
+        self.calls = 0
+        self.errors = 0
+        self.latency: dict[str, _LatencyHistogram] = defaultdict(_LatencyHistogram)
+
+    def note(self) -> str:
+        hits, misses = (self.latency[group].n if group in self.latency else 0 for group in ("hit", "miss"))
+        hit_rate = f"{hits / (hits + misses):.3f}" if hits + misses else "-"
+        groups = " ".join(f"{group}_ms={self.latency[group].note()}"
+                          for group in ("hit", "miss", "nocache") if group in self.latency)
+        return f"calls={self.calls} errors={self.errors} hit_rate={hit_rate} {groups}"
+
+
+_window: defaultdict[str, _WindowStats] = defaultdict(_WindowStats)
+_window_started = start_timer()
+
 
 def error_type_label(exc: BaseException) -> str:
     """例外を`/api/debug/stats`へ出しても安全な粗いラベルへ変換する。
@@ -118,6 +171,10 @@ def _record(category: str, elapsed_ms: int, fields: dict, error: bool) -> None:
         stats.avg_ms = round(stats.total_ms / stats.calls)
         lookups = stats.cache_hits + stats.cache_misses
         stats.cache_hit_rate = round(stats.cache_hits / lookups, 3) if lookups else None
+        window = _window[category]
+        window.calls += 1
+        window.errors += int(error)
+        window.latency[cache if cache in ("hit", "miss") else "nocache"].add(elapsed_ms)
 
 
 def mark_failed(fields: dict, exc: BaseException) -> None:
@@ -146,6 +203,17 @@ def get_stats() -> StatsSnapshot:
             external={category: stats.model_copy(deep=True) for category, stats in sorted(_external_stats.items())},
             rate_limit_rejections=dict(_rate_limit_rejections),
         )
+
+
+def log_window_summary() -> None:
+    """前に呼んでから今までの区切りの集計を、カテゴリごとに1行のINFOで出して空にする。呼んだ間に記録の無いカテゴリは出さない。"""
+    global _window, _window_started
+    with _lock:
+        window, _window = _window, defaultdict(_WindowStats)
+        window_s = round(elapsed_ms(_window_started) / 1000)
+        _window_started = start_timer()
+    for category, stats in sorted(window.items()):
+        logger.info("[summary:%s] window_s=%d %s", category, window_s, stats.note())
 
 
 @contextmanager

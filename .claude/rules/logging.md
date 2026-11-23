@@ -39,7 +39,7 @@ paths:
 
 `app/infrastructure/debug_log.py: log_external_call(category, **fields)`で囲む。
 成功はDEBUG、失敗（例外 or `fields["result"]="error"`）はWARNINGが自動で出て、
-`/api/debug/stats`の統計（呼び出し数・エラー数・キャッシュヒット率・平均/最大所要時間）にも自動集計される。
+`/api/debug/stats`の統計（呼び出し数・エラー数・キャッシュヒット率・平均/最大所要時間）と、10分ごとに種類ごとの1行のINFO（`debug_log.py: log_window_summary`）にも自動集計される。
 
 - カテゴリ名は`ドメイン:サービス名`形式（例: `msm:read`, `weather:jma-tile`）。
 - キャッシュを挟む場合は`fields["cache"] = "hit" / "miss"`を必ず設定する。
