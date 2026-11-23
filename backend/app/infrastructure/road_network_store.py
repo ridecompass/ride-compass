@@ -33,6 +33,7 @@ from app.domain.elevation_profile import grade_distribution
 from app.domain.road_network import RoadNetwork
 from app.domain.search_graph import run_starts
 from app.domain.traffic import travel_allowed
+from app.domain.tuning import STOP_CLUSTER_DISTANCE_ID
 from app.infrastructure.cache_identity import shape_digest
 from app.infrastructure.data_paths import DATA_DIR
 from app.infrastructure.road_graph_repository import NETWORK_SQL_SOURCES, RoadGraphRepository
@@ -218,8 +219,8 @@ async def build(repository: RoadGraphRepository, revision: int) -> RoadNetwork:
     """DBから道路網全体を読み、`revision`の世代の`RoadNetwork`を組む。較正値は、読む表を作り直したときに使った値で読む。"""
     started = time.monotonic()
     nodes = await _read_nodes(repository)
-    edges, dropped_without_endpoint = await _read_directed_edges(
-        repository, nodes["node_osm_id"], await repository.get_network_tuning())
+    tuning = await repository.get_network_tuning()
+    edges, dropped_without_endpoint = await _read_directed_edges(repository, nodes["node_osm_id"], tuning)
     topology_s = time.monotonic() - started
     logger.info(
         "道路網のつながりを読みました ノード=%d 有向の区間=%d 端点のノードが無く落とした有向の区間=%d %.0f秒",
@@ -229,7 +230,8 @@ async def build(repository: RoadGraphRepository, revision: int) -> RoadNetwork:
     materials = await _read_materials(repository, edges["edge_way_id"], edges["edge_segment"], edges["edge_forward"])
     logger.info(
         "道路網の材料を読みました 有向の区間=%d %.0f秒", len(edges["edge_way_id"]), time.monotonic() - started - topology_s)
-    return RoadNetwork(revision=revision, **nodes, **edges, **materials)
+    return RoadNetwork(revision=revision, stop_cluster_distance_m=tuning[STOP_CLUSTER_DISTANCE_ID],
+                       **nodes, **edges, **materials)
 
 
 #: `RoadNetwork`の欄 → (ノードの行の列, 型)。

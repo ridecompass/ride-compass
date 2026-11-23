@@ -16,7 +16,7 @@ from tests.tuning_fixture import TUNING
 
 pytestmark = pytest.mark.asyncio(loop_scope="module")
 
-_PARAM = "turn.right_seconds"
+_PARAM = "turn.slow_right_seconds"
 
 
 async def test_a_written_value_reaches_the_running_value(road_graph_session: AsyncSession):

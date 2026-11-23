@@ -15,6 +15,7 @@ from app.domain.elevation_profile import grade_distribution, interval_grade
 from app.domain.geo import bearings_between, haversine_distance_km_pairs
 from app.domain.material_catalog import GRADIENT_PERCENT
 from app.domain.road_network import RoadNetwork
+from tests.tuning_fixture import TUNING
 
 
 @dataclass(frozen=True)
@@ -74,7 +75,7 @@ def road_network(
     classes = {name: CategoricalColumn.encode(values(rows)) for name, values in (categorical or {}).items()}
 
     return RoadNetwork(
-        revision=revision,
+        revision=revision, stop_cluster_distance_m=TUNING["stop.cluster_distance_m"],
         node_osm_id=node_ids, node_lat=lat, node_lon=lon,
         node_has_signals=np.isin(node_ids, list(signal_nodes)),
         node_max_rank=np.array([(max_rank_of or {}).get(int(osm), 0) for osm in node_ids], dtype=np.int64),

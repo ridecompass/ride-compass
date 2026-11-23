@@ -47,6 +47,9 @@ class RoadNetwork:
     """`revision`は作った時点の派生データの世代（`derived_data_meta.revision`）。"""
 
     revision: int
+    # 停止の点を1つの場所にまとめる距離（較正値`stop.cluster_distance_m`の、作り直しに使った値）。信号の頂点どうしを結ぶ区間が
+    # これより短ければ、同じ交差点の中を進む区間。
+    stop_cluster_distance_m: float
 
     node_osm_id: np.ndarray  # int64, 昇順
     node_lat: np.ndarray  # float64

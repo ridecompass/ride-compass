@@ -125,7 +125,7 @@ def test_tree_cost_bound_covers_the_waits_and_the_dearest_time_bin():
         structure, cost, statics.edge_length_m, out_states(lazy, "a"), lazy.node_count,
         cost_limit=bound, edge_seconds=np.ones((2, structure.state_count)), bin_seconds=1.5, transition_cost=structure.turn_seconds
     )
-    assert tree.state_cost[last] == pytest.approx(10.0 * 3 + 100.0 + 2 * TURN_SPEC.left.expected_seconds + TURN_SPEC.right.expected_seconds)
+    assert tree.state_cost[last] == pytest.approx(10.0 * 3 + 100.0 + 2 * TURN_SPEC.slow_left.expected_seconds + TURN_SPEC.slow_right.expected_seconds)
 
 
 def test_tree_never_enters_a_non_finite_cost_edge():
@@ -171,8 +171,8 @@ def test_tree_adds_the_transition_cost_to_the_cost_and_the_turn_time_to_the_seco
         structure, cost, statics.edge_length_m, np.array([states["WC"]], dtype=np.int64),
         lazy.node_count, edge_seconds=seconds, bin_seconds=1000.0, transition_cost=structure.turn_seconds + 4.0,
     )
-    assert tree.state_cost[states["CN"]] == pytest.approx(1.0 + TURN_SPEC.left.expected_seconds + 4.0 + 1.0)
-    assert tree.state_seconds[states["CN"]] == pytest.approx(10.0 + TURN_SPEC.left.expected_seconds + 10.0)
+    assert tree.state_cost[states["CN"]] == pytest.approx(1.0 + TURN_SPEC.slow_left.expected_seconds + 4.0 + 1.0)
+    assert tree.state_seconds[states["CN"]] == pytest.approx(10.0 + TURN_SPEC.slow_left.expected_seconds + 10.0)
 
 
 def _line_bins():

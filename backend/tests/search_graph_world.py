@@ -12,8 +12,9 @@ from typing import NamedTuple
 
 import numpy as np
 
-from app.domain import search_graph, turn_structure
-from app.domain.traffic import StopEvent
+from app.domain import search_graph, stop_events, turn_structure
+from app.domain.traffic import NO_EVENT, StopEvent
+from tests.tuning_fixture import TUNING
 
 
 class EdgeSpec(NamedTuple):
@@ -113,15 +114,29 @@ def _event(wait_seconds: float, kickoffs: float = 1.0) -> StopEvent:
     return StopEvent(share=1.0, wait_seconds=wait_seconds, kickoffs=kickoffs)
 
 
+def _waits(seconds):
+    """待ちの表の全部の升（`seconds`に無い升は何も起きない）。"""
+    return {passage: _event(seconds[passage]) if passage in seconds else NO_EVENT
+            for passage in (*stop_events.REFERENCE_PASSAGES, *stop_events.WAIT_PASSAGES)}
+
+
 # ターンの費用をすべて0にする仕様（ターン以外の挙動を見るとき用）。
 FLAT_SPEC = turn_structure.TurnCostSpec(
-    left=_event(0.0), right=_event(0.0), uturn=_event(0.0), straight_max_deg=180.0,
-    major_crossing=_event(0.0), major_turn=_event(0.0),
+    slow_left=_event(0.0), slow_right=_event(0.0), uturn=_event(0.0), straight_max_deg=180.0, waits=_waits({}),
 )
-# ターンの種別が全部違う値になる仕様。
+# ターンの種別と待ちの表の升が全部違う値になる仕様。信号なしで上位の道を渡らない升は0（曲がりの減速だけ）。
 TURN_SPEC = turn_structure.TurnCostSpec(
-    left=_event(5.0, kickoffs=0.75), right=_event(3.0), uturn=_event(20.0), straight_max_deg=30.0,
-    major_crossing=_event(7.0), major_turn=_event(11.0),
+    slow_left=_event(5.0, kickoffs=0.75), slow_right=_event(3.0), uturn=_event(20.0), straight_max_deg=30.0,
+    waits=_waits({
+        ("unsignalized", "large", "yield", "straight"): 7.0, ("unsignalized", "large", "yield", "left"): 11.0,
+        ("unsignalized", "large", "yield", "right"): 13.0, ("unsignalized", "small", "yield", "straight"): 1.0,
+        ("unsignalized", "small", "yield", "left"): 1.5, ("unsignalized", "small", "yield", "right"): 2.5,
+        ("signal", "large", "priority", "left"): 2.0, ("signal", "large", "priority", "right"): 19.0,
+        ("signal", "large", "yield", "straight"): 17.0, ("signal", "large", "yield", "left"): 29.0,
+        ("signal", "large", "yield", "right"): 23.0, ("signal", "small", "priority", "left"): 3.0,
+        ("signal", "small", "priority", "right"): 4.0, ("signal", "small", "yield", "straight"): 31.0,
+        ("signal", "small", "yield", "left"): 37.0, ("signal", "small", "yield", "right"): 41.0,
+    }),
 )
 
 
@@ -146,6 +161,7 @@ def build_all(graph, spec=FLAT_SPEC, edge_rank=None, node_has_signal=None, node_
         np.zeros(node_count, dtype=bool) if node_has_signal is None else node_has_signal,
         np.zeros(node_count, dtype=np.int64) if node_db_rank is None else node_db_rank,
         branch_counts(graph.edge_from, graph.edge_to, node_count),
+        np.asarray(graph.distance_m, dtype=np.float64)[lazy.graph.edge_rows], TUNING["stop.cluster_distance_m"],
     )
     return lazy, statics, structure
 

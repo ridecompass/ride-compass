@@ -22,6 +22,14 @@ from dataclasses import dataclass
 from enum import Enum
 from types import MappingProxyType
 
+from app.domain.stop_events import (
+    STOP_EVENT_KINDS,
+    EventGroup,
+    StopEventKind,
+    event_seconds_parameter_id,
+    event_share_parameter_id,
+)
+
 
 class TuningEffect(Enum):
     """値を変えたとき、効くまでに何が要るか。
@@ -81,44 +89,25 @@ class TuningParameter:
             raise ValueError(f"較正値の宣言に空の項目がある: {self.id!r}")
 
 
-def event_seconds_parameter_id(group: str, name: str) -> str:
-    """止まる出来事（`group`は`stop`＝停止要因・`turn`＝曲がる所、`name`は種類）の、止まった（減速した）ときの待ちの
-    較正値のid（綴りを組み立てる場所を1つにする）。"""
-    return f"{group}.{name}_seconds"
-
-
-def event_share_parameter_id(group: str, name: str) -> str:
-    """止まる出来事の、止まる割合の較正値のid。"""
-    return f"{group}.{name}_share"
-
-
-def _event_parameters(group: str, name: str, labels: tuple[str, str], description: str) -> tuple[TuningParameter, TuningParameter]:
-    """止まる出来事1種類ぶんの宣言（止まる割合と、止まった・減速したときの待ち。`labels`はその2つの名前）。所要時間は
-    割合 × 待ち、漕ぎ出しの体力は割合ぶん数える（`domain/traffic.py: StopEvent`）。"""
+def _event_parameters(kind: StopEventKind) -> tuple[TuningParameter, TuningParameter]:
+    """止まる出来事1種類ぶんの宣言（止まる割合と、止まった・減速したときの待ち）。所要時間は割合 × 待ち、漕ぎ出しの体力は
+    割合ぶん数える（`domain/traffic.py: StopEvent`）。停止要因の名前は、名前へ添える対象（`domain/tuning_labels.py`）で示す。"""
+    share_label, seconds_label = (("止まる割合", "止まったときの待ち") if kind.group == "stop"
+                                  else (f"{kind.label}の割合", kind.label))
     return (
         TuningParameter(
-            event_share_parameter_id(group, name), labels[0], "", TuningEffect.IMMEDIATE,
+            event_share_parameter_id(kind.group, kind.name), share_label, "", TuningEffect.IMMEDIATE,
             "通るたびに止まる（減速する）割合。所要時間と漕ぎ出しの体力に同じ割合を使う。",
         ),
-        TuningParameter(event_seconds_parameter_id(group, name), labels[1], "秒", TuningEffect.IMMEDIATE,
-                        description),
+        TuningParameter(event_seconds_parameter_id(kind.group, kind.name), seconds_label, "秒", TuningEffect.IMMEDIATE,
+                        kind.description),
     )
 
 
-def _stop_parameters(kind: str, description: str) -> tuple[TuningParameter, TuningParameter]:
-    """停止要因1種別ぶんの宣言。種別（`POI_COUNT_KINDS`のキー）は名前へ添える対象（`domain/tuning_labels.py`）で示す。"""
-    return _event_parameters("stop", kind, ("止まる割合", "止まったときの待ち"), description)
+def _event_group_parameters(group: EventGroup) -> tuple[TuningParameter, ...]:
+    return tuple(p for kind in STOP_EVENT_KINDS if kind.group == group for p in _event_parameters(kind))
 
 
-def _turn_parameters(name: str, label: str, description: str) -> tuple[TuningParameter, TuningParameter]:
-    """曲がる所の出来事1種類ぶんの宣言。"""
-    return _event_parameters("turn", name, (f"{label}の割合", label), description)
-
-
-#: 説明の文が名指す較正値のid。宣言と説明が同じ綴りを引く。
-_MAJOR_CROSSING_ID = event_seconds_parameter_id("turn", "major_crossing")
-_STOP_ID = event_seconds_parameter_id("stop", "stop")
-_SIGNAL_ID = event_seconds_parameter_id("stop", "signal")
 #: 基準の転がり抵抗の較正値のid。
 BASE_CRR_ID = "speed.crr"
 _CRR_GRAVEL_ID = "speed.crr_gravel"
@@ -154,40 +143,15 @@ ELEVATION_PROFILE_TOLERANCE_ID = "elevation.profile_tolerance_m"
 
 
 TUNING_PARAMETERS: tuple[TuningParameter, ...] = (
-    # --- 曲がる所の出来事（方位差で決まる。割合 × 待ちが所要時間、割合が漕ぎ出しの体力） ---
-    *_turn_parameters(
-        "left", "左折", "左折で減速して失う時間（止まらず減速する出来事）。",
-    ),
-    *_turn_parameters(
-        "right", "右折", "右折で止まって待つ時間。自転車は交差点の側端に沿って曲がる（道路交通法第34条第3項。二段階右折）ので、"
-        "止まる出来事として数える。",
-    ),
-    *_turn_parameters(
-        "uturn", "Uターン", "折り返し1回の罰。実際に失う時間ではなく、行き止まりのほかで選ばせないための大きな値なので、"
-        "予想の所要時間には入れず、探索の費用（所要時間だけで選ぶ経路の重みも）にだけ足す。",
-    ),
+    # --- 曲がる所の出来事（方位差で決まる。種類は`domain/stop_events.py: STOP_EVENT_KINDS`が正本） ---
+    *_event_group_parameters("turn"),
     TuningParameter(
         "turn.straight_max_deg",
         "直進とみなす方位差", "度", TuningEffect.IMMEDIATE,
         "この角度までの曲がりは直進とみなし、費用を足さない。",
     ),
-    *_turn_parameters(
-        "major_crossing", "上位の道の横断", "信号の無い交差点で、上位の階級の道を直進で渡るときに足す。"
-        f"一時停止で止まる時間（{_STOP_ID}）とは別に、相手の流れが途切れるのを待つ時間を表す。"
-        f"信号のある交差点では足さない（{_SIGNAL_ID}の赤の待ちに含まれるため）。",
-    ),
-    *_turn_parameters(
-        "major_turn", "上位の道への右左折", "信号の無い交差点で、上位の階級の道へ右左折で入るときに足す。",
-    ),
-    # --- 停止要因（種別はPOI_COUNT_KINDSが正本。割合 × 待ちが所要時間、割合が漕ぎ出しの体力） ---
-    *_stop_parameters("signal", "赤で止まったときに青まで待つ時間。止まる割合は赤の割合。"
-                      "渡れるようになるまでの待ちそのものを表すため、信号のある交差点では"
-                      f"{_MAJOR_CROSSING_ID}を足さない。"),
-    *_stop_parameters("crossing", "歩行者に譲って止まったときの待ち。"),
-    *_stop_parameters("stop", "標識・標示で止まる時間。交通ルール上、車が来ていなくても止まる。"
-                      f"相手の流れが途切れるのを待つ時間は含まず、上位の道を渡るときだけ{_MAJOR_CROSSING_ID}で足す。"),
-    *_stop_parameters("level_crossing", "踏切の直前で止まって（道路交通法第33条）、遮断機が上がるまで待つ時間。"),
-    *_stop_parameters("barrier", "ボラード等で減速して失う時間（止まらず減速する出来事）。"),
+    # --- 停止要因（種類は`domain/stop_events.py: STOP_EVENT_KINDS`が正本） ---
+    *_event_group_parameters("stop"),
     TuningParameter(
         "stop.slowed_speed_ratio", "減速の出来事で残る速さの割合", "", TuningEffect.IMMEDIATE,
         "止まらず減速する出来事（左折・車止め等）で、巡航速度のうち残る速さの割合。漕ぎ出しの体力は、止まる出来事の"
