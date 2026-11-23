@@ -17,7 +17,7 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.batch import derive_counts, derive_elevation
-from app.domain import cycling_speed, ledger_costs, route_search, traffic, turn_structure
+from app.domain import cycling_speed, ledger_costs, route_search, traffic
 from app.domain.cost_preference import CostPreference
 from app.domain.road_avoidance import level_multipliers
 from app.domain.tuning import (
@@ -80,8 +80,6 @@ _UNUSABLE = [
     ("stop.signal_share", 1.5, lambda: traffic.stop_event("stop", "signal", current_tuning())),
     ("stop.signal_seconds", -1.0, lambda: traffic.stop_event("stop", "signal", current_tuning())),
     ("stop.slowed_speed_ratio", 1.5, lambda: traffic.stop_event("stop", "signal", current_tuning())),
-    # 信号のある交差点の通り方の全体が、信号の基本より小さい（差が負になる）。
-    ("turn.signal_right_share", TUNING["stop.signal_share"] / 2, lambda: turn_structure.turn_cost(current_tuning())),
     ("speed.mass_kg", 0.0, _speed_model),
     ("speed.cda_m2", -1.0, _speed_model),
     ("speed.extra_power_per_force", -1.0, _speed_model),

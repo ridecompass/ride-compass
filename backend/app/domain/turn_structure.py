@@ -3,7 +3,7 @@
 右左折の費用はNodeに閉じず「どの区間から入ってどの区間へ出るか」で決まるため、状態をNodeではなく有向区間にする。
 遷移はグラフを物理展開せず`domain/search_graph.py: CsrGraphStructure`から導く。
 """
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from enum import IntEnum
 
@@ -11,70 +11,38 @@ import numpy as np
 
 from app.domain.geo import LatLonPoint, bearing_between
 from app.domain.search_graph import EDGE_VALUE_DTYPE, SEARCH_INDEX_DTYPE, CsrGraphStructure, LazyRoadGraph
-from app.domain.stop_events import EventGroup, event_seconds_parameter_id, event_share_parameter_id
+from app.domain.stop_events import CONTROLS, MOVEMENTS, REFERENCE_PASSAGES, STANDINGS, WAIT_PASSAGES, wait_event_name
 from app.domain.traffic import INTERSECTION_DEGREE_THRESHOLD, MAJOR_CROSSING_MIN_RANK, NO_EVENT, StopEvent, stop_event
-from app.domain.tuning import Tuning, require_tuning
+from app.domain.tuning import Tuning
 
 
 @dataclass(frozen=True)
 class TurnCostSpec:
     """曲がる所の止まる出来事（`domain/traffic.py: StopEvent`）と、直進とみなす方位差の上限（度）。
 
-    左折は止まらず減速する出来事、ほかは止まる出来事（種類は`domain/stop_events.py: STOP_EVENT_KINDS`）。
+    曲がる所の時間は、曲がりの減速の層（`slow_left`・`slow_right`）と待ちの表（`waits`）の和（`domain/stop_events.py`）。
     割合・待ち・直進とみなす方位差は、いずれも走ってみて決める値のため`domain/tuning.py`が宣言する。既定を組み立てるのは
     `turn_cost`で、ここにフィールドの既定値は置かない——既定が分かれると、片方だけが変わる。
     """
 
-    left: StopEvent
-    right: StopEvent
+    slow_left: StopEvent
+    slow_right: StopEvent
     uturn: StopEvent
     straight_max_deg: float
-    # 進入した道より上位の階級の道と交わる**信号の無い**交差点で足す出来事（横断＝直進で渡る場合と、右左折で入る
-    # 場合）。信号のある交差点の待ちは停止密度の材料が所要時間へ運ぶ（`domain/traffic.py: stop_event`）ため、そちらで
-    # 数え、ここでは足さない——両方で足すと同じ待ちを二重に数える（`docs/architecture/design-principles.md`構造仕様13）。
-    major_crossing: StopEvent
-    major_turn: StopEvent
-    # 信号のある交差点で、通り方によって足す出来事（右折＝二段階右折・下の階級の道から上位の道を直進で渡る）。較正値の
-    # その通り方の全体から、信号の基本の出来事を引いた差（`_beyond`）。右折の差は`right`の代わりに使う。
-    signal_right: StopEvent
-    minor_signal: StopEvent
-    # 上下線の分かれた上位の道へ、下の階級の道から右折で入るとき、2つ目の頂点で足す差（信号での右折の全体から、1つ目の頂点で
-    # 足した上位の道の横断の全体を引いたもの）。
-    signal_right_after_crossing: StopEvent
+    # 待ちの表の全部の升（制御, 立場, 動き）→ 出来事。基準の通り方（`REFERENCE_PASSAGES`）は何も起きない出来事。
+    waits: Mapping[tuple[str, str, str], StopEvent]
 
 
 def turn_cost(tuning: Tuning) -> TurnCostSpec:
     """較正値`tuning`で組み立てた曲がる所の出来事。"""
     return TurnCostSpec(
-        left=stop_event("turn", "left", tuning),
-        right=stop_event("turn", "right", tuning),
+        slow_left=stop_event("turn", "slow_left", tuning),
+        slow_right=stop_event("turn", "slow_right", tuning),
         uturn=stop_event("turn", "uturn", tuning),
         straight_max_deg=tuning.value("turn.straight_max_deg"),
-        major_crossing=stop_event("turn", "major_crossing", tuning),
-        major_turn=stop_event("turn", "major_turn", tuning),
-        signal_right=_beyond("signal_right", ("stop", "signal"), tuning),
-        minor_signal=_beyond("minor_signal", ("stop", "signal"), tuning),
-        signal_right_after_crossing=_beyond("signal_right", ("turn", "minor_signal"), tuning),
+        waits={**{passage: NO_EVENT for passage in REFERENCE_PASSAGES},
+               **{passage: stop_event("turn", wait_event_name(passage), tuning) for passage in WAIT_PASSAGES}},
     )
-
-
-def _beyond(name: str, base: tuple[EventGroup, str], tuning: Tuning) -> StopEvent:
-    """曲がる所の出来事`name`の全体（較正値）から、同じ所で既に数えた出来事`base`の全体を引いた差。差の割合と、差の
-    割合 × 待ちのどちらかが負なら断る——負だと、その通り方を`base`より速く通ることになる。割合が同じで割合 × 待ちだけが
-    大きい差は、割合 × 待ちの形で表せないので断る。"""
-    whole, under = stop_event("turn", name, tuning), stop_event(*base, tuning)
-    share = whole.share - under.share
-    seconds = whole.expected_seconds - under.expected_seconds
-    require_tuning(
-        {event_share_parameter_id("turn", name): whole.share,
-         event_seconds_parameter_id("turn", name): whole.wait_seconds,
-         event_share_parameter_id(*base): under.share,
-         event_seconds_parameter_id(*base): under.wait_seconds},
-        share >= 0 and seconds >= 0 and (share > 0 or seconds == 0),
-        f"止まる割合と割合 × 待ちが{event_seconds_parameter_id(*base)}の出来事以上（割合が同じなら割合 × 待ちも同じ）",
-    )
-    return StopEvent(share=share, wait_seconds=seconds / share if share > 0 else 0.0,
-                     kickoffs=whole.kickoffs - under.kickoffs)
 
 
 @dataclass
@@ -195,19 +163,19 @@ def build_turn_expanded_structure(
 
     曲がりは、入る区間の終点のそばの向き`end_bearing_deg`と出る区間の始点のそばの向き`start_bearing_deg`
     （どちらも区間の番号順）の差で測る。区間の端から端の向きで測ると、交差点から離れた所のカーブが
-    交差点の曲がりに混ざる。曲がりの待ちと上位の道の待ちは、交差点とみなす本数
+    交差点の曲がりに混ざる。曲がりの減速と待ちの表の待ちは、交差点とみなす本数
     （`domain/traffic.py: INTERSECTION_DEGREE_THRESHOLD`）以上の道が集まる点（分かれ道。本数は`node_branch_count`）でだけ
     足す——分かれ道でない点は道のデータの継ぎ目で、道を選ばない。本数は進めない道
     （向こうから来る一方通行）も、部分グラフの外へ出る道も数える。進める道だけで数えると、進めない道のある交差点の
     曲がりが継ぎ目に見え、待ちも案内も消える。
 
-    信号のある交差点の通り方の出来事（`TurnCostSpec.signal_right`・`minor_signal`）は、1つの交差点で1回だけ足す。入る区間の始点にも
-    信号があり、区間が`same_place_m`（停止の点を1つの場所にまとめる距離。`edge_distance_m`は区間の番号順の長さ）より短ければ、
-    同じ交差点の中を進む区間とみなして上位の道の横断を足さない——上下線の分かれた道を渡ると、信号の頂点を2つ続けて通る。
-    その中で右折するとき（下の階級の道から、上下線の分かれた上位の道へ右折する）は、1つ目の頂点で足した横断との差だけを足す。
+    待ちの表は、信号のある交差点では1つの交差点で1回だけ引く。入る区間の始点も信号のある分かれ道で、区間が`same_place_m`
+    （停止の点を1つの場所にまとめる距離。`edge_distance_m`は区間の番号順の長さ）より短ければ、同じ交差点の中を進む区間とみなして
+    表を引かない——上下線の分かれた道を渡ると、信号の頂点を2つ続けて通る。始点が分かれ道でない（道のデータの継ぎ目）なら、
+    そこは交差点ではないので数える。曲がりの減速は、曲がった頂点で数える。
 
     ターンの費用に要る入力はすべて引数で受け取り、**`None`を受け取らない**。既定を持たせても
-    実行時に`None`を許しても、渡し忘れた呼び出しが「上位の道の横断に待ちが付かない」構造を
+    実行時に`None`を許しても、渡し忘れた呼び出しが「待ちの表の升が引かれない」構造を
     黙って作る（例外もログも出ない）。
     """
     state_count = len(lazy_graph.edge_rows)
@@ -230,7 +198,6 @@ def build_turn_expanded_structure(
     delta = (start_bearing_deg[target_state] - end_bearing_deg[source] + 180.0) % 360.0 - 180.0
     branch = node_branch_count[edge_to[source]] >= INTERSECTION_DEGREE_THRESHOLD
     wait_kind = _turn_kinds(delta, is_uturn, branch, spec)
-    straight = wait_kind == TurnKind.STRAIGHT
 
     # ノードの階級は、読み込んだ部分グラフに現れる道から導く。DB側の事前集計値
     # （`node_turns.max_highway_rank`）があれば大きい方を採る——bboxの外へはみ出した
@@ -244,27 +211,18 @@ def build_turn_expanded_structure(
     target_node_rank = node_rank[via_node]
     signal = node_has_signal[via_node]
     major_road = target_node_rank >= MAJOR_CROSSING_MIN_RANK
-    # 交差点に、入る区間より上位で、そもそも待ちの要る階級の道がある。信号の無い交差点で上位の道を横切る・入る待ちと、信号の
-    # ある交差点で上位の道を直進で渡る待ちが、同じこの判定を読む。
-    below_major = (target_node_rank > edge_rank[source]) & major_road
-    turning = branch & ~is_uturn
-    in_place = node_has_signal[edge_from[source]] & (np.asarray(edge_distance_m, dtype=np.float64)[source] < same_place_m)
-    signal_first = turning & signal & ~in_place
-    signal_right = turning & signal & major_road & (wait_kind == TurnKind.RIGHT)
-    # 遷移の時間と漕ぎ出しは、曲がり方（`TurnKind`の4通り）× 交差点の通り方（`_Passage`）の表から引く——遷移の数（探索の範囲で
-    # 約200万）の配列を組み直さない。
-    passage = np.select(
-        [turning & below_major & ~signal & straight,
-         turning & below_major & ~signal,
-         signal_first & below_major & straight,
-         signal_right & ~in_place,
-         signal_right & in_place & below_major],
-        [_Passage.MAJOR_CROSSING, _Passage.MAJOR_TURN, _Passage.MINOR_SIGNAL, _Passage.SIGNAL_RIGHT,
-         _Passage.SIGNAL_RIGHT_AFTER_CROSSING],
-        _Passage.PLAIN,
-    )
+    signal_junction = signal & major_road
+    from_node = edge_from[source]
+    in_place = (node_has_signal[from_node] & (node_branch_count[from_node] >= INTERSECTION_DEGREE_THRESHOLD)
+                & (np.asarray(edge_distance_m, dtype=np.float64)[source] < same_place_m))
+    control = np.where(signal_junction & in_place, _Control.INSIDE,
+                       np.where(signal_junction, _Control.SIGNAL, _Control.UNSIGNALIZED))
+    standing = np.where(branch & ~is_uturn & (target_node_rank > edge_rank[source]) & major_road,
+                        _Standing.YIELD, _Standing.PRIORITY)
+    # 遷移の時間と漕ぎ出しは、曲がり方（`TurnKind`）× 制御 × 立場の表から引く——遷移の数（探索の範囲で約200万）の配列を
+    # 組み直さない。
     seconds_table, kickoffs_table = _turn_tables(spec)
-    code = (wait_kind + len(TurnKind) * passage).astype(np.intp)
+    code = (wait_kind + len(TurnKind) * (control * len(_Standing) + standing)).astype(np.intp)
 
     return TurnExpandedStructure(
         state_count=state_count, indptr=new_indptr.astype(SEARCH_INDEX_DTYPE),
@@ -284,8 +242,8 @@ TURN_PENALTY_WORDING = "折り返し[Uターン]は、選ばれにくくする�
 
 
 def _turn_events(spec: TurnCostSpec) -> tuple[StopEvent, ...]:
-    """曲がり方ごとの出来事（`TurnKind`の順。直進は出来事が無い）。"""
-    return (NO_EVENT, spec.left, spec.right, spec.uturn)
+    """曲がり方ごとの、曲がりの減速の層の出来事（`TurnKind`の順。直進は出来事が無く、Uターンは罰）。"""
+    return (NO_EVENT, spec.slow_left, spec.slow_right, spec.uturn)
 
 
 def _penalty_table(spec: TurnCostSpec) -> np.ndarray:
@@ -294,37 +252,25 @@ def _penalty_table(spec: TurnCostSpec) -> np.ndarray:
                      for kind, event in zip(TurnKind, _turn_events(spec), strict=True)], dtype=EDGE_VALUE_DTYPE)
 
 
-class _Passage(IntEnum):
-    """交差点の通り方（曲がり方に重ねて足す出来事を決める）。"""
-
-    PLAIN = 0
-    # 信号の無い交差点で、上位の道を直進で横切る・右左折で入る。
-    MAJOR_CROSSING = 1
-    MAJOR_TURN = 2
-    # 信号のある交差点で、上位の道を直進で渡る・右折する。
-    MINOR_SIGNAL = 3
-    SIGNAL_RIGHT = 4
-    # 信号のある交差点の中（1つ目の頂点で上位の道を渡ったあと）で、上下線の分かれた上位の道へ右折する。
-    SIGNAL_RIGHT_AFTER_CROSSING = 5
+#: 待ちの表の制御（`domain/stop_events.py: CONTROLS`の順。名前の小文字がそのキー）と、表を引かない「同じ信号の交差点の中」。
+_Control = IntEnum("_Control", [*(key.upper() for key in CONTROLS), "INSIDE"], start=0)
+#: 待ちの表の立場（`domain/stop_events.py: STANDINGS`の順。名前の小文字がそのキー）。
+_Standing = IntEnum("_Standing", [key.upper() for key in STANDINGS], start=0)
 
 
 def _turn_tables(spec: TurnCostSpec) -> tuple[np.ndarray, np.ndarray]:
-    """曲がり方（`TurnKind`の値）＋ 4 × 通り方（`_Passage`の値）を添字にした、遷移の時間（秒。罰の曲がりの罰は入れない）と
-    漕ぎ出しの回数の表。通り方の待ちは曲がりの待ちに足し、漕ぎ出しは同じ所で1回しか起きないので重なる出来事の大きい方だけを
-    数える。信号での右折は、右折の出来事の代わりに使う。"""
+    """曲がり方（`TurnKind`の値）＋ 4 ×（制御 × 立場の数 ＋ 立場）を添字にした、遷移の時間（秒。罰の曲がりの罰は入れない）と
+    漕ぎ出しの回数の表。時間は曲がりの減速と待ちの表の升の和で、漕ぎ出しは同じ所で1回しか起きないので大きい方だけを数える。
+    Uターンと同じ交差点の中は、表を引かない。"""
     penalties = _penalty_table(spec)
-    added = {_Passage.PLAIN: NO_EVENT, _Passage.MAJOR_CROSSING: spec.major_crossing, _Passage.MAJOR_TURN: spec.major_turn,
-             _Passage.MINOR_SIGNAL: spec.minor_signal, _Passage.SIGNAL_RIGHT: NO_EVENT,
-             _Passage.SIGNAL_RIGHT_AFTER_CROSSING: NO_EVENT}
-    signal_rights = {_Passage.SIGNAL_RIGHT: spec.signal_right,
-                     _Passage.SIGNAL_RIGHT_AFTER_CROSSING: spec.signal_right_after_crossing}
     seconds, kickoffs = [], []
-    for passage in _Passage:
-        for kind, event in zip(TurnKind, _turn_events(spec), strict=True):
-            if kind is TurnKind.RIGHT and passage in signal_rights:
-                event = signal_rights[passage]
-            seconds.append(event.expected_seconds - float(penalties[kind]) + added[passage].expected_seconds)
-            kickoffs.append(max(event.kickoffs, added[passage].kickoffs))
+    for control in _Control:
+        for standing in _Standing:
+            for kind, slowing in zip(TurnKind, _turn_events(spec), strict=True):
+                wait = (NO_EVENT if control is _Control.INSIDE or kind.name.lower() not in MOVEMENTS
+                        else spec.waits[(control.name.lower(), standing.name.lower(), kind.name.lower())])
+                seconds.append(slowing.expected_seconds - float(penalties[kind]) + wait.expected_seconds)
+                kickoffs.append(max(slowing.kickoffs, wait.kickoffs))
     return np.array(seconds, dtype=EDGE_VALUE_DTYPE), np.array(kickoffs, dtype=EDGE_VALUE_DTYPE)
 
 

@@ -344,7 +344,7 @@ class RoadGraphEngine:
             np.asarray(network.node_has_signals[road.nodes], dtype=bool),
             np.asarray(network.node_max_rank[road.nodes], dtype=np.int64),
             np.asarray(network.node_branch_count[road.nodes], dtype=np.int16),
-            np.asarray(network.distance_m[road.rows[lazy_graph.edge_rows]], dtype=np.float64),
+            statics.edge_length_m,
             network.stop_cluster_distance_m,
         )
 

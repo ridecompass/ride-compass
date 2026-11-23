@@ -94,7 +94,7 @@ def test_junction_includes_the_turn_cost_at_the_meeting_node():
         structure, forward, backward, lazy.node_count, transition_cost=transition
     )
     center = lazy.node_id_to_index["C"]
-    assert junction.cost[center] == pytest.approx(1.0 + TURN_SPEC.left.expected_seconds + 1.0)
+    assert junction.cost[center] == pytest.approx(1.0 + TURN_SPEC.slow_left.expected_seconds + 1.0)
     assert junction.forward_state[center] == states["WC"]
     assert junction.backward_state[center] == states["CN"]
     assert junction.length_m[center] == pytest.approx(200.0)

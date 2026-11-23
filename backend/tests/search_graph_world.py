@@ -12,8 +12,8 @@ from typing import NamedTuple
 
 import numpy as np
 
-from app.domain import search_graph, turn_structure
-from app.domain.traffic import StopEvent
+from app.domain import search_graph, stop_events, turn_structure
+from app.domain.traffic import NO_EVENT, StopEvent
 from tests.tuning_fixture import TUNING
 
 
@@ -114,17 +114,25 @@ def _event(wait_seconds: float, kickoffs: float = 1.0) -> StopEvent:
     return StopEvent(share=1.0, wait_seconds=wait_seconds, kickoffs=kickoffs)
 
 
+def _waits(seconds):
+    """待ちの表の全部の升（`seconds`に無い升は何も起きない）。"""
+    return {passage: _event(seconds[passage]) if passage in seconds else NO_EVENT
+            for passage in (*stop_events.REFERENCE_PASSAGES, *stop_events.WAIT_PASSAGES)}
+
+
 # ターンの費用をすべて0にする仕様（ターン以外の挙動を見るとき用）。
 FLAT_SPEC = turn_structure.TurnCostSpec(
-    left=_event(0.0), right=_event(0.0), uturn=_event(0.0), straight_max_deg=180.0,
-    major_crossing=_event(0.0), major_turn=_event(0.0), signal_right=_event(0.0), minor_signal=_event(0.0),
-    signal_right_after_crossing=_event(0.0),
+    slow_left=_event(0.0), slow_right=_event(0.0), uturn=_event(0.0), straight_max_deg=180.0, waits=_waits({}),
 )
-# ターンの種別が全部違う値になる仕様。
+# ターンの種別と待ちの表の升が全部違う値になる仕様。信号なしで上位の道を渡らない升は0（曲がりの減速だけ）。
 TURN_SPEC = turn_structure.TurnCostSpec(
-    left=_event(5.0, kickoffs=0.75), right=_event(3.0), uturn=_event(20.0), straight_max_deg=30.0,
-    major_crossing=_event(7.0), major_turn=_event(11.0), signal_right=_event(13.0), minor_signal=_event(17.0),
-    signal_right_after_crossing=_event(4.0),
+    slow_left=_event(5.0, kickoffs=0.75), slow_right=_event(3.0), uturn=_event(20.0), straight_max_deg=30.0,
+    waits=_waits({
+        ("unsignalized", "yield", "straight"): 7.0, ("unsignalized", "yield", "left"): 11.0,
+        ("unsignalized", "yield", "right"): 13.0, ("signal", "priority", "left"): 2.0,
+        ("signal", "priority", "right"): 19.0, ("signal", "yield", "straight"): 17.0,
+        ("signal", "yield", "left"): 29.0, ("signal", "yield", "right"): 23.0,
+    }),
 )
 
 
