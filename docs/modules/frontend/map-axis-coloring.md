@@ -13,9 +13,8 @@
 |---|---|
 | `lib/mapDisplay/mapLens.ts` | 地図のレンズの形（`lib/mapDisplay/mapLens.ts: MapLens`。id・名前・説明・アイコン・値が変わる走る条件・材料の要求へ載せる条件・塗る段・式の木） |
 | `lib/mapDisplay/routeStyleModes.ts` | ルート確定後の色分けモードの形（`lib/mapDisplay/routeStyleModes.ts: RouteStyleMode`）と、段で塗るモードの組み立て（`lib/mapDisplay/routeStyleModes.ts: buildRangeSteppedMode`）・未選択のレンズのid・区間の地物が1kmあたりの代償の秒を持つ欄の名前（下記「routeStyleModes.ts」） |
-| `features/map/costLens.ts` | 費用の軸の一覧から、地図のレンズ（`features/map/costLens.ts: costLenses`）・レンズの選択肢（`features/map/costLens.ts: costLensOptions`）・凡例の下の段の境目の目安の文（`features/map/costLens.ts: costLensPremises`）・ルートの線のレンズのモード（`features/map/costLens.ts: costRouteStyleModes`。区間の1kmあたりの代償の秒を地図と同じ段で塗り、レンズを選んでいないときは総合で塗る）を導く |
+| `features/map/costLens.ts` | 費用の軸の一覧から、地図のレンズ（`features/map/costLens.ts: costLenses`）・レンズの選択肢（`features/map/costLens.ts: costLensOptions`）・ルートの線のレンズのモード（`features/map/costLens.ts: costRouteStyleModes`。区間の1kmあたりの代償の秒を地図と同じ段で塗り、レンズを選んでいないときは総合で塗る）を導く |
 | `features/map/mapCatalog.ts`・`features/map/useMapCatalog.ts` | 画面の設定と費用の軸の一覧のうち、地図だけが読むもの（`features/map/mapCatalog.ts: MapCatalog`。レンズ・ルートの線のモード・事故の収録年・較正値・道の線の層・地図に載るものの一覧）。届くまで・失敗の間はどれも無い |
-| `features/map/useLensEquivalents.ts` | 凡例の段の境目の目安を、地図のレンズと同じ利用者の値で引く |
 | `lib/mapDisplay/costLensPaint.ts` | 費用のレンズの段の塗りの宣言（`lib/mapDisplay/costLensPaint.ts: costLensPaint`）と、レンズの値と事実の数の書き方。地図の道・ルートの線・候補の帯・道の窓が同じ段と同じ書き方にする |
 | `hooks/useCostAxisCatalog.ts` | 費用の軸の一覧（`GET /api/cost-axes`）を画面が読む形で共有する取得（`services/costAxisCatalogApi.ts: getCostAxisCatalog`） |
 | `lib/mapDisplay/valueScale.ts` | 地図が値を塗る宣言（`lib/mapDisplay/valueScale.ts: MapPaintDeclaration`）・段の並び（`lib/mapDisplay/valueScale.ts: valueBands`）・値が段に入るかの式（`lib/mapDisplay/valueScale.ts: bandCondition`・`lib/mapDisplay/valueScale.ts: bandStep`）・数の値が入る段（`lib/mapDisplay/valueScale.ts: bandAt`）。ルート前の道の線・ルート後の色分け・凡例・候補の帯が共有する（下記「valueScale.ts」） |
@@ -25,7 +24,7 @@
 | `features/map/layers/webMercatorTile.ts` | Web MercatorのXYZタイルと緯度経度の行き来（点のタイル座標・点を含むタイル（世界の端はタイルの番号の範囲へ寄せる）・タイルが覆う範囲）。backendと同じ式で、一致は表の組`region`で照らす。道路タイルの値を引くタイルと、気象庁のタイルの在否の判定（`jmaTileIndex.ts`）が同じ式を通る |
 | `lib/mapDisplay/mapColorLegend.ts` | 地図上の色分け凡例（`lib/mapDisplay/mapColorLegend.ts: MapColorLegendBand`型・`lib/mapDisplay/mapColorLegend.ts: buildRangeLegendBands`・`lib/mapDisplay/mapColorLegend.ts: rangeStepLabel`）の共通ロジックと、値が無い行（`lib/mapDisplay/mapColorLegend.ts: NO_DATA_LEGEND_BAND`）・向きで決まらない行（`lib/mapDisplay/mapColorLegend.ts: UNDETERMINED_LEGEND_BAND`）。凡例を作る関数（`features/map/view/lens.ts`）・道の属性の凡例（`features/map/scene/legends.ts`）が使う |
 | `features/map/view/lens.ts` | レンズの凡例（`features/map/view/lens.ts: lensLegend`。ルート後はルートの線のモードの凡例） |
-| `features/map/LensControl/LensControl.tsx` | レンズ（地図を何で塗るか）の唯一の入口。画面での名前は「負担で塗る」（見出し・読み上げ名。「レンズ」はコードの中の名前で、画面には出さない）。地図の上のピルが、道のりのグラフの「負担で塗る」の切り替えと同じ筆の絵（`lucideIcons.tsx: BurdenPaintIcon`）と、選んでいるレンズの名前と凡例の色の帯（段の数に依らない固定の幅）を示し、タップで縦の一覧（各行にアイコン・値が変わる走る条件のアイコン・(i) の説明）を開く。一覧は「表示」の一覧（`MapOverlayControls.tsx`）と同じ形と操作にそろえる——選んでも閉じず、選んでいる行をもう一度押すと外れ、選んでいる行の ▶ で凡例と段の境目の目安を開き、下に「選択を外す」「絞り込みをすべて解除」（この一覧の凡例だけを戻す）を置く（選択肢・凡例は`features/map/view/useMapView.ts`が組み立て、`app/HomeMapPane.tsx`はそのまま渡す）。走行中も同じ大きさで出す |
+| `features/map/LensControl/LensControl.tsx` | レンズ（地図を何で塗るか）の唯一の入口。画面での名前は「負担で塗る」（見出し・読み上げ名。「レンズ」はコードの中の名前で、画面には出さない）。地図の上のピルが、道のりのグラフの「負担で塗る」の切り替えと同じ筆の絵（`lucideIcons.tsx: BurdenPaintIcon`）と、選んでいるレンズの名前と凡例の色の帯（段の数に依らない固定の幅）を示し、タップで縦の一覧（各行にアイコン・値が変わる走る条件のアイコン・(i) の説明）を開く。一覧は「表示」の一覧（`MapOverlayControls.tsx`）と同じ形と操作にそろえる——選んでも閉じず、選んでいる行をもう一度押すと外れ、選んでいる行の ▶ で凡例（色の帯と両端の段の名前と、受け皿の段）を開き、下に「選択を外す」を置く。段ごとに隠す操作は持たない（段は事実で細かく刻むので、帯で見せる）（選択肢・凡例は`features/map/view/useMapView.ts`が組み立て、`app/HomeMapPane.tsx`はそのまま渡す）。走行中も同じ大きさで出す |
 | `features/map/LensControl/LensRow.tsx` | 一覧の1行（`features/map/LensControl/LensRow.tsx: LensRow`）と選択肢の型（`features/map/LensControl/LensRow.tsx: LensOption`）。行の (i) と ▶ の開閉は「表示」の一覧の行と同じ部品（`features/map/LegendCheckboxList/LegendRow.tsx: useRowDescription`・`features/map/LegendCheckboxList/LegendRow.tsx: useRowPanel`）を使い、チェックの代わりに1つだけ選ぶ印を出し、(i) で説明を、▶（選んでいる行だけ）で凡例を行のすぐ下に開く。一覧の頭の印の意味の文（`features/map/LensControl/LensRow.tsx: LensMarksNote`）は、どれかの行に出る走る条件の印だけを並べる |
 | `lib/lensLink.ts` | 走る条件のボタン（地図の向きの方位磁針・出発時刻・想定速度）に付ける、いまの周りの道の塗りがその条件で決まっている印（輪と読み上げ）。下記「周りの道の色が拠る走る条件」 |
 | `features/map/layers/mapLayers.ts` | レンズの層（`features/map/layers/mapLayers.ts: isLensLayer`。記述子の印で判定。地図上チップの一覧`overlayChips`が除くのに使う） |
@@ -60,9 +59,7 @@
 - **同じ塗りの部品を通す**: レンズは費用の軸の一覧から`features/map/costLens.ts: costLenses`が組み、地図の一覧
   （`features/map/useMapCatalog.ts: useMapCatalog`）に載る。式の木（backendがレンズごとの`map_lens.formula`で配る。走行方位で変わらないレンズは向きを選ばない木）・段・
   凡例・取得の状態はどのレンズも同じ部品が持つ。
-- **段の目安**: 凡例の下に、段の境目の秒が地図と同じ利用者の値でどれだけの事実に当たるかの目安
-  （`GET /api/cost-axes/lens-equivalents`。`features/map/useLensEquivalents.ts`）を書く。目安は目安と分かる見出しを付け、その道の
-  本当の事実は道を押したときの窓に出す。
+- **段**: backend が色の物差しを事実の値で刻んで配る段（名前は事実の値の範囲）をそのまま塗る。その道の本当の事実は道を押したときの窓に出す。
 - **ルートの線**: backendは区間に代償の内訳（`penalty`）と、地図のレンズと同じ量（`lens_seconds_per_km`。レンズid→1kmあたりの
   代償の秒）を載せる。ルートの線のモードはこの値を地図と同じ段で塗る。長さ0の区間は値を持たず、「データなし」の破線になる。
 - **一覧が届く前**（ルートの線のモードが0件の間）と**数える軸が1つも無い間**は、ルートの線を値に依らず中立色の1色で引く

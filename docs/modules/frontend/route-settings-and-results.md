@@ -27,7 +27,7 @@
 | `features/route/costPreference.ts` | つまみと倍率の値の扱い: 段（値と名前）・説明の文 |
 | `hooks/useCostAxisCatalog.ts` | `GET /api/cost-axes`の取得。費用の軸（名前・説明・アイコン・地図のレンズ）を`hooks/useCostAxisCatalog.ts: useCostAxisCatalog`が返す（届くまで・失敗の間は軸0件。レンズの読み方は[地図: レンズ・ルート色分け](map-axis-coloring.md)）。軸ごとの色（`hooks/useCostAxisCatalog.ts: CostAxisCatalog.axisColors`）と、取れていないことの項目（`hooks/useCostAxisCatalog.ts: costAxisCatalogFetchFailure`。常設ヘッダーの印と負担タブの告知）もここが持つ |
 | `hooks/useSharedCatalog.ts` | 画面の全体が読む一覧（画面の設定・費用の軸の一覧）の取得の共通の形: 読み手の間で1つの取得を共有し、マウントのたびに取り直し、届いた応答を後の失敗で巻き戻さない（`hooks/useSharedCatalog.ts: useSharedCatalog`）。まだ届いていないときだけ取り直す再試行（`hooks/useSharedCatalog.ts: retrySharedCatalogFetch`） |
-| `services/costAxisCatalogApi.ts` | 上記フックが叩くbackend APIの薄いラッパーと、凡例の段の境目の目安（`GET /api/cost-axes/lens-equivalents`。`services/costAxisCatalogApi.ts: getLensEquivalents`）の口 |
+| `services/costAxisCatalogApi.ts` | 上記フックが叩くbackend APIの薄いラッパー |
 | `features/route/RouteSettingsPanel/HardFilterPanel.tsx` | 「道路」タブの中身。地図の道のレイヤの凡例の行ごとの避け方を1つの並びに出し、自転車が通れない道の行は「通らない」に固定して鍵を付ける（下記「除外」）。選べる行の鍵・名前・既定の段と行をまとめる節は画面の設定の`road_classes.avoidance`が、選べない行（自転車が通れない道）も同じ一覧に`selectable`が偽の行として載り、名前をフロントに持たない——キーと名前を別々に持つと、足した行に名前が無く内部名が出る。画面の設定が届くまでは選べる行を出さない。並びの上に「地図で見る」（このタブを出している間、段を地図の道に塗るか。値は`features/map/view/useMapView.ts`が端末に覚える）を置く |
 | `lib/roadAvoidance.ts` | 画面に出す行の段を決める（`lib/roadAvoidance.ts: avoidanceLevelOf`。道路タブを地図で見ている間に道へ塗る段も同じ決め方で読む。選んでいなければ既定の段）。要求には選んだ段をそのまま送り、行の増減はbackendが揃える |
 | `features/route/SavedPlacesPanel/SavedPlacesPanel.tsx` | 「保存済み」タブの「地点」の中身: 保存した地点の一覧（行は名前・辺りと、アイコンの「呼び出す」「消す」。呼び出すはメニューで出発地・経由地・目的地のどれに置くかを選び（周回の間は目的地を使わないので「目的地にする」を押せない）、消すは確認の窓を出さずに消す）。無ければ無いと出し、保存の仕方は(i)の奥（下記「保存した地点」） |

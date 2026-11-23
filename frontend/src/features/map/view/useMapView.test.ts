@@ -18,17 +18,8 @@ import { onBackend } from "@/testing/backendServer";
 import { chip, renderMapView, serve, VIEWPORT } from "@/testing/mapViewHook";
 import { costAxisCatalog, costAxisEntry } from "@/testing/costAxes";
 
-import { LEGEND_FILTER_DEBOUNCE_MS, type useMapView } from "./useMapView";
+import type { useMapView } from "./useMapView";
 import { STANDARD_COST_PREFERENCE } from "@/lib/costPreference";
-import type routeGenerateConfig from "@/types/generated/route-generate-config.json";
-
-// レンズの単位と目安の条件の文はbackendの宣言。架空の値へ差し替え、凡例の下の目安がそれを書くことを見る。
-vi.mock("@/types/generated/route-generate-config.json", async (importOriginal) => {
-  const original = await importOriginal<{ default: typeof routeGenerateConfig }>();
-  return {
-    default: { ...original.default, lens_unit: "単位ア", lens_equivalents_condition_wording: "条件イの道の場合" },
-  };
-});
 
 /** 既定の一覧（`TWO_COST_AXES`）のレンズ: 総合・登坂・振動。 */
 const LENS_COUNT = 3;
@@ -100,9 +91,6 @@ describe("useMapView", () => {
         }),
       ),
     );
-    onBackend("GET", "/api/cost-axes/lens-equivalents", () =>
-      Response.json({ ascent: { kind: "thresholds", fact: "斜度", unit: "%", values: [2.1] } }),
-    );
     const sent = onBackend("GET", "/api/region/lens/ascent/:z/:x/:y", () =>
       Response.json({ materials: { "1-0": { lens_along: 5, road_bearing_deg: 0 } }, wind_previous_run_from: null }),
     );
@@ -118,7 +106,6 @@ describe("useMapView", () => {
       timeout: 3000,
     });
     expect(sent[0].query.speed_kmh).toBe("20");
-    expect(result.current.lensControl.premises).toEqual(["目安[条件イの道の場合]", "4単位ア ≈ 斜度 2.1%"]);
   });
 
   it("選んでいた軸を無効にすると、選んでいない状態で塗り、無効を戻すとまたその軸で塗る", async () => {
@@ -182,39 +169,6 @@ describe("useMapView", () => {
 
     rerender({ riding: { bearingDeg: 180, speedKmh: 15 } });
     expect(result.current.look.wayConditions).toEqual({ bearing_deg: 180, speed_kmh: 15 });
-  });
-
-  it("レンズの凡例で隠した行は、凡例へはすぐ、地図へは間引きの待ちのあとに出て（全段をまとめても隠せる）、「表示」の解除では戻らず、レンズの解除で戻る", async () => {
-    serve();
-    const { result } = renderMapView();
-    await waitFor(() => expect(result.current.lensControl.axisOptions).toHaveLength(LENS_COUNT));
-    act(() => result.current.lensControl.onLensChange("ascent"));
-    // チップの凡例で隠した行（最初に隠す行を含む）が無い状態から始める。
-    act(() => result.current.overlayControls.onShowAllLegendRows());
-    const key = result.current.lensControl.legend[0].key;
-    vi.useFakeTimers();
-
-    act(() => result.current.lensControl.onToggleLegendKey(key));
-
-    expect(result.current.lensControl.hiddenLegendKeys).toEqual([key]);
-    expect(result.current.overlayControls.anyLegendHidden).toBe(false);
-    act(() => vi.advanceTimersByTime(LEGEND_FILTER_DEBOUNCE_MS - 1));
-    expect(result.current.look.hiddenLegendKeys.ascent).toBeUndefined();
-    act(() => vi.advanceTimersByTime(1));
-    expect(result.current.look.hiddenLegendKeys.ascent).toEqual([key]);
-    const allKeys = result.current.lensControl.legend.map((entry) => entry.key);
-    act(() => result.current.lensControl.onSetHiddenLegendKeys(allKeys));
-    expect(result.current.lensControl.hiddenLegendKeys).toEqual(allKeys);
-
-    act(() => result.current.overlayControls.onLegendEntryToggle("disaster", "landslide"));
-    act(() => result.current.overlayControls.onShowAllLegendRows());
-    expect(result.current.overlayControls.anyLegendHidden).toBe(false);
-    expect(result.current.lensControl.hiddenLegendKeys).toEqual(allKeys);
-
-    act(() => result.current.lensControl.onSetHiddenLegendKeys([]));
-    act(() => vi.advanceTimersByTime(LEGEND_FILTER_DEBOUNCE_MS));
-    expect(result.current.lensControl.hiddenLegendKeys).toEqual([]);
-    expect(Object.values(result.current.look.hiddenLegendKeys).flat()).toEqual([]);
   });
 
   it("「絞り込みをすべて解除」が押せるのは地図に出しているものの凡例で隠している間だけで、出していないレイヤーの最初に隠す行は数えない", async () => {

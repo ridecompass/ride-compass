@@ -98,3 +98,22 @@ def test_a_curve_over_a_material_that_is_not_a_number_is_reported():
 
     assert check_cost_axes(definitions, SURFACE) == ["lighting: 折れ線は数値の材料にだけ書ける: lit（boolean）"]
 
+
+@pytest.mark.parametrize(
+    ("axis", "scale", "problem"),
+    [
+        ("vibration", {"green": "paved", "red": "gravel"}, None),
+        ("vibration", {"green": 0.0, "red": 1.0}, "vibration: 色の物差しの端は区分の鍵で書く"),
+        ("ascent", {"green": 0.0, "red": 10.0}, None),
+        ("ascent", {"green": 10.0, "red": 0.0}, "ascent: 色の物差しの端は数で、緑を赤より小さく書く"),
+    ],
+    ids=["区分の軸に区分", "区分の軸に数", "数の軸に数", "緑が赤より大きい"],
+)
+def test_a_scale_is_written_in_the_axis_fact(axis, scale, problem):
+    """色の物差しの端は、その軸の事実で書く——区分の材料の軸は区分の鍵、ほかは数で緑を赤より小さく。"""
+    raw = _definitions(vibration=VIBRATION)
+    group = "burden" if axis in raw["burden"] else "effort"
+    raw[group][axis] = {**raw[group][axis], "scale": scale}
+    found = check_cost_axes(CostAxisDefinitions.model_validate(raw), SURFACE)
+
+    assert found == [] if problem is None else any(problem in line for line in found)

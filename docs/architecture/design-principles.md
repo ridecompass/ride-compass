@@ -266,7 +266,7 @@
       書き写さない。軸と総合の名前と並びは費用の軸の一覧（`GET /api/cost-axes`）の `label` から文へ差し込み、レンズの
       値が変わる走る条件は、そのレンズの`map_lens`（材料の要求へ載せる条件と、式の木の条件の節）から集める。費用の数え方・並べ方を述べる文は、
       backend が式の横で文として配り、画面はそれを出すだけにする。レンズの量の名前と単位（`lens_quantity_label`・
-      `lens_unit`）と、凡例の目安の条件の文（`lens_equivalents_condition_wording`）は、コードの定数なので生成物
+      `lens_unit`）は、コードの定数なので生成物
       `route-generate-config.json` で配る。
 
 ## UI仕様（RideCompass固有——地図アプリであることに由来する制約）

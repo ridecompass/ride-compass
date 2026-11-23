@@ -9,11 +9,9 @@ import {
   ROUTE_LENS_SECONDS_PROPERTY,
   type RouteStyleMode,
 } from "@/lib/mapDisplay/routeStyleModes";
-import { costLensPaint, formatLensNumber, LENS_SECONDS_UNIT } from "@/lib/mapDisplay/costLensPaint";
-import routeGenerateConfig from "@/types/generated/route-generate-config.json";
+import { costLensPaint } from "@/lib/mapDisplay/costLensPaint";
 import type { MapTheme } from "@/lib/mapTheme";
 import type { LensOption } from "@/features/map/LensControl/LensRow";
-import type { LensEquivalentsResponse } from "@/services/costAxisCatalogApi";
 import { formulaConditions } from "@/features/map/scene/wayValueFormula";
 
 type LensPresentation = CostLensCatalog["totalLens"];
@@ -68,30 +66,4 @@ export function costLensOptions(lenses: readonly MapLens[]): LensOption[] {
     iconId: lens.iconId,
     conditions: lens.conditions,
   }));
-}
-
-/** 凡例の下に書く、段の境目の秒の目安（`features/map/useLensEquivalents.ts`が引く）。
- * 軸でないレンズ（総合）・目安の届いていない軸は空。 */
-export function costLensPremises(
-  lensId: string | null,
-  catalog: CostAxisCatalog,
-  allEquivalents: LensEquivalentsResponse | undefined,
-): string[] {
-  const axis = catalog.axes.find((candidate) => candidate.axisId === lensId);
-  const equivalents = axis === undefined ? undefined : allEquivalents?.[axis.axisId];
-  if (axis === undefined || equivalents === undefined) return [];
-  const lines =
-    equivalents.kind === "thresholds"
-      ? axis.lens.thresholds.map((threshold, index) => {
-          const value = equivalents.values[index];
-          const fact =
-            value === null || value === undefined
-              ? `${equivalents.fact}は目安の範囲の外`
-              : `${equivalents.fact} ${formatLensNumber(value)}${equivalents.unit}`;
-          return `${formatLensNumber(threshold)}${LENS_SECONDS_UNIT} ≈ ${fact}`;
-        })
-      : equivalents.examples.map(
-          (example) => `${example.label} ${formatLensNumber(example.seconds_per_km)}${LENS_SECONDS_UNIT}`,
-        );
-  return lines.length === 0 ? [] : [`目安[${routeGenerateConfig.lens_equivalents_condition_wording}]`, ...lines];
 }

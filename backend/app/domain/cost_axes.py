@@ -66,13 +66,30 @@ class LensBands(StrictModel):
         return self
 
 
+class LensScale(StrictModel):
+    """地図のレンズの色の物差し: 緑の端と一番濃い赤の端を、軸の事実の値で持つ（登坂は斜度%・向かい風は乗り手の高さの風速m/s・
+    停止は止まる回数/km・数値の材料の道のストレスの軸は材料の値・総合は1kmあたりの代償の秒は数で、路面の抵抗と区分の材料の
+    道のストレスの軸は区分の鍵で）。間は事実の値で刻んで段にする（`domain/lens_equivalents.py: lens_bands`）。"""
+
+    green: float | str
+    red: float | str
+
+
 class AxisPresentation(StrictModel):
     """軸の見せ方（どの軸にも共通。値なのでJSONが持つ）。"""
 
     label: str = Field(min_length=1)
     description: str
     icon_id: str
-    lens: LensBands
+    #: 色の物差し。無ければ`lens`の段で塗る（物差しを書く前の定義）。
+    scale: LensScale | None = None
+    lens: LensBands | None = None
+
+    @model_validator(mode="after")
+    def _has_a_scale(self) -> "AxisPresentation":
+        if self.scale is None and self.lens is None:
+            raise ValueError("色の物差し（scale）か段（lens）のどちらかを書く")
+        return self
 
 
 class CategoricalBurden(StrictModel):
@@ -139,6 +156,21 @@ def check_cost_axes(definitions: CostAxisDefinitions, road_classes: RoadClassDef
     """型の外で決まる不備（材料が在るか・材料の型に合うか・区分の重さに漏れが無いか）。不備が無ければ空。管理APIの書き込みと起動時の読み込みの両方が通す（復元した行は起動時に初めて検査を通る）。道の
     区分を書き換えたときも、今の軸の定義を新しい区分で通し直す。分け方に無い区分の重さは断らない（`surplus_class_weights`）。"""
     problems: list[str] = []
+    rolling = set(road_classes.rolling_resistance_classes.get(road_classes.rolling_resistance_classification or "", {}))
+    class_ends: dict[str, set[str]] = {axis_id: rolling for axis_id, item in EFFORT_AXES.items() if item == "rolling"}
+    class_ends |= {axis_id: set(axis.burden.per_km) for axis_id, axis in definitions.burden.items()
+                   if isinstance(axis.burden, CategoricalBurden)}
+    presentations = {**definitions.effort, **definitions.burden, TOTAL_LENS_ID: definitions.total_lens}
+    for axis_id, presentation in presentations.items():
+        scale = presentation.scale
+        if scale is None:
+            continue
+        ends = (scale.green, scale.red)
+        if axis_id in class_ends:
+            if not all(isinstance(end, str) and end in class_ends[axis_id] for end in ends):
+                problems.append(f"{axis_id}: 色の物差しの端は区分の鍵で書く {sorted(class_ends[axis_id])}: {list(ends)}")
+        elif not all(isinstance(end, int | float) for end in ends) or not scale.green < scale.red:  # type: ignore[operator]
+            problems.append(f"{axis_id}: 色の物差しの端は数で、緑を赤より小さく書く: {list(ends)}")
     for axis_id, axis in definitions.burden.items():
         burden = axis.burden
         if burden.material.startswith(CLASS_MATERIAL_PREFIX):
@@ -212,19 +244,18 @@ class CostAxisCatalogEntry(StrictModel):
     icon_id: str
     #: 軸の識別色（どの画面でも同じ軸は同じ色）。軸の数で決まるので、一覧と一緒に配る。
     color: str
-    #: 地図のレンズの段（境目は1kmあたりの代償の秒）。境目が利用者の値でどれだけの事実に当たるかの目安は
-    #: `GET /api/cost-axes/lens-equivalents`。
+    #: 地図のレンズの段（境目は標準の人の1kmあたりの代償の秒、名前は事実の値の範囲。`domain/lens_equivalents.py: lens_bands`）。
     lens: LensBands
 
 
-def cost_axis_catalog(definitions: CostAxisDefinitions) -> list[CostAxisCatalogEntry]:
-    """費用の軸の見せ方と識別色を、`cost_axis_ids`の順で。"""
+def cost_axis_catalog(definitions: CostAxisDefinitions, bands: Mapping[str, LensBands]) -> list[CostAxisCatalogEntry]:
+    """費用の軸の見せ方と識別色とレンズの段（`bands`は軸id→段）を、`cost_axis_ids`の順で。"""
     axis_ids = cost_axis_ids(definitions)
     entries = []
     for axis_id, color in zip(axis_ids, cost_series_colors(len(axis_ids)), strict=True):
         ledger, axis = ("effort", definitions.effort[axis_id]) if axis_id in EFFORT_AXES else ("burden", definitions.burden[axis_id])
         entries.append(CostAxisCatalogEntry(axis_id=axis_id, ledger=ledger, label=axis.label, description=axis.description,
-                                            icon_id=axis.icon_id, color=color, lens=axis.lens))
+                                            icon_id=axis.icon_id, color=color, lens=bands[axis_id]))
     return entries
 
 

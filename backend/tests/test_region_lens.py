@@ -1,5 +1,5 @@
 """地図のレンズ——`GET /api/region/lens/{lens_id}/{z}/{x}/{y}`（道ごとの1kmあたりの代償の秒）と、`GET /api/cost-axes`の
-段の境目の目安、道の窓が出す値と事実（`services/lens_service.py: LensService.inspect`）。
+色の物差しから刻んだ段、道の窓が出す値と事実（`services/lens_service.py: LensService.inspect`）。
 
 道路網は本番と同じ置き場から読ませ（`tests/route_world.py`）、差し替えるのは天気（無風の予報）だけ。
 
@@ -16,7 +16,7 @@ import pytest
 
 from app.api import dependencies
 from app.domain.cost_preference import CostPreference
-from app.domain.cost_axes import EFFORT_AXES, CostAxisDefinitions, replace_cost_axes
+from app.domain.cost_axes import EFFORT_AXES, CostAxisDefinitions, LensScale, replace_cost_axes
 from app.domain.landcover import LANDCOVER_CLASSES
 from app.domain.region import tile_position
 from app.domain.route_request import ASSUMED_SPEED_KMH
@@ -210,33 +210,28 @@ async def test_the_lens_paints_with_the_users_strength_and_multipliers_like_the_
         assert response.status_code == 422, broken
 
 
-async def test_the_legend_tells_the_slope_and_the_stops_a_threshold_stands_for(client, cost_axes, road_network_root):
-    """段の境目の目安は、その斜度の1kmの坂・その回数止まる1kmの道を、利用者の値（ここではつまみ×2）で走ると、同じ値で塗る
-    地図がちょうどその秒で塗る値。道のストレスは、重さごとの秒を並べる。"""
-    response = await client.get("/api/cost-axes/lens-equivalents", params={"strength": 2.0})
-    assert response.status_code == 200, response.text
-    equivalents = response.json()
-    slope = equivalents["ascent"]["values"][0]
-    stops = equivalents["stopping"]["values"][0]
+async def test_an_axis_with_a_scale_paints_bands_cut_by_its_fact_from_green_to_red(client, road_network_root):
+    """色の物差し（緑の端・赤の端）を書いた軸の段は、緑から赤までを事実の値で等分した所に境目を置き、名前はその事実の範囲。地図は
+    その斜度の坂・その回数止まる道を、ちょうどその境目の秒で塗る。物差しの無い軸は、定義の段のまま。"""
+    replace_cost_axes(AXES.model_copy(update={"effort": {
+        **AXES.effort,
+        "ascent": AXES.effort["ascent"].model_copy(update={"scale": LensScale(green=0.0, red=10.0)}),
+        "stopping": AXES.effort["stopping"].model_copy(update={"scale": LensScale(green=0.0, red=10.0)}),
+    }}))
+    catalog = (await client.get("/api/cost-axes")).json()
+    lens = {axis["axis_id"]: axis["lens"] for axis in catalog["axes"]}
     serve_road_network(road_network_root, road_network(
-        WAYS, COORDINATES, gradient_of={CLIMBING_WAY: slope}, stop_density_of={STOPPING_WAY: 1.0}))
+        WAYS, COORDINATES, gradient_of={CLIMBING_WAY: 1.0}, stop_density_of={STOPPING_WAY: 1.0}))
 
-    ascent = await _lens(client, "ascent", strength=2.0)
-    stopping = await _lens(client, "stopping", strength=2.0)
+    ascent = await _lens(client, "ascent")
+    stopping = await _lens(client, "stopping")
 
-    assert (equivalents["ascent"]["unit"], equivalents["stopping"]["unit"]) == ("%", "回/km")
-    assert ascent[str(CLIMBING_WAY)][LENS_ALONG_LEAF] == pytest.approx(THRESHOLDS[0], rel=0.02)
-    # 止まる所の密度1/kmの道の秒から、境目の秒に当たる回数を引き直す（秒は回数に比例する）。
-    one_stop = stopping[str(STOPPING_WAY)][LENS_ALONG_LEAF]
-    assert stops == pytest.approx(THRESHOLDS[0] / one_stop * _kickoffs_per_stop(), rel=0.02)
-    burden_seconds = 2.0 * TUNING["cost.burden_seconds_per_km"]
-    assert equivalents["rough"]["examples"] == [
-        {"label": "0", "seconds_per_km": 0.0},
-        {"label": "1", "seconds_per_km": pytest.approx(burden_seconds * ROUGH_WEIGHT)},
-    ]
-    # 無効にした軸の目安は無い（地図の一覧にもその軸のレンズが無い）。
-    without_stopping = await client.get("/api/cost-axes/lens-equivalents", params={"disabled_axes": '["stopping"]'})
-    assert set(without_stopping.json()) == set(equivalents) - {"stopping"}
+    assert (lens["ascent"]["band_labels"][0], lens["ascent"]["band_labels"][-1]) == ("斜度 1%未満", "斜度 10%以上")
+    assert ascent[str(CLIMBING_WAY)][LENS_ALONG_LEAF] == pytest.approx(lens["ascent"]["thresholds"][0], rel=0.02)
+    # 止まる所の密度1/kmの道は、漕ぎ出す回数が種類の数ぶん。秒は回数に比例する。
+    one_stop = stopping[str(STOPPING_WAY)][LENS_ALONG_LEAF] / _kickoffs_per_stop()
+    assert lens["stopping"]["thresholds"][0] == pytest.approx(one_stop, rel=0.02)
+    assert lens["headwind"] == LENS
 
 
 def _kickoffs_per_stop() -> float:

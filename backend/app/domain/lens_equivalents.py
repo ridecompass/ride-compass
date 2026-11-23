@@ -1,124 +1,123 @@
-"""地図のレンズの段の境目（1kmあたりの代償の秒）が、利用者の値でどれだけの事実に当たるかの目安。
+"""地図のレンズの色の物差し（緑の端と一番濃い赤の端を、軸の事実の値で持つ。`domain/cost_axes.py: LensScale`）を、事実の値で刻んだ段
+（境目は1kmあたりの代償の秒、名前は事実の値の範囲）へ読み替える。
 
-条件は、標準の人（巡航速度`domain/route_request.py: ASSUMED_SPEED_KMH`）・渡した利用者のつまみと倍率（地図のレンズと同じ値）・
-その事実のほかは平らで舗装・無風・止まらない1kmの道。事実の値を細かく刻んだ道を並べて費用の式（`domain/leg_costs.py: travel_inputs`と同じ走行の模型と
-`domain/ledger_costs.py: LedgerCosts.penalty_by_axis`）へ通し、秒から事実の値へ引き戻す——別の換算の式を持たない。
+条件は、標準の人（巡航速度`domain/route_request.py: ASSUMED_SPEED_KMH`）・標準の利用者の値（つまみと倍率）・その事実のほかは平らで
+舗装・無風・止まらない1kmの道。事実の値の道を費用の式（`domain/leg_costs.py: travel_inputs`と同じ走行の模型と
+`domain/ledger_costs.py: LedgerCosts.penalty_by_axis`）へ通して秒を求める——別の換算の式を持たない。
 
-- 登坂は一様な坂の斜度（%）、向かい風は向かい風の強さ（m/s）、停止は漕ぎ出す回数（回/km）で、段の境目ごとに引く。
-  刻んだ範囲より大きい秒の境目は値なし（その範囲の外）。
-- 路面の抵抗は路面の区分ごと、道のストレスの軸は区分ごと（区分の材料）か折れ点ごと（数値の材料）の秒を並べる。
+- 登坂は一様な坂の斜度（%）、向かい風は向かい風の強さ（m/s）、停止は漕ぎ出す回数（回/km）、数値の材料の道のストレスの軸は材料の値、
+  総合は秒そのもので、緑の端から赤の端までを等分に刻む（秒は事実に比例しないので、事実の値で均等に色が変わるよう、刻みごとに境目を置く）。
+- 路面の抵抗と区分の材料の道のストレスの軸は、緑の端の区分から赤の端の区分までの区分を、秒の小さい順に並べる。
+- 物差しの無い軸（物差しを書く前の定義）は、定義の段をそのまま使う。
 """
 
 from collections.abc import Callable
-from typing import Literal
 
 import numpy as np
 
-from app.domain.cost_axes import (
-    EFFORT_AXES, HEADWIND_FACT_LABEL, STOPS_FACT_LABEL, CategoricalBurden, EffortItem,
-)
-from app.domain.cycling_speed import STANDARD_TEMPERATURE_C, RiderProfile, SegmentSpeedModel, crr_for_surface
 from app.domain.attributes import CategoricalColumn
+from app.domain.axis_templates import evaluate_breakpoint_linear
+from app.domain.cost_axes import (
+    EFFORT_AXES, HEADWIND_FACT_LABEL, STOPS_FACT_LABEL, AxisPresentation, CategoricalBurden, LensBands, LensScale,
+)
+from app.domain.cost_preference import CostPreference
+from app.domain.cycling_speed import STANDARD_TEMPERATURE_C, RiderProfile, SegmentSpeedModel, crr_for_surface
 from app.domain.elevation_profile import FLAT, ElevationProfiles, along_fractions
-from app.domain.ledger_costs import LedgerCosts, LedgerParameters
+from app.domain.ledger_costs import LedgerCosts, LedgerParameters, ledger_parameters
+from app.domain.lens_total import TOTAL_LENS_ID
+from app.domain.material_catalog import MATERIAL_CATALOG
 from app.domain.model_settings import ModelSettings
 from app.domain.road_classes import CLASS_MATERIAL_PREFIX, class_labels
 from app.domain.route_request import ASSUMED_SPEED_KMH
-from app.domain.strict_model import StrictModel
 from app.domain.tuning import BASE_CRR_ID
 
 _ROAD_M = 1000.0
-#: 引き戻す事実の値の刻み（最小・最大・刻み）。最大は、それより大きい事実の道がほぼ無い所に置く。
-_GRADE_PERCENT = (0.0, 25.0, 0.05)
-_HEADWIND_MS = (0.0, 20.0, 0.05)
+#: 緑の端から赤の端までの刻みの数。
+_STEPS = 10
+_SECONDS_UNIT = "秒/km"
 
-#: 目安の条件（このモジュールの冒頭）を、利用者に言う文。条件を変えたら、ここも変える。
-LENS_EQUIVALENTS_CONDITION_WORDING = "いまの負担の割合で、その条件だけを持つ1kmの道を無風で走った場合"
-
-
-class ThresholdEquivalents(StrictModel):
-    """段の境目ごとの事実の値（境目と同じ並び。刻んだ範囲の外はNone）。"""
-
-    kind: Literal["thresholds"] = "thresholds"
-    fact: str
-    unit: str
-    values: list[float | None]
+#: 物差し → 段。
+_Facts = Callable[[LensScale], LensBands]
 
 
-class SecondsExample(StrictModel):
-    label: str
-    seconds_per_km: float
+def lens_bands(settings: ModelSettings) -> dict[str, LensBands]:
+    """レンズid（総合と軸id）→ 地図のレンズの段。"""
+    axes, road_classes = settings.cost_axes, settings.road_classes
+    parameters = ledger_parameters(CostPreference(), settings.tuning)
 
+    def seconds_of(axis_id: str) -> Callable[..., np.ndarray]:
+        return lambda **road: _axis_seconds_per_km(settings, parameters, axis_id, **road)
 
-class ExampleEquivalents(StrictModel):
-    """事実の値ごとの1kmあたりの代償の秒（区分か折れ点の並び）。"""
-
-    kind: Literal["examples"] = "examples"
-    examples: list[SecondsExample]
-
-
-LensEquivalents = ThresholdEquivalents | ExampleEquivalents
-
-
-def lens_equivalents(settings: ModelSettings, parameters: LedgerParameters) -> dict[str, LensEquivalents]:
-    """軸id → 段の境目の目安（数える軸だけを、体力の軸をコードの表の順、続けて道のストレスの軸）。"""
-    result: dict[str, LensEquivalents] = {}
+    result = {TOTAL_LENS_ID: _bands_of(axes.total_lens, lambda scale: _numeric(scale, "", _SECONDS_UNIT, lambda v: v))}
     for axis_id, item in EFFORT_AXES.items():
-        if parameters.counts(axis_id):
-            result[axis_id] = _effort_equivalents(settings, parameters, axis_id, item)
-    for axis_id in settings.cost_axes.burden:
-        if parameters.counts(axis_id):
-            result[axis_id] = _burden_examples(settings, parameters, axis_id)
+        seconds = seconds_of(axis_id)
+        facts: _Facts
+        if item == "gravity":
+            facts = lambda scale: _numeric(scale, "斜度", "%", lambda v: seconds(grade_percent=v))  # noqa: E731
+        elif item == "air":
+            facts = lambda scale: _numeric(scale, HEADWIND_FACT_LABEL, "m/s", lambda v: seconds(headwind_ms=v))  # noqa: E731
+        elif item == "inertia":
+            facts = lambda scale: _numeric(scale, STOPS_FACT_LABEL, "回/km", lambda v: seconds(kickoffs=v))  # noqa: E731
+        else:
+            classification = road_classes.rolling_resistance_classification or ""
+            keys = list(road_classes.rolling_resistance_classes.get(classification, {}))
+            labels = class_labels(road_classes.classifications.get(classification))
+            per_key = seconds(surface=CategoricalColumn.encode(keys)) if keys else np.zeros(0)
+            facts = lambda scale: _classes(scale, keys, labels, per_key)  # noqa: E731
+        result[axis_id] = _bands_of(axes.effort[axis_id], facts)
+    for axis_id, axis in axes.burden.items():
+        burden, seconds = axis.burden, seconds_of(axis_id)
+        if isinstance(burden, CategoricalBurden):
+            labels = class_labels(road_classes.classifications.get(burden.material.removeprefix(CLASS_MATERIAL_PREFIX)))
+            keys = list(burden.per_km)
+            per_key = seconds(burden=np.array([burden.per_km[key] for key in keys], dtype=np.float64))
+            facts = lambda scale: _classes(scale, keys, labels, per_key)  # noqa: E731
+        else:
+            spec = MATERIAL_CATALOG.get(burden.material)
+            points = burden.points
+            facts = lambda scale: _numeric(  # noqa: E731
+                scale, "", spec.unit if spec else "", lambda v: seconds(burden=evaluate_breakpoint_linear(v, points)))
+        result[axis_id] = _bands_of(axis, facts)
     return result
 
 
-def _effort_equivalents(settings: ModelSettings, parameters: LedgerParameters, axis_id: str, item: EffortItem
-                        ) -> LensEquivalents:
-    road_classes = settings.road_classes
-    thresholds = settings.cost_axes.effort[axis_id].lens.thresholds
-
-    def seconds(**road) -> np.ndarray:
-        return _axis_seconds_per_km(settings, parameters, axis_id, **road)
-
-    if item == "gravity":
-        return _inverted("斜度", "%", _GRADE_PERCENT, lambda grade: seconds(grade_percent=grade), thresholds)
-    if item == "air":
-        return _inverted(HEADWIND_FACT_LABEL, "m/s", _HEADWIND_MS, lambda wind: seconds(headwind_ms=wind), thresholds)
-    if item == "inertia":
-        one_stop = float(seconds(kickoffs=np.ones(1))[0])
-        return ThresholdEquivalents(fact=STOPS_FACT_LABEL, unit="回/km",
-                                    values=[threshold / one_stop if one_stop > 0 else None for threshold in thresholds])
-    classification = road_classes.rolling_resistance_classification
-    classes = [] if classification is None else list(road_classes.rolling_resistance_classes.get(classification, {}))
-    labels = class_labels(road_classes.classifications.get(classification or ""))
-    per_class = seconds(surface=CategoricalColumn.encode(classes)) if classes else np.zeros(0)
-    return ExampleEquivalents(examples=[SecondsExample(label=labels.get(key, key), seconds_per_km=float(value))
-                                        for key, value in zip(classes, per_class)])
+def _bands_of(presentation: AxisPresentation, facts: _Facts) -> LensBands:
+    if presentation.scale is None:
+        assert presentation.lens is not None  # 定義の型が、物差しか段のどちらかを要る
+        return presentation.lens
+    return facts(presentation.scale)
 
 
-def _burden_examples(settings: ModelSettings, parameters: LedgerParameters, axis_id: str) -> ExampleEquivalents:
-    axes, road_classes = settings.cost_axes, settings.road_classes
-    burden = axes.burden[axis_id].burden
-    if isinstance(burden, CategoricalBurden):
-        labels = class_labels(road_classes.classifications.get(burden.material.removeprefix(CLASS_MATERIAL_PREFIX)))
-        weights = [(labels.get(key, key), weight) for key, weight in burden.per_km.items()]
-    else:
-        weights = [(f"{value:g}", weight) for value, weight in burden.points]
-    seconds = _axis_seconds_per_km(settings, parameters, axis_id, burden=np.array([weight for _, weight in weights]))
-    return ExampleEquivalents(examples=[SecondsExample(label=label, seconds_per_km=float(value))
-                                        for (label, _), value in zip(weights, seconds)])
+def _numeric(scale: LensScale, fact: str, unit: str, seconds_of: Callable[[np.ndarray], np.ndarray]) -> LensBands:
+    """緑の端から赤の端までを`_STEPS`に等分した事実の値（緑の端を除く）ごとに境目を置いた段（名前は事実の値の範囲）。"""
+    ticks = np.linspace(float(scale.green), float(scale.red), _STEPS + 1)
+    seconds = np.maximum.accumulate(np.asarray(seconds_of(ticks), dtype=np.float64))
+    text = [f"{round(float(value), 1):g}" for value in ticks]
+    head = f"{fact} " if fact else ""
+    # 緑の端より小さい値は最初の段（一番緑）に入れ、赤の端より大きい値は最後の段（一番赤）に入れる。
+    names = [f"{head}{text[1]}{unit}未満"] + [f"{head}{low}〜{high}{unit}" for low, high in zip(text[1:], text[2:])]         + [f"{head}{text[-1]}{unit}以上"]
+    return _distinct([float(value) for value in seconds[1:]], names)
 
 
-def _inverted(fact: str, unit: str, grid: tuple[float, float, float], seconds_of: Callable[[np.ndarray], np.ndarray],
-              thresholds: list[float]) -> ThresholdEquivalents:
-    """事実の値を刻んで秒を求め、境目の秒に当たる事実の値を線形に引く。秒は事実の値に対して減らないよう、それまでの最大で
-    ならしてから引く。"""
-    low, high, step = grid
-    facts = np.arange(low, high + step / 2, step)
-    seconds = np.maximum.accumulate(seconds_of(facts))
-    values = [float(np.interp(threshold, seconds, facts)) if seconds[0] <= threshold <= seconds[-1] else None
-              for threshold in thresholds]
-    return ThresholdEquivalents(fact=fact, unit=unit, values=values)
+def _classes(scale: LensScale, keys: list[str], labels: dict[str, str], seconds: np.ndarray) -> LensBands:
+    """緑の端の区分から赤の端の区分までの区分を、秒の小さい順に1段ずつ（同じ秒の区分は1段にまとめる）。"""
+    by_key = dict(zip(keys, (float(value) for value in seconds), strict=True))
+    low, high = by_key[str(scale.green)], by_key[str(scale.red)]
+    chosen = sorted((value, labels.get(key, key)) for key, value in by_key.items() if low <= value <= high)
+    return _distinct([value for value, _ in chosen[1:]], [name for _, name in chosen])
+
+
+def _distinct(thresholds: list[float], names: list[str]) -> LensBands:
+    """境目が前の境目と同じ秒の段を、前の段へまとめる（段の境目は昇順に並べる）。`names`は境目より1つ多い。"""
+    kept_thresholds: list[float] = []
+    kept_names = [names[0]]
+    for threshold, name in zip(thresholds, names[1:], strict=True):
+        if kept_thresholds and threshold <= kept_thresholds[-1]:
+            kept_names[-1] = f"{kept_names[-1]}・{name}"
+            continue
+        kept_thresholds.append(threshold)
+        kept_names.append(name)
+    return LensBands(thresholds=kept_thresholds, band_labels=kept_names)
 
 
 def _axis_seconds_per_km(settings: ModelSettings, parameters: LedgerParameters, axis_id: str, *,

@@ -8,15 +8,14 @@
 import asyncio
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Query
 from fastapi.exceptions import RequestValidationError
-from pydantic import Field, TypeAdapter, ValidationError
+from pydantic import TypeAdapter, ValidationError
 
-from app.domain.cost_axes import AxisPresentation, CostAxisCatalogEntry, cost_axis_catalog
+from app.domain.cost_axes import CostAxisCatalogEntry, LensBands, cost_axis_catalog
 from app.domain.cost_preference import STANDARD_COST_FACTOR, CostPreference, RequestedCostPreference
 from app.domain.lens_total import TOTAL_LENS_ID
-from app.domain.ledger_costs import ledger_parameters
-from app.domain.lens_equivalents import LensEquivalents, lens_equivalents
+from app.domain.lens_equivalents import lens_bands
 from app.domain.lens_values import MapLens, lens_conditions, map_lens
 from app.domain.model_settings import current_model_settings
 from app.domain.strict_model import StrictModel
@@ -30,10 +29,14 @@ class CostAxisCatalogItem(CostAxisCatalogEntry):
     map_lens: MapLens
 
 
-class TotalLens(AxisPresentation):
+class TotalLens(StrictModel):
     """総合のレンズ（軸ごとの代償の秒の和）。軸ではないので倍率を持たない。"""
 
     lens_id: str
+    label: str
+    description: str
+    icon_id: str
+    lens: LensBands
     map_lens: MapLens
 
 
@@ -47,11 +50,15 @@ async def get_cost_axis_catalog() -> CostAxisCatalogResponse:
     settings = current_model_settings()
     definitions = settings.cost_axes
     conditions = lens_conditions(definitions)
+    # 段は合成の道で走行の模型を解くので、イベントループの外で求める。
+    bands = await asyncio.to_thread(lens_bands, settings)
+    total = definitions.total_lens
     return CostAxisCatalogResponse(
         axes=[CostAxisCatalogItem(**entry.model_dump(), map_lens=map_lens(conditions[entry.axis_id], settings.tuning))
-              for entry in cost_axis_catalog(definitions)],
-        total_lens=TotalLens(lens_id=TOTAL_LENS_ID, map_lens=map_lens(conditions[TOTAL_LENS_ID], settings.tuning),
-                             **definitions.total_lens.model_dump()),
+              for entry in cost_axis_catalog(definitions, bands)],
+        total_lens=TotalLens(lens_id=TOTAL_LENS_ID, label=total.label, description=total.description,
+                             icon_id=total.icon_id, lens=bands[TOTAL_LENS_ID],
+                             map_lens=map_lens(conditions[TOTAL_LENS_ID], settings.tuning)),
     )
 
 
@@ -75,18 +82,3 @@ def cost_preference_query(
     except ValidationError as error:
         raise RequestValidationError(error.errors()) from error
 
-
-#: 軸id→段の境目の目安（`domain/lens_equivalents.py`）。
-LensEquivalentsResponse = dict[str, Annotated[LensEquivalents, Field(discriminator="kind")]]
-
-
-@router.get("/api/cost-axes/lens-equivalents", response_model=LensEquivalentsResponse)
-async def get_lens_equivalents(
-    preference: CostPreference = Depends(cost_preference_query),
-) -> LensEquivalentsResponse:
-    """地図のレンズの段の境目の秒が、利用者の値（つまみと倍率。地図のレンズと同じクエリ）で、その事実1つだけが効いた無風の
-    1kmの道のどれだけの事実に当たるかの目安（体力の軸をコードの表の順、続けて道のストレスの軸）。地図が塗る色と凡例の目安を同じ
-    値で揃える。"""
-    settings = current_model_settings()
-    # 目安は合成の道で走行の模型を解くので、イベントループの外で求める。
-    return await asyncio.to_thread(lens_equivalents, settings, ledger_parameters(preference, settings.tuning))

@@ -1,10 +1,9 @@
 /**
  * `LensControl.tsx`——「負担で塗る」のピルが今のレンズと色の帯の向きを示し、開いた一覧でレンズを1つ選び・外し、選んでいる行の ▶ で
- * 凡例を絞り込み、行の印（走る条件・絞り込み中）と前提の文を読ませ、一覧の頭で行の印の意味を読ませること。
+ * 色の帯と両端の段の名前を出し、行の印（走る条件）を読ませ、一覧の頭で行の印の意味を読ませること。
  *
  * ここで見ないもの:
- * - 選択肢・凡例・前提の文の中身を費用の軸の一覧から組むこと → `features/map/view/lens.test.ts`
- * - 凡例の行のチェックの描き方 → `LegendCheckboxList`
+ * - 選択肢・凡例の中身を費用の軸の一覧から組むこと → `features/map/view/lens.test.ts`
  * - 浮かせた一覧の位置取り・外を押すと閉じること → Radix Popover
  */
 import { render, screen, within } from "@testing-library/react";
@@ -32,20 +31,14 @@ const LEGEND = [
 ];
 
 function renderLens(props: Partial<Parameters<typeof LensControl>[0]> = {}) {
-  const handlers = {
-    onLensChange: vi.fn(),
-    onToggleLegendKey: vi.fn(),
-    onSetHiddenLegendKeys: vi.fn(),
-  };
+  const handlers = { onLensChange: vi.fn() };
   render(
     <LensControl
       lens="used"
       axisOptions={OPTIONS}
       totalLabel="総合"
       legend={LEGEND}
-      hiddenLegendKeys={[]}
       hasDetail={false}
-      premises={[]}
       caveat={null}
       catalogNotice={null}
       {...handlers}
@@ -138,14 +131,14 @@ describe("LensControl", () => {
     expect(screen.getByText("idleの説明")).toBeInTheDocument();
   });
 
-  it("選んでいる行にだけ ▶ を出し、開くと凡例と前提の文を出す", async () => {
-    renderLens({ premises: ["前提の文"] });
+  it("選んでいる行にだけ ▶ を出し、開くと色の帯と両端の段の名前を出す", async () => {
+    renderLens();
     await open();
     expect(screen.queryByRole("button", { name: "idleの軸の凡例" })).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "usedの軸の凡例" }));
     const panel = screen.getByRole("region", { name: "usedの軸の内訳" });
     expect(within(panel).getByText("低い")).toBeInTheDocument();
-    expect(within(panel).getByText("前提の文")).toBeInTheDocument();
+    expect(within(panel).getByText("高い")).toBeInTheDocument();
   });
 
   it("塗りの値の但し書きは、凡例が無くても ▶ の中に出す", async () => {
@@ -157,33 +150,9 @@ describe("LensControl", () => {
     ).toBeInTheDocument();
   });
 
-  it("凡例も前提も無い軸には ▶ を出さない", async () => {
+  it("凡例も但し書きも無い軸には ▶ を出さない", async () => {
     renderLens({ legend: [] });
     await open();
     expect(screen.queryByRole("button", { name: "usedの軸の凡例" })).not.toBeInTheDocument();
-  });
-
-  it("凡例の見出しのチェックで、全段をまとめて隠す", async () => {
-    const { onSetHiddenLegendKeys } = renderLens({ hiddenLegendKeys: [] });
-    await open();
-    await userEvent.click(screen.getByRole("button", { name: "usedの軸の凡例" }));
-    await userEvent.click(screen.getByRole("checkbox", { name: "凡例の全段階をまとめて表示/非表示" }));
-    expect(onSetHiddenLegendKeys).toHaveBeenCalledWith(["step-0", "step-1"]);
-  });
-
-  it.each([
-    [[], false],
-    [["step-0"], true],
-  ])("段を隠している（%j）間だけ、選んでいる行に「絞り込み中」を添え、まとめて戻せる", async (hidden, filtered) => {
-    const { onSetHiddenLegendKeys } = renderLens({ hiddenLegendKeys: hidden });
-    await open();
-    expect(within(list()).queryByText("絞り込み中") !== null).toBe(filtered);
-    const clear = screen.getByRole("button", { name: "絞り込みをすべて解除" });
-    if (!filtered) {
-      expect(clear).toBeDisabled();
-      return;
-    }
-    await userEvent.click(clear);
-    expect(onSetHiddenLegendKeys).toHaveBeenCalledWith([]);
   });
 });
