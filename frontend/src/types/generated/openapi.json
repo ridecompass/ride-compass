@@ -1393,7 +1393,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/CostAxisDefinitions-Output"
+                  "$ref": "#/components/schemas/CostAxisDefinitions"
                 }
               }
             }
@@ -1414,7 +1414,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/CostAxisDefinitions-Input"
+                "$ref": "#/components/schemas/CostAxisDefinitions"
               }
             }
           },
@@ -1426,7 +1426,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/CostAxisDefinitions-Output"
+                  "$ref": "#/components/schemas/CostAxisDefinitions"
                 }
               }
             }
@@ -2168,7 +2168,7 @@
         ],
         "title": "AxisFact"
       },
-      "AxisPresentation-Input": {
+      "AxisPresentation": {
         "properties": {
           "label": {
             "type": "string",
@@ -2210,53 +2210,6 @@
           "label",
           "description",
           "icon_id"
-        ],
-        "title": "AxisPresentation"
-      },
-      "AxisPresentation-Output": {
-        "properties": {
-          "label": {
-            "type": "string",
-            "minLength": 1,
-            "title": "Label"
-          },
-          "description": {
-            "type": "string",
-            "title": "Description"
-          },
-          "icon_id": {
-            "type": "string",
-            "title": "Icon Id"
-          },
-          "scale": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/LensScale"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "lens": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/LensBands"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "label",
-          "description",
-          "icon_id",
-          "scale",
-          "lens"
         ],
         "title": "AxisPresentation"
       },
@@ -2413,7 +2366,7 @@
         ],
         "title": "Binary"
       },
-      "BurdenAxis-Input": {
+      "BurdenAxis": {
         "properties": {
           "label": {
             "type": "string",
@@ -2473,72 +2426,6 @@
           "label",
           "description",
           "icon_id",
-          "burden"
-        ],
-        "title": "BurdenAxis"
-      },
-      "BurdenAxis-Output": {
-        "properties": {
-          "label": {
-            "type": "string",
-            "minLength": 1,
-            "title": "Label"
-          },
-          "description": {
-            "type": "string",
-            "title": "Description"
-          },
-          "icon_id": {
-            "type": "string",
-            "title": "Icon Id"
-          },
-          "scale": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/LensScale"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "lens": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/LensBands"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "burden": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/CategoricalBurden"
-              },
-              {
-                "$ref": "#/components/schemas/LinearBurden"
-              }
-            ],
-            "title": "Burden",
-            "discriminator": {
-              "propertyName": "kind",
-              "mapping": {
-                "categorical": "#/components/schemas/CategoricalBurden",
-                "linear": "#/components/schemas/LinearBurden"
-              }
-            }
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "label",
-          "description",
-          "icon_id",
-          "scale",
-          "lens",
           "burden"
         ],
         "title": "BurdenAxis"
@@ -3024,53 +2911,24 @@
         ],
         "title": "CostAxisCatalogResponse"
       },
-      "CostAxisDefinitions-Input": {
+      "CostAxisDefinitions": {
         "properties": {
           "effort": {
             "additionalProperties": {
-              "$ref": "#/components/schemas/AxisPresentation-Input"
+              "$ref": "#/components/schemas/AxisPresentation"
             },
             "type": "object",
             "title": "Effort"
           },
           "burden": {
             "additionalProperties": {
-              "$ref": "#/components/schemas/BurdenAxis-Input"
+              "$ref": "#/components/schemas/BurdenAxis"
             },
             "type": "object",
             "title": "Burden"
           },
           "total_lens": {
-            "$ref": "#/components/schemas/AxisPresentation-Input"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "effort",
-          "burden",
-          "total_lens"
-        ],
-        "title": "CostAxisDefinitions"
-      },
-      "CostAxisDefinitions-Output": {
-        "properties": {
-          "effort": {
-            "additionalProperties": {
-              "$ref": "#/components/schemas/AxisPresentation-Output"
-            },
-            "type": "object",
-            "title": "Effort"
-          },
-          "burden": {
-            "additionalProperties": {
-              "$ref": "#/components/schemas/BurdenAxis-Output"
-            },
-            "type": "object",
-            "title": "Burden"
-          },
-          "total_lens": {
-            "$ref": "#/components/schemas/AxisPresentation-Output"
+            "$ref": "#/components/schemas/AxisPresentation"
           }
         },
         "additionalProperties": false,

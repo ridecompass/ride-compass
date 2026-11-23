@@ -700,7 +700,7 @@ export interface components {
             unit: string;
         };
         /** AxisPresentation */
-        "AxisPresentation-Input": {
+        AxisPresentation: {
             /** Label */
             label: string;
             /** Description */
@@ -709,17 +709,6 @@ export interface components {
             icon_id: string;
             scale?: components["schemas"]["LensScale"] | null;
             lens?: components["schemas"]["LensBands"] | null;
-        };
-        /** AxisPresentation */
-        "AxisPresentation-Output": {
-            /** Label */
-            label: string;
-            /** Description */
-            description: string;
-            /** Icon Id */
-            icon_id: string;
-            scale: components["schemas"]["LensScale"] | null;
-            lens: components["schemas"]["LensBands"] | null;
         };
         /** Binary */
         Binary: {
@@ -734,7 +723,7 @@ export interface components {
             right: components["schemas"]["Constant"] | components["schemas"]["Missing"] | components["schemas"]["FeatureValue"] | components["schemas"]["Condition"] | components["schemas"]["Unary"] | components["schemas"]["Binary"] | components["schemas"]["Case"] | components["schemas"]["Interpolate"] | components["schemas"]["Round"];
         };
         /** BurdenAxis */
-        "BurdenAxis-Input": {
+        BurdenAxis: {
             /** Label */
             label: string;
             /** Description */
@@ -743,19 +732,6 @@ export interface components {
             icon_id: string;
             scale?: components["schemas"]["LensScale"] | null;
             lens?: components["schemas"]["LensBands"] | null;
-            /** Burden */
-            burden: components["schemas"]["CategoricalBurden"] | components["schemas"]["LinearBurden"];
-        };
-        /** BurdenAxis */
-        "BurdenAxis-Output": {
-            /** Label */
-            label: string;
-            /** Description */
-            description: string;
-            /** Icon Id */
-            icon_id: string;
-            scale: components["schemas"]["LensScale"] | null;
-            lens: components["schemas"]["LensBands"] | null;
             /** Burden */
             burden: components["schemas"]["CategoricalBurden"] | components["schemas"]["LinearBurden"];
         };
@@ -882,28 +858,16 @@ export interface components {
             total_lens: components["schemas"]["TotalLens"];
         };
         /** CostAxisDefinitions */
-        "CostAxisDefinitions-Input": {
+        CostAxisDefinitions: {
             /** Effort */
             effort: {
-                [key: string]: components["schemas"]["AxisPresentation-Input"];
+                [key: string]: components["schemas"]["AxisPresentation"];
             };
             /** Burden */
             burden: {
-                [key: string]: components["schemas"]["BurdenAxis-Input"];
+                [key: string]: components["schemas"]["BurdenAxis"];
             };
-            total_lens: components["schemas"]["AxisPresentation-Input"];
-        };
-        /** CostAxisDefinitions */
-        "CostAxisDefinitions-Output": {
-            /** Effort */
-            effort: {
-                [key: string]: components["schemas"]["AxisPresentation-Output"];
-            };
-            /** Burden */
-            burden: {
-                [key: string]: components["schemas"]["BurdenAxis-Output"];
-            };
-            total_lens: components["schemas"]["AxisPresentation-Output"];
+            total_lens: components["schemas"]["AxisPresentation"];
         };
         /** CostPreference */
         "CostPreference-Input": {
@@ -2902,7 +2866,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["CostAxisDefinitions-Output"];
+                    "application/json": components["schemas"]["CostAxisDefinitions"];
                 };
             };
         };
@@ -2916,7 +2880,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["CostAxisDefinitions-Input"];
+                "application/json": components["schemas"]["CostAxisDefinitions"];
             };
         };
         responses: {
@@ -2926,7 +2890,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["CostAxisDefinitions-Output"];
+                    "application/json": components["schemas"]["CostAxisDefinitions"];
                 };
             };
             /** @description Validation Error */

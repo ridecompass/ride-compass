@@ -52,7 +52,7 @@ import { DISASTER_LAYER_ID } from "@/features/map/layers/dynamicWeather";
 
 /** 凡例のチェックを地図の絞り込みへ反映するまでの遅れ。連続で何行も外す操作を、描き直し
  * 1回へまとめる（チェックの見た目は即座に変わる）。 */
-export const LEGEND_FILTER_DEBOUNCE_MS = 400;
+const LEGEND_FILTER_DEBOUNCE_MS = 400;
 
 const NO_STORED_VALUES = {};
 interface MapViewInputs {

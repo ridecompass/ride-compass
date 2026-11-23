@@ -81,9 +81,10 @@ class AxisPresentation(StrictModel):
     label: str = Field(min_length=1)
     description: str
     icon_id: str
-    #: 色の物差し。無ければ`lens`の段で塗る（物差しを書く前の定義）。
-    scale: LensScale | None = None
-    lens: LensBands | None = None
+    #: 色の物差し。無ければ`lens`の段で塗る（物差しを書く前の定義）。書いていない方は書き出さない（保存と管理APIの読み出しが、書いた
+    #: 全体のまま返す）。
+    scale: LensScale | None = Field(default=None, exclude_if=lambda value: value is None)
+    lens: LensBands | None = Field(default=None, exclude_if=lambda value: value is None)
 
     @model_validator(mode="after")
     def _has_a_scale(self) -> "AxisPresentation":
