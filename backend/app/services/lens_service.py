@@ -34,7 +34,7 @@ from app.domain.lens_values import (
 )
 from app.domain.region import BoundingBox, tile_bounds_lonlat
 from app.domain.attributes import EdgeMaterialColumns
-from app.domain.road_network import MaterialFills, RoadNetwork, material_arrays_of, slice_rows
+from app.domain.road_network import MaterialFills, material_arrays_of, slice_rows
 from app.domain.time_zone import JST, as_series_time
 from app.domain.wind import WindForecastSeries
 from app.infrastructure import road_network_store
@@ -88,7 +88,7 @@ class LensService:
                     preference: CostPreference, only: str | None = None) -> _TileLens | None:
         """タイルのレンズの値。`only`を渡すとそのフィーチャーだけで求める（無ければNone）。"""
         with log_external_call(_CATEGORY, z=z, x=x, y=y) as fields:
-            prepared = await asyncio.to_thread(_prepare, road_network_store.current(), z, x, y, settings, only)
+            prepared = await asyncio.to_thread(_prepare, z, x, y, settings, only)
             if prepared is None:
                 return None
             features, materials, fills, burden_fills, elevation_gain_m = prepared
@@ -115,11 +115,11 @@ class LensService:
         return series, target
 
 
-def _prepare(network: RoadNetwork, z: int, x: int, y: int, settings: ModelSettings, only: str | None
+def _prepare(z: int, x: int, y: int, settings: ModelSettings, only: str | None
              ) -> tuple[LensFeatures, EdgeMaterialColumns, MaterialFills, Mapping[str, float], np.ndarray] | None:
-    """風に依らない入力（フィーチャーと行・材料・欠けを埋める材料の平均と道のストレスの重さの平均・行の向きの登り）。道路網ごとの
-    初回は、タイルの区間の表（`domain/road_network.py: RoadNetwork.road_tile_rows`）と取込範囲全体の区分の列と平均も求めるので、
-    イベントループの外で呼ぶ。"""
+    """風に依らない入力（フィーチャーと行・材料・欠けを埋める材料の平均と道のストレスの重さの平均・行の向きの登り）。道路網を
+    読むのと、道路網ごとの初回にタイルの区間の表と取込範囲全体の区分の列と平均を求めるのを含むので、イベントループの外で呼ぶ。"""
+    network = road_network_store.current()
     tile = tile_features(network, z, x, y)
     features = tile if only is None else tile.only(only)
     if features is None:
@@ -138,7 +138,7 @@ def _tile_lens(features: LensFeatures, materials: EdgeMaterialColumns, settings:
         series, target = wind
         components = WindContext.of(series, materials).components(series.time_index(target, 0.0))
         previous_run_from = series.previous_run_from(target, 0.0)
-    return _TileLens(*lens_table(features, materials.columns, materials.distance_m, materials.elevation_profiles, settings,
+    return _TileLens(*lens_table(features, materials.columns, materials.distance_m, materials.elevation_spans, settings,
                                  ledger_parameters(preference, settings.tuning), speed_kmh, fills, burden_fills, components,
                                  elevation_gain_m),
                      previous_run_from)

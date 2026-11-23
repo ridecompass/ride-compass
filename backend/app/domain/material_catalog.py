@@ -306,6 +306,7 @@ def _pedestrian_road_material(column: str, label: str, subject: str) -> Material
 #: コードが名指しで読む材料のid。カタログのキーにも同じ定数を使う——綴りを別々に書くと、
 #: ずれたときに読む側が材料を見つけられず、黙って欠損として扱う。
 GRADIENT_PERCENT = "gradient_percent"
+ELEVATION_GAIN_PER_KM = "elevation_gain_m_per_km"
 ACCIDENT_COUNT_PER_KM_YEAR = "accident_count_per_km_year"
 
 
@@ -329,8 +330,8 @@ MATERIAL_CATALOG: dict[str, MaterialSpec] = {
             ),
     ),
     # 勾配の材料と分けて持つ理由と、逆向きの区間で下りの量になることは docs/modules/backend/elevation.md「向きと標高」。
-    "elevation_gain_m_per_km": MaterialSpec(
-        material_id="elevation_gain_m_per_km",
+    ELEVATION_GAIN_PER_KM: MaterialSpec(
+        material_id=ELEVATION_GAIN_PER_KM,
         label="登りの量",
         description=(
             "国土地理院の標高データから求めた、進行方向に1kmあたり登る高さ（m）。道の中の細かい上り下りの登りを"

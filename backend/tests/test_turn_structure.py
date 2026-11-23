@@ -11,6 +11,7 @@ import numpy as np
 import pytest
 
 from app.domain import traffic, turn_structure
+from app.domain.road_network_build import node_max_ranks
 from tests.search_graph_world import (
     ONE_WAY_EDGES,
     ONE_WAY_NODES,
@@ -54,24 +55,22 @@ def wait(signal, size, standing, movement):
 def rank_array(lazy, by_edge_id):
     return np.array([by_edge_id[edge_id] for edge_id in lazy.edge_ids], dtype=np.int64)
 
-# --- edge_bearings ---
+# --- build_turn_expanded_structure ---
 
 
-def test_edge_bearings_prefer_the_stored_value_and_fall_back_to_the_node_pair():
-    """折れ線から求めた向きがあればそれを使い、持たない区間だけ両端Nodeから補う。"""
+def test_an_edge_whose_shape_gives_no_bearing_is_measured_from_its_end_nodes():
+    """曲がりを測る端のそばの向きは、形から決まる区間はその向き、決まらない区間は両端のノードから見た向き（道路網の配列と
+    同じ決まり）。"""
     graph = make_graph(
         {"a": (35.0, 139.0), "b": (35.0, 139.01)},
         {"stored": ("a", "b", 100.0, 123.0), "derived": ("b", "a", 100.0, None)},
     )
-    lazy = lazy_of(graph)
-    bearings = dict(
-        zip(lazy.edge_ids, turn_structure.edge_bearings(lazy.graph, graph.start_bearing_deg, graph.latitude, graph.longitude))
-    )
+    lazy, _, structure = build_all(graph)
+
+    bearings = dict(zip(lazy.edge_ids, structure.start_bearing_deg.tolist()))
     assert bearings["stored"] == pytest.approx(123.0)
     assert bearings["derived"] == pytest.approx(270.0, abs=1.0)
 
-
-# --- build_turn_expanded_structure ---
 
 
 # 十字路の各区間を、Cから離れた側で60度向きを変える折れ線にしたもの。Cのそばの向きは`PLUS_EDGES`と同じ。
@@ -227,31 +226,32 @@ def test_crossing_a_higher_ranked_road_adds_a_wait_split_by_straight_or_turning(
 
 
 @pytest.mark.parametrize(
-    ("crossing_rank", "entering_rank", "signal", "db_rank", "expected"),
+    ("crossing_rank", "entering_rank", "signal", "network_rank", "expected"),
     [
         # 上位の道が待ちの要る階級に届かなければ、小さな交差点の升を引く。
         (MAJOR - 1, MAJOR - 2, False, 0, wait("unsignalized", "small", "yield", "straight")),
         # 信号のある交差点では、信号の升を引く（基本の待ちは停止密度の材料が運ぶ）。交差点の大きさで別の升。
         (MAJOR, MAJOR - 1, True, 0, wait("signal", "large", "yield", "straight")),
         (MAJOR - 1, MAJOR - 2, True, 0, wait("signal", "small", "yield", "straight")),
-        # bboxの外へはみ出した上位の道は部分グラフに現れない。DB側の集計値があれば大きい方を採る。
+        # 頂点の階級は道路網全体で数えるので、部分グラフの外へはみ出した上位の道の階級も持つ。
         (MAJOR - 1, MAJOR - 1, False, MAJOR, wait("unsignalized", "large", "yield", "straight")),
     ],
 )
-def test_crossing_wait_follows_the_node_rank_and_signal(crossing_rank, entering_rank, signal, db_rank, expected):
+def test_crossing_wait_follows_the_node_rank_and_signal(crossing_rank, entering_rank, signal, network_rank, expected):
     graph = make_graph(PLUS_NODES, PLUS_EDGES)
     lazy = lazy_of(graph)
     center = lazy.node_id_to_index["C"]
     signals = np.zeros(lazy.node_count, dtype=bool)
     signals[center] = signal
-    node_db_rank = np.zeros(lazy.node_count, dtype=np.int64)
-    node_db_rank[center] = db_rank
+    edge_rank = _plus_ranks(lazy, crossing_rank, entering_rank)
+    node_rank = node_max_ranks(lazy.node_count, lazy.graph.edge_from, lazy.graph.edge_to, edge_rank)
+    node_rank[center] = max(node_rank[center], network_rank)
     _, _, structure = build_all(
         graph,
         spec=TURN_SPEC,
-        edge_rank=_plus_ranks(lazy, crossing_rank, entering_rank),
+        edge_rank=edge_rank,
         node_has_signal=signals,
-        node_db_rank=node_db_rank,
+        node_rank=node_rank,
     )
     assert transition_seconds(lazy, structure)[("WC", "CE")] == pytest.approx(expected)
 

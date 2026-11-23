@@ -18,6 +18,7 @@ import numpy as np
 import pytest
 from numba.core import event
 
+from app.domain.elevation_profile import profile_spans
 from app.domain import leg_costs, traffic
 from app.domain.attributes import CategoricalColumn
 from app.domain.search_materials import SearchMaterials
@@ -37,7 +38,7 @@ from app.domain.material_catalog import MATERIAL_CATALOG
 from app.domain.route import AxisFact
 from tests.cost_axes_fixture import BAD_AXIS, cost_axes
 from tests.route_world import BAD_MATERIAL
-from tests.profile_fixture import grade_profiles, profiles
+from tests.profile_fixture import grade_spans, profiles
 from tests.tuning_fixture import TUNED
 
 START = datetime(2026, 10, 3, 9, 0)
@@ -82,7 +83,7 @@ def _matrix(n: int, *, distance=1000.0, gradient=0.0, bearing=NORTH, surface="pa
         material_ids=list(materials), material_values=np.stack([_column(v, n) for v in materials.values()]),
         categorical_material_ids=list(categories),
         categorical_material_columns=[CategoricalColumn.encode(v) for v in categories.values()],
-        elevation_profiles=grade_profiles(_column(gradient, n), _column(distance, n)),
+        elevation_spans=grade_spans(_column(gradient, n), _column(distance, n)),
         # 予報の風をそのまま乗り手の風として解く（高さの換算は`test_wind_height.py`）。
         wind_heights=WindHeights(lambda _grid: np.ones((n, 2)), np.arange(n)),
     )
@@ -139,7 +140,8 @@ def _shown(matrix, **kwargs) -> tuple[LegCostArrays, LegValues]:
 def test_the_travel_time_runs_the_points_of_the_road_profile_not_its_average_grade():
     """所要時間は行列の区間の断面を点の間ごとに走る。600mで18m登って18m下る道は、平均勾配は平地と同じ0%でも、
     平地より時間がかかる（勾配の材料の平均を読むと同じ時間になる）。"""
-    matrix = dataclasses.replace(_matrix(2, distance=600.0), elevation_profiles=profiles([0.0, 18.0, 0.0], [0.0, 0.0, 0.0]))
+    matrix = dataclasses.replace(_matrix(2, distance=600.0), elevation_spans=profile_spans(
+        profiles([0.0, 18.0, 0.0], [0.0, 0.0, 0.0]), np.full(2, 600.0)))
 
     up_and_down, flat = _snapshot(matrix).travel_seconds_lazy
 
@@ -337,7 +339,8 @@ def test_values_recomposed_for_the_rows_on_the_route_match_the_composition_used_
 #: 1本目は1000mの真ん中の100mだけが公道としてありえない坂（標高の読み違い）、2本目は平らな1000m。
 _PARTLY_UNMEASURED = dataclasses.replace(
     _matrix(2, distance=1000.0),
-    elevation_profiles=profiles([0.0, 0.0, 500.0, 500.0], [0.0, 0.0], positions=[[0.0, 0.45, 0.55, 1.0], []]),
+    elevation_spans=profile_spans(profiles([0.0, 0.0, 500.0, 500.0], [0.0, 0.0], positions=[[0.0, 0.45, 0.55, 1.0], []]),
+                                  np.full(2, 1000.0)),
 )
 
 

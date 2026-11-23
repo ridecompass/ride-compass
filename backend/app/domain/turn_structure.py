@@ -10,7 +10,6 @@ from itertools import product
 
 import numpy as np
 
-from app.domain.geo import LatLonPoint, bearing_between
 from app.domain.search_graph import EDGE_VALUE_DTYPE, SEARCH_INDEX_DTYPE, CsrGraphStructure, LazyRoadGraph
 from app.domain.stop_events import (
     MOVEMENTS,
@@ -119,21 +118,6 @@ class TurnExpandedStructure:
         return self._reverse
 
 
-def edge_bearings(
-    lazy_graph: LazyRoadGraph, bearing_deg: np.ndarray, node_lat: np.ndarray, node_lon: np.ndarray
-) -> np.ndarray:
-    """区間の番号順の方位（度）。`bearing_deg`（元の行の順、折れ線から求めた実際の向き）を
-    使い、NaNの区間だけ両端のNode座標から補う。"""
-    bearings = np.asarray(bearing_deg, dtype=float)[lazy_graph.edge_rows].copy()
-    for index in np.flatnonzero(np.isnan(bearings)).tolist():
-        tail, head = int(lazy_graph.edge_from[index]), int(lazy_graph.edge_to[index])
-        bearings[index] = bearing_between(
-            LatLonPoint(float(node_lat[tail]), float(node_lon[tail])),
-            LatLonPoint(float(node_lat[head]), float(node_lon[head])),
-        )
-    return bearings
-
-
 class TurnKind(IntEnum):
     """遷移の曲がりの種類。"""
 
@@ -160,7 +144,7 @@ def build_turn_expanded_structure(
     edge_rank: np.ndarray,
     spec: TurnCostSpec,
     node_has_signal: np.ndarray,
-    node_db_rank: np.ndarray,
+    node_rank: np.ndarray,
     node_branch_count: np.ndarray,
     edge_distance_m: np.ndarray,
     same_place_m: float,
@@ -172,7 +156,7 @@ def build_turn_expanded_structure(
     折り返しに必要なため、罰（`PENALTY_TURNS`）で抑える）。
 
     曲がりは、入る区間の終点のそばの向き`end_bearing_deg`と出る区間の始点のそばの向き`start_bearing_deg`
-    （どちらも区間の番号順）の差で測る。区間の端から端の向きで測ると、交差点から離れた所のカーブが
+    （どちらも区間の番号順）の差で測る。頂点の階級`node_rank`は、そこに集まる区間の一番高い階級（道路網全体で数えたもの）。区間の端から端の向きで測ると、交差点から離れた所のカーブが
     交差点の曲がりに混ざる。曲がりの減速と待ちの表の待ちは、交差点とみなす本数
     （`domain/traffic.py: INTERSECTION_DEGREE_THRESHOLD`）以上の道が集まる点（分かれ道。本数は`node_branch_count`）でだけ
     足す——分かれ道でない点は道のデータの継ぎ目で、道を選ばない。本数は進めない道
@@ -209,14 +193,6 @@ def build_turn_expanded_structure(
     branch = node_branch_count[edge_to[source]] >= INTERSECTION_DEGREE_THRESHOLD
     wait_kind = _turn_kinds(delta, is_uturn, branch, spec)
 
-    # ノードの階級は、読み込んだ部分グラフに現れる道から導く。DB側の事前集計値
-    # （`node_turns.max_highway_rank`）があれば大きい方を採る——bboxの外へはみ出した
-    # 上位の道は部分グラフに現れないため、導出だけでは取りこぼす。未集計の0は導出値を
-    # 下回るので、バッチ未実行でも結果は変わらない。
-    node_rank = np.zeros(csr.node_count, dtype=np.int64)
-    np.maximum.at(node_rank, edge_to, edge_rank)
-    np.maximum.at(node_rank, edge_from, edge_rank)
-    node_rank = np.maximum(node_rank, node_db_rank)
     via_node = edge_to[source]
     target_node_rank = node_rank[via_node]
     # 交差点の事実（地図だけで決まる）と、通り方の事実（入る区間で決まる）。

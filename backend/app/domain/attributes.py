@@ -4,7 +4,7 @@ from typing import Any
 
 import numpy as np
 
-from app.domain.elevation_profile import MAX_PLAUSIBLE_GRADE_PERCENT, ElevationProfiles
+from app.domain.elevation_profile import MAX_PLAUSIBLE_GRADE_PERCENT, STEEPEST_MIN_INTERVAL_M, ProfileSpans
 from app.domain.strict_model import StrictModel
 from app.domain.wind_height import WindHeights
 
@@ -104,9 +104,6 @@ class EdgeMaterialArrays:
     1.0/0.0/NaNで載る。分け方は`material_catalog.material_array_columns`が決める）。
     カテゴリは列ごとに語彙が違うため、行列ではなく列ごとの`CategoricalColumn`で持つ。
 
-    標高の列は**材料ではない表示用の値**で、経路が確定したあとの区間について
-    `domain/road_network.py: elevation_attribute`が`ElevationAttribute`を組み立てる。勾配そのものは材料
-    `gradient_percent`にあるため、ここでは重複して持たない。
     """
 
     numeric_ids: tuple[str, ...]
@@ -118,12 +115,6 @@ class EdgeMaterialArrays:
     bearing_deg: np.ndarray  # dtype=float64, NaN=方位が決まらない
     mid_lat: np.ndarray  # dtype=float64
     mid_lon: np.ndarray  # dtype=float64
-    start_elevation_m: np.ndarray  # dtype=float64, NaN=標高が無い（獲得・損失も無い）
-    end_elevation_m: np.ndarray  # dtype=float64, NaN=標高が無い
-    elevation_gain_m: np.ndarray  # dtype=float64, NaN=欠損
-    elevation_loss_m: np.ndarray
-    steepest_gain_percent: np.ndarray  # dtype=float64, NaN=欠損
-    steepest_loss_percent: np.ndarray
 
     def __len__(self) -> int:
         return len(self.distance_m)
@@ -141,8 +132,8 @@ class EdgeMaterialColumns:
     bearing_deg: np.ndarray  # dtype=float64, NaN=方位が決まらない
     mid_lat: np.ndarray  # dtype=float64
     mid_lon: np.ndarray  # dtype=float64
-    # 区間の断面の点（所要時間が読む）。
-    elevation_profiles: ElevationProfiles
+    # 区間の断面の点の間（所要時間が読む）。
+    elevation_spans: ProfileSpans
     # 区間の、予報の10mの風を乗り手の高さへ直す倍率の引き口。
     wind_heights: WindHeights
 
@@ -156,12 +147,6 @@ EDGE_ROW_ARRAY_FIELDS: tuple[str, ...] = tuple(
     field.name for field in fields(EdgeMaterialArrays) if field.type is np.ndarray
 )
 
-
-#: 一番急な勾配を測る最短の長さ（m）。1つ前の点の間がこれ以下なら、その点で測らない。数える間の途切れない続きの長さが
-#: これより短ければ、その続きの両端では測らない。短い間ほど標高データの揺れが勾配を大きく揺らす（GraphHopper の
-#: https://github.com/graphhopper/graphhopper/blob/master/core/src/main/java/com/graphhopper/routing/util/SlopeCalculator.java
-#: の`MIN_LENGTH`と同じ値と理由）。獲得標高・平均勾配と所要時間は、短い間も数える。
-STEEPEST_MIN_INTERVAL_M = 2.0
 
 
 def elevation_values_sql(vertices: str, tolerance_m: str) -> str:

@@ -147,31 +147,6 @@ def road_network(
 # --- 道路網をエンジンへ渡す道具（エンジンの入口の形が変わったら、ここだけを直す） ---
 
 
-class NetworkRepository:
-    """DBの代役。区間の形は両端のノードを結ぶ直線で、断面の点は区間の両端の標高（標高の無い区間は持たない）。"""
-
-    def __init__(self, network: RoadNetwork):
-        self._coordinates = {
-            node_key(int(osm)): [float(lat), float(lon)]
-            for osm, lat, lon in zip(network.node_osm_id, network.node_lat, network.node_lon, strict=True)
-        }
-        self._profiles = {
-            (int(way), int(segment), bool(forward)): ((0.0, float(start)), (1.0, float(end)))
-            for way, segment, forward, start, end in zip(
-                network.edge_way_id, network.edge_segment, network.edge_forward,
-                network.start_elevation_m, network.end_elevation_m, strict=True)
-            if not (np.isnan(start) or np.isnan(end))
-        }
-
-    async def get_edges_with_geometry(self, edges):
-        return {
-            edge.edge_id: replace(
-                edge, geometry=[self._coordinates[edge.from_node_id], self._coordinates[edge.to_node_id]],
-                profile=self._profiles.get((edge.osm_way_id, edge.segment_index, edge.forward), ()))
-            for edge in edges
-        }
-
-
 #: 2020〜2035年の毎時の、どこでも無風・標準の気温の予報（格子点1つ。区間はどこでも、一番近い格子点のこの1つを引く）。
 _CALM_HOURS = int((datetime(2035, 1, 1) - datetime(2020, 1, 1)).total_seconds() // 3600)
 CALM = WindForecastSeries(
@@ -215,7 +190,7 @@ def generator_for(
     """道路網を全体の配列として置き場へ置き、本物の`GraphService`とエンジンの上に戦略層（`RouteGenerator`）を組む。"""
     serve_road_network(root, network)
     return assemble_route_generation_setup(
-        GraphService(NetworkRepository(network), SearchMemory(), road_network_store.current()), Weather(wind),
+        GraphService(SearchMemory(), road_network_store.current()), Weather(wind),
         RequestedConditions(
             cost_preference=CostPreference(), road_avoidance=road_avoidance or {}, assumed_speed_kmh=assumed_speed_kmh,
         ),

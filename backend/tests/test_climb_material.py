@@ -1,7 +1,8 @@
-"""登りの量の材料（`elevation_gain_m_per_km`）が、派生した区間の標高から、進行方向に登った量として探索に届くこと。
+"""登りの量の材料（`elevation_gain_m_per_km`）が、派生した区間の標高から、進行方向に登った量として材料の読み出しに届くこと。
 
 区間は道路網の形の導出（`batch/derive_topology.py`）が切り、標高は派生の段（`batch/derive_elevation.py`）が出したものを
-探索と同じ読み出し（`infrastructure/road_graph_repository.py: RoadGraphRepository.get_edge_material_arrays`）で読む。道は
+材料の読み出し（`infrastructure/road_graph_repository.py: RoadGraphRepository.get_edge_material_arrays`。地図のタイルと同じ式）で
+読む。探索が読む道路網の配列は、同じ材料を断面から同じ規則で求め直す（2つの書き方の一致は`test_elevation_values.py`）。道は
 東へ登って下る1本で、途中の頂点に別の道を付けると、そこで2区間に切れる。
 
 ここで見ないもの:

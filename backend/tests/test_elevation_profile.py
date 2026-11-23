@@ -1,6 +1,6 @@
 """`domain/elevation_profile.py`——区間の断面の点の並びと、点の間の勾配・標高の無い長さ・全体の勾配の分布。
 
-入口は`interval_grade`・`unknown_lengths_m`・`grade_distribution`・`ElevationProfiles.take`。
+入口は`interval_grade`・`unknown_lengths_m`・`grade_distribution`。
 
 ここで見ないもの:
 - 点の間ごとに速さを解いて区間の所要時間にすること（逆向きの行・標高の無い所の埋め方） → `test_cycling_speed.py`
@@ -40,11 +40,3 @@ def test_the_distribution_is_the_share_of_the_road_run_at_each_slope_both_ways()
     assert distribution.grade.tolist() == pytest.approx([-0.03, -0.01, 0.0, 0.01, 0.03])
     assert distribution.share.tolist() == pytest.approx([1 / 6, 1 / 6, 1 / 3, 1 / 6, 1 / 6])
 
-
-def test_a_slice_keeps_the_points_and_the_direction_of_its_rows():
-    built = profiles([1.0, 2.0], [3.0, 4.0, 5.0], forward=[True, False])
-
-    taken = built.take(np.array([1]))
-
-    assert (taken.points.tolist(), taken.forward.tolist()) == ([3], [False])
-    assert taken.elevation_m[taken.start[0]:taken.start[0] + 3].tolist() == [3.0, 4.0, 5.0]

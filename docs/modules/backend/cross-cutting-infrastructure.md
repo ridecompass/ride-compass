@@ -198,11 +198,10 @@ composeのfrontendの公開先に従う値で、既定値（手元で`next dev`�
 | ファクトリ | 用途 |
 |---|---|
 | `get_session_factory()` | タイル配信（路面/POI/事故）・管理APIの読み書き等、通常のリクエスト |
-| `get_route_generation_session_factory()` | ルート生成（`api/dependencies.py: _open_route_generation_setup`）と、全表走査を伴う管理APIの集計（DBの状態・材料の欠損率等） |
+| `get_long_session_factory()` | 全表走査を伴う読み出し（管理APIの集計（DBの状態・材料の欠損率等）・走った記録） |
 
-ルート生成は確定した経路の形の取り直し（`get_edges_with_geometry`）で接続を取り、生成を終えてセッションを閉じるまで
-その接続を持ち続ける。全表走査の集計も1本の接続を長く持つ。
-プールを分けているのはこのためで、これらとタイル配信は接続を取り合わない（プール合計は
+全表走査の集計は1本の接続を長く持つ。ルート生成は DB を読まない（道路網の配列だけを読む）。
+プールを分けているのはこのためで、集計とタイル配信は接続を取り合わない（プール合計は
 最大30接続、本番PostgreSQLの`max_connections=100`に余裕）。クエリ1本の実行時間には上限を付けない。
 
 DI工場はどちらの系統を使うかを、工場を受ける依存（`api/dependencies.py: TileSessions`・`api/dependencies.py: LongSessions`）の

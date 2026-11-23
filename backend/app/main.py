@@ -24,7 +24,9 @@ from app.infrastructure.process_resources import close_process_resources
 from app.infrastructure.request_log import format_log_lines, request_log_middleware
 from app.infrastructure.response_compression import ContentTypeGZipMiddleware
 from app.infrastructure.jma_amedas_client import AMEDAS_REFRESH_INTERVAL_MINUTES
+from app.domain.model_settings import current_model_settings
 from app.services.definitions_loading import refresh_definitions
+from app.services.graph_service import network_burden_fills
 
 logging.basicConfig(level=logging.DEBUG if settings.debug_mode else logging.INFO)
 for _handler in logging.getLogger().handlers:
@@ -81,6 +83,13 @@ async def _sync_msm_job() -> None:
     await refresh_msm(get_http_client())
 
 
+async def _warm_road_network_job() -> None:
+    """道路網の置き場が入れ替わっていれば読み直し、取込範囲全体の区分の列と道のストレスの軸の欠けを埋める平均を求めておく。
+    派生を作り直した直後の最初の要求（ルート生成・地図のレンズ）が、取込範囲全体を数える時間を待たない。"""
+    network = await asyncio.to_thread(road_network_store.current)
+    await asyncio.to_thread(network_burden_fills, network, current_model_settings().cost_axes)
+
+
 async def _prune_stale_disk_generations_job() -> None:
     """ディスクの置き場から、いまのコードの形でない世代を削除する。
 
@@ -133,6 +142,14 @@ async def lifespan(app: FastAPI):
         minutes=settings.msm_sync_interval_minutes,
         next_run_time=datetime.now(),
         id="sync_msm",
+    )
+    # 派生の作り直しが置き場を入れ替えるのは別のプロセスなので、毎分置き場（ディレクトリの一覧）を見て、入れ替わっていれば読み直して暖める。
+    scheduler.add_job(
+        _warm_road_network_job,
+        trigger="interval",
+        minutes=1,
+        next_run_time=datetime.now(),
+        id="warm_road_network",
     )
     # 世代を上げたコードがデプロイされた直後がこのタイミングに当たる。
     scheduler.add_job(

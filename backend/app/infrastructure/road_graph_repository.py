@@ -12,11 +12,9 @@
 式が前提にする別名（`w`/`re`/`em`/`wm`）のFROM句を組み立てるだけで、式を書かない。
 """
 
-import asyncio
 import json
 import logging
 from collections.abc import AsyncIterator, Mapping, Sequence
-from itertools import batched
 
 import numpy as np
 import shapely
@@ -27,7 +25,6 @@ from app.domain.attributes import CategoricalColumn, EdgeMaterialArrays, Materia
 from app.domain.elevation_profile import along_fractions
 from app.domain.feature_materials import FeatureMaterials
 from app.domain.geo import bearing_sql, degrees_covering_m, midpoint_sql
-from app.domain.graph import LeanEdge, edge_key, node_key
 from app.domain.material_catalog import (
     material_array_columns,
     material_value_sql,
@@ -95,12 +92,6 @@ _EXTRA_MATERIAL_ARRAY_COLUMNS: dict[str, str] = {
     # 逆向きの方位は+180°ではない。両向きぶんを列で持つ（`road_edges`）。
     "bearing_deg": "CASE WHEN ids.forward THEN re.bearing_deg ELSE re.reverse_bearing_deg END",
     **dict(zip(("mid_lat", "mid_lon"), midpoint_sql("nf.geom", "nt.geom"), strict=True)),
-    "start_elevation_m": "em.start_elevation_m",
-    "end_elevation_m": "em.end_elevation_m",
-    "elevation_gain_m": "em.elevation_gain_m",
-    "elevation_loss_m": "em.elevation_loss_m",
-    "steepest_gain_percent": "em.steepest_gain_percent",
-    "steepest_loss_percent": "em.steepest_loss_percent",
 }
 
 #: 列の並びは渡した3つ組の位置で固定する。**road_edgesへLEFT JOINする**——行が無い区間で
@@ -148,7 +139,7 @@ ORDER BY ids.ord
 # （`infrastructure/road_network_store.py`）に作る。道の通行方向（`way_directions.direction`）が逆向きの枝を
 # 作ってよいかを決める。
 
-#: 取込範囲全体の区間（向きを持たない1行）。どの道も通行方向の行を持つ（通行方向の段が道ごとに1行を書く）ので、
+#: 取込範囲全体の区間（向きを持たない1行）と形。どの道も通行方向の行を持つ（通行方向の段が道ごとに1行を書く）ので、
 #: どの区間も通行方向を持つ。並びは`domain/road_network.py`の行順の前提。端のそばの向きは、
 #: 折れ線の向き（始点→終点）に進むときと逆に進むときの両方を持ち、端から`:bearing_distance_m`の道のりの点までで測る
 #: （区間がそれより短ければ端から端を見る）。
@@ -156,9 +147,7 @@ _NEAR_START = "ST_LineInterpolatePoint(re.geom, LEAST(1.0, :bearing_distance_m /
 _NEAR_END = "ST_LineInterpolatePoint(re.geom, GREATEST(0.0, 1.0 - :bearing_distance_m / re.distance_m))"
 _NETWORK_EDGES_SQL = text(f"""
 SELECT re.osm_way_id, re.segment_index, re.from_node_id, re.to_node_id,
-       w.highway, wm.direction,
-       ST_XMin(re.geom) AS min_lon, ST_YMin(re.geom) AS min_lat,
-       ST_XMax(re.geom) AS max_lon, ST_YMax(re.geom) AS max_lat,
+       w.highway, wm.direction, ST_AsBinary(re.geom) AS wkb,
        {bearing_sql("ST_StartPoint(re.geom)", _NEAR_START)} AS start_bearing_deg,
        {bearing_sql(_NEAR_END, "ST_EndPoint(re.geom)")} AS end_bearing_deg,
        {bearing_sql("ST_EndPoint(re.geom)", _NEAR_END)} AS reverse_start_bearing_deg,
@@ -177,7 +166,7 @@ NETWORK_TUNING = (TURN_BEARING_DISTANCE_ID, STOP_CLUSTER_DISTANCE_ID)
 #: 座標はノードの生データから読み、生データが無いノードは現れない。
 _NETWORK_NODES_SQL = text(f"""
 SELECT nm.osm_node_id, ST_X(n.geom) AS longitude, ST_Y(n.geom) AS latitude,
-       nm.has_traffic_signals, nm.max_highway_rank, rn.branch_count
+       nm.has_traffic_signals, rn.branch_count
 FROM node_turns nm
 JOIN road_nodes rn ON rn.osm_node_id = nm.osm_node_id
 JOIN LATERAL {nodes_lookup_sql("nm.osm_node_id")} n ON true
@@ -195,47 +184,7 @@ NETWORK_SQL_SOURCES = (
     _EDGE_ELEVATION_PROFILES_SQL,
 )
 
-_EDGE_GEOMETRIES_SQL = text("""
-SELECT re.osm_way_id, re.segment_index, re.from_node_id, re.to_node_id,
-       re.distance_m, ST_AsBinary(re.geom) AS wkb, ee.elevation_profile_m, ee.elevation_profile_along_m
-FROM unnest(CAST(:way_ids AS bigint[]), CAST(:segment_indexes AS int[]))
-     AS ids(osm_way_id, segment_index)
-JOIN road_edges re
-  ON re.osm_way_id = ids.osm_way_id AND re.segment_index = ids.segment_index
-LEFT JOIN edge_elevation ee
-  ON ee.osm_way_id = ids.osm_way_id AND ee.segment_index = ids.segment_index
-""")
-
-
-def _rows_to_directed_edges(rows, wanted: dict[tuple[int, int], list[bool]]) -> dict[str, LeanEdge]:
-    """ジオメトリと断面の点付きの`LeanEdge`。逆向きは形状点列と断面の点を逆順にし、断面の位置を終わりから測り直す。
-
-    `shapely.from_wkb`のバッチAPIで一括デコードする（GEOS呼び出しのループをPythonでは
-    なくC側で回す）。
-    """
-    rows = list(rows)
-    lines = shapely.from_wkb([bytes(row.wkb) for row in rows])
-    edges: dict[str, LeanEdge] = {}
-    for row, line in zip(rows, lines):
-        points = [[lat, lon] for lon, lat in line.coords]
-        elevations = row.elevation_profile_m or []
-        profile = tuple(zip((float(p) for p in along_fractions(row.elevation_profile_along_m or (), len(elevations))),
-                            elevations))
-        for forward in wanted.get((row.osm_way_id, row.segment_index), ()):
-            from_id, to_id = ((row.from_node_id, row.to_node_id) if forward
-                              else (row.to_node_id, row.from_node_id))
-            key = edge_key(row.osm_way_id, row.segment_index, forward)
-            edges[key] = LeanEdge(
-                edge_id=key, from_node_id=node_key(from_id), to_node_id=node_key(to_id),
-                geometry=points if forward else list(reversed(points)),
-                profile=profile if forward else tuple((1.0 - p, e) for p, e in reversed(profile)),
-                distance_m=row.distance_m, osm_way_id=row.osm_way_id,
-                segment_index=row.segment_index, forward=forward,
-            )
-    return edges
-
-
-def _float_array(values: list) -> np.ndarray:
+def float_array(values: list) -> np.ndarray:
     """NoneはNaNになる。"""
     return np.array(values, dtype=np.float64)
 
@@ -330,29 +279,6 @@ class RoadGraphRepository:
         async for chunk in result.partitions(chunk_size):
             yield chunk
 
-    async def get_edges_with_geometry(self, edges: list[LeanEdge]) -> dict[str, LeanEdge]:
-        """指定した枝ぶんだけ、実ジオメトリ込みの`LeanEdge`を取得する。
-
-        探索用グラフはジオメトリを持たない。確定した経路（1候補あたり数十〜数百区間）
-        だけへ絞って取り直す。
-        """
-        if not edges:
-            return {}
-        # 両向きの枝を頼まれても区間ごとに1行だけ引く（形は向きに依らず、逆向きは逆順にすれば足りる）。
-        # 向きの数だけ引くと、行も問い合わせの束（`ID_CHUNK_SIZE`）の数も増える。
-        wanted: dict[tuple[int, int], list[bool]] = {}
-        for edge in edges:
-            wanted.setdefault((edge.osm_way_id, edge.segment_index), []).append(edge.forward)
-        keys = sorted(wanted)
-        result: dict[str, LeanEdge] = {}
-        for chunk in batched(keys, ID_CHUNK_SIZE):
-            rows = (await self._session.execute(_EDGE_GEOMETRIES_SQL, {
-                "way_ids": [k[0] for k in chunk],
-                "segment_indexes": [k[1] for k in chunk],
-            })).all()
-            result.update(await asyncio.to_thread(_rows_to_directed_edges, rows, wanted))
-        return result
-
     # --- 材料 ----------------------------------------------------------------
 
     async def get_edge_material_arrays(
@@ -379,13 +305,13 @@ class RoadGraphRepository:
 
         numeric_values = np.empty((n, len(numeric_ids)), dtype=np.float64)
         for i, material_id in enumerate(numeric_ids):
-            numeric_values[:, i] = _float_array(raw[material_id])
+            numeric_values[:, i] = float_array(raw[material_id])
 
         return EdgeMaterialArrays(
             numeric_ids=numeric_ids, numeric_values=numeric_values,
             categorical_ids=categorical_ids,
             categorical_columns=tuple(CategoricalColumn.encode(raw[material_id]) for material_id in categorical_ids),
-            **{name: _float_array(raw[name]) for name in _EXTRA_MATERIAL_ARRAY_COLUMNS},
+            **{name: float_array(raw[name]) for name in _EXTRA_MATERIAL_ARRAY_COLUMNS},
         )
 
     async def get_edge_elevation_profiles(
@@ -485,7 +411,7 @@ class RoadGraphRepository:
             return None
         numeric_ids, categorical_ids = material_array_columns()
         columns: dict[str, MaterialColumn] = {
-            **{material_id: _float_array(getattr(row, f"c_{material_id}") or []) for material_id in numeric_ids},
+            **{material_id: float_array(getattr(row, f"c_{material_id}") or []) for material_id in numeric_ids},
             **{material_id: CategoricalColumn.encode(getattr(row, f"c_{material_id}") or [])
                for material_id in categorical_ids},
         }

@@ -41,7 +41,7 @@ from app.domain.material_catalog import MaterialSpec
 from app.domain.model_settings import ModelSettings
 from app.domain.road_classes import material_spec
 from app.domain.route import STOP_COUNT_DECIMALS, WIND_MS_DECIMALS, AxisFact
-from app.domain.elevation_profile import FLAT, ElevationProfiles, along_fractions
+from app.domain.elevation_profile import FLAT, ElevationProfiles, ProfileSpans, along_fractions, profile_spans
 from app.domain.search_materials import SearchMaterials
 from app.domain.ledger_costs import LedgerCosts, LedgerParameters
 from app.domain.road_network import MaterialFills
@@ -169,7 +169,7 @@ class TravelInputs:
     stops: np.ndarray
 
 
-def travel_inputs(materials: Mapping[str, MaterialColumn], distance_m: np.ndarray, profiles: ElevationProfiles,
+def travel_inputs(materials: Mapping[str, MaterialColumn], distance_m: np.ndarray, spans: ProfileSpans,
                   speed_kmh: float, fills: MaterialFills, settings: ModelSettings) -> TravelInputs:
     """区間の材料（材料id→区間の行の順の列）から、所要時間のうち風に依らない入力を組む。探索（`LegCostComposer`）と地図の
     レンズ（`domain/lens_values.py`）が同じ値を読むよう、組み方はここだけが持つ。ターンは遷移ごとに決まるためここには
@@ -189,7 +189,7 @@ def travel_inputs(materials: Mapping[str, MaterialColumn], distance_m: np.ndarra
         waits += count * event.expected_seconds
         kickoffs += count * event.kickoffs
     crr = crr_for_surface(surface, settings.road_classes, settings.tuning)
-    model = SegmentSpeedModel(RiderProfile.standard(speed_kmh, settings.tuning), profiles, distance_m, crr, kickoffs,
+    model = SegmentSpeedModel(RiderProfile.standard(speed_kmh, settings.tuning), spans, distance_m, crr, kickoffs,
                               settings.tuning)
     return TravelInputs(model, waits, kickoffs)
 
@@ -333,7 +333,8 @@ def compile_leg_cost_kernels(tuning: Tuning) -> None:
     （`domain/search_kernels.py: compile_search_kernels`がイメージの組み立てで呼ぶ）。"""
     flat = ElevationProfiles(np.zeros(1, dtype=np.int64), np.full(1, 2, dtype=np.int32), np.ones(1, dtype=bool),
                              np.zeros(2, dtype=np.float32), along_fractions((), 2), FLAT)
-    model = SegmentSpeedModel(RiderProfile.standard(20.0, tuning), flat, np.ones(1), np.zeros(1), np.zeros(1), tuning)
+    model = SegmentSpeedModel(RiderProfile.standard(20.0, tuning), profile_spans(flat, np.ones(1)), np.ones(1),
+                              np.zeros(1), np.zeros(1), tuning)
     seconds = model.travel_seconds(np.zeros(1), np.zeros(1), np.full(1, STANDARD_TEMPERATURE_C))
     model.ride(np.zeros(1), np.zeros(1), np.full(1, STANDARD_TEMPERATURE_C), 1.0)
     _bin_cost_arrays(seconds, np.zeros(1), np.zeros(1, dtype=bool), np.ones(1), np.zeros(1), np.zeros(1, dtype=int), 1)
@@ -407,7 +408,7 @@ class LegCostComposer:
     @cached_property
     def _travel_inputs(self) -> TravelInputs:
         """所要時間のうち風に依らない入力（`travel_inputs`）。静的材料だけから決まるため、リクエストに1回だけ求める。"""
-        return travel_inputs(self._materials, self._search_materials.distance_m, self._search_materials.elevation_profiles,
+        return travel_inputs(self._materials, self._search_materials.distance_m, self._search_materials.elevation_spans,
                              self.speed_kmh, self._material_fills, self._settings)
 
     def bin_time(self, hours: float) -> BinTime:

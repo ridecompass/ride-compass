@@ -13,7 +13,7 @@ import numpy as np
 from app.domain.attributes import CategoricalColumn, EdgeMaterialColumns, MaterialColumn
 from app.domain.cycling_speed import travel_model_material_ids
 from app.domain.wind_height import WindHeights
-from app.domain.elevation_profile import ElevationProfiles
+from app.domain.elevation_profile import ProfileSpans
 from app.domain.hard_filters import hard_filtered
 from app.domain.road_classes import CLASS_MATERIAL_PREFIX, RoadClassDefinitions, material_spec
 from app.domain.search_graph import EDGE_VALUE_DTYPE
@@ -81,8 +81,8 @@ class SearchMaterials:
     material_values: np.ndarray
     categorical_material_ids: list[str]
     categorical_material_columns: list[CategoricalColumn]
-    # 区間の断面の点（所要時間が点の間ごとに速さを解く。`domain/elevation_profile.py`）。
-    elevation_profiles: ElevationProfiles
+    # 区間の断面の点の間（所要時間が点の間ごとに速さを解く。`domain/elevation_profile.py: ProfileSpans`）。
+    elevation_spans: ProfileSpans
     # 区間の、予報の10mの風を乗り手の高さへ直す倍率の引き口（`domain/wind_height.py: WindHeights`）。
     wind_heights: WindHeights
 
@@ -150,7 +150,7 @@ def build_search_materials(
         material_values=material_values,
         categorical_material_ids=list(categorical),
         categorical_material_columns=list(categorical.values()),
-        elevation_profiles=materials.elevation_profiles,
+        elevation_spans=materials.elevation_spans,
         wind_heights=materials.wind_heights,
     )
     add_elapsed_ms(steps_ms, "stack", started)

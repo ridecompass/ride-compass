@@ -21,8 +21,7 @@ from app.domain.cost_axes import EFFORT_AXES, CostAxisDefinitions, EffortItem
 from app.domain.road_classes import CLASS_MATERIAL_PREFIX
 from app.domain.cycling_speed import STANDARD_TEMPERATURE_C
 from app.domain.lens_total import TOTAL_LENS_ID, lens_values_with_total
-from app.domain.elevation_profile import ElevationProfiles
-from app.domain.geo import bearings_between
+from app.domain.elevation_profile import ProfileSpans
 from app.domain.graph import edge_feature_key
 from app.domain.gradient import ROAD_BEARING_LEAF, travel_direction_formula
 from app.domain.ledger_costs import LedgerCosts, LedgerParameters
@@ -148,32 +147,19 @@ def tile_features(network: RoadNetwork, z: int, x: int, y: int) -> LensFeatures:
         # 道ごとの範囲 [始まり, 終わり) をつないだ行（道の先頭からの位置 ＋ 道の始まり）。
         rows = np.arange(int(counts.sum())) - np.repeat(np.cumsum(counts) - counts, counts) + np.repeat(starts, counts)
         keys = tuple(str(way) for way in ways)
+    rows = np.asarray(rows, dtype=np.int64)
     feature = np.asarray(feature, dtype=np.int64).reshape(-1)
     forward = np.asarray(network.edge_forward[rows], dtype=bool)
-    return LensFeatures(keys=keys, bearing_deg=_way_direction_bearings(network, rows, feature, forward, len(keys)),
-                        rows=np.asarray(rows, dtype=np.int64), feature=feature,
+    # フィーチャーごとの一番若い行（行は昇順で、区間の順方向の行は逆向きの行より前にある）。どのフィーチャーも行を持つ。
+    _, first_of_feature = np.unique(feature, return_index=True)
+    first = rows[first_of_feature]
+    if z >= EDGE_UNIT_MIN_ZOOM:
+        bearing = np.asarray(network.bearing_deg[first], dtype=np.float64)
+        bearing = np.where(network.edge_forward[first], bearing, (bearing + 180.0) % 360.0)
+    else:
+        bearing = np.asarray(network.way_bearing_deg[first], dtype=np.float64)
+    return LensFeatures(keys=keys, bearing_deg=bearing, rows=rows, feature=feature,
                         direction=np.where(forward, ALONG, AGAINST))
-
-
-def _way_direction_bearings(network: RoadNetwork, rows: np.ndarray, feature: np.ndarray, forward: np.ndarray,
-                            count: int) -> np.ndarray:
-    """フィーチャーごとの、道の向きの始点（一番若い区間の始まり）から終点（一番後の区間の終わり）を見た方位。"""
-    # 道の向きでの区間の始まりと終わりのノード（逆向きの行は始まりと終わりが入れ替わっている）。
-    tail = np.where(forward, network.edge_from[rows], network.edge_to[rows])
-    head = np.where(forward, network.edge_to[rows], network.edge_from[rows])
-    segment = np.asarray(network.edge_segment[rows], dtype=np.int64)
-    order = np.lexsort((segment, feature))
-    first = np.full(count, -1, dtype=np.int64)
-    last = np.full(count, -1, dtype=np.int64)
-    # 並べた行の、フィーチャーごとの最初と最後（フィーチャーの変わり目）。
-    sorted_feature = feature[order]
-    starts = np.flatnonzero(np.r_[True, sorted_feature[1:] != sorted_feature[:-1]])
-    ends = np.r_[starts[1:] - 1, len(order) - 1]
-    first[sorted_feature[starts]] = order[starts]
-    last[sorted_feature[ends]] = order[ends]
-    start, end = tail[first], head[last]
-    return bearings_between(network.node_lat[start], network.node_lon[start],
-                            network.node_lat[end], network.node_lon[end])
 
 
 @dataclass(frozen=True)
@@ -204,14 +190,14 @@ class LensFactInputs:
 
 
 def lens_table(features: LensFeatures, materials: Mapping[str, MaterialColumn], distance_m: np.ndarray,
-               profiles: ElevationProfiles, settings: ModelSettings, parameters: LedgerParameters, speed_kmh: float,
+               spans: ProfileSpans, settings: ModelSettings, parameters: LedgerParameters, speed_kmh: float,
                fills: MaterialFills, burden_fills: Mapping[str, float],
                weather: tuple[np.ndarray, np.ndarray, np.ndarray] | None,
                elevation_gain_m: np.ndarray) -> tuple[LensTable, LensFactInputs]:
     """`features.rows`の行の順の材料・長さ・断面・風の成分と気温（向かい風・横風・気温。Noneはフィーチャーが無く風を求めなかった
     とき。無風・`STANDARD_TEMPERATURE_C`で解く）・行の向きの登りから、
     レンズの値と、道の窓が出す区間の秒と事実の入力を求める。"""
-    travel = travel_inputs(materials, distance_m, profiles, speed_kmh, fills, settings)
+    travel = travel_inputs(materials, distance_m, spans, speed_kmh, fills, settings)
     axes = settings.cost_axes
     ledger = LedgerCosts.for_model(axes, parameters, travel.model, burden_weights(axes, parameters, materials, burden_fills))
     calm = (np.zeros(len(distance_m)), np.zeros(len(distance_m)), np.full(len(distance_m), STANDARD_TEMPERATURE_C))

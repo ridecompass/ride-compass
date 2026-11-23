@@ -5,8 +5,9 @@
 - `slice_network`: 範囲に掛かる区間と、その両端のノードを取り出す
 - `rows_in_tile`: 地図のタイルに掛かる区間の行
 - `road_class_columns`・`material_arrays_of`: 区分の列と、切り出した区間の材料
-- `RoadNetwork.numeric_means`: 欠けた数値の材料を埋める、取込範囲全体の平均
-- `elevation_attribute`: 1区間の標高属性
+- `RoadNetwork.numeric_means`: 欠けた数値の材料を埋める、取込範囲全体の平均（組むときに`domain/road_network_build.py`が求める）
+- `elevation_attribute`: 1区間の標高属性（断面から組むときに求めた値）
+- `edge_shape`・`edge_profile`: 1区間の形と断面の点を、走る向きに並べたもの
 - `edge_row_of`: `(道, 区間番号, 向き)`から区間の行
 
 ここで見ないもの:
@@ -28,7 +29,9 @@ from app.domain.material_catalog import GRADIENT_PERCENT
 from app.domain.region import ROAD_TILE_MAX_ZOOM, ROAD_TILE_MIN_ZOOM, tile_bounds_lonlat, tile_position
 from app.domain.road_classes import class_material_id
 from app.domain.road_network import (
+    edge_profile,
     edge_row_of,
+    edge_shape,
     elevation_attribute,
     material_arrays_of,
     road_class_columns,
@@ -154,11 +157,44 @@ def test_the_elevation_attribute_reads_the_average_grade_from_the_material_and_t
     }
 
 
+def test_the_reverse_direction_reads_the_same_ground_the_other_way():
+    """逆向きの行の要約は、同じ地形を逆に走った値（始まりと終わり・登りと下り・一番急な登りと下りの入れ替えと、勾配の符号）。"""
+    whole = network()
+    grade = 12.0 / whole.distance_m[1] * 100
+
+    attribute = elevation_attribute(whole, 1, "10:0:b")
+
+    assert attribute is not None
+    assert attribute.model_dump() == {
+        "edge_id": "10:0:b",
+        "start_elevation_m": 22.0,
+        "end_elevation_m": 10.0,
+        "elevation_gain_m": 0.0,
+        "elevation_loss_m": 12.0,
+        "average_grade": pytest.approx(-grade),
+        "steepest_gain_percent": 0.0,
+        "steepest_loss_percent": pytest.approx(grade),
+    }
+
+
 def test_grades_missing_in_the_arrays_are_none_in_the_attribute():
     attribute = elevation_attribute(network(), 2, "20:0:f")
 
     assert attribute is not None
     assert attribute.average_grade is None
+
+
+def test_both_directions_of_an_edge_read_one_shape_and_profile_in_the_order_they_ride():
+    """区間の形と断面の点は区間ごとに1回だけ持ち、逆向きの行は逆順に読み、断面の位置を終わりから測り直す。"""
+    whole = network()
+
+    forward, backward = (edge_row_of(whole, 10, 0, direction) for direction in (True, False))
+
+    assert edge_shape(whole, forward) == [[35.0, 139.0], [35.0, 139.004]]
+    assert edge_shape(whole, backward) == [[35.0, 139.004], [35.0, 139.0]]
+    assert edge_profile(whole, forward) == ((0.0, 10.0), (1.0, 22.0))
+    assert edge_profile(whole, backward) == ((0.0, 22.0), (1.0, 10.0))
+    assert edge_profile(whole, edge_row_of(whole, 30, 0, True)) == ()  # 標高の無い区間は点を持たない
 
 
 @pytest.mark.parametrize(

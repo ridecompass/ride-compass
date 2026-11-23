@@ -26,7 +26,7 @@ from app.domain.attributes import (
     ElevationAttribute,
     MaterialColumn,
 )
-from app.domain.elevation_profile import ElevationProfiles, GradeDistribution
+from app.domain.elevation_profile import ProfileSpans
 from app.domain.geo import LatLonPoint
 from app.domain.material_catalog import GRADIENT_PERCENT
 from app.domain.msm import MsmGrid
@@ -42,6 +42,9 @@ _WIND_HEIGHTS_LOCK = threading.Lock()
 
 logger = logging.getLogger("ridecompass.graph")
 
+#: 行数が区間でも頂点でもなく、点（形・断面の点・点の間）の数の欄の頭。
+_POINT_PREFIXES = ("profile_", "shape_", "span_")
+
 
 @dataclass(frozen=True, eq=False)
 class RoadNetwork:
@@ -56,7 +59,8 @@ class RoadNetwork:
     node_lat: np.ndarray  # float64
     node_lon: np.ndarray  # float64
     node_has_signals: np.ndarray  # bool
-    node_max_rank: np.ndarray  # int64
+    # そこに集まる区間の一番高い階級（`edge_rank`の最大。道路網全体で数える）。
+    node_max_rank: np.ndarray  # int8
     # そこに集まる道の本数（`road_nodes.branch_count`）。3本以上なら分かれ道。
     node_branch_count: np.ndarray  # int16
 
@@ -65,17 +69,22 @@ class RoadNetwork:
     edge_forward: np.ndarray  # bool
     edge_from: np.ndarray  # int32（ノードの行）
     edge_to: np.ndarray  # int32
-    # 道路の種別（`highway`タグ）の語彙への番号。
-    edge_highway: np.ndarray  # int16
-    highway_vocab: tuple[str, ...]
+    # 道路の種別の階級（`domain/traffic.py: highway_rank`）。
+    edge_rank: np.ndarray  # int8
     # 区間の形の外接矩形。範囲の切り出しに使う。
     edge_min_lon: np.ndarray  # float64
     edge_min_lat: np.ndarray
     edge_max_lon: np.ndarray
     edge_max_lat: np.ndarray
-    # 点を出てすぐの向きと、点へ入る直前の向き（度）。交差点での曲がりを測る。NaN=方位が決まらない。
+    # 点を出てすぐの向きと、点へ入る直前の向き（度）。交差点での曲がりを測る。形から決まらない区間は両端の頂点から求めてある。
     edge_start_bearing_deg: np.ndarray  # float64
     edge_end_bearing_deg: np.ndarray  # float64
+    # 区間の形（経度・緯度）。区間の行ごとに、全区間の点を道の順方向に並べてつないだ`shape_lon`・`shape_lat`の中の始まりの位置と
+    # 点の数。両向きの行は同じ点を指し、逆向きの行は逆順に読む。
+    edge_shape_start: np.ndarray  # int64
+    edge_shape_points: np.ndarray  # int32
+    shape_lon: np.ndarray  # float64、行数は点の数
+    shape_lat: np.ndarray  # float64
 
     # 材料（`EdgeMaterialArrays`と同じ列。区間と同じ行順）。
     numeric_ids: tuple[str, ...]
@@ -83,10 +92,16 @@ class RoadNetwork:
     categorical_ids: tuple[str, ...]
     categorical_codes: np.ndarray  # (区間, 列) int16。0は値なし
     categorical_vocab: tuple[tuple[str | None, ...], ...]  # 列ごとの語彙。先頭は必ずNone
+    # 数値の材料ごとの、取込範囲全体の距離で重みを付けた平均（値の無い区間を除く。値が1つも無ければNaN）。欠けた材料を埋める
+    # （`MaterialFills`）。
+    numeric_means: dict[str, float]
     distance_m: np.ndarray  # float64
     bearing_deg: np.ndarray  # float64, NaN=方位が決まらない
+    # 区間の道の、道の順方向の始点（一番若い区間の始まり）から終点（一番後の区間の終わり）を見た方位。道1本で塗るレンズが読む。
+    way_bearing_deg: np.ndarray  # float64
     mid_lat: np.ndarray
     mid_lon: np.ndarray
+    # 断面から決まる区間の値（走る向きに見た値。`domain/elevation_profile.py: profile_summaries`）。
     start_elevation_m: np.ndarray  # float64, NaN=標高が無い（獲得・損失も無い）
     end_elevation_m: np.ndarray  # float64, NaN=標高が無い
     elevation_gain_m: np.ndarray  # float64, NaN=欠損
@@ -94,14 +109,19 @@ class RoadNetwork:
     steepest_gain_percent: np.ndarray  # float64, NaN=欠損
     steepest_loss_percent: np.ndarray
     # 断面の点（`domain/elevation_profile.py`）。区間の行ごとに、全区間の点を順方向に並べてつないだ`profile_elevation_m`の中の
-    # 始まりの位置と点の数（標高の無い区間は0）。両向きの行は同じ点を指し、逆向きの行（`edge_forward`が偽）は勾配の符号を返して読む。
+    # 始まりの位置と点の数（標高の無い区間は0）。両向きの行は同じ点を指し、逆向きの行（`edge_forward`が偽）は逆順に読む。
     edge_profile_start: np.ndarray  # int64
     edge_profile_points: np.ndarray  # int32
     profile_elevation_m: np.ndarray  # float32、行数は区間ではなく点の数
     profile_position: np.ndarray  # float32、点ごとの位置（区間の長さに対する割合）。行数は`profile_elevation_m`と同じ
-    # 標高の無い所を埋める、道路網全体の点の間の勾配の分布（`domain/elevation_profile.py: grade_distribution`。組むときに1回求める）。
-    profile_distribution_grade: np.ndarray  # float64、行数は階級の数
-    profile_distribution_share: np.ndarray  # float64
+    # 所要時間と体力を解く点の間（`domain/elevation_profile.py: ProfileSpans`）。区間の行ごとの始まりの位置と数と、標高の無い長さと
+    # 気圧を出す標高。
+    edge_span_start: np.ndarray  # int64
+    edge_span_count: np.ndarray  # int32
+    span_length_m: np.ndarray  # float32、行数は点の間の数
+    span_grade: np.ndarray  # float32
+    unknown_elevation_m: np.ndarray  # float64
+    mean_elevation_m: np.ndarray  # float64
 
     def __post_init__(self) -> None:
         """行数と列数が揃っていることを、組み立てた場所で確かめる。
@@ -113,14 +133,19 @@ class RoadNetwork:
         wrong = {
             f.name: len(value)
             for f in fields(self)
-            if isinstance(value := getattr(self, f.name), np.ndarray) and not f.name.startswith("profile_")
+            if isinstance(value := getattr(self, f.name), np.ndarray) and not f.name.startswith(_POINT_PREFIXES)
             and len(value) != (node_count if f.name.startswith("node_") else edge_count)
         }
-        if len(self.edge_profile_start) and int(np.max(self.edge_profile_start + self.edge_profile_points)) > len(
-                self.profile_elevation_m):
-            wrong["edge_profile_start"] = len(self.profile_elevation_m)
-        if len(self.profile_position) != len(self.profile_elevation_m):
-            wrong["profile_position"] = len(self.profile_position)
+        for start, count, points in (("edge_profile_start", "edge_profile_points", "profile_elevation_m"),
+                                     ("edge_shape_start", "edge_shape_points", "shape_lon"),
+                                     ("edge_span_start", "edge_span_count", "span_length_m")):
+            first, number = getattr(self, start), getattr(self, count)
+            if len(first) and int(np.max(first + number)) > len(getattr(self, points)):
+                wrong[start] = len(getattr(self, points))
+        for name, same_as in (("profile_position", "profile_elevation_m"), ("shape_lat", "shape_lon"),
+                              ("span_grade", "span_length_m")):
+            if len(getattr(self, name)) != len(getattr(self, same_as)):
+                wrong[name] = len(getattr(self, name))
         wrong_columns = {
             name: (matrix.shape[1], len(ids))
             for name, matrix, ids in (
@@ -142,31 +167,16 @@ class RoadNetwork:
         return len(self.edge_way_id)
 
     @property
-    def elevation_profiles(self) -> ElevationProfiles:
-        """全区間の断面の点と、標高の無い所を埋める全体の勾配の分布。"""
-        distribution = GradeDistribution(np.asarray(self.profile_distribution_grade),
-                                         np.asarray(self.profile_distribution_share))
-        return ElevationProfiles(self.edge_profile_start, self.edge_profile_points, self.edge_forward,
-                                 self.profile_elevation_m, self.profile_position, distribution)
+    def elevation_spans(self) -> ProfileSpans:
+        """全区間の、所要時間と体力を解く点の間。"""
+        return ProfileSpans(self.edge_span_start, self.edge_span_count, self.span_length_m, self.span_grade,
+                            self.unknown_elevation_m, self.mean_elevation_m)
 
     @cached_property
     def road_tile_rows(self) -> "TileRows":
         """地図の道のタイルの一番粗いズームのタイルごとの、区間の形の外接矩形が重なる区間の行（`rows_in_tile`が引く）。
         道路網と同じ寿命で1回だけ作る。"""
         return TileRows.build(self, ROAD_TILE_MIN_ZOOM)
-
-    @cached_property
-    def numeric_means(self) -> dict[str, float]:
-        """数値の材料ごとの、取込範囲全体の距離で重みを付けた平均（値の無い区間を除く。値が1つも無ければNaN）。欠けた材料を
-        埋める（`MaterialFills`）。道路網と同じ寿命で1回だけ求める。"""
-        means: dict[str, float] = {}
-        for column, material_id in enumerate(self.numeric_ids):
-            values = np.asarray(self.numeric_values[:, column], dtype=np.float64)
-            known = ~np.isnan(values)
-            distance = self.distance_m[known]
-            total = float(distance.sum())
-            means[material_id] = float((values[known] * distance).sum()) / total if total > 0 else np.nan
-        return means
 
     def wind_height_factors(self, grid: MsmGrid, tuning: Tuning) -> np.ndarray:
         """全区間の、予報の10mの風を乗り手の高さへ直す倍率（`domain/wind_height.py: height_factors`）。土地被覆の割合の欠けは、
@@ -413,7 +423,7 @@ def material_arrays_of(road: RoadSlice, tuning: Tuning) -> EdgeMaterialColumns:
         bearing_deg=np.asarray(network.bearing_deg[rows]),
         mid_lat=np.asarray(network.mid_lat[rows]),
         mid_lon=np.asarray(network.mid_lon[rows]),
-        elevation_profiles=network.elevation_profiles.take(rows),
+        elevation_spans=network.elevation_spans.take(rows),
         wind_heights=WindHeights(lambda grid: network.wind_height_factors(grid, tuning), rows),
     )
 
@@ -438,6 +448,27 @@ def elevation_attribute(network: RoadNetwork, row: int, edge_id: str) -> Elevati
 
 def _optional_float(value: float) -> float | None:
     return None if np.isnan(value) else float(value)
+
+
+def _points_of(start: np.ndarray, count: np.ndarray, forward: np.ndarray, row: int) -> np.ndarray:
+    """全体の行`row`の区間の点の位置（区間の点の配列の中の位置を、走る向きに並べたもの）。"""
+    first = int(start[row])
+    positions = np.arange(first, first + int(count[row]))
+    return positions if bool(forward[row]) else positions[::-1]
+
+
+def edge_shape(network: RoadNetwork, row: int) -> list[list[float]]:
+    """全体の行`row`の区間の形を、走る向きに並べた`[緯度, 経度]`の点で。"""
+    points = _points_of(network.edge_shape_start, network.edge_shape_points, network.edge_forward, row)
+    return [[float(lat), float(lon)] for lat, lon in zip(network.shape_lat[points], network.shape_lon[points])]
+
+
+def edge_profile(network: RoadNetwork, row: int) -> tuple[tuple[float, float | None], ...]:
+    """全体の行`row`の区間の断面の点を、走る向きに並べた`(区間の長さに対する位置, 標高（m。値が無ければNone）)`で。"""
+    points = _points_of(network.edge_profile_start, network.edge_profile_points, network.edge_forward, row)
+    flip = not bool(network.edge_forward[row])
+    return tuple((1.0 - float(at) if flip else float(at), _optional_float(elevation))
+                 for at, elevation in zip(network.profile_position[points], network.profile_elevation_m[points]))
 
 
 def edge_row_of(network: RoadNetwork, osm_way_id: int, segment_index: int, forward: bool) -> int | None:

@@ -25,7 +25,7 @@ import numpy as np
 from numba import njit
 
 from app.domain.attributes import CategoricalColumn
-from app.domain.elevation_profile import ElevationProfiles, flatten_spans, row_elevations_m, unknown_lengths_m
+from app.domain.elevation_profile import ProfileSpans
 from app.domain.road_classes import RoadClassDefinitions, class_material_id
 from app.domain.search_graph import kernel_array
 from app.domain.traffic import stop_count_material_ids
@@ -305,31 +305,25 @@ class SegmentSpeedModel:
     読み違えないよう、揃っていることをここで確かめる。
     """
 
-    def __init__(self, profile: RiderProfile, profiles: ElevationProfiles, distance_m: np.ndarray,
+    def __init__(self, profile: RiderProfile, spans: ProfileSpans, distance_m: np.ndarray,
                  crr: np.ndarray, kickoffs: np.ndarray, tuning: Tuning) -> None:
-        """`profiles`は区間の行ごとの断面、`distance_m`は区間の長さ、`crr`は区間ごとの転がり抵抗（`crr_for_surface`）、
-        `kickoffs`は区間の止まる出来事の漕ぎ出しの回数（`domain/traffic.py: StopEvent.kickoffs`の和）。"""
+        """`spans`は区間の行ごとの点の間（`domain/elevation_profile.py: profile_spans`）、`distance_m`は区間の長さ、`crr`は
+        区間ごとの転がり抵抗（`crr_for_surface`）、`kickoffs`は区間の止まる出来事の漕ぎ出しの回数（`domain/traffic.py: StopEvent.kickoffs`の和）。"""
         shape = np.shape(distance_m)
         mismatched = {name: np.shape(array) for name, array in (
-            ("crr", crr), ("kickoffs", kickoffs), ("profiles.start", profiles.start),
-            ("profiles.points", profiles.points), ("profiles.forward", profiles.forward)) if np.shape(array) != shape}
+            ("crr", crr), ("kickoffs", kickoffs), ("spans.start", spans.start), ("spans.count", spans.count),
+            ("spans.unknown_m", spans.unknown_m)) if np.shape(array) != shape}
         if mismatched:
             raise ValueError(f"区間の配列の長さが揃っていません distance_m={shape} {mismatched}")
-        start = kernel_array(profiles.start, np.int64)
-        points = kernel_array(profiles.points, np.int64)
-        elevation = kernel_array(profiles.elevation_m, np.float32)
-        position = kernel_array(profiles.position, np.float32)
         distance = kernel_array(distance_m, np.float64)
         #: 区間の行ごとの長さ（m、float64）。
         self.distance_m = distance
         #: 区間の行ごとの標高の無い長さ（m）。全体の分布で埋めて走る（所要時間の欠けの割合が読む）。
-        self.unknown_m = unknown_lengths_m(start, points, elevation, position, distance)
-        span_row, span_length, span_grade = flatten_spans(
-            start, points, kernel_array(profiles.forward, np.bool_), elevation, position, distance, self.unknown_m,
-            kernel_array(profiles.distribution.grade, np.float64), kernel_array(profiles.distribution.share, np.float64))
+        self.unknown_m = np.asarray(spans.unknown_m, dtype=np.float64)
+        span_row, span_length, span_grade = spans.flat()
         crr = kernel_array(crr, np.float32)
         # 区間の行の気圧は、断面の値のある点の標高の平均から出す。値のある点が無い行は海面（0m）とする。
-        row_elevation = row_elevations_m(start, points, elevation)
+        row_elevation = np.asarray(spans.mean_elevation_m, dtype=np.float64)
         pressure_kpa = _air_pressure_kpa(np.where(np.isnan(row_elevation), 0.0, row_elevation))
         # 体力と漕ぎ出しが負・無限大にならない値だけで解く（上限倍率が1未満だと平地の出力を越えた分が負になる）。
         require_tuning({"speed.mass_kg": profile.mass_kg}, profile.mass_kg > 0, "0より大きい")

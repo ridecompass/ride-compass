@@ -21,7 +21,7 @@ from app.domain.axis_templates import evaluate_breakpoint_linear
 from app.domain.cost_axes import EFFORT_AXES, AxisPresentation, CategoricalBurden, LensBands, LensScale
 from app.domain.cost_preference import CostPreference
 from app.domain.cycling_speed import STANDARD_TEMPERATURE_C, RiderProfile, SegmentSpeedModel, crr_for_surface
-from app.domain.elevation_profile import FLAT, ElevationProfiles, along_fractions
+from app.domain.elevation_profile import FLAT, ElevationProfiles, ProfileSpans, along_fractions, profile_spans
 from app.domain.ledger_costs import LedgerCosts, LedgerParameters, ledger_parameters
 from app.domain.lens_total import TOTAL_LENS_ID
 from app.domain.material_catalog import MATERIAL_CATALOG
@@ -140,10 +140,11 @@ def _axis_seconds_per_km(settings: ModelSettings, parameters: LedgerParameters, 
     return ledger.row_seconds(model, wind, np.zeros(n), np.full(n, STANDARD_TEMPERATURE_C))[1][axis_id]
 
 
-def _uniform_slopes(grade_percent: np.ndarray) -> ElevationProfiles:
+def _uniform_slopes(grade_percent: np.ndarray) -> ProfileSpans:
     """道ごとに、一様に登る2点の断面。標高の平均を海面（0m）に置く（空気を坂の大きさで変えない）。"""
     n = len(grade_percent)
     rise = grade_percent / 100.0 * _ROAD_M
     elevation = np.column_stack([-rise / 2, rise / 2]).astype(np.float32).ravel()
-    return ElevationProfiles(np.arange(n, dtype=np.int64) * 2, np.full(n, 2, dtype=np.int32), np.ones(n, dtype=bool),
-                             elevation, np.tile(along_fractions((), 2), n), FLAT)
+    return profile_spans(ElevationProfiles(np.arange(n, dtype=np.int64) * 2, np.full(n, 2, dtype=np.int32),
+                                           np.ones(n, dtype=bool), elevation, np.tile(along_fractions((), 2), n), FLAT),
+                         np.full(n, _ROAD_M))

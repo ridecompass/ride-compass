@@ -6,7 +6,7 @@
 
 import asyncio
 from collections.abc import Callable
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import TypeVar, cast
 
@@ -53,7 +53,6 @@ from app.domain.turn_structure import (
     turn_penalties_along,
     turns_along,
 )
-from app.services.graph_service import GraphService
 from app.domain.loop_routing import TracedLoop
 from app.services.road_graph_context import (
     RoadGraphContext,
@@ -65,20 +64,12 @@ from app.services.road_graph_context import (
 
 
 async def evaluate_routes(
-    graph_service: GraphService, context: RoadGraphContext, traced: list[TracedLoop], start_time: datetime
+    context: RoadGraphContext, traced: list[TracedLoop], start_time: datetime
 ) -> list[EvaluatedRoute]:
-    # 実ジオメトリは距離フィルタを通った候補ぶんだけを、全候補まとめて1回で取り直す
-    # （棄却済み候補ぶんは問い合わせない）。引けない区間があれば落とす——探索が通った
-    # 区間の実体がDBに無いということで、線の欠けた経路を配るより落ちる方がよい。
+    # 形と断面の点は、距離フィルタを通った候補の区間の分だけ道路網の配列から付ける。
     hydrate_started = start_timer()
-    topology = {
-        index: lean_edge(context, index)
-        for index in dict.fromkeys(index for t in traced for index in t.data)
-    }
-    hydrated = await graph_service.get_edges_with_geometry(list(topology.values()))
-    edges_by_candidate: list[list[LeanEdge]] = [
-        [hydrated[topology[index].edge_id] for index in t.data] for t in traced
-    ]
+    edges = {index: lean_edge(context, index) for index in dict.fromkeys(index for t in traced for index in t.data)}
+    edges_by_candidate: list[list[LeanEdge]] = [[edges[index] for index in t.data] for t in traced]
     add_elapsed_ms(context.evaluate_steps_ms, "hydrate", hydrate_started)
     return await asyncio.to_thread(
         lambda: [
@@ -207,7 +198,7 @@ def _build_best_candidate(
     path: list[int] = traced.data
     chosen = _trace(context, edges_in_path, path, traced.leg_of_edge, traced.waypoint_offsets)
     elevation_by_edge = _elevation_by_edge(context, edges_in_path, path)
-    reversed_path = _reverse_traced_edges(edges_in_path, path, context) if traced.reversible else None
+    reversed_path = _reverse_traced_edges(path, context) if traced.reversible else None
     if reversed_path is not None:
         reverse_edges, reverse_path = reversed_path
         reverse = _trace(
@@ -412,24 +403,18 @@ def _route_turns(
 
 
 def _reverse_traced_edges(
-    edges_in_path: list[LeanEdge], path: list[int], context: RoadGraphContext
+    path: list[int], context: RoadGraphContext
 ) -> tuple[list[LeanEdge], list[int]] | None:
     """順方向の経路（起点→...→起点）を逆順に辿った場合の、対応する逆方向の区間の列と
     その番号列を構築する。経路中に一方通行（逆方向の区間が存在しない）区間が1つでもあれば
-    物理的に逆走不可能なため`None`を返す。
-
-    `geometry`と`profile`（断面の点）だけは逆方向の区間自身（形を持たない）からではなく、順方向で取得済みの
-    ものを反転して使う——同じ物理区間を逆順に辿るだけなので、取り直す必要が無い。
-    進行方向に依存しない値も**逆方向の区間自身から**引く。
+    物理的に逆走不可能なため`None`を返す。区間の値は逆方向の区間自身から引く。
     """
     reverse_edges: list[LeanEdge] = []
     reverse_path: list[int] = []
-    for edge, index in zip(reversed(edges_in_path), reversed(path), strict=True):
+    for index in reversed(path):
         reverse_index = reverse_edge_index(context, index)
         if reverse_index is None:
             return None
-        topology = lean_edge(context, reverse_index)
-        reverse_edges.append(replace(topology, geometry=list(reversed(edge.geometry)),
-                                     profile=tuple((1.0 - at, m) for at, m in reversed(edge.profile))))
+        reverse_edges.append(lean_edge(context, reverse_index))
         reverse_path.append(reverse_index)
     return reverse_edges, reverse_path

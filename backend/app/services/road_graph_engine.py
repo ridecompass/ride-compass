@@ -26,7 +26,6 @@ import numpy as np
 
 from app.domain.stopwatch import elapsed_ms, start_timer, steps_note
 from app.domain.time_zone import as_series_time
-from app.domain.traffic import highway_rank
 from app.domain.model_settings import ModelSettings
 from app.domain.tuning import SNAP_CORRECTION_ID
 from app.domain.errors import RoutingError
@@ -68,7 +67,6 @@ from app.domain.turn_structure import (
     turn_cost,
     TurnExpandedStructure,
     build_turn_expanded_structure,
-    edge_bearings,
     turn_search_seconds,
 )
 from app.domain.connectivity import largest_strongly_connected_nodes, nodes_reached_without_retracing
@@ -330,17 +328,14 @@ class RoadGraphEngine:
         return node_index, accessible, passable, statics, turn_structure
 
     def _build_turn_structure(self, search: _SearchGraph, statics: SearchGraphStatics) -> TurnExpandedStructure:
-        """状態＝有向区間の遷移構造。信号の有無・集まる道の最大階級はノードの事前集計列、
-        区間の道路階級は`highway`の語彙から引く（`domain/traffic.py: highway_rank`）。"""
+        """状態＝有向区間の遷移構造。区間と頂点の階級・端のそばの向き・信号の有無は道路網の配列の欄を読む。"""
         road, lazy_graph = search.road, search.lazy_graph
         network = road.network
-        rank_of_code = np.array([highway_rank(highway) for highway in network.highway_vocab], dtype=np.int64)
-        edge_rank = rank_of_code[network.edge_highway[road.rows[lazy_graph.edge_rows]]]
-        start_bearings, end_bearings = (
-            edge_bearings(lazy_graph, bearing_deg[road.rows], search.node_lat, search.node_lon)
-            for bearing_deg in (network.edge_start_bearing_deg, network.edge_end_bearing_deg))
+        rows = road.rows[lazy_graph.edge_rows]
         return build_turn_expanded_structure(
-            statics.csr, lazy_graph, start_bearings, end_bearings, edge_rank, self._turn_cost,
+            statics.csr, lazy_graph, np.asarray(network.edge_start_bearing_deg[rows], dtype=np.float64),
+            np.asarray(network.edge_end_bearing_deg[rows], dtype=np.float64),
+            np.asarray(network.edge_rank[rows], dtype=np.int64), self._turn_cost,
             np.asarray(network.node_has_signals[road.nodes], dtype=bool),
             np.asarray(network.node_max_rank[road.nodes], dtype=np.int64),
             np.asarray(network.node_branch_count[road.nodes], dtype=np.int16),
@@ -812,4 +807,4 @@ class RoadGraphEngine:
         self, context: RoadGraphContext, traced: list[TracedLoop], start_time: datetime
     ) -> list[EvaluatedRoute]:
         """選んだ経路を応答の候補へ組み立てる（`road_graph_candidates.py: evaluate_routes`）。"""
-        return await evaluate_routes(self._graph_service, context, traced, start_time)
+        return await evaluate_routes(context, traced, start_time)
