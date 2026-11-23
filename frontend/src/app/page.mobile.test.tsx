@@ -69,7 +69,6 @@ describe("スマホのシート", () => {
     // 出発地へフォーカスを移すのは押したときだけで、ほかの地点から出発地を選び直しただけでは移さない。
     // 小窓は閉じてから地図を押す（開いている間に地図を押すと、閉じるだけで置かない）。
     await user.click(within(settingsSheet).getByRole("button", { name: "＋ 経由地" }));
-    await user.keyboard("{Escape}");
     await user.click(within(settingsSheet).getByRole("button", { name: /^出発地 / }));
     await user.keyboard("{Escape}");
     expect(within(settingsSheet).getByRole("button", { name: /^出発地 / })).toHaveFocus();

@@ -46,10 +46,9 @@ const SENSOJI = {
   longitude: 139.7967,
 } as const;
 
-/** 「＋ 経由地」で足す行を出し、小窓を閉じる。 */
+/** 「＋ 経由地」で足す行を出す（小窓は開かない）。 */
 async function addWaypointRow(user: User) {
   await user.click(screen.getByRole("button", { name: "＋ 経由地" }));
-  await user.keyboard("{Escape}");
 }
 
 /** 小窓で浅草寺を探し、候補の一覧を返す。 */
@@ -131,7 +130,10 @@ describe("地図に置く地点", () => {
     ],
     [
       "新しい経由地",
-      async (user: User) => user.click(screen.getByRole("button", { name: "＋ 経由地" })),
+      async (user: User) => {
+        await addWaypointRow(user);
+        await user.click(screen.getByRole("button", { name: "新しい経由地 未設定" }));
+      },
       "経由地1 浅草寺",
     ],
     [

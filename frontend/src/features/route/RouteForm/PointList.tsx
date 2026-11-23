@@ -73,7 +73,7 @@ export interface PointListProps {
  * 「出発地へ戻る」）を点線でつなぐ。行を押すとその地点を選び、その行に付く検索の小窓を開く。小窓を閉じている間は、地図をタップすると
  * 選んだ地点を置く。
  * 経由地と目的地は右の✕で消し、つまみを押さえて上下へ動かすと通る順を入れ替える（一番上が出発地、一番下が目的地）。
- * 「＋ 経由地」は目的地の手前に足す経由地の行を出し、その行の小窓を開く。
+ * 「＋ 経由地」は目的地の手前に足す経由地の行を出す（ほかの行と同じく、名前で探すか、地図で置くか、保存した地点から選ぶ）。
  * 行の「地図で置く」は小窓を開かずにその地点を選び（地図をタップすると置く）、☆は保存した地点だけの小窓を開く。
  */
 export default function PointList({
@@ -255,8 +255,7 @@ export default function PointList({
           {`探す${howToPlace.short}`}
         </span>
       </button>
-      {/* 足そうとしている経由地は選んだまま地図で置けるので「地図で置く」は出さず、ほかの行と列を揃える空きを置く。 */}
-      {placing && <span className="size-8 flex-none" />}
+      {placeOnMap(newWaypoint, "新しい経由地")}
       {chooseSaved(newWaypoint, "新しい経由地")}
       <Button
         variant="ghost"
@@ -289,8 +288,12 @@ export default function PointList({
         <Button
           size="xs"
           disabled={full}
-          onClick={() => open(newWaypoint)}
-          usage={full ? "経由地はこれ以上置けません。" : `目的地の手前に経由地を足します。${howToPlace.sentence}`}
+          onClick={() => conditions.selectPoint(newWaypoint)}
+          usage={
+            full
+              ? "経由地はこれ以上置けません。"
+              : "目的地の手前に経由地を足す行を出します。行を押して探すか、地図で置くか、保存した地点から選びます。"
+          }
         >
           ＋ 経由地
         </Button>
