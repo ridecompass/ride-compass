@@ -15,11 +15,12 @@ from uuid import uuid4
 import httpx
 import pytest
 import pytest_asyncio
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 
 from app.api.account_auth import SESSION_COOKIE
 from app.domain.account import SESSION_LIFETIME, TERMS_VERSION
 from app.infrastructure.account_models import AccountRow
+from app.infrastructure.ride_track_models import RideTrackRow
 from app.main import app
 from tests.google_login import (
     FORGED_KEY,
@@ -195,3 +196,17 @@ async def test_own_rides_are_listed_shown_and_deleted_and_others_rides_stay_hidd
         assert (await owner.get("/api/me/rides")).json() == []
         assert (await owner.get(f"/api/me/rides/{ride_id}")).status_code == 404
 
+
+
+async def test_the_ride_list_reads_the_values_written_on_receipt_without_reading_the_gpx(clients, road_graph_session):
+    """一覧は、走りを受けたときに書いた走り始めの時刻・距離・かかった時間だけを読み、GPX は読まない（走りが溜まっても重くならない）。
+    GPX が読めない形になっても、一覧は返す。"""
+    points = [[0, 35000000, 139000000, None, None, None, None, None], [60000, 35009000, 139000000, None, None, None, None, None]]
+    async with clients() as client:
+        await sign_in_and_consent(client, "google-sub-a")
+        ride_id = await _post_ride(client, points, [])
+        await road_graph_session.execute(update(RideTrackRow).values(gpx="読めない"))
+        await road_graph_session.commit()
+
+        [summary] = (await client.get("/api/me/rides")).json()
+        assert summary == {"id": ride_id, "started_at": "2026-11-16T00:12:03Z", "distance_m": 1001, "duration_s": 60}

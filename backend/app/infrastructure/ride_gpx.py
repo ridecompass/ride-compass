@@ -15,7 +15,6 @@ GPX の置き場:
 
 from bisect import bisect_right
 from collections.abc import Sequence
-from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from xml.etree import ElementTree as ET
 
@@ -99,34 +98,10 @@ def ride_gpx(upload: RideUpload, *, server_commit: str | None, ground_elevation_
     return ET.tostring(root, encoding="unicode", xml_declaration=True)
 
 
-@dataclass(frozen=True)
-class RideLine:
-    """書いた GPX から読み戻した、走った線。"""
-
-    started_at: datetime
-    #: 線（`trkseg`）ごとの点（緯度, 経度）。
-    lines: list[list[tuple[float, float]]]
-    #: 最後の点の時刻。点が無ければ走り始めの時刻。
-    last_point_at: datetime
-
-
-def read_ride_line(gpx: str) -> RideLine:
-    """`ride_gpx`が書いた GPX から、走り始めの時刻と走った線を読む。"""
+def read_ride_lines(gpx: str) -> list[list[tuple[float, float]]]:
+    """`ride_gpx`が書いた GPX から、走った線（`trkseg`）ごとの点（緯度, 経度）を読む。"""
     root = ET.fromstring(gpx)
-    started_at = _read_time(root.find(_q(GPX_NAMESPACE, "metadata")))
-    lines = []
-    last_point_at = started_at
-    for segment in root.iter(_q(GPX_NAMESPACE, "trkseg")):
-        line = []
-        for point in segment.iter(_q(GPX_NAMESPACE, "trkpt")):
-            line.append((float(point.attrib["lat"]), float(point.attrib["lon"])))
-            last_point_at = _read_time(point)
-        lines.append(line)
-    return RideLine(started_at=started_at, lines=lines, last_point_at=last_point_at)
-
-
-def _read_time(element: ET.Element | None) -> datetime:
-    text = None if element is None else element.findtext(_q(GPX_NAMESPACE, "time"))
-    if text is None:
-        raise ValueError("GPX に時刻がありません")
-    return datetime.fromisoformat(text)
+    return [
+        [(float(point.attrib["lat"]), float(point.attrib["lon"])) for point in segment.iter(_q(GPX_NAMESPACE, "trkpt"))]
+        for segment in root.iter(_q(GPX_NAMESPACE, "trkseg"))
+    ]

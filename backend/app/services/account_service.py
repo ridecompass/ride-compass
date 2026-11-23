@@ -8,7 +8,7 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domain.account import SESSION_LIFETIME, TERMS_VERSION, AccountStatus
-from app.domain.ride_track import RideDetail, RideSummary, track_distance_m
+from app.domain.ride_track import RideDetail, RideSummary
 from app.infrastructure.account_models import (
     account_for_login,
     account_for_session,
@@ -19,21 +19,12 @@ from app.infrastructure.account_models import (
     withdraw_consents,
 )
 from app.infrastructure.google_identity import GoogleIdTokenVerifier
-from app.infrastructure.ride_gpx import RideLine, read_ride_line
-from app.infrastructure.ride_track_models import account_ride_gpx, account_ride_gpxs, delete_account_ride
+from app.infrastructure.ride_gpx import read_ride_lines
+from app.infrastructure.ride_track_models import account_ride, account_ride_summaries, delete_account_ride
 
 
 def _token_hash(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
-
-
-def _summary(ride_id: UUID, line: RideLine) -> RideSummary:
-    return RideSummary(
-        id=ride_id,
-        started_at=line.started_at,
-        distance_m=round(track_distance_m(line.lines)),
-        duration_s=round((line.last_point_at - line.started_at).total_seconds()),
-    )
 
 
 class AccountService:
@@ -83,16 +74,16 @@ class AccountService:
 
     async def rides(self, account_id: UUID) -> list[RideSummary]:
         """自分の走りを、走り始めの新しい順に。"""
-        summaries = [_summary(ride_id, read_ride_line(gpx)) for ride_id, gpx in await account_ride_gpxs(self._session, account_id)]
-        return sorted(summaries, key=lambda ride: ride.started_at, reverse=True)
+        return await account_ride_summaries(self._session, account_id)
 
     async def ride(self, account_id: UUID, ride_id: UUID) -> RideDetail | None:
-        gpx = await account_ride_gpx(self._session, account_id, ride_id)
-        if gpx is None:
+        found = await account_ride(self._session, account_id, ride_id)
+        if found is None:
             return None
-        line = read_ride_line(gpx)
-        track = {"type": "MultiLineString", "coordinates": [[[lon, lat] for lat, lon in points] for points in line.lines]}
-        return RideDetail(**_summary(ride_id, line).model_dump(), track=track)
+        summary, gpx = found
+        track = {"type": "MultiLineString",
+                 "coordinates": [[[lon, lat] for lat, lon in line] for line in read_ride_lines(gpx)]}
+        return RideDetail(**summary.model_dump(), track=track)
 
     async def delete_ride(self, account_id: UUID, ride_id: UUID) -> bool:
         deleted = await delete_account_ride(self._session, account_id, ride_id)
