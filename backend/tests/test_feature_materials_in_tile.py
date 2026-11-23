@@ -22,6 +22,7 @@ from app.domain.gsi_tiles import PRODUCT_PRIORITY
 from app.batch.ingest import SourceRecord
 from app.domain.attributes import CategoricalColumn, EdgeMaterialArrays
 from app.domain.region import EDGE_UNIT_MIN_ZOOM, BoundingBox
+from app.domain.search_graph import EDGE_VALUE_DTYPE
 from tests.conftest import raw_connection
 from tests.source_ingest import (
     dem_tile_records,
@@ -93,8 +94,8 @@ async def test_a_segment_on_the_map_has_the_materials_the_search_reads_for_it(ro
     rows = range(len(segments))
     assert {material_id: [column.value_at(row) for row in rows] for material_id, column in categorical.items()} == {
         material_id: [expected[material_id].value_at(row) for row in rows] for material_id in categorical}
-    for material_id, column in numeric.items():
-        np.testing.assert_array_equal(column, expected[material_id], err_msg=material_id)
+    for material_id, column in numeric.items():  # 探索は材料を EDGE_VALUE_DTYPE で持つので、その型で比べる
+        np.testing.assert_array_equal(np.asarray(column, dtype=EDGE_VALUE_DTYPE), expected[material_id], err_msg=material_id)
 
 
 def _rows(distance_m, columns: dict, rows) -> list[tuple]:

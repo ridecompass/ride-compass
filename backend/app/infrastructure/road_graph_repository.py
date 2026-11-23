@@ -31,6 +31,7 @@ from app.domain.material_catalog import (
     material_value_sql,
 )
 from app.domain.region import BoundingBox, RoadAt
+from app.domain.search_graph import EDGE_VALUE_DTYPE
 from app.domain.tuning import STOP_CLUSTER_DISTANCE_ID, TURN_BEARING_DISTANCE_ID, require_tuning
 from app.infrastructure import derived_data_meta
 from app.infrastructure.material_joins import material_from_clause
@@ -304,7 +305,7 @@ class RoadGraphRepository:
             for name in raw:
                 raw[name].extend(getattr(row, f"c_{name}") or [])
 
-        numeric_values = np.empty((n, len(numeric_ids)), dtype=np.float64)
+        numeric_values = np.empty((n, len(numeric_ids)), dtype=EDGE_VALUE_DTYPE)
         for i, material_id in enumerate(numeric_ids):
             numeric_values[:, i] = float_array(raw[material_id])
 

@@ -88,7 +88,7 @@ class RoadNetwork:
 
     # 材料（`EdgeMaterialArrays`と同じ列。区間と同じ行順）。
     numeric_ids: tuple[str, ...]
-    numeric_values: np.ndarray  # (区間, 列) float64, NaN=欠損
+    numeric_values: np.ndarray  # (区間, 列) `domain/search_graph.py: EDGE_VALUE_DTYPE`, NaN=欠損
     categorical_ids: tuple[str, ...]
     categorical_codes: np.ndarray  # (区間, 列) int16。0は値なし
     categorical_vocab: tuple[tuple[str | None, ...], ...]  # 列ごとの語彙。先頭は必ずNone
