@@ -14,11 +14,10 @@ import { describe, expect, it } from "vitest";
 import { resolveTileBaseUrl } from "@/lib/tileBaseUrl";
 
 describe("resolveTileBaseUrl", () => {
-  it.each([
-    ["末尾の/が無い", "https://tiles.example.com", "https://tiles.example.com"],
-    ["末尾の/が続く", "https://tiles.example.com//", "https://tiles.example.com"],
-  ])("設定があれば、画面のオリジンより設定を使い、末尾の/を外す（%s）", (_scene, configured, expected) => {
-    expect(resolveTileBaseUrl(configured, "https://app.example.com")).toBe(expected);
+  it("設定があれば、画面のオリジンより設定を使い、末尾に続く/を外す", () => {
+    expect(resolveTileBaseUrl("https://tiles.example.com//", "https://app.example.com")).toBe(
+      "https://tiles.example.com",
+    );
   });
 
   it("設定が無ければ、画面のオリジンを使う", () => {

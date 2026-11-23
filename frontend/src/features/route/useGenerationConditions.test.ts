@@ -68,7 +68,7 @@ describe("距離と候補数", () => {
 });
 
 describe("つまみと倍率", () => {
-  it("既定は標準で、変えたつまみと倍率は開き直しても残る", () => {
+  it("変えたつまみと倍率は開き直しても残る", () => {
     const first = renderConditions();
     act(() =>
       first.result.current.setCostPreference({

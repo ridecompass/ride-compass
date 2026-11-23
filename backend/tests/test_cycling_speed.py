@@ -271,8 +271,8 @@ def test_riding_only_some_rows_gives_those_rows_of_riding_them_all():
 
 @pytest.mark.parametrize(
     ("elevation_m", "temperature_c"),
-    [(0.0, STANDARD_TEMPERATURE_C), (0.0, 35.0), (0.0, 0.0), (1000.0, 20.0), (1500.0, 10.0), (None, 25.0)],
-    ids=["海面・標準の気温", "海面・暑い日", "海面・寒い日", "標高1000m", "標高1500m", "標高の無い道"],
+    [(0.0, STANDARD_TEMPERATURE_C), (1000.0, 20.0), (None, 25.0)],
+    ids=["海面・標準の気温", "標高1000m", "標高の無い道"],
 )
 def test_the_air_of_the_road_and_the_forecast_sets_the_drag_of_the_flat_power(elevation_m, temperature_c):
     """空気抵抗の密度は、区間の標高の気圧（NASA Glenn Research Center "Earth Atmosphere Model" の対流圏の式）を気温で

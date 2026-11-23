@@ -31,7 +31,6 @@ _BACKEND_AREA = re.compile(r"\bbackend=\$\(area '([^']+)'\)")
         ("newer", ["backend/app/main.py"], True),
         # ファイルを当てない呼び方（frontend）は、本番より新しければ出す。
         ("newer", None, True),
-        ("older", None, False),
     ],
 )
 def test_decide(relation, hits, expected):

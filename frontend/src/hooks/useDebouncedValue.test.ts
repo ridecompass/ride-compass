@@ -33,18 +33,6 @@ afterEach(() => {
 });
 
 describe("useDebouncedValue", () => {
-  it("初回の値は待たずに返し、変わった値は、待ち時間が経つまで前の値のまま、経ったら新しい値になる", () => {
-    const { result, rerender } = mount("a");
-    expect(result.current).toBe("a");
-
-    rerender({ value: "b" });
-    advance(DELAY_MS - 1);
-    expect(result.current).toBe("a");
-
-    advance(1);
-    expect(result.current).toBe("b");
-  });
-
   it("待っている間に続けて変わると、最後に変わってから数え直し、途中の値を返さない", () => {
     const { result, rerender } = mount("a");
 

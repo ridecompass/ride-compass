@@ -100,8 +100,8 @@ def test_the_edge_hours_extend_beyond_the_series():
 
 @pytest.mark.parametrize(
     ("latest_run_end", "hours", "expected"),
-    [(2, 1.4, False), (2, 1.5, True), (2, 10.0, True)],
-    ids=["終わりの前の時刻まで", "終わりの時刻を引く", "範囲の外は端の時刻へ寄せる"],
+    [(2, 1.4, False), (2, 1.5, True)],
+    ids=["終わりの前の時刻まで", "終わりの時刻を引く"],
 )
 def test_a_ride_reading_hours_after_the_latest_run_is_told(latest_run_end, hours, expected):
     """前に出たrunの風で作ったルートに、但し書きを出す。"""

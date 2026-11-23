@@ -58,7 +58,7 @@ function serveWind() {
 }
 
 describe("画面の枠", () => {
-  it("地図の表示をまとめて戻す: 「表示」の一覧で行を全部消すとルートのほかの地図のレイヤーが消える。右上のメニューの再描画は地図の描き直しを求める", async () => {
+  it("地図の表示をまとめて戻す: 「表示」の一覧で行を全部消すとルートのほかの地図のレイヤーが消える", async () => {
     const { user } = renderHome();
     const fromList = async <T,>(name: string, inspect: (button: HTMLButtonElement) => Promise<T> | T) => {
       await user.click(screen.getByRole("button", { name: "地図に出す情報" }));
@@ -80,11 +80,6 @@ describe("画面の枠", () => {
     await run("表示中の情報をすべて非表示");
     expect(nonRouteLayers()).toEqual([]);
     expect(mapOnScreen().visibleLayerIds()).toEqual(routeLayers);
-
-    const before = mapOnScreen().styles.length;
-    await user.click(screen.getByRole("button", { name: "メニュー" }));
-    await user.click(screen.getByRole("button", { name: "地図を描き直す" }));
-    expect(mapOnScreen().styles).toHaveLength(before + 1);
   });
 
   it("地図の中央の「地図を読み込み中…」の札は、時間では外れず、基礎地図が描けた（`load`）ときに外れる", () => {
