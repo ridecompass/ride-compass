@@ -213,11 +213,11 @@ async def test_the_steepest_descent_is_the_steepest_climb_ridden_the_other_way(s
         pytest.approx(backward["steepest_loss_percent"], abs=0.005), pytest.approx(backward["steepest_gain_percent"], abs=0.005))
 
 
-# 境界ちょうどの長さは使わない（配列は点の位置を区間の長さに対する割合で持つので、ちょうどの長さを丸めで外す）。
-@pytest.mark.parametrize(("previous_m", "counted"), [(STEEPEST_MIN_INTERVAL_M * 0.75, False), (STEEPEST_MIN_INTERVAL_M * 1.25, True)])
+@pytest.mark.parametrize(("previous_m", "counted"), [(STEEPEST_MIN_INTERVAL_M, False), (STEEPEST_MIN_INTERVAL_M * 1.25, True)])
 async def test_a_point_after_a_short_interval_is_not_measured(summarize, previous_m, counted):
-    """1つ前の間が最短の長さ以下なら、その点では測らない（区間の両端の勾配だけが残る）。"""
-    climb_m = 50.0
+    """1つ前の間が最短の長さ以下なら、その点では測らない（区間の両端の勾配だけが残る）。区間の長さは、点の位置の割合
+    （配列は区間の長さに対する割合で持つ）が丸めずに表せる64mにする。"""
+    climb_m = 64.0 - previous_m
     row = await one(summarize, [0.0, 0.0, 5.0], along=[0.0, previous_m, previous_m + climb_m])
 
     from_mean = 5.0 / (climb_m + previous_m / 2) * 100
