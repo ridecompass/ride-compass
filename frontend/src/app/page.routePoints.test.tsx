@@ -150,13 +150,13 @@ describe("ルートの近くの点", () => {
     await generateNear(user);
     expect(pointsOnMap()).toEqual({});
 
-    // 停止要因は縮尺15から描く層で、それより引いた地図では内訳に行を出さない。
+    // 信号・一時停止は縮尺15から描く層で、それより引いた地図では内訳に行を出さない。
     act(() => mapOnScreen().moveTo(ROUTE_VIEW, 16));
     await showLayers(user, ["信号・一時停止", "補給・休憩"]);
     await waitFor(() => expect(pointsOnMap()).toHaveProperty(STOP));
     await user.click(screen.getByRole("button", { name: "地図に出す情報" }));
-    await user.click(screen.getByRole("button", { name: "停止要因の凡例" }));
-    const details = screen.getByRole("region", { name: "停止要因の内訳" });
+    await user.click(screen.getByRole("button", { name: "信号・一時停止の凡例" }));
+    const details = screen.getByRole("region", { name: "信号・一時停止の内訳" });
     await user.click(within(details).getByRole("checkbox", { name: /^信号/ }));
 
     await waitFor(() => expect(pointsOnMap()).not.toHaveProperty(STOP));

@@ -1,7 +1,7 @@
 // 地図のレイヤーと費用の軸の、このアプリ固有の形（自前のSVG）。
 import { svgProps, type IconProps } from "./icons";
 
-/** 標高図: 色別標高図のイメージに合わせた山並みのシルエット */
+/** 標高: 色別標高図のイメージに合わせた山並みのシルエット */
 export function ElevationIcon({ size = 16 }: IconProps) {
   return (
     <svg width={size} height={size} {...svgProps}>
@@ -157,7 +157,7 @@ export function AccidentIcon({ size = 16 }: IconProps) {
   );
 }
 
-/** 停止要因: 信号機のシルエット（3灯） */
+/** 信号・一時停止: 信号機のシルエット（3灯） */
 export function StopPoiIcon({ size = 16 }: IconProps) {
   return (
     <svg width={size} height={size} {...svgProps}>
