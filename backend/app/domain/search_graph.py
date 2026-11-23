@@ -2,7 +2,7 @@
 from dataclasses import dataclass
 
 import numpy as np
-from numpy.typing import ArrayLike
+from numpy.typing import ArrayLike, NDArray
 
 
 @dataclass
@@ -50,6 +50,9 @@ SEARCH_INDEX_DTYPE = np.int32
 # 区間・遷移ごとに持つ値の列（費用・所要時間・ターンの待ち・点数・材料の値）のdtype。足し合わせはfloat64で行う
 # ——float32の桁で足すと、長い経路ほど誤差が積もる。
 EDGE_VALUE_DTYPE = np.float32
+#: `EDGE_VALUE_DTYPE`の配列の型注釈。欄をこれで注釈すると、要素の型が静的に分かる配列（型を書いて作った配列）のうち、ほかの型の
+#: ものを入れたときに型検査が断る（`np.ndarray`と注釈した配列から作ったものは、要素の型が分からないので断らない）。
+EdgeValues = NDArray[EDGE_VALUE_DTYPE]
 
 
 def kernel_array(values: ArrayLike, dtype: type) -> np.ndarray:

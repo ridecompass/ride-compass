@@ -71,7 +71,7 @@ function KeptTabContent({ value, children }: { value: string; children: React.Re
 function toleranceSentence(ratio: number, distanceInput: string): string {
   const percent = Math.round(ratio * 1000) / 10;
   const km = Math.round(Number(distanceInput) * ratio * 10) / 10;
-  return `候補は、この長さの±${percent}%[${distanceInput}kmなら±${km}km]に収まるものだけを作ります。`;
+  return `・候補は、この長さの±${percent}%[${distanceInput}kmなら±${km}km]に収まるものだけを作ります。`;
 }
 
 export default function RouteForm({
@@ -141,10 +141,12 @@ export default function RouteForm({
             <GuideText
               text={[
                 "ルート全体の距離の目標です。",
-                distanceToleranceRatio === undefined ? "" : toleranceSentence(distanceToleranceRatio, distanceInput),
-                "「距離を決める」を外すと距離を決めず、所要時間と負担の和が小さい道で目的地へ向かいます[周回なら、経由地を回って出発地へ]。",
-                `${routeGenerateConfig.busy_safe_distance_km}kmより長い目標は、混み合っているときに作れないことがあります。`,
-              ].join("")}
+                ...(distanceToleranceRatio === undefined
+                  ? []
+                  : [toleranceSentence(distanceToleranceRatio, distanceInput)]),
+                "・「距離を決める」を外すと、距離を決めません。所要時間と負担の和が小さい道で目的地へ向かいます[周回なら、経由地を回って出発地へ]。",
+                `・${routeGenerateConfig.busy_safe_distance_km}kmより長い目標は、混み合っているときに作れないことがあります。`,
+              ].join("\n")}
             />
           </InfoPopover>
         </div>
