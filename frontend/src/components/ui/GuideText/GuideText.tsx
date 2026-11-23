@@ -93,9 +93,13 @@ export function GuideText({ text }: { text: string }) {
         ) : (
           <span key={start} role="list" className="block">
             {items.map((item, index) => (
-              // 折り返した2行目は、頭の文と同じく左端から始める（「・」の後ろへ下げない）。
-              <span key={index} role="listitem" className="block">
-                <MarkedLine text={item} />
+              // 「・」と文を別の箱に並べ、折り返した2行目を文の頭（「・」の次の字）の真下から始める。字下げで寄せると、
+              // 「・」の字の幅が1字分とずれたとき2行目が文の頭とそろわない。
+              <span key={index} role="listitem" className="flex">
+                <span className="shrink-0">{LIST_MARK}</span>
+                <span className="min-w-0">
+                  <MarkedLine text={item.slice(LIST_MARK.length)} />
+                </span>
               </span>
             ))}
           </span>
