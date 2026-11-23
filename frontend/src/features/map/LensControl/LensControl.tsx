@@ -105,7 +105,7 @@ export default function LensControl({
                     <span key={entry.key} className="flex-1" style={{ background: legendSwatchBackground(entry) }} />
                   ))}
                 </span>
-                {reddest !== null && <span className="truncate">{reddest}</span>}
+                {reddest !== null && <span className="flex-shrink-0">{reddest}</span>}
               </span>
             )}
             <span aria-hidden="true" className="text-[0.7rem] text-[var(--color-muted)]">
