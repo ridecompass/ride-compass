@@ -382,7 +382,7 @@ UI（`next dev` のインジケータ・コンパイル遅延）でないかを�
 13. **新しい種類の仕組みを作る前の原則点検**: 既存と技術的に別方式の配信・レンダリング機構を
     新設するときは、`docs/architecture/design-principles.md` の構造仕様が新機構にも
     適用されるかを**着手前に**点検する
-14. **性能の主張は実測とセット**: `benchmarks/`・本番ログを伴わない性能最適化はpremature
+14. **性能の主張は実測とセット**: 本番の計測（毎日の確かめの生成の秒・本番ログ）を伴わない性能最適化はpremature
 15. **docsは「現状」と「経緯」を分ける**: 現状は正本（`architecture/`・`modules/`・
     `conventions/`）、経緯はタスクの issue（[documentation.md](../rules/documentation.md)「用語集」の「経緯」）
 16. **「実害が無い」を理由に構造的欠陥を放置しない**: early return・一度だけの初期化・
