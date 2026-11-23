@@ -79,9 +79,8 @@ export async function installApiMocks(page: Page): Promise<void> {
   await page.route(`${API_BASE}/api/routes/generate/*`, (route) => route.fulfill({ json: doneJobFixture() }));
 
   await page.route(`${API_BASE}/api/client-config*`, (route) => route.fulfill({ json: clientConfigFixture() }));
-  // 費用の軸は登坂と振動の2本（`src/testing/costAxes.ts: TWO_COST_AXES`）。凡例の目安は無い形で答える。
+  // 費用の軸は登坂と振動の2本（`src/testing/costAxes.ts: TWO_COST_AXES`）。
   await page.route(`${API_BASE}/api/cost-axes*`, (route) => route.fulfill({ json: TWO_COST_AXES }));
-  await page.route(`${API_BASE}/api/cost-axes/lens-equivalents*`, (route) => route.fulfill({ json: {} }));
   // レンズで塗る道ごとの材料。材料を持つ道が無い形で答える。
   await page.route(`${API_BASE}/api/region/lens/**`, (route) =>
     route.fulfill({ json: { materials: {}, wind_previous_run_from: null } }),

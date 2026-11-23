@@ -1,7 +1,6 @@
 /** scene を組み立てる道具のうち、どの家族でも同じ形になるもの。 */
 import type { MapSceneFeatureStates, MapSceneFeatureStateValue, MapSceneSourceContent } from "./mapScene";
 import { mapDisplay } from "@/types/generated/mapDisplay";
-import type { LegendEntry } from "@/lib/mapDisplay/legendFilter";
 
 declare const sceneSourceBrand: unique symbol;
 
@@ -115,16 +114,4 @@ export function valueInExpression(value: unknown, values: readonly unknown[]): u
  * 値が無いことだけ**——分類は色が運ぶ。値が無いことはどの属性・軸でも同じ意味なので、線を重ねても混ざらない。 */
 export function noDataDashExpression(missing: unknown): unknown[] {
   return ["case", missing, ["literal", [...mapDisplay.noDataDash]], ["literal", [1, 0]]];
-}
-
-// 凡例で非表示にしたカテゴリを除外するMapLibreフィルタ式を組み立てる。
-// 全カテゴリ表示中はnull（フィルタ無し）。未知のキーは無視する（モード切替や定義変更で
-// 過去の非表示キーが残っていても安全）。
-export function buildLegendFilterExpression(
-  legend: readonly LegendEntry[],
-  hiddenKeys: readonly string[],
-): unknown[] | null {
-  const hidden = legend.filter((entry) => hiddenKeys.includes(entry.key));
-  if (hidden.length === 0) return null;
-  return ["all", ...hidden.flatMap((entry) => (entry.filter === undefined ? [] : [["!", entry.filter]]))];
 }

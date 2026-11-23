@@ -7,7 +7,7 @@
 import { mapDisplay } from "@/types/generated/mapDisplay";
 import palette from "@/types/generated/palette.json";
 import type { SemanticColors } from "@/lib/mapTheme";
-import type { ExpressionSpecification, FilterSpecification } from "maplibre-gl";
+import type { ExpressionSpecification } from "maplibre-gl";
 
 import { createRouteArrowIcon, ROUTE_ARROW_ICON_ID } from "@/features/map/layers/routeArrowIcon";
 import type { MapSceneImage } from "@/features/map/scene/mapScene";
@@ -60,8 +60,6 @@ export type RouteState = {
   readonly segmentColor: string | ExpressionSpecification;
   /** 値が無い区間で真になる式。その区間を破線にする。値という考えを持たない塗り方（レンズ「なし」）では無い。 */
   readonly segmentNoData?: ExpressionSpecification;
-  /** 凡例で隠した段を落とす絞り込み。色分け線・縁取り・当たり判定の3枚へ同じものを当てる。 */
-  readonly hiddenBandFilter?: FilterSpecification;
   readonly spliceBands: readonly RouteShape[];
   readonly composite: RouteShape | null;
   /** 選んだ地点を含む区間の形。選んでいなければnull。 */
@@ -120,17 +118,6 @@ export const routeGroup = declareGroup<RouteState>((state) => {
     selectedSection: state.selectedSection,
   });
 
-  /** 凡例で隠した段を落とす絞り込みを、層が持つ絞り込みと合わせて当てる。 */
-  const withBandFilter = (entry: SceneLayerEntry): SceneLayerEntry =>
-    state.hiddenBandFilter === undefined
-      ? entry
-      : {
-          ...entry,
-          filter:
-            entry.filter === undefined
-              ? state.hiddenBandFilter
-              : (["all", entry.filter, state.hiddenBandFilter] as FilterSpecification),
-        };
   /** ルートの線。どれも進む向きの左へ同じだけずらす。 */
   const lineLayer = (
     role: string,
@@ -150,13 +137,11 @@ export const routeGroup = declareGroup<RouteState>((state) => {
     lineLayer(role, source, HIT_PAINT, { hitTargets: [target] });
   /** 区間の線の地物の真偽`property`が立つ区間の両脇の線。 */
   const railLayer = (role: string, property: string, color: string, dashed: boolean): SceneLayerEntry =>
-    withBandFilter(
-      lineLayer(
-        role,
-        SOURCE.segments,
-        { ...avoidanceRailPaint(color, dashed, RAIL_OFFSET_PX), "line-opacity": TRAVELLED_OPACITY },
-        { filter: ["==", ["get", property], true] },
-      ),
+    lineLayer(
+      role,
+      SOURCE.segments,
+      { ...avoidanceRailPaint(color, dashed, RAIL_OFFSET_PX), "line-opacity": TRAVELLED_OPACITY },
+      { filter: ["==", ["get", property], true] },
     );
 
   // 背面から前面。
@@ -207,25 +192,21 @@ export const routeGroup = declareGroup<RouteState>((state) => {
       { "line-color": state.semantic.route_splice, "line-width": ROUTE.lineWidthsPx.composite },
       { layout: ROUND_CAP },
     ),
-    withBandFilter(
-      lineLayer("detailCasing", SOURCE.segments, {
-        "line-color": state.semantic.route_casing,
-        "line-width": ROUTE.casingWidthsPx.detail,
-        "line-opacity": TRAVELLED_OPACITY,
-      }),
-    ),
-    withBandFilter(
-      lineLayer("detailLine", SOURCE.segments, {
-        "line-color": state.segmentColor,
-        "line-width": ROUTE.lineWidthsPx.detail,
-        "line-opacity": TRAVELLED_OPACITY,
-        ...(state.segmentNoData === undefined ? {} : { "line-dasharray": noDataDashExpression(state.segmentNoData) }),
-      }),
-    ),
+    lineLayer("detailCasing", SOURCE.segments, {
+      "line-color": state.semantic.route_casing,
+      "line-width": ROUTE.casingWidthsPx.detail,
+      "line-opacity": TRAVELLED_OPACITY,
+    }),
+    lineLayer("detailLine", SOURCE.segments, {
+      "line-color": state.segmentColor,
+      "line-width": ROUTE.lineWidthsPx.detail,
+      "line-opacity": TRAVELLED_OPACITY,
+      ...(state.segmentNoData === undefined ? {} : { "line-dasharray": noDataDashExpression(state.segmentNoData) }),
+    }),
     // 道路タブで好む・避けるにした道を通った区間の両脇の線。選んだ区間の帯（線の後ろに太く敷く）と形で見分ける。
     railLayer("preferredRail", ROUTE_SEGMENT_PREFERRED_PROPERTY, state.semantic.avoidance_preferred, false),
     railLayer("avoidedRail", ROUTE_SEGMENT_AVOIDED_PROPERTY, state.semantic.avoidance_avoided, true),
-    withBandFilter(hitLayer("detailHit", SOURCE.segments, ROUTE_HIT_TARGET_SEGMENT)),
+    hitLayer("detailHit", SOURCE.segments, ROUTE_HIT_TARGET_SEGMENT),
     // 帯の当たり判定は区間の当たり判定より前面——区間の当たり判定はルート全体を覆うため、
     // 後ろだと帯を一度も押せない。
     hitLayer("spliceBandHit", SOURCE.spliceBands, ROUTE_HIT_TARGET_SPLICE_BAND),

@@ -1,7 +1,6 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
 
-import { LEGEND_NO_DATA_KEY, LEGEND_UNDETERMINED_KEY } from "@/lib/mapDisplay/mapColorLegend";
 import { mapDisplay } from "@/types/generated/mapDisplay";
 import palette from "@/types/generated/palette.json";
 
@@ -41,7 +40,7 @@ type AxisLine = AxisLineState["axes"][number];
 
 /** レンズ1つだけを出している線の宣言。 */
 function groupFor(
-  { materials = MATERIALS, loading = false, hiddenBandKeys = [] }: Partial<AxisLine> = {},
+  { materials = MATERIALS, loading = false }: Partial<AxisLine> = {},
   conditions: AxisLineState["conditions"] = { bearing_deg: 0 },
 ) {
   return axisLineGroup.build({
@@ -54,7 +53,6 @@ function groupFor(
         formula: FORMULA,
         materials,
         loading,
-        hiddenBandKeys,
       },
     ],
     conditions,
@@ -83,10 +81,8 @@ function lookOf(featureId: string, line: Partial<AxisLine> = {}, conditions?: Ax
 }
 
 describe("段の色", () => {
-  it("値のある道は段の色で塗り、段を隠すとその段の道だけが透明になる", () => {
+  it("値のある道は段の色で塗る", () => {
     expect(lookOf("along").color).toBe("#f59e0b");
-    expect(lookOf("along", { hiddenBandKeys: ["mid"] }).color).toBe(TRANSPARENT);
-    expect(lookOf("along", { hiddenBandKeys: ["high"] }).color).toBe("#f59e0b");
   });
 
   it("走る向きを変えると、地図全体の状態の向きが変わり、その向きで求めた値の段の色になる", () => {
@@ -106,16 +102,9 @@ describe("値の無い道", () => {
     expect(lookOf("along").dashOpacity).toBe(0);
   });
 
-  it("「データなし」を隠すと、実線も破線も描かない", () => {
-    expect(lookOf("absent", { hiddenBandKeys: [LEGEND_NO_DATA_KEY] })).toEqual({
-      color: TRANSPARENT,
-      dashOpacity: null,
-    });
-  });
-
-  it("取得中は取得中の色で濃く塗り、破線にしない（「データなし」を隠していても残す）", () => {
+  it("取得中は取得中の色で濃く塗り、破線にしない", () => {
     // 薄くすると「まだ来ていない」と「対象外」が見分けられない。
-    const loading = lookOf("absent", { materials: new Map(), loading: true, hiddenBandKeys: [LEGEND_NO_DATA_KEY] });
+    const loading = lookOf("absent", { materials: new Map(), loading: true });
 
     expect(loading).toEqual({ color: palette.semantic.loading, dashOpacity: null });
     expect(groupFor({ loading: true }).layers[0].paint["line-opacity"]).toBe(mapDisplay.road.knownOpacity);
@@ -125,10 +114,5 @@ describe("値の無い道", () => {
 describe("走行方位で値が決まらない道（式の木の `undetermined` が真）", () => {
   it("「データなし」ではなく「向きで決まらない」の色で、実線で塗る", () => {
     expect(lookOf("perpendicular")).toEqual({ color: palette.semantic.undetermined, dashOpacity: 0 });
-  });
-
-  it("凡例で「向きで決まらない」を隠すとその道だけが透明になり、「データなし」を隠しても残る", () => {
-    expect(lookOf("perpendicular", { hiddenBandKeys: [LEGEND_UNDETERMINED_KEY] }).color).toBe(TRANSPARENT);
-    expect(lookOf("perpendicular", { hiddenBandKeys: [LEGEND_NO_DATA_KEY] }).color).toBe(palette.semantic.undetermined);
   });
 });

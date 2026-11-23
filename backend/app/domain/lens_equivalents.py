@@ -82,10 +82,11 @@ def lens_bands(settings: ModelSettings) -> dict[str, LensBands]:
 
 
 def _bands_of(presentation: AxisPresentation, facts: _Facts) -> LensBands:
-    if presentation.scale is None:
-        assert presentation.lens is not None  # 定義の型が、物差しか段のどちらかを要る
-        return presentation.lens
-    return facts(presentation.scale)
+    if presentation.scale is not None:
+        return facts(presentation.scale)
+    if presentation.lens is None:
+        raise ValueError("色の物差しも段も無い見せ方")  # 定義の型が、どちらかを要る
+    return presentation.lens
 
 
 def _numeric(scale: LensScale, fact: str, unit: str, seconds_of: Callable[[np.ndarray], np.ndarray]) -> LensBands:
@@ -100,11 +101,16 @@ def _numeric(scale: LensScale, fact: str, unit: str, seconds_of: Callable[[np.nd
 
 
 def _classes(scale: LensScale, keys: list[str], labels: dict[str, str], seconds: np.ndarray) -> LensBands:
-    """緑の端の区分から赤の端の区分までの区分を、秒の小さい順に1段ずつ（同じ秒の区分は1段にまとめる）。"""
+    """緑の端の区分から赤の端の区分までの区分を、秒の小さい順に1段ずつ（同じ秒の区分は1段にまとめる）。端より軽い区分・重い
+    区分の道は端の段で塗るので、その段の名前に入れる。"""
     by_key = dict(zip(keys, (float(value) for value in seconds), strict=True))
-    low, high = by_key[str(scale.green)], by_key[str(scale.red)]
-    chosen = sorted((value, labels.get(key, key)) for key, value in by_key.items() if low <= value <= high)
-    return _distinct([value for value, _ in chosen[1:]], [name for _, name in chosen])
+    low, high = sorted((by_key[str(scale.green)], by_key[str(scale.red)]))
+    ordered = sorted((value, labels.get(key, key)) for key, value in by_key.items())
+    chosen = [(value, name) for value, name in ordered if low <= value <= high]
+    names = [name for _, name in chosen]
+    names[0] = "・".join([name for value, name in ordered if value < low] + [names[0]])
+    names[-1] = "・".join([names[-1]] + [name for value, name in ordered if value > high])
+    return _distinct([value for value, _ in chosen[1:]], names)
 
 
 def _distinct(thresholds: list[float], names: list[str]) -> LensBands:

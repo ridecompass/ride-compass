@@ -39,7 +39,7 @@ EFFORT_AXES: dict[str, EffortItem] = {
 
 _NonNegative = Annotated[float, Field(ge=0.0, allow_inf_nan=False)]
 
-#: 体力の費目の事実のうち、ルートの事実・道の窓・凡例の目安の2つ以上が出すものの名前（同じ事実は同じ名前で出す）。止まる回数は、
+#: 体力の費目の事実のうち、ルートの事実・道の窓・レンズの段の名前の2つ以上が出すものの名前（同じ事実は同じ名前で出す）。止まる回数は、
 #: 止まる出来事（と、ルートなら曲がる所）を止まってから漕ぎ出す回数に換えたもの（`domain/traffic.py: StopEvent.kickoffs`）。向かい風は
 #: 乗り手の高さの風の成分で、予報の地上10mの風速と別の値だと名前で分かるようにする。
 STOPS_FACT_LABEL = "止まる回数"
@@ -71,8 +71,8 @@ class LensScale(StrictModel):
     停止は止まる回数/km・数値の材料の道のストレスの軸は材料の値・総合は1kmあたりの代償の秒は数で、路面の抵抗と区分の材料の
     道のストレスの軸は区分の鍵で）。間は事実の値で刻んで段にする（`domain/lens_equivalents.py: lens_bands`）。"""
 
-    green: float | str
-    red: float | str
+    green: Annotated[float, Field(allow_inf_nan=False)] | str
+    red: Annotated[float, Field(allow_inf_nan=False)] | str
 
 
 class AxisPresentation(StrictModel):

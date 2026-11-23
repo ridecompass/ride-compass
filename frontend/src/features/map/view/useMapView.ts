@@ -36,7 +36,7 @@ import { avoidanceChoiceOf, type RoadTabMap } from "@/lib/roadAvoidance";
 import type { MapTheme } from "@/lib/mapTheme";
 import type { RideConditions } from "@/features/map/regionApi";
 import { snapDeg } from "@/lib/cardinalLabel";
-import { countsAxis, DISABLED_LABEL } from "@/lib/costPreference";
+import { countsAxis, DISABLED_LABEL, STANDARD_COST_FACTOR } from "@/lib/costPreference";
 import type { WayValueCondition } from "@/lib/mapDisplay/mapLens";
 import { useMapCatalog } from "@/features/map/useMapCatalog";
 import { initiallyHiddenLegendKeys } from "@/features/map/scene/legends";
@@ -120,11 +120,6 @@ export function useMapView({
   const mapCatalog = useMapCatalog(mapTheme);
   const costCatalog = useCostAxisCatalog();
   const lenses = mapCatalog.lenses;
-  // 「負担で塗る」の選択肢の鍵。その段は隠さない（凡例は帯で、段ごとに隠す操作を持たない。前に隠した段が残っていても効かせない）。
-  const lensKeys = useMemo(
-    () => new Set<string>([...lenses.map((candidate) => candidate.lensId), UNSELECTED_LENS_ID]),
-    [lenses],
-  );
   // 保存するのは触った層の真偽だけで、既定は層の一覧（道の線の層は画面の設定が届いてから決まる）から重ねる。
   const [storedVisibility, setLayerVisibility] = useStoredState<MapLayerVisibility>(
     "ridecompass:layer-visibility",
@@ -210,10 +205,6 @@ export function useMapView({
     [bearingDeg, speedKmh],
   );
   const debouncedHidden = useDebouncedValue(hidden, LEGEND_FILTER_DEBOUNCE_MS);
-  const overlayHidden = useMemo(
-    () => Object.fromEntries(Object.entries(debouncedHidden).filter(([key]) => !lensKeys.has(key))),
-    [debouncedHidden, lensKeys],
-  );
 
   // MapViewはこの参照が変わるたびに地図の中身を組み直すため、中身が変わったときだけ作る。
   const look = useMemo<MapLook>(
@@ -228,7 +219,7 @@ export function useMapView({
       roadAvoidanceShown,
       wayMaterials,
       wayConditions: formulaConditions,
-      hiddenLegendKeys: overlayHidden,
+      hiddenLegendKeys: debouncedHidden,
       refreshToken,
       mapTheme,
       onViewportChange: setViewport,
@@ -245,7 +236,7 @@ export function useMapView({
       roadAvoidanceShown,
       wayMaterials,
       formulaConditions,
-      overlayHidden,
+      debouncedHidden,
       refreshToken,
       mapTheme,
     ],
@@ -278,7 +269,19 @@ export function useMapView({
       totalLabel: totalCounted ? (totalLens?.label ?? null) : null,
       legend,
       hasDetail,
-      caveat: windPreviousRunNotice(lensFetch?.windPreviousRunFrom),
+      caveat:
+        [
+          // 段の名前の事実は、標準の負担の割合で求めたもの。軸のレンズは割合を変えると同じ事実の道が別の段で塗られる。
+          painted !== null &&
+          painted !== totalLens?.axisId &&
+          (costPreference.strength !== STANDARD_COST_FACTOR ||
+            (costPreference.multipliers[painted] ?? STANDARD_COST_FACTOR) !== STANDARD_COST_FACTOR)
+            ? "凡例の事実は標準の負担の割合での値です。いまは「負担」タブで割合を変えているので、色はその割合で塗っています。"
+            : null,
+          windPreviousRunNotice(lensFetch?.windPreviousRunFrom),
+        ]
+          .filter((line) => line !== null)
+          .join(" ") || null,
       catalogNotice: !costCatalog.loaded
         ? costCatalog.failed
           ? "負担の種類の一覧を取得できないため、塗る負担を選べません。"
