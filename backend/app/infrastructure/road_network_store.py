@@ -21,7 +21,7 @@ import os
 import re
 import shutil
 import time
-from collections.abc import Iterator, Mapping, Sequence
+from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
 from dataclasses import fields
 from pathlib import Path
@@ -29,7 +29,6 @@ from typing import Any
 
 import numpy as np
 import shapely
-from sqlalchemy import Row
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.domain.attributes import EDGE_ROW_ARRAY_FIELDS, EdgeMaterialArrays
@@ -326,13 +325,12 @@ async def _read_directed_edges(
 
 
 async def _read_materials(
-    repository: RoadGraphRepository, way: np.ndarray, segment: np.ndarray, forward: np.ndarray, edgeless: Sequence[Row]
+    repository: RoadGraphRepository, way: np.ndarray, segment: np.ndarray, forward: np.ndarray, way_ids: list[int]
 ) -> dict[str, Any]:
-    """材料は`get_edge_material_arrays`で引く。区間を持たない道`edgeless`の材料も同じ読み出しで、区間の無い道の値として引き
+    """材料は`get_edge_material_arrays`で引く。区間を持たない道`way_ids`の材料も同じ読み出しで、区間の無い道の値として引き
     （区間の値の表は値を持たない）、区間の材料のあとに続けて詰めてから分ける（分類の語彙を区間と1つにする）。"""
     edge_count = len(way)
     accident_years_covered = await repository.get_accident_years_covered()
-    way_ids = [r.osm_way_id for r in edgeless]
     columns = MaterialColumns(edge_count + len(way_ids))
     batches = [(way[start:start + _MATERIAL_BATCH].tolist(), segment[start:start + _MATERIAL_BATCH].tolist(),
                 forward[start:start + _MATERIAL_BATCH].tolist()) for start in range(0, edge_count, _MATERIAL_BATCH)]
@@ -346,10 +344,7 @@ async def _read_materials(
     return {
         **{name: values[:edge_count] if isinstance(values, np.ndarray) else values for name, values in result.items()},
         "numeric_values": numeric[:edge_count], "categorical_codes": codes[:edge_count],
-        "edgeless": EdgelessWays(
-            np.asarray(way_ids, dtype=np.int64), numeric[edge_count:], codes[edge_count:],
-            *(np.fromiter((getattr(r, name) for r in edgeless), dtype=np.float64, count=len(way_ids))
-              for name in ("min_lon", "min_lat", "max_lon", "max_lat"))),
+        "edgeless": EdgelessWays(np.asarray(way_ids, dtype=np.int64), numeric[edge_count:], codes[edge_count:]),
         **await _read_profiles(repository, way, segment),
     }
 

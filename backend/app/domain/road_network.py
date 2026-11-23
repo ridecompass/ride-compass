@@ -29,10 +29,9 @@ from app.domain.attributes import (
 from app.domain.elevation_profile import ProfileSpans
 from app.domain.feature_materials import FeatureMaterials
 from app.domain.geo import LatLonPoint
-from app.domain.graph import edge_feature_key
 from app.domain.material_catalog import GRADIENT_PERCENT
 from app.domain.msm import MsmGrid
-from app.domain.region import EDGE_UNIT_MIN_ZOOM, ROAD_TILE_MIN_ZOOM, tile_bounds_lonlat
+from app.domain.region import ROAD_TILE_MIN_ZOOM, tile_bounds_lonlat
 from app.domain.road_classes import RoadClassDefinitions, class_columns, layer_columns
 from app.domain.search_graph import run_starts
 from app.domain.stopwatch import elapsed_ms, start_timer
@@ -131,10 +130,6 @@ class RoadNetwork:
     way_osm_id: np.ndarray  # int64
     way_numeric_values: np.ndarray  # (道, 列) float64, NaN=欠損
     way_categorical_codes: np.ndarray  # (道, 列) int16。0は値なし
-    way_min_lon: np.ndarray  # float64、道の形の外接矩形
-    way_min_lat: np.ndarray
-    way_max_lon: np.ndarray
-    way_max_lat: np.ndarray
 
     def __post_init__(self) -> None:
         """行数と列数が揃っていることを、組み立てた場所で確かめる。
@@ -297,19 +292,12 @@ def _rows_in_bbox(network: RoadNetwork, min_lon: float, min_lat: float, max_lon:
                  rows: np.ndarray | None = None) -> np.ndarray:
     """区間の形の外接矩形が範囲に重なる区間の行（昇順）。`rows`（昇順）を渡すと、その行の中だけを比べる。"""
     among = slice(None) if rows is None else rows
-    hit = _overlapping(network.edge_min_lon[among], network.edge_min_lat[among], network.edge_max_lon[among],
-                       network.edge_max_lat[among], min_lon, min_lat, max_lon, max_lat)
+    overlaps = np.asarray(network.edge_max_lon[among]) >= min_lon
+    overlaps &= np.asarray(network.edge_min_lon[among]) <= max_lon
+    overlaps &= np.asarray(network.edge_max_lat[among]) >= min_lat
+    overlaps &= np.asarray(network.edge_min_lat[among]) <= max_lat
+    hit = np.flatnonzero(overlaps)
     return hit if rows is None else rows[hit]
-
-
-def _overlapping(min_lons: np.ndarray, min_lats: np.ndarray, max_lons: np.ndarray, max_lats: np.ndarray,
-                 min_lon: float, min_lat: float, max_lon: float, max_lat: float) -> np.ndarray:
-    """外接矩形の並びのうち、範囲に重なるものの位置（昇順）。"""
-    overlaps = np.asarray(max_lons) >= min_lon
-    overlaps &= np.asarray(min_lons) <= max_lon
-    overlaps &= np.asarray(max_lats) >= min_lat
-    overlaps &= np.asarray(min_lats) <= max_lat
-    return np.flatnonzero(overlaps)
 
 
 def rows_in_tile(network: RoadNetwork, z: int, x: int, y: int) -> np.ndarray:
@@ -568,23 +556,3 @@ def feature_materials(network: RoadNetwork, keys: tuple[str, ...], edge_rows: np
            for i, (material_id, vocab) in enumerate(zip(network.categorical_ids, network.categorical_vocab, strict=True))},
     }
     return FeatureMaterials(feature_keys=keys, columns=columns)
-
-
-def tile_feature_materials(network: RoadNetwork, z: int, x: int, y: int) -> FeatureMaterials:
-    """地図の道のタイル`z/x/y`に形の外接矩形が重なるフィーチャーの材料。区間で塗るズーム（`EDGE_UNIT_MIN_ZOOM`から）は区間と、
-    区間を持たない道。引いたズームは道1本。"""
-    bbox = tile_bounds_lonlat(z, x, y)
-    ways = _overlapping(network.way_min_lon, network.way_min_lat, network.way_max_lon, network.way_max_lat,
-                        bbox.min_longitude, bbox.min_latitude, bbox.max_longitude, bbox.max_latitude)
-    if z < EDGE_UNIT_MIN_ZOOM:
-        return feature_materials(network, tuple(str(way) for way in network.way_osm_id[ways].tolist()),
-                                 np.full(len(ways), -1), ways)
-    rows = rows_in_tile(network, z, x, y)
-    rows = rows[run_starts(network.edge_way_id[rows]) | run_starts(network.edge_segment[rows])]
-    # 区間は道の番号の昇順に並ぶので、道が区間を持つかは二分探索で引ける。
-    edgeless = ways[positions_in(np.asarray(network.edge_way_id), np.asarray(network.way_osm_id[ways])) < 0]
-    keys = (*(edge_feature_key(int(way), int(segment))
-              for way, segment in zip(network.edge_way_id[rows].tolist(), network.edge_segment[rows].tolist())),
-            *(str(way) for way in network.way_osm_id[edgeless].tolist()))
-    return feature_materials(network, keys, np.r_[rows, np.full(len(edgeless), -1)],
-                             np.r_[np.full(len(rows), -1), edgeless])

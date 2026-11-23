@@ -35,6 +35,7 @@ from app.infrastructure.material_joins import material_from_clause
 from app.infrastructure.orm_base import declared_metadata
 from app.infrastructure.road_tile_sql import (
     DERIVED_DATABASE_ROWS_SQL,
+    TILE_FEATURES_SQL,
     ROAD_SURFACE_TILE_MVT_SQL,
     ROADS_AT_SQL,
 )
@@ -172,11 +173,10 @@ JOIN LATERAL {nodes_lookup_sql("nm.osm_node_id")} n ON true
 ORDER BY nm.osm_node_id
 """)
 
-#: 区間を1本も持たない道（同じ位置に点が重なり長さ0の区間しか作れない道等）と、その形の外接矩形。地図の区分の層は、区間で
-#: 塗るズームでもこの道を道1本で塗る。
+#: 区間を1本も持たない道（同じ位置に点が重なり長さ0の区間しか作れない道等）。地図の区分の層は、区間で塗るズームでもこの道を
+#: 道1本で塗る。
 _EDGELESS_WAYS_SQL = text(f"""
-SELECT w.osm_way_id, ST_XMin(w.geom) AS min_lon, ST_YMin(w.geom) AS min_lat,
-       ST_XMax(w.geom) AS max_lon, ST_YMax(w.geom) AS max_lat
+SELECT w.osm_way_id
 FROM {WAYS_SOURCE_SQL} w
 WHERE NOT EXISTS (SELECT 1 FROM road_edges re WHERE re.osm_way_id = w.osm_way_id)
 ORDER BY w.osm_way_id
@@ -274,9 +274,14 @@ class RoadGraphRepository:
         require_tuning({TURN_BEARING_DISTANCE_ID: bearing_distance_m}, bearing_distance_m >= 0, "0以上")
         return self._stream(_NETWORK_EDGES_SQL.bindparams(bearing_distance_m=bearing_distance_m), chunk_size)
 
-    async def get_edgeless_ways(self) -> Sequence[Row]:
-        """区間を持たない道の、番号と形の外接矩形（`_EDGELESS_WAYS_SQL`の並び）。"""
-        return (await self._session.execute(_EDGELESS_WAYS_SQL)).all()
+    async def get_edgeless_ways(self) -> list[int]:
+        """区間を持たない道の番号（昇順）。"""
+        return list((await self._session.execute(_EDGELESS_WAYS_SQL)).scalars())
+
+    async def get_tile_features(self, z: int, x: int, y: int, bbox: BoundingBox) -> Sequence[Row]:
+        """路面タイル`z/x/y`が焼くフィーチャーの鍵と、道・区間の番号（道1本のフィーチャーはNone）（`road_tile_sql.py: TILE_FEATURES_SQL`）。
+        路面タイルと同じ選び方で、取込範囲の外のタイルは0行。"""
+        return (await self._session.execute(TILE_FEATURES_SQL, _tile_params(z, x, y, bbox))).all()
 
     def stream_network_nodes(self, chunk_size: int) -> AsyncIterator[Sequence[Row]]:
         """区間の端点になりうるノード全件を`chunk_size`行ずつ流す（`osm_node_id`の昇順）。"""

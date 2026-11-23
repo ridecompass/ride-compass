@@ -32,21 +32,16 @@ from app.domain.search_graph import run_starts
 
 @dataclass(frozen=True)
 class EdgelessWays:
-    """区間を持たない道（`osm_way_id`の昇順）の、道の生データから読んだ材料（列と語彙は区間の材料と同じ）と形の外接矩形。"""
+    """区間を持たない道（`osm_way_id`の昇順）の、道の生データから読んだ材料（列と語彙は区間の材料と同じ）。"""
 
     osm_way_id: np.ndarray
     numeric_values: np.ndarray
     categorical_codes: np.ndarray
-    min_lon: np.ndarray
-    min_lat: np.ndarray
-    max_lon: np.ndarray
-    max_lat: np.ndarray
 
     @classmethod
     def none(cls, numeric_columns: int, categorical_columns: int) -> "EdgelessWays":
-        empty = np.zeros(0)
         return cls(np.zeros(0, dtype=np.int64), np.zeros((0, numeric_columns)),
-                   np.zeros((0, categorical_columns), dtype=np.int16), empty, empty, empty, empty)
+                   np.zeros((0, categorical_columns), dtype=np.int16))
 
 
 def build_road_network(
@@ -103,7 +98,7 @@ def build_road_network(
         edge_shape_start=edge_shape_start, edge_shape_points=edge_shape_points, shape_lon=shape_lon, shape_lat=shape_lat,
         numeric_ids=numeric_ids, numeric_values=values, numeric_means=_numeric_means(numeric_ids, values, distance),
         categorical_codes=categorical_codes,
-        **_way_values(edge_way_id, first_of_edge, distance, values, categorical_codes, bbox,
+        **_way_values(edge_way_id, first_of_edge, distance, values, categorical_codes,
                       edgeless or EdgelessWays.none(values.shape[1], np.shape(categorical_codes)[1])),
         distance_m=distance, edge_way_bearing_deg=_way_bearings(node_lat, node_lon, edge_way_id, edge_forward, edge_from,
                                                           edge_to),
@@ -143,7 +138,7 @@ def _numeric_means(numeric_ids: tuple[str, ...], values: np.ndarray, distance_m:
 
 
 def _way_values(edge_way_id: np.ndarray, first_of_edge: np.ndarray, distance_m: np.ndarray, numeric_values: np.ndarray,
-                categorical_codes: np.ndarray, edge_bbox: dict[str, np.ndarray], edgeless: EdgelessWays) -> dict[str, Any]:
+                categorical_codes: np.ndarray, edgeless: EdgelessWays) -> dict[str, Any]:
     """道1本の値の欄（`RoadNetwork`の`way_*`）。区間を持つ道は区間ごとに一番若い行の値を集め、区間を持たない道と合わせて
     道の番号の昇順に並べる。"""
     edges = np.flatnonzero(first_of_edge)
@@ -168,17 +163,11 @@ def _way_values(edge_way_id: np.ndarray, first_of_edge: np.ndarray, distance_m: 
         order = np.lexsort((-sums, pairs // 2**16))
         longest = order[run_starts(pairs[order] // 2**16)]
         codes[pairs[longest] // 2**16, column] = pairs[longest] % 2**16
-    starts = np.flatnonzero(owner_first)
-    bbox = {f"way_{name}": np.concatenate([reduce.reduceat(edge_bbox[f"edge_{name}"][edges], starts) if count else np.zeros(0),
-                                           getattr(edgeless, name)])
-            for name, reduce in (("min_lon", np.minimum), ("min_lat", np.minimum), ("max_lon", np.maximum),
-                                 ("max_lat", np.maximum))}
-    way_ids = np.concatenate([np.asarray(edge_way_id[edges][starts], dtype=np.int64), edgeless.osm_way_id])
+    way_ids = np.concatenate([np.asarray(edge_way_id[edges][owner_first], dtype=np.int64), edgeless.osm_way_id])
     order = np.argsort(way_ids, kind="stable")
     return {"way_osm_id": way_ids[order],
             "way_numeric_values": np.concatenate([numeric, edgeless.numeric_values])[order],
-            "way_categorical_codes": np.concatenate([codes, edgeless.categorical_codes]).astype(np.int16)[order],
-            **{name: values[order] for name, values in bbox.items()}}
+            "way_categorical_codes": np.concatenate([codes, edgeless.categorical_codes]).astype(np.int16)[order]}
 
 
 def _way_bearings(node_lat: np.ndarray, node_lon: np.ndarray, way: np.ndarray, forward: np.ndarray,

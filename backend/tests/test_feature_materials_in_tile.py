@@ -1,6 +1,6 @@
-"""地図の路面タイル（DBが焼く形とフィーチャーの鍵。`infrastructure/road_tile_sql.py: ROAD_SURFACE_TILE_MVT_SQL`）の鍵が、道路網の
-配列から引くフィーチャーの材料（`domain/road_network.py: tile_feature_materials`）の鍵と噛み合うこと。噛み合わないと、その道は
-地図で色が付かない。
+"""地図の路面タイル（DBが焼く形とフィーチャーの鍵。`infrastructure/road_tile_sql.py: ROAD_SURFACE_TILE_MVT_SQL`）のフィーチャーが、
+値を引く鍵の読み出し（`RoadGraphRepository.get_tile_features`）と同じで、どれも道路網の配列に行を持つこと（`domain/road_network.py:
+feature_rows`）。食い違うと、その道は地図で色が付かない。
 
 道と点は取込の入口から入れ、派生の作り直し（`batch/derive_cli.py: run`）で区間と材料と道路網の配列まで作る（区間と区間の値の行を手で
 書くと、2つの読み出しが同じ鍵を作るという前提をテストが書き写すことになる）。
@@ -16,7 +16,7 @@ import pytest
 
 from app.batch import derive_cli
 from app.domain.region import EDGE_UNIT_MIN_ZOOM, ROAD_TILE_MIN_ZOOM, BoundingBox, tile_bounds_lonlat, tile_position
-from app.domain.road_network import tile_feature_materials
+from app.domain.road_network import feature_materials, feature_rows
 from app.infrastructure import road_network_store
 from app.infrastructure.vector_tile import ROAD_SURFACE_LAYER_NAME
 from tests.conftest import postgis_database_url
@@ -51,10 +51,14 @@ async def test_every_keyed_feature_on_the_map_has_its_materials_in_the_road_netw
     tile = await road_graph_repository.get_road_surface_tile_mvt(z, x, y, tile_bounds_lonlat(z, x, y), {})
     keys = {feature["properties"]["feature_key"]
             for feature in mapbox_vector_tile.decode(tile)[ROAD_SURFACE_LAYER_NAME]["features"]}
-    materials = tile_feature_materials(road_network_store.current(), z, x, y)
+    features = await road_graph_repository.get_tile_features(z, x, y, tile_bounds_lonlat(z, x, y))
+    network = road_network_store.current()
+    edge_rows, way_rows = feature_rows(network, [f.osm_way_id for f in features], [f.segment_index for f in features])
+    materials = feature_materials(network, tuple(f.feature_key for f in features), edge_rows, way_rows)
 
     assert {"1-0", "1-1"} <= keys if z >= EDGE_UNIT_MIN_ZOOM else {"1", "2"} <= keys
-    assert keys <= set(materials.feature_keys)
+    assert set(materials.feature_keys) == keys
+    assert np.all((edge_rows >= 0) | (way_rows >= 0))
     highway = materials.columns["highway"]
     assert {key: highway.value_at(row) for row, key in enumerate(materials.feature_keys) if key in keys} == {
         key: "track" if key.split("-")[0] == "2" else "secondary" for key in keys}

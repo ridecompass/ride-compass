@@ -97,6 +97,17 @@ ROAD_SURFACE_TILE_MVT_SQL = text(
 )
 
 
+#: 路面タイルが焼くフィーチャーの鍵と、道・区間の番号（道1本のフィーチャーの区間の番号はNULL）。地図の線の層の値は、この鍵で道路網の
+#: 配列から引いて路面タイルへ渡す（`ROAD_SURFACE_TILE_MVT_SQL`の`:layer_values`）——タイルに入るフィーチャーは、ここと路面タイルの
+#: 同じ選び方（`_TILE_FEATURE_SOURCE_SQL`）で決まる。取込範囲の外のタイルは路面タイルが焼かないので、行を返さない。
+TILE_FEATURES_SQL = text(f"""
+    WITH coverage AS ({COVERAGE_SQL})
+    SELECT src.feature_key, src.osm_way_id, src.segment_index
+    FROM ({_TILE_FEATURE_SOURCE_SQL}) src
+    WHERE (SELECT covered FROM coverage)
+""")
+
+
 # 押した所（`:lon`, `:lat`）から`:radius_m`以内の道のフィーチャーを、近い順に`:limit`本。フィーチャーの並び・単位
 # （ズーム`:z`で区間か道1本か）は路面タイルと同じものを使う——地図が塗る線と押して開く小窓が、同じ鍵を指す（材料は道路網の配列から
 # 鍵で引く）。`:xmin`〜`:ymax`は半径を覆う箱（空間の索引で絞るための前置フィルタ）で、距離そのものは地面の m で測る。

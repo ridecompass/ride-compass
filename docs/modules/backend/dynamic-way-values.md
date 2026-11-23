@@ -15,7 +15,7 @@
 | services | `lens_service.py`（タイル1枚のレンズの値と、押した道のレンズの値と事実）・`region_service.py: road_layer_values`（タイルのフィーチャーごとの地図の線の層の値）・`region_service.py: RoadInspectorService`（道の窓） |
 | api | `region.py`（`GET /api/region/lens/{lens_id}/...`・`POST /api/region/road-inspector`）・`dependencies.py`（`dependencies.py: get_lens_service`・`dependencies.py: get_road_inspector_service`） |
 
-フィーチャーごとの材料を道路網の配列から引く`domain/road_network.py: tile_feature_materials`は[routing-engine.md](routing-engine.md)が
+フィーチャーごとの材料を道路網の配列から鍵で引く`domain/road_network.py: feature_materials`は[routing-engine.md](routing-engine.md)が
 主管するファイルに属する。
 
 ## 地図へ配る式の木（`domain/way_value_formula.py`）
@@ -95,16 +95,16 @@ SQLと式の木の材料では作れない体力（走行の模型）を、backe
   タイルごとの計算がルート生成と共有のスレッドの置き場を埋めないように待たせる）。道の窓は押すたびの
   単発の要求なので専用の上限を持つ。
 
-## タイルの材料（`domain/road_network.py: tile_feature_materials`）
+## タイルの材料（`domain/road_network.py: feature_materials`）
 
-タイル1枚ぶんのフィーチャーごとの全部の材料を、道路網の配列から引く（DBは読まない）。路面タイルが焼く地図の線の層の値
+タイル1枚ぶんのフィーチャーは、路面タイルと同じ選び方で DB から鍵だけを読み（`infrastructure/road_tile_sql.py: TILE_FEATURES_SQL`）、
+その鍵で全部の材料を道路網の配列から引く——どのフィーチャーがタイルに入るかを決めるのは DB の道の形だけにする。路面タイルが焼く地図の線の層の値
 （`services/region_service.py: road_layer_values`。`services/region_service.py: RegionService.get_road_surface_tile`が読む）は、これに
 区分の列（`domain/road_classes.py: class_columns`）を読むたびに当てて求める——配列に区分を含めないので、区分を書き換えても配列を
 作り直さずに済む（路面タイルは区分の書き換えのあとに捨てて焼き直す。`infrastructure/region_tile_cache.py: discard_region_tiles`）。
 
 - フィーチャーの単位と鍵は路面タイルと同じ（区間で塗るズームは区間の一番若い行の値と、区間を持たない道1本の値。道1本で塗る
-  ズームは道1本の値）。フィーチャーは形の外接矩形がタイルに重なるもの。道1本の値の集め方は`domain/road_network_build.py`の
-  モジュールの説明が持つ。
-- 鍵が DB の路面タイルの鍵と噛み合うことは`tests/test_feature_materials_in_tile.py`が見る。端点のノードが無く配列が落とした区間と、
-  そういう区間しか持たない道は、配列に値が無いので地図では値なしで描く。
+  ズームは道1本の値）。道1本の値の集め方は`domain/road_network_build.py`のモジュールの説明が持つ。
+- 値を引く鍵が路面タイルのフィーチャーと同じで、どれも配列に行を持つことは`tests/test_feature_materials_in_tile.py`が見る。配列に
+  行の無いフィーチャー（端点のノードが無く配列が落とした区間と、そういう区間しか持たない道）は値なしで描く。
 - 配列に無い材料（テストの道路網）は、値の無い列として読む（`domain/search_materials.py: ColumnsOrEmpty`）。

@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from functools import partial
@@ -11,7 +11,7 @@ from app.domain.region import ROADS_AT_LIMIT, BoundingBox, RoadAt, tile_bounds_l
 from app.domain.registry import TileKind
 from app.domain.hard_filters import HARD_FILTER_PROPERTY, hard_filter_column
 from app.domain.road_classes import RoadClassDefinitions, class_columns, current_road_classes, layer_columns
-from app.domain.road_network import RoadNetwork, feature_materials, feature_rows, tile_feature_materials
+from app.domain.road_network import RoadNetwork, feature_materials, feature_rows
 from app.domain.search_materials import ColumnsOrEmpty
 from app.domain.tuning import REBUILT_CLIENT_TUNING_IDS
 from app.infrastructure.debug_log import log_external_call
@@ -85,8 +85,11 @@ class RegionService:
         definitions = current_road_classes()
 
         async def read_tile(z: int, x: int, y: int, bbox: BoundingBox) -> bytes | None:
+            features = await self._repository.get_tile_features(z, x, y, bbox)
             # 引いたズームのタイルは道が数万本あるので、並べる計算はイベントループの外で行う。
-            layer_values = await asyncio.to_thread(road_layer_values, road_network_store.current(), z, x, y, definitions)
+            layer_values = await asyncio.to_thread(
+                road_layer_values, road_network_store.current(), [row.feature_key for row in features],
+                [row.osm_way_id for row in features], [row.segment_index for row in features], definitions)
             return await self._repository.get_road_surface_tile_mvt(z, x, y, bbox, layer_values)
 
         return await self._get_tile(
@@ -168,11 +171,13 @@ class RegionService:
             return area
 
 
-def road_layer_values(network: RoadNetwork, z: int, x: int, y: int,
-                  definitions: RoadClassDefinitions) -> dict[str, dict[str, str]]:
-    """タイル`z/x/y`のフィーチャーの鍵→地図の線の層のid（`domain/road_classes.py: layer_columns`）と当たる0次ハードフィルタの名前
-    （`domain/hard_filters.py: HARD_FILTER_PROPERTY`）→値。値の無い層は載せず、値の無いフィーチャーは鍵ごと載せない。"""
-    materials = tile_feature_materials(network, z, x, y)
+def road_layer_values(network: RoadNetwork, feature_keys: Sequence[str], way_ids: Sequence[int],
+                      segment_indexes: Sequence[int | None], definitions: RoadClassDefinitions) -> dict[str, dict[str, str]]:
+    """路面タイルのフィーチャー（鍵と、道・区間の番号。道1本のフィーチャーの区間の番号はNone）の鍵→地図の線の層のid
+    （`domain/road_classes.py: layer_columns`）と当たる0次ハードフィルタの名前（`domain/hard_filters.py: HARD_FILTER_PROPERTY`）→値。
+    値は道路網の配列から鍵で引く。値の無い層は載せず、値の無いフィーチャーは鍵ごと載せない。"""
+    edge_rows, way_rows = feature_rows(network, way_ids, segment_indexes)
+    materials = feature_materials(network, tuple(feature_keys), edge_rows, way_rows)
     n = len(materials)
     facts = ColumnsOrEmpty(materials.columns, n, definitions)
     columns = ColumnsOrEmpty({**materials.columns, **class_columns(definitions, facts, n)}, n, definitions)

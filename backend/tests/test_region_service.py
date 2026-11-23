@@ -33,6 +33,9 @@ class _TileRepository:
     async def get_road_surface_tile_mvt(self, z, x, y, bbox, layer_values):
         return self.tile
 
+    async def get_tile_features(self, z, x, y, bbox):
+        return []
+
     async def get_tile_mvt(self, sql, layer_name, z, x, y, bbox):
         return self.tile
 
