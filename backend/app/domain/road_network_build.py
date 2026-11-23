@@ -90,9 +90,11 @@ def build_road_network(
 def filled_bearings(bearing_deg: np.ndarray, node_lat: np.ndarray, node_lon: np.ndarray, edge_from: np.ndarray,
                     edge_to: np.ndarray) -> np.ndarray:
     """区間の端のそばの向き。形から決まらない（NaNの）区間は、始点の頂点から終点の頂点を見た向きで埋める。"""
-    bearing = np.asarray(bearing_deg, dtype=np.float64)
-    chord = bearings_between(node_lat[edge_from], node_lon[edge_from], node_lat[edge_to], node_lon[edge_to])
-    return np.where(np.isnan(bearing), chord, bearing)
+    bearing = np.array(bearing_deg, dtype=np.float64)
+    missing = np.flatnonzero(np.isnan(bearing))
+    tail, head = edge_from[missing], edge_to[missing]
+    bearing[missing] = bearings_between(node_lat[tail], node_lon[tail], node_lat[head], node_lon[head])
+    return bearing
 
 
 def node_max_ranks(node_count: int, edge_from: np.ndarray, edge_to: np.ndarray, edge_rank: np.ndarray) -> np.ndarray:

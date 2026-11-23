@@ -13,6 +13,7 @@ backendは置かれたものを読むだけにする。
 材料の式や組み方を変えたコードをデプロイすると署名が変わり、古い置き場は選ばれなくなる。
 """
 
+import ctypes
 import inspect
 import json
 import logging
@@ -258,6 +259,7 @@ async def build(repository: RoadGraphRepository, revision: int) -> RoadNetwork:
     nodes = await _read_nodes(repository)
     tuning = await repository.get_network_tuning()
     edges, dropped_without_endpoint = await _read_directed_edges(repository, nodes["node_osm_id"], tuning)
+    _release_freed_memory()
     topology_s = time.monotonic() - started
     logger.info(
         "道路網のつながりを読みました ノード=%d 有向の区間=%d 端点のノードが無く落とした有向の区間=%d %.0f秒",
@@ -265,12 +267,20 @@ async def build(repository: RoadGraphRepository, revision: int) -> RoadNetwork:
     )
 
     materials = await _read_materials(repository, edges["edge_way_id"], edges["edge_segment"], edges["edge_forward"])
+    _release_freed_memory()
     read_s = time.monotonic() - started
     logger.info("道路網の材料を読みました 有向の区間=%d %.0f秒", len(edges["edge_way_id"]), read_s - topology_s)
     network = build_road_network(revision=revision, stop_cluster_distance_m=tuning[STOP_CLUSTER_DISTANCE_ID],
                                  **nodes, **edges, **materials)
     logger.info("道路網の配列を組みました %.0f秒", time.monotonic() - started - read_s)
     return network
+
+
+def _release_freed_memory() -> None:
+    """読み終えたDBの行の分を、OSへ返す。glibcのmallocは、捨てた小さな割り当ての分を返さずに抱え、上限付きのコンテナでは
+    それも上限に数えられる。"""
+    if sys.platform == "linux":
+        ctypes.CDLL("libc.so.6").malloc_trim(0)
 
 
 #: `RoadNetwork`の欄 → (ノードの行の列, 型)。
@@ -383,14 +393,11 @@ async def _read_profiles(repository: RoadGraphRepository, way: np.ndarray, segme
     first = run_starts(way) | run_starts(segment)
     owner = np.cumsum(first) - 1  # 行 → 点を持つ区間の番号
     unique_rows = np.flatnonzero(first)
-    profiles = await repository.get_edge_elevation_profiles(way[unique_rows].tolist(), segment[unique_rows].tolist())
-    points = np.fromiter((len(elevation) for elevation, _ in profiles), dtype=np.int32, count=len(profiles))
+    points, elevation, position = await repository.get_edge_elevation_profiles(
+        way[unique_rows].tolist(), segment[unique_rows].tolist())
     starts = np.cumsum(points, dtype=np.int64) - points
-    return {
-        "edge_profile_start": starts[owner], "edge_profile_points": points[owner],
-        "profile_elevation_m": _concatenate([elevation for elevation, _ in profiles], np.float32),
-        "profile_position": _concatenate([position for _, position in profiles], np.float32),
-    }
+    return {"edge_profile_start": starts[owner], "edge_profile_points": points[owner],
+            "profile_elevation_m": elevation, "profile_position": position}
 
 
 class MaterialColumns:
