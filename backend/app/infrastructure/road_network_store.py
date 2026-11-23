@@ -16,6 +16,7 @@ backendは置かれたものを読むだけにする。
 import inspect
 import json
 import logging
+import math
 import os
 import re
 import shutil
@@ -68,6 +69,8 @@ _DIRECTORY_PATTERN = re.compile(r"^(?P<shape>[0-9a-f]+)-r(?P<revision>\d+)$")
 # 一時的なメモリがこの数に比例する。
 _STREAM_CHUNK = 200_000
 _MATERIAL_BATCH = 200_000
+#: 置き場の配列を書くとき、ページキャッシュを手放すまでに書く大きさ。
+_WRITE_CHUNK_BYTES = 64 * 2**20
 
 
 def directory_name(revision: int) -> str:
@@ -110,7 +113,7 @@ def write_pending(network: RoadNetwork) -> Path:
         for f in fields(network):
             value = getattr(network, f.name)
             if isinstance(value, np.ndarray):
-                np.save(temporary / f"{f.name}.npy", value, allow_pickle=False)
+                _write_array(temporary / f"{f.name}.npy", value)
             else:
                 values[f.name] = value
         _write_manifest(temporary, values)
@@ -130,6 +133,23 @@ def _new_pending(revision: int) -> Iterator[Path]:
     except BaseException:
         shutil.rmtree(temporary, ignore_errors=True)
         raise
+
+
+def _write_array(path: Path, value: np.ndarray) -> None:
+    """`value`を`.npy`として書く。上限付きのコンテナでは、書いたファイルのページキャッシュもコンテナのメモリに数えられ、
+    書き戻しより速く溜まると、道路網を丸ごと持った上限の中で強制終了される。そのため一定の大きさごとに書き戻して手放す
+    （`np.save`は1本を一度に書き、途中で手放せない）。"""
+    header = np.lib.format.header_data_from_array_1_0(value)
+    header["fortran_order"] = False
+    rows = max(1, _WRITE_CHUNK_BYTES // max(1, value.itemsize * math.prod(value.shape[1:])))
+    with path.open("wb") as file:
+        np.lib.format.write_array_header_1_0(file, header)
+        for start in range(0, len(value), rows):
+            file.write(np.ascontiguousarray(value[start:start + rows]).data)
+            file.flush()
+            os.fsync(file.fileno())
+            if hasattr(os, "posix_fadvise"):  # Windowsの開発機には無い（手放さずに書くだけになる）
+                os.posix_fadvise(file.fileno(), 0, 0, os.POSIX_FADV_DONTNEED)
 
 
 def _write_manifest(directory: Path, values: dict[str, object]) -> None:

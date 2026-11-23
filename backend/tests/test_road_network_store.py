@@ -23,6 +23,7 @@ import inspect
 import json
 import logging
 import math
+import os
 import shutil
 from dataclasses import fields
 
@@ -120,7 +121,7 @@ def test_a_network_that_fails_while_being_placed_leaves_nothing_behind(store, mo
     """置く途中で落ちると、呼び手は書きかけのディレクトリを受け取れず消せない。書きかけは名前の形に合わず、
     片付け（`prune`・`prune_other_shapes`）にも拾われないので、残せば道路網1つぶんのディスクを持ち続ける。"""
     road_network_store.publish(road_network_store.write_pending(_network(revision=3)))
-    monkeypatch.setattr(np, "save", _disk_full)
+    monkeypatch.setattr(os, "fsync", _disk_full)  # 溜めた書き込みが入りきらないと、書き戻しで落ちる
 
     with pytest.raises(OSError):
         road_network_store.write_pending(_network(revision=4))
