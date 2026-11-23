@@ -28,7 +28,7 @@ from app.domain.elevation_profile import (
 from app.domain.geo import bearings_between
 from app.domain.material_catalog import ELEVATION_GAIN_PER_KM, GRADIENT_PERCENT, MATERIAL_CATALOG
 from app.domain.road_network import RoadNetwork
-from app.domain.search_graph import run_starts
+from app.domain.search_graph import EDGE_VALUE_DTYPE, run_starts
 
 
 @dataclass(frozen=True)
@@ -83,7 +83,7 @@ def build_road_network(
         distance, STEEPEST_MIN_INTERVAL_M).T, strict=True))
 
     # 材料の行列は取込範囲全体で道路網の配列の大半を占めるので、写さずに断面から決まる列だけを埋める。
-    values = np.asarray(numeric_values, dtype=np.float64)
+    values = np.asarray(numeric_values, dtype=EDGE_VALUE_DTYPE)
     gain_per_km = per_km(summaries["elevation_gain_m"], distance)
     for material_id, column in ((GRADIENT_PERCENT, summaries.pop("average_grade")), (ELEVATION_GAIN_PER_KM, gain_per_km)):
         if material_id in numeric_ids:
@@ -113,8 +113,9 @@ def build_road_network(
 
 def filled_bearings(bearing_deg: np.ndarray, node_lat: np.ndarray, node_lon: np.ndarray, edge_from: np.ndarray,
                     edge_to: np.ndarray) -> np.ndarray:
-    """区間の端のそばの向き。形から決まらない（NaNの）区間は、始点の頂点から終点の頂点を見た向きで埋める。"""
-    bearing = np.array(bearing_deg, dtype=np.float64)
+    """区間の端のそばの向き。形から決まらない（NaNの）区間は、始点の頂点から終点の頂点を見た向きで埋める。倍精度の配列を
+    渡すと、写さずにその中で埋める。"""
+    bearing = np.asarray(bearing_deg, dtype=np.float64)
     missing = np.flatnonzero(np.isnan(bearing))
     tail, head = edge_from[missing], edge_to[missing]
     bearing[missing] = bearings_between(node_lat[tail], node_lon[tail], node_lat[head], node_lon[head])
@@ -174,7 +175,7 @@ def _way_values(edge_way_id: np.ndarray, first_of_edge: np.ndarray, edge_forward
     position = np.empty(len(order), dtype=np.int64)
     position[order] = np.arange(len(order))
     of_edges, of_edgeless = position[:count], position[count:]
-    numeric = np.full((len(order), numeric_values.shape[1]), np.nan)
+    numeric = np.full((len(order), numeric_values.shape[1]), np.nan, dtype=EDGE_VALUE_DTYPE)
     numeric[of_edgeless] = edgeless.numeric_values
     for column, material_id in enumerate(numeric_ids):
         values = along_way(material_id, numeric_values[edges, column], edge_forward[edges], elevation_loss_m[edges], length)

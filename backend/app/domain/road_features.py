@@ -16,6 +16,7 @@ from app.domain.hard_filters import HARD_FILTER_PROPERTY, hard_filter_column
 from app.domain.road_classes import RoadClassDefinitions, class_columns, layer_columns
 from app.domain.road_network import RoadNetwork, edge_key, positions_in
 from app.domain.road_network_build import along_way
+from app.domain.search_graph import EDGE_VALUE_DTYPE
 from app.domain.search_materials import ColumnsOrEmpty
 
 
@@ -65,7 +66,8 @@ def feature_materials(network: RoadNetwork, keys: tuple[str, ...], edge_rows: np
     edge_rows, way_rows = np.asarray(edge_rows, dtype=np.int64), np.asarray(way_rows, dtype=np.int64)
     on_edge, on_way = edge_rows >= 0, way_rows >= 0
     rows = edge_rows[on_edge]
-    numeric = np.full((len(keys), len(network.numeric_ids)), np.nan)
+    # 探索と同じ型で持つ（道の向きへ読み替えた値も、探索が同じ区間に持つ値と同じ桁に丸める）。
+    numeric = np.full((len(keys), len(network.numeric_ids)), np.nan, dtype=EDGE_VALUE_DTYPE)
     for column, material_id in enumerate(network.numeric_ids):
         numeric[on_edge, column] = along_way(material_id, network.numeric_values[rows, column], network.edge_forward[rows],
                                              network.elevation_loss_m[rows], network.distance_m[rows])

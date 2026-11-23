@@ -256,6 +256,7 @@ async def build(repository: RoadGraphRepository, revision: int) -> RoadNetwork:
     """DBから道路網全体の事実を読み、`revision`の世代の`RoadNetwork`を組む（`domain/road_network_build.py`）。較正値は、読む表を
     作り直したときに使った値で読む。"""
     started = time.monotonic()
+    _return_large_buffers_at_once()
     nodes = await _read_nodes(repository)
     tuning = await repository.get_network_tuning()
     edges, dropped_without_endpoint = await _read_directed_edges(repository, nodes["node_osm_id"], tuning)
@@ -282,6 +283,14 @@ def _release_freed_memory() -> None:
     それも上限に数えられる。"""
     if sys.platform == "linux":
         ctypes.CDLL("libc.so.6").malloc_trim(0)
+
+
+def _return_large_buffers_at_once() -> None:
+    """このプロセスの以後の、境目より大きい割り当てをヒープの外に置かせ、捨てたらすぐOSへ返させる。glibcは既定では、大きな割り当てを
+    捨てるたびに境目を引き上げるので、組む途中の数十MBの一時の配列がヒープに溜まって返されず、上限付きのコンテナではそれも上限に
+    数えられる。境目を明示して置くと、引き上げが止まる。"""
+    if sys.platform == "linux":
+        ctypes.CDLL("libc.so.6").mallopt(-3, 128 * 1024)  # M_MMAP_THRESHOLDを、glibcの既定の初めの値に置く
 
 
 #: `RoadNetwork`の欄 → (ノードの行の列, 型)。

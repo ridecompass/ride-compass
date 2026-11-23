@@ -107,7 +107,7 @@ class EdgeMaterialArrays:
     """
 
     numeric_ids: tuple[str, ...]
-    numeric_values: np.ndarray  # shape=(n, len(numeric_ids)), float64, NaN=欠損
+    numeric_values: np.ndarray  # shape=(n, len(numeric_ids)), `domain/search_graph.py: EDGE_VALUE_DTYPE`, NaN=欠損
     categorical_ids: tuple[str, ...]
     categorical_columns: tuple[CategoricalColumn, ...]  # categorical_idsと同じ並び
     # 区間そのものの値。グラフのオブジェクトから組み直さず、材料と同じクエリで受ける。

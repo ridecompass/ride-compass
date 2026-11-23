@@ -30,6 +30,7 @@ from app.domain.material_catalog import (
     material_value_sql,
 )
 from app.domain.region import BoundingBox, RoadAt
+from app.domain.search_graph import EDGE_VALUE_DTYPE
 from app.domain.tuning import STOP_CLUSTER_DISTANCE_ID, TURN_BEARING_DISTANCE_ID, require_tuning
 from app.infrastructure import derived_data_meta
 from app.infrastructure.material_joins import material_from_clause
@@ -324,7 +325,7 @@ class RoadGraphRepository:
                 raw[name].extend(getattr(row, f"c_{name}") or [])
 
         # 断面から求める材料（`MaterialSpec.source`が`profile`）は値式を持たず、列は値を持たない（NaN）。
-        numeric_values = np.full((n, len(numeric_ids)), np.nan)
+        numeric_values = np.full((n, len(numeric_ids)), np.nan, dtype=EDGE_VALUE_DTYPE)
         for i, material_id in enumerate(numeric_ids):
             if material_id in raw:
                 numeric_values[:, i] = float_array(raw[material_id])
