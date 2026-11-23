@@ -15,6 +15,7 @@
 import json
 import logging
 from collections.abc import AsyncIterator, Mapping, Sequence
+from itertools import chain
 
 import numpy as np
 import shapely
@@ -337,21 +338,32 @@ class RoadGraphRepository:
 
     async def get_edge_elevation_profiles(
         self, way_ids: list[int], segment_indexes: list[int]
-    ) -> list[tuple[np.ndarray, np.ndarray]]:
-        """区間（位置で揃えた2本の列）ごとの、順方向に並べた断面の点の`(標高（m、float32、値の無い点はNaN）, 位置（区間の長さに
-        対する割合、float32）)`。標高の行が無い区間はどちらも空。位置を持たない行（作り直す前の行）と長さ0の区間は、点を等しい
-        間隔に置く——作り直す前の行の点は等しい道のりに刻んだ点なので、そのとおりに読む。区間ごとに点の数が違い、材料の列の
-        ように配列へまとめられないので、区間ごとの行で読む。"""
-        profiles: list[tuple[np.ndarray, np.ndarray]] = []
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """区間（位置で揃えた2本の列）ごとの断面の点の数（int32）と、点を区間の順に隙間なく並べた標高（m、float32、値の無い点は
+        NaN）と位置（区間の長さに対する割合、float32）。点は区間ごとに順方向に並ぶ。標高の行が無い区間は点を持たない。位置を
+        持たない行（作り直す前の行）と長さ0の区間は、点を等しい間隔に置く——作り直す前の行の点は等しい道のりに刻んだ点なので、
+        そのとおりに読む。区間ごとの小さな配列は作らない（区間が多いと、その入れ物だけで点の配列の何倍ものメモリになる）。"""
+        counts: list[np.ndarray] = []
+        elevations: list[np.ndarray] = []
+        positions: list[np.ndarray] = []
         for start in range(0, len(way_ids), ID_CHUNK_SIZE):
             stop = start + ID_CHUNK_SIZE
             rows = (await self._session.execute(_EDGE_ELEVATION_PROFILES_SQL, {
                 "way_ids": way_ids[start:stop], "segment_indexes": segment_indexes[start:stop],
             })).all()
-            for row in rows:
-                elevation = np.asarray(row.elevation_profile_m or (), dtype=np.float32)
-                profiles.append((elevation, along_fractions(row.elevation_profile_along_m or (), len(elevation))))
-        return profiles
+            points = np.fromiter((len(row.elevation_profile_m or ()) for row in rows), dtype=np.int32, count=len(rows))
+            ends = np.cumsum(points, dtype=np.int64)
+            total = int(ends[-1]) if len(ends) else 0
+            position = np.empty(total, dtype=np.float32)
+            for row, end, n in zip(rows, ends, points, strict=True):
+                position[end - n:end] = along_fractions(row.elevation_profile_along_m or (), int(n))
+            counts.append(points)
+            elevations.append(np.fromiter(chain.from_iterable(row.elevation_profile_m or () for row in rows),
+                                          dtype=np.float32, count=total))
+            positions.append(position)
+        return (np.concatenate([np.zeros(0, dtype=np.int32), *counts]),
+                np.concatenate([np.zeros(0, dtype=np.float32), *elevations]),
+                np.concatenate([np.zeros(0, dtype=np.float32), *positions]))
 
     async def get_way_tags_by_osm_way_id(
         self, osm_way_id: int

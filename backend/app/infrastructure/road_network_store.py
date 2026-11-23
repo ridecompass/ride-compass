@@ -13,9 +13,11 @@ backendは置かれたものを読むだけにする。
 材料の式や組み方を変えたコードをデプロイすると署名が変わり、古い置き場は選ばれなくなる。
 """
 
+import ctypes
 import inspect
 import json
 import logging
+import math
 import os
 import re
 import shutil
@@ -68,6 +70,8 @@ _DIRECTORY_PATTERN = re.compile(r"^(?P<shape>[0-9a-f]+)-r(?P<revision>\d+)$")
 # 一時的なメモリがこの数に比例する。
 _STREAM_CHUNK = 200_000
 _MATERIAL_BATCH = 200_000
+#: 置き場の配列を書くとき、ページキャッシュを手放すまでに書く大きさ。
+_WRITE_CHUNK_BYTES = 64 * 2**20
 
 
 def directory_name(revision: int) -> str:
@@ -110,7 +114,7 @@ def write_pending(network: RoadNetwork) -> Path:
         for f in fields(network):
             value = getattr(network, f.name)
             if isinstance(value, np.ndarray):
-                np.save(temporary / f"{f.name}.npy", value, allow_pickle=False)
+                _write_array(temporary / f"{f.name}.npy", value)
             else:
                 values[f.name] = value
         _write_manifest(temporary, values)
@@ -130,6 +134,23 @@ def _new_pending(revision: int) -> Iterator[Path]:
     except BaseException:
         shutil.rmtree(temporary, ignore_errors=True)
         raise
+
+
+def _write_array(path: Path, value: np.ndarray) -> None:
+    """`value`を`.npy`として書く。上限付きのコンテナでは、書いたファイルのページキャッシュもコンテナのメモリに数えられ、
+    書き戻しより速く溜まると、道路網を丸ごと持った上限の中で強制終了される。そのため一定の大きさごとに書き戻して手放す
+    （`np.save`は1本を一度に書き、途中で手放せない）。"""
+    header = np.lib.format.header_data_from_array_1_0(value)
+    header["fortran_order"] = False
+    rows = max(1, _WRITE_CHUNK_BYTES // max(1, value.itemsize * math.prod(value.shape[1:])))
+    with path.open("wb") as file:
+        np.lib.format.write_array_header_1_0(file, header)
+        for start in range(0, len(value), rows):
+            file.write(np.ascontiguousarray(value[start:start + rows]).data)
+            file.flush()
+            os.fsync(file.fileno())
+            if hasattr(os, "posix_fadvise"):  # Windowsの開発機には無い（手放さずに書くだけになる）
+                os.posix_fadvise(file.fileno(), 0, 0, os.POSIX_FADV_DONTNEED)
 
 
 def _write_manifest(directory: Path, values: dict[str, object]) -> None:
@@ -238,6 +259,7 @@ async def build(repository: RoadGraphRepository, revision: int) -> RoadNetwork:
     nodes = await _read_nodes(repository)
     tuning = await repository.get_network_tuning()
     edges, dropped_without_endpoint = await _read_directed_edges(repository, nodes["node_osm_id"], tuning)
+    _release_freed_memory()
     topology_s = time.monotonic() - started
     logger.info(
         "道路網のつながりを読みました ノード=%d 有向の区間=%d 端点のノードが無く落とした有向の区間=%d %.0f秒",
@@ -246,12 +268,20 @@ async def build(repository: RoadGraphRepository, revision: int) -> RoadNetwork:
 
     materials = await _read_materials(repository, edges["edge_way_id"], edges["edge_segment"], edges["edge_forward"],
                                       await repository.get_edgeless_ways())
+    _release_freed_memory()
     read_s = time.monotonic() - started
     logger.info("道路網の材料を読みました 有向の区間=%d %.0f秒", len(edges["edge_way_id"]), read_s - topology_s)
     network = build_road_network(revision=revision, stop_cluster_distance_m=tuning[STOP_CLUSTER_DISTANCE_ID],
                                  **nodes, **edges, **materials)
     logger.info("道路網の配列を組みました %.0f秒", time.monotonic() - started - read_s)
     return network
+
+
+def _release_freed_memory() -> None:
+    """読み終えたDBの行の分を、OSへ返す。glibcのmallocは、捨てた小さな割り当ての分を返さずに抱え、上限付きのコンテナでは
+    それも上限に数えられる。"""
+    if sys.platform == "linux":
+        ctypes.CDLL("libc.so.6").malloc_trim(0)
 
 
 #: `RoadNetwork`の欄 → (ノードの行の列, 型)。
@@ -365,14 +395,11 @@ async def _read_profiles(repository: RoadGraphRepository, way: np.ndarray, segme
     first = run_starts(way) | run_starts(segment)
     owner = np.cumsum(first) - 1  # 行 → 点を持つ区間の番号
     unique_rows = np.flatnonzero(first)
-    profiles = await repository.get_edge_elevation_profiles(way[unique_rows].tolist(), segment[unique_rows].tolist())
-    points = np.fromiter((len(elevation) for elevation, _ in profiles), dtype=np.int32, count=len(profiles))
+    points, elevation, position = await repository.get_edge_elevation_profiles(
+        way[unique_rows].tolist(), segment[unique_rows].tolist())
     starts = np.cumsum(points, dtype=np.int64) - points
-    return {
-        "edge_profile_start": starts[owner], "edge_profile_points": points[owner],
-        "profile_elevation_m": _concatenate([elevation for elevation, _ in profiles], np.float32),
-        "profile_position": _concatenate([position for _, position in profiles], np.float32),
-    }
+    return {"edge_profile_start": starts[owner], "edge_profile_points": points[owner],
+            "profile_elevation_m": elevation, "profile_position": position}
 
 
 class MaterialColumns:
