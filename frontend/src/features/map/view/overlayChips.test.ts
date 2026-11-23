@@ -1,11 +1,7 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
 
-import {
-  buildDefaultLayerVisibility,
-  buildMapLayers,
-  TILE_ZOOM_TOO_WIDE_NOTICE,
-} from "@/features/map/layers/mapLayers";
+import { buildMapLayers, TILE_ZOOM_TOO_WIDE_NOTICE } from "@/features/map/layers/mapLayers";
 import { roadLegendAxes } from "@/features/map/scene/legends";
 
 import { mapCatalogFor } from "@/testing/mapCatalog";
@@ -25,7 +21,7 @@ function chips(options: Partial<Options> = {}) {
   return overlayChips({
     layers: LAYERS,
     roadLayers: ROAD_LAYERS,
-    visibility: buildDefaultLayerVisibility(LAYERS),
+    visibility: {},
     hidden: {},
     dataStatus: {},
     caveats: {},
@@ -41,6 +37,17 @@ describe("overlayChips（地図上チップの状態）", () => {
     expect(ids).not.toContain("ascentLens");
     expect(ids).not.toContain("route");
     expect(ids).toContain("tunnel");
+  });
+
+  it.each([
+    ["補足があれば句点のあとに続ける", "補足です。", "短い説明。補足です。"],
+    ["補足が無ければ短い説明だけにする", "", "短い説明。"],
+  ])("ⓘの文は、短い説明に句点を付け、%s", (_, hint, expected) => {
+    const roadLayers = [roadMapLayer("lane", { description: ["短い説明"], panel_hint: hint })];
+    const layers = buildMapLayers(
+      mapCatalogFor(undefined, { road_classes: roadClassCatalog({ map_layers: roadLayers }) }),
+    );
+    expect(chipOf(chips({ layers, roadLayers }), "lane").panelHint).toBe(expected);
   });
 
   it("ズーム不足の案内と、地図が報告した取得状態を出す", () => {

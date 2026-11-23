@@ -2,16 +2,17 @@
 
 import { useStoredState } from "@/hooks/useStoredState";
 import type { MapLayerId, MapOverlayGroup } from "@/features/map/layers/mapLayers";
+import { mapDisplay } from "@/types/generated/mapDisplay";
 import type { OverlayLayerChip } from "./OverlayLayerRow";
 
-// たたんだ群と、「表示する項目を選ぶ」で外した項目は次の訪問でも保つ。ⓘ・▶の開閉は一時の確かめなので保たない。
+// たたんだ群と、群ごとに一覧から外した項目は次の訪問でも保つ。ⓘ・▶の開閉は一時の確かめなので保たない。
 const COLLAPSED_GROUPS_STORAGE_KEY = "ridecompass:map-overlay-collapsed-groups";
-const HIDDEN_IDS_STORAGE_KEY = "ridecompass:map-overlay-hidden-ids";
+const HIDDEN_BY_GROUP_STORAGE_KEY = "ridecompass:map-overlay-hidden-by-group";
 
-/** 外した項目の保存の形は`<群>:<レイヤーid>`。 */
-function hiddenKeyOf(group: MapOverlayGroup, id: MapLayerId): string {
-  return `${group}:${id}`;
-}
+/** 群ごとに一覧から外した項目。項目を選んだことの無い群は持たず、並びの先頭から決まった数だけを並べる。 */
+type HiddenByGroup = Readonly<Partial<Record<MapOverlayGroup, readonly MapLayerId[]>>>;
+
+const NO_CHOICES: HiddenByGroup = {};
 
 /** 群のたたみと、群ごとに一覧へ並べる項目の選び方。どちらも保存し、次の訪問でも保つ。 */
 export function useOverlayGroupChoices(onToggle: (id: MapLayerId, on: boolean) => void) {
@@ -20,7 +21,11 @@ export function useOverlayGroupChoices(onToggle: (id: MapLayerId, on: boolean) =
     "たたんだ群",
     [],
   );
-  const [hiddenIds, setHiddenIds] = useStoredState<readonly string[]>(HIDDEN_IDS_STORAGE_KEY, "一覧から外した項目", []);
+  const [hiddenByGroup, setHiddenByGroup] = useStoredState<HiddenByGroup>(
+    HIDDEN_BY_GROUP_STORAGE_KEY,
+    "一覧から外した項目",
+    NO_CHOICES,
+  );
 
   function isCollapsed(group: MapOverlayGroup): boolean {
     return collapsedGroups.includes(group);
@@ -30,26 +35,27 @@ export function useOverlayGroupChoices(onToggle: (id: MapLayerId, on: boolean) =
     setCollapsedGroups((prev) => (prev.includes(group) ? prev.filter((g) => g !== group) : [...prev, group]));
   }
 
-  function isHidden(group: MapOverlayGroup, member: OverlayLayerChip): boolean {
-    return hiddenIds.includes(hiddenKeyOf(group, member.id));
+  function hiddenIn(group: MapOverlayGroup, members: readonly OverlayLayerChip[]): readonly MapLayerId[] {
+    return hiddenByGroup[group] ?? members.slice(mapDisplay.overlayGroupInitialItems).map((member) => member.id);
   }
 
-  /** 外した項目のレイヤーがONならOFFにする（一覧から消えるとOFFにする手段が無くなる）。並べ直してもONにはしない。 */
-  function toggleHidden(group: MapOverlayGroup, member: OverlayLayerChip) {
-    const key = hiddenKeyOf(group, member.id);
-    const hiding = !hiddenIds.includes(key);
-    setHiddenIds((prev) => (hiding ? [...prev, key] : prev.filter((id) => id !== key)));
+  /** 一覧に並べるか。地図に出している項目は、外していても並べる（並べないと消す手段が無くなる）。 */
+  function isListed(group: MapOverlayGroup, members: readonly OverlayLayerChip[], member: OverlayLayerChip): boolean {
+    return member.on || !hiddenIn(group, members).includes(member.id);
+  }
+
+  /** 並べる・外すを切り替える。外す項目が地図に出ていれば消す。並べ直しても地図には出さない。 */
+  function toggleListed(group: MapOverlayGroup, members: readonly OverlayLayerChip[], member: OverlayLayerChip) {
+    const hidden = hiddenIn(group, members);
+    const hiding = isListed(group, members, member);
+    setHiddenByGroup((prev) => ({
+      ...prev,
+      [group]: hiding
+        ? [...hidden.filter((id) => id !== member.id), member.id]
+        : hidden.filter((id) => id !== member.id),
+    }));
     if (hiding && member.on) onToggle(member.id, false);
   }
 
-  /** 群の項目をまとめて外す・並べる。1つずつ外すときと同じく、外す項目のONはOFFにし、並べ直してもONにはしない。 */
-  function setAllHidden(group: MapOverlayGroup, members: readonly OverlayLayerChip[], hiding: boolean) {
-    const keys = members.map((member) => hiddenKeyOf(group, member.id));
-    setHiddenIds((prev) =>
-      hiding ? [...prev, ...keys.filter((key) => !prev.includes(key))] : prev.filter((id) => !keys.includes(id)),
-    );
-    if (hiding) for (const member of members) if (member.on) onToggle(member.id, false);
-  }
-
-  return { isCollapsed, toggleCollapsed, isHidden, toggleHidden, setAllHidden };
+  return { isCollapsed, toggleCollapsed, isListed, toggleListed };
 }

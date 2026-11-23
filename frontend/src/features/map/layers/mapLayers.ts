@@ -68,16 +68,15 @@ export interface ChipLayerDescriptor {
   /** 中分類（グループの判定・グループ内の並び・小見出し）。ルートは持たない。 */
   category?: MapLayerCategory;
   dataNature?: MapLayerDataNature;
-  /** ONにすると何が出るかの短い説明（チップのtitle）。 */
+  /** 何が分かるかの短い説明（1文。句点は付かない）。チップのtitleと、ⓘの文の頭になる。 */
   description: string;
-  /** 表示の設定パネルで項目の(i)が出す、descriptionより詳しい説明。 */
+  /** ⓘで短い説明に続ける補足。 */
   panelHint?: string;
-  defaultOn?: boolean;
   /** このズーム未満では、配信元がタイルを配らないか、層が描かない（ONにしても何も出ない。チップに案内を出す）。 */
   minZoom?: number;
 }
 
-type LayerDeclaration = Pick<ChipLayerDescriptor, "dataSource" | "category" | "dataNature" | "defaultOn" | "minZoom">;
+type LayerDeclaration = Pick<ChipLayerDescriptor, "dataSource" | "category" | "dataNature" | "minZoom">;
 
 /** レンズの層。チップに出ない（表示はレンズの選択だけが決める）ので、名前・アイコン・説明を持たず、
  * 地図の組み立てが情報源を引くためのidと源泉の宣言だけを持つ。 */
@@ -88,12 +87,11 @@ interface LensLayerDescriptor extends LayerDeclaration {
 
 export type MapLayerDescriptor = ChipLayerDescriptor | LensLayerDescriptor;
 
-/** 源泉が宣言する、描き方以外のもの（種別・情報源・性質・既定表示）。最小ズームは、情報源が配る縮尺と層が描き始める縮尺の寄った方。 */
+/** 源泉が宣言する、描き方以外のもの（種別・情報源・性質）。最小ズームは、情報源が配る縮尺と層が描き始める縮尺の寄った方。 */
 function declaredLayer(spec: {
   dataSource: MapLayerDataSource;
   category: MapLayerCategory | null;
   dataNature: MapLayerDataNature;
-  defaultOn: boolean;
   drawMinZoom: number | null;
 }): LayerDeclaration {
   const sourceMinZoom = mapDisplay.layerDataSources.find((source) => source.key === spec.dataSource)!.minZoom;
@@ -102,7 +100,6 @@ function declaredLayer(spec: {
     dataSource: spec.dataSource,
     category: spec.category ?? undefined,
     dataNature: spec.dataNature,
-    defaultOn: spec.defaultOn,
     minZoom: minZooms.length === 0 ? undefined : Math.max(...minZooms),
   };
 }
@@ -174,13 +171,6 @@ export function tileZoomTooWideLayerIds(layers: readonly MapLayerDescriptor[], z
   return layers
     .filter((layer) => !isLensLayer(layer) && layer.minZoom !== undefined && zoom < layer.minZoom)
     .map((layer) => layer.id);
-}
-
-/** チップからON/OFFできるレイヤーの既定の表示。軸のレイヤーはレンズだけが決めるので持たない。 */
-export function buildDefaultLayerVisibility(layers: readonly MapLayerDescriptor[]): MapLayerVisibility {
-  return Object.fromEntries(
-    layers.filter((layer) => !isLensLayer(layer)).map((layer) => [layer.id, layer.defaultOn === true]),
-  );
 }
 
 // レイヤーごとの取得の状態。正常なときはキー自体を持たない。

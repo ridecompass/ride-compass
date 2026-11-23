@@ -16,7 +16,7 @@ import {
   SpotDataIcon,
 } from "@/components/ui/icons/icons";
 import { RoadIcon } from "@/components/ui/icons/layerIcons";
-import { ChooseItemsIcon, LayersStackIcon } from "@/components/ui/icons/lucideIcons";
+import { LayersStackIcon } from "@/components/ui/icons/lucideIcons";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/Tabs/Tabs";
 import { Button } from "@/components/ui/Button/Button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/Popover/Popover";
@@ -89,7 +89,7 @@ export default function MapOverlayControls({
   const handlers = { onLegendEntryToggle, onLegendAxisSetHidden };
   const shownCount = layers.filter((layer) => layer.on).length;
   const anyFiltered = layers.some(isLegendFiltered);
-  const { isCollapsed, toggleCollapsed, isHidden, toggleHidden, setAllHidden } = useOverlayGroupChoices(onToggle);
+  const { isCollapsed, toggleCollapsed, isListed, toggleListed } = useOverlayGroupChoices(onToggle);
   const [choosingGroup, setChoosingGroup] = useState<MapOverlayGroup | null>(null);
   // 開いていたタブは、一覧を閉じても覚えておく（走行中に地図の色を切り替え直すときに、タブを押し直さない）。
   const [tab, setTab] = useState("layers");
@@ -103,7 +103,8 @@ export default function MapOverlayControls({
     const Icon = MAP_OVERLAY_GROUP_ICONS[group];
     const collapsed = isCollapsed(group);
     const choosing = choosingGroup === group;
-    const listed = members.filter((member) => !isHidden(group, member));
+    const listed = members.filter((member) => isListed(group, members, member));
+    const unlistedCount = members.length - listed.length;
     return [
       <section key={group} aria-label={label} className="flex flex-col">
         <div className="mt-1.5 flex items-center gap-1">
@@ -128,33 +129,33 @@ export default function MapOverlayControls({
               </span>
             </Button>
           </h3>
-          <Button
-            variant="info"
-            size="bare"
-            aria-pressed={choosing}
-            aria-label={`${label}の表示項目を選ぶ`}
-            onClick={() => setChoosingGroup(choosing ? null : group)}
-            usage="この群の一覧に並べる項目を選びます。"
-          >
-            <ChooseItemsIcon size={14} />
-          </Button>
         </div>
         {choosing ? (
           <ItemChooser
-            label={label}
             members={members}
-            isHidden={(member) => isHidden(group, member)}
-            onToggleHidden={(member) => toggleHidden(group, member)}
-            onSetAllHidden={(hiding) => setAllHidden(group, members, hiding)}
+            isListed={(member) => isListed(group, members, member)}
+            onToggleListed={(member) => toggleListed(group, members, member)}
+            onDone={() => setChoosingGroup(null)}
           />
         ) : (
           !collapsed && (
-            <ul className="m-0 flex list-none flex-col p-0" data-usage={LIST_USAGE}>
-              {listed.map((member) => (
-                // 凡例はON/OFFに関わらず開ける（OFFの間に「ONにすると何が出るか」を先に確かめられる）。
-                <OverlayLayerRow key={member.id} layer={member} handlers={handlers} onToggle={onToggle} />
-              ))}
-            </ul>
+            <>
+              <ul className="m-0 flex list-none flex-col p-0" data-usage={LIST_USAGE}>
+                {listed.map((member) => (
+                  // 凡例はON/OFFに関わらず開ける（OFFの間に「ONにすると何が出るか」を先に確かめられる）。
+                  <OverlayLayerRow key={member.id} layer={member} handlers={handlers} onToggle={onToggle} />
+                ))}
+              </ul>
+              <Button
+                variant="ghost"
+                size="xs"
+                className="self-start text-[var(--color-accent)]"
+                onClick={() => setChoosingGroup(group)}
+                usage="この群の一覧に並べる項目を選びます。"
+              >
+                {unlistedCount > 0 ? `項目を選ぶ（ほかに ${unlistedCount} 件）` : "項目を選ぶ"}
+              </Button>
+            </>
           )
         )}
       </section>,

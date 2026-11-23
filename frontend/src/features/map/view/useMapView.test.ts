@@ -206,6 +206,7 @@ describe("useMapView", () => {
   it("災害のチップは、浸水キキクルと同じ範囲に同じ段を重ねる大雨キキクルを隠して始め、凡例で隠した情報は描かず、絞り込み中に数える", () => {
     serve();
     const { result } = renderMapView();
+    act(() => result.current.overlayControls.onToggle("disaster", true));
     expect(result.current.look.dynamicWeather.disaster?.heavyRain?.visible).toBe(false);
     expect(chip(result, "disaster")?.legendDetails?.[0].hiddenKeys).toEqual(["heavyRain"]);
 
@@ -221,7 +222,7 @@ describe("useMapView", () => {
     serve();
     const first = renderMapView({ hasDetail: true });
     await waitFor(() => expect(first.result.current.lensControl.axisOptions).toHaveLength(LENS_COUNT));
-    act(() => first.result.current.overlayControls.onToggle("hillshade", true));
+    act(() => first.result.current.overlayControls.onToggle("elevation", true));
     act(() => first.result.current.lensControl.onLensChange("ascent"));
     act(() => first.result.current.overlayControls.range.onChange(false));
     act(() => first.result.current.overlayControls.mapTheme.onChange("dark"));
@@ -231,7 +232,7 @@ describe("useMapView", () => {
     const { result } = renderMapView({ hasDetail: true });
 
     await waitFor(() => expect(result.current.lensControl.lens).toBe("ascent"));
-    expect(result.current.look.layerVisibility.hillshade).toBe(true);
+    expect(result.current.look.layerVisibility.elevation).toBe(true);
     expect(result.current.overlayControls.range.routeOnly).toBe(false);
     expect(result.current.look.mapTheme).toBe("dark");
     expect(chip(result, "disaster")?.legendDetails?.[0].hiddenKeys).toEqual(["heavyRain", "landslide"]);

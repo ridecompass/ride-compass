@@ -5,7 +5,6 @@ import type { MapIconComponent } from "@/components/ui/icons/icons";
 import {
   AccidentIcon,
   ElevationIcon,
-  HillshadeIcon,
   LandcoverIcon,
   OnewayIcon,
   RoadIcon,
@@ -25,7 +24,6 @@ export type StaticMapLayerId = (typeof mapDisplay.layers)[number]["id"];
 /** レイヤーのアイコン。省略できない（描く側の対応表で引く形だと、書き忘れても汎用のアイコンで見分けの付かないまま出続ける）。 */
 export const MAP_LAYER_ICONS: Record<StaticMapLayerId, MapIconComponent> = {
   elevation: ElevationIcon,
-  hillshade: HillshadeIcon,
   landcover: LandcoverIcon,
   stop_poi: StopPoiIcon,
   supply_poi: SupplyPoiIcon,

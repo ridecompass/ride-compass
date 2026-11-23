@@ -1,6 +1,7 @@
 /** 地域に固定され、時間で変わらない面（色別標高図・土地被覆・起伏の陰影）。
  *
- * どれも基礎地図の道路網より下へ入り、**明示的にONにしたものだけ**が出る。
+ * どれも基礎地図の道路網より下へ入る。色別標高図と土地被覆は**明示的にONにしたものだけ**が出て、陰影は坂の在りかを
+ * 示す下地としていつも描く。
  */
 import { sceneSourceId, type SceneSourceId } from "@/features/map/scene/sceneBuilders";
 import { mapDisplay } from "@/types/generated/mapDisplay";
@@ -32,8 +33,8 @@ const TERRAIN_RGB = {
 type AreaRasterRole = Extract<(typeof primaryAttributes)[number], { geometry: "area" }>["attr_id"] | "hillshade";
 
 export type AreaRasterState = {
-  /** 表示ON/OFF。指定が無い役割は出さない。 */
-  readonly visible: Readonly<Partial<Record<AreaRasterRole, boolean>>>;
+  /** 表示ON/OFF。指定が無い役割は出さない。陰影はいつも描くので読まない。 */
+  readonly visible: Readonly<Partial<Record<Exclude<AreaRasterRole, "hillshade">, boolean>>>;
   /** タイルを取りに行くオリジン（環境で変わる）。 */
   readonly tileOrigin: string;
   /** 土地被覆タイルのURL（世代込みで配信側が組み立てたもの）。 */
@@ -78,7 +79,7 @@ function sourcesFor(state: AreaRasterState): readonly SceneSourceEntry[] {
 }
 
 function layersFor(state: AreaRasterState): readonly SceneLayerEntry[] {
-  const visible = (role: AreaRasterRole) => state.visible[role] === true;
+  const visible = (role: Exclude<AreaRasterRole, "hillshade">) => state.visible[role] === true;
   const raster = (role: "elevation" | "landcover"): SceneLayerEntry => ({
     role,
     tier: "area",
@@ -103,7 +104,7 @@ function layersFor(state: AreaRasterState): readonly SceneLayerEntry[] {
         "hillshade-illumination-direction": AREA.hillshadeIlluminationDeg,
         "hillshade-illumination-anchor": "map",
       },
-      visible: visible("hillshade"),
+      visible: true,
     },
   ];
 }

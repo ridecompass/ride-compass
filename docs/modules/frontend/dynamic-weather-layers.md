@@ -399,8 +399,7 @@ basetime・validtimeを含む）で持つため、フレームが進んで取得
   スライダーとは連動しない——チップがONの間、選択中の共有時刻に関わらず`frames[0]`
   （現在値）があれば表示する。同じ`disaster`チップの雷・竜巻・落雷はスライダーに連動
   するため、1つのチップの中で連動する要素としない要素が同居する。
-  `disaster`は他のweatherレイヤー（既定OFF）と異なり記述子が`defaultOn`を宣言する
-  （防災級の情報はユーザー操作を待たず表示すべきという理由。[静的レイヤー・道路表示](static-map-layers.md)参照）。地図上チップは複数同時にONにできるため、他の環境レイヤー
+  地図上チップは複数同時にONにできるため、他の環境レイヤー
   （降水・標高図）を選んでも災害情報は地図に残る。
 - 線状降水帯予測マップ: `precipitationNowcast`チップの4つ目のソース（`linearRainband`）。
   共有タイムラインの選択時刻が源泉のコマの規則の窓（`domain/weather_elements.py: _LINEAR_RAINBAND_WINDOW_MINUTES`）の範囲内のときだけ、

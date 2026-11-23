@@ -88,7 +88,7 @@ describe("地図に置く地点", () => {
     ];
     const { user } = renderHome();
     await user.click(screen.getByRole("button", { name: "地図に出す情報" }));
-    await user.click(screen.getByRole("checkbox", { name: "補給・休憩ポイント" }));
+    await user.click(screen.getByRole("checkbox", { name: "補給・休憩" }));
     await user.keyboard("{Escape}");
 
     await addWaypointRow(user);

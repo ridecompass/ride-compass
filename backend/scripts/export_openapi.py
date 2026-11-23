@@ -69,6 +69,7 @@ from app.domain.map_display import (
     LEGEND_SHARED_ROWS,
     MAP_LAYER_CATEGORIES,
     MAP_LAYERS,
+    OVERLAY_GROUP_INITIAL_ITEMS,
     map_layer_label,
     MapLayerSpec,
     ROUTE_ARROW_HALO_SCALE,
@@ -233,7 +234,6 @@ def _map_layer_entry(spec: MapLayerSpec) -> dict:
         "dataSource": spec.data_source,
         "category": spec.category,
         "dataNature": spec.data_nature,
-        "defaultOn": spec.default_on,
         "drawMinZoom": spec.draw_min_zoom,
     }
 
@@ -384,6 +384,7 @@ def main() -> None:
         "mapDisplay",
         {
             "overlayGroups": [g._asdict() for g in MAP_OVERLAY_GROUPS],
+            "overlayGroupInitialItems": OVERLAY_GROUP_INITIAL_ITEMS,
             # 凡例の受け皿の行の名前と説明。
             "legendSharedRows": {key: row._asdict() for key, row in LEGEND_SHARED_ROWS.items()},
             "layerCategories": [c._asdict() for c in MAP_LAYER_CATEGORIES],
@@ -391,7 +392,7 @@ def main() -> None:
                 {"key": source.key, "minZoom": source.min_zoom} for source in MAP_LAYER_DATA_SOURCES
             ],
             "layerDataNatures": list(MAP_LAYER_DATA_NATURES),
-            # 地図に載るものの、描き方以外の宣言（種別・情報源・性質・既定表示・最初に隠す行）。
+            # 地図に載るものの、描き方以外の宣言（種別・情報源・性質・最初に隠す行）。
             "layers": [
                 {
                     "id": layer_id,

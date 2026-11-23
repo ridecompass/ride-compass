@@ -7,13 +7,14 @@ export const mapDisplay = {
     },
     {
       "key": "environment",
-      "label": "環境"
+      "label": "天気と地形"
     },
     {
       "key": "spot",
       "label": "スポット"
     }
   ],
+  "overlayGroupInitialItems": 3,
   "legendSharedRows": {
     "other": {
       "label": "その他",
@@ -38,11 +39,11 @@ export const mapDisplay = {
       "group": "road"
     },
     {
-      "key": "terrain",
+      "key": "weather",
       "group": "environment"
     },
     {
-      "key": "weather",
+      "key": "terrain",
       "group": "environment"
     },
     {
@@ -50,11 +51,11 @@ export const mapDisplay = {
       "group": "environment"
     },
     {
-      "key": "trafficSafety",
+      "key": "amenity",
       "group": "spot"
     },
     {
-      "key": "amenity",
+      "key": "trafficSafety",
       "group": "spot"
     }
   ],
@@ -80,10 +81,6 @@ export const mapDisplay = {
       "minZoom": null
     },
     {
-      "key": "gsiTerrain",
-      "minZoom": 2
-    },
-    {
       "key": "landcoverRaster",
       "minZoom": 6
     },
@@ -103,35 +100,15 @@ export const mapDisplay = {
   "layers": [
     {
       "id": "elevation",
-      "label": "標高図",
+      "label": "標高",
       "dataSource": "gsiRelief",
       "category": "terrain",
       "dataNature": "raw",
-      "defaultOn": false,
       "drawMinZoom": null,
       "description": [
-        "国土地理院の色別標高図を重ねる"
+        "土地の高さを色で見られます"
       ],
-      "panelHint": [
-        "国土地理院の色別標高図を重ねる"
-      ],
-      "hideMissingRows": false,
-      "segmentSeries": null
-    },
-    {
-      "id": "hillshade",
-      "label": "起伏",
-      "dataSource": "gsiTerrain",
-      "category": "terrain",
-      "dataNature": "raw",
-      "defaultOn": false,
-      "drawMinZoom": null,
-      "description": [
-        "斜面に陰影を付ける[平地は塗らない]"
-      ],
-      "panelHint": [
-        "国土地理院の標高データから斜面の陰影を作る。平らな所は塗らないため、下の地図の色が残る"
-      ],
+      "panelHint": null,
       "hideMissingRows": false,
       "segmentSeries": null
     },
@@ -141,53 +118,48 @@ export const mapDisplay = {
       "dataSource": "landcoverRaster",
       "category": "terrain",
       "dataNature": "raw",
-      "defaultOn": false,
       "drawMinZoom": null,
       "description": [
-        "周囲の緑・水辺・農地を面で重ねる[建物は塗らない]"
+        "畑・草地・林・水辺など、土地の使われ方を色で見られます"
       ],
       "panelHint": [
-        "衛星画像から分類した10m四方ごとの土地の使われ方で、1区画に1種類だけを塗ります。ルートの結果の「緑と水」は「道路の周囲",
+        "ルートの結果の「緑と水」は道の周り",
         {
           "name": "landcoverRingOuterM",
           "before": "",
           "after": "m"
         },
-        "の割合」で、この塗りとは違います。建物は、基礎地図を隠すだけなので塗りません。"
+        "の割合で、この塗りとは別です。"
       ],
       "hideMissingRows": false,
       "segmentSeries": "landcoverClass"
     },
     {
       "id": "stop_poi",
-      "label": "停止要因",
+      "label": "信号・一時停止",
       "dataSource": "poi",
       "category": "trafficSafety",
       "dataNature": "raw",
-      "defaultOn": false,
       "drawMinZoom": 15,
       "description": [
-        "信号、横断歩道、一時停止、徐行、踏切、車止め・ゲート、ハンプ・狭さくの位置を種別ごとに表示"
+        "止まったり減速したりする所[信号、横断歩道、一時停止、徐行、踏切、車止め・ゲート、ハンプ・狭さく]です"
       ],
-      "panelHint": [
-        "信号、横断歩道、一時停止、徐行、踏切、車止め・ゲート、ハンプ・狭さくの位置です。"
-      ],
+      "panelHint": null,
       "hideMissingRows": false,
       "segmentSeries": null
     },
     {
       "id": "supply_poi",
-      "label": "補給・休憩ポイント",
+      "label": "補給・休憩",
       "dataSource": "poi",
       "category": "amenity",
       "dataNature": "raw",
-      "defaultOn": false,
       "drawMinZoom": null,
       "description": [
-        "コンビニ、飲料自販機、自販機(中身不明)、トイレ、給水、駐輪場の位置を種別ごとに表示"
+        "コンビニ、飲料自販機、自販機(中身不明)、トイレ、給水、駐輪場の場所です"
       ],
       "panelHint": [
-        "コンビニ、飲料自販機、自販機(中身不明)、トイレ、給水、駐輪場の位置です。「飲料自販機」は飲み物を売るもの、「自販機(中身不明)」は売るものが分からないものです。コンビニはチェーンの店だけです。閉店・撤去が反映されていないことがあります。"
+        "「飲料自販機」は飲み物を売るもの、「自販機(中身不明)」は売るものが分からないものです。コンビニはチェーンの店だけです。閉店・撤去が反映されていないことがあります。"
       ],
       "hideMissingRows": false,
       "segmentSeries": null
@@ -198,93 +170,81 @@ export const mapDisplay = {
       "dataSource": "stop_place",
       "category": "amenity",
       "dataNature": "raw",
-      "defaultOn": false,
       "drawMinZoom": null,
       "description": [
-        "飲食店、銭湯・温泉、自転車、景色・名所、宿、寺社の位置を群ごとに表示"
+        "飲食店、銭湯・温泉、自転車、景色・名所、宿、寺社の場所です"
       ],
       "panelHint": [
-        "飲食店、銭湯・温泉、自転車、景色・名所、宿、寺社の位置です。寺社は国の文化財の建造物を持つものを、ほかはOverture Mapsの地点を出します。閉店にデータが追いついていないことがあり、現地と違う場合があります。"
+        "寺社は国の文化財の建物を持つものです。閉店にデータが追いついていないことがあり、現地と違う場合があります。"
       ],
       "hideMissingRows": false,
       "segmentSeries": null
     },
     {
       "id": "accident_point",
-      "label": "事故[警察庁統計]",
+      "label": "事故の地点",
       "dataSource": "accident",
       "category": "trafficSafety",
       "dataNature": "raw",
-      "defaultOn": false,
       "drawMinZoom": 15,
       "description": [
-        "警察庁交通事故統計オープンデータ",
+        "交通事故の起きた場所です",
         {
           "name": "accidentYears",
           "before": "[",
           "after": "]"
-        },
-        "の発生地点を表示"
+        }
       ],
       "panelHint": [
-        "警察庁が公開する交通事故統計オープンデータ[本票",
-        {
-          "name": "accidentYears",
-          "before": "、",
-          "after": ""
-        },
-        "]の発生地点です。死亡事故は円を大きく表示します。"
+        "死亡事故は円を大きく表示します。"
       ],
       "hideMissingRows": false,
       "segmentSeries": null
     },
     {
       "id": "precipitationNowcast",
-      "label": "降水ナウキャスト",
+      "label": "雨雲",
       "dataSource": "ownFetch",
       "category": "weather",
       "dataNature": "dynamic",
-      "defaultOn": false,
       "drawMinZoom": null,
       "description": [
-        "気象庁の降水ナウキャスト・降水短時間予報と、数値予報モデルMSMの格子点の降水量を重ねて表示[48時間先まで。線状降水帯も重ねる]"
+        "雨の降っている所と、この先の雨雲を、時刻を動かして見られます"
       ],
       "panelHint": [
-        "気象庁の雨雲です。時刻スライダーで、60分先までは降水ナウキャスト、15時間先までは降水短時間予報、48時間先まではMSMの格子点[約5km間隔]の降水量を升目で塗ります[ズーム8以上]。数値予報モデルの計算結果で、大きな誤差を含む可能性があります。予報ではありません。赤は線状降水帯で、予測は格子単位のため四角く見えます。取得に失敗することがあります。"
+        "60分先までは実況に近い予測、15時間先までは短時間予報、48時間先までは数値予報モデルの値で、赤は線状降水帯です。数値予報モデルの計算結果で、大きな誤差を含む可能性があります。予報ではありません。取得に失敗することがあります。"
       ],
       "hideMissingRows": false,
       "segmentSeries": null
     },
     {
       "id": "windVector",
-      "label": "風[矢印]",
+      "label": "風",
       "dataSource": "msmGrid",
       "category": "weather",
       "dataNature": "dynamic",
-      "defaultOn": false,
       "drawMinZoom": null,
       "description": [
-        "気象庁の数値予報モデルMSMの格子点の風向・風速を、格子点の位置に矢印で表示[48時間先まで]"
+        "風の向きと強さを、約5kmごとの矢印で見られます"
       ],
       "panelHint": [
-        "気象庁MSMの格子点[約5km間隔]の風を矢印で示します。格子点の間の地点の風ではありません。数値予報モデルの計算結果で、大きな誤差を含む可能性があります。予報ではありません。向きは風の吹いていく向き、長さ・太さ・濃さは風速です。ズーム8以上で出し、時刻スライダーで最長48時間先まで切り替えられます。"
+        "矢印は風の吹いていく向きで、長く太いほど強い風です。48時間先まで時刻で切り替えられます。数値予報モデルの計算結果で、大きな誤差を含む可能性があります。予報ではありません。"
       ],
       "hideMissingRows": false,
       "segmentSeries": null
     },
     {
       "id": "disaster",
-      "label": "災害",
+      "label": "災害の危険度",
       "dataSource": "ownFetch",
       "category": "disaster",
       "dataNature": "dynamic",
-      "defaultOn": true,
       "drawMinZoom": null,
       "description": [
-        "気象庁の雷ナウキャスト・竜巻発生確度・落雷[発生地点]・大雨キキクル・土砂災害キキクル・浸水キキクル・洪水キキクル[河川]をまとめて表示"
+        "気象庁の防災情報の危険度を地図に出します"
       ],
       "panelHint": [
-        "気象庁の防災情報です。雷ナウキャスト・竜巻発生確度は60分先まで時刻スライダーで切り替えられます。落雷[発生地点]は最新の観測だけを出します。大雨キキクル・土砂災害キキクル・浸水キキクル・洪水キキクル[河川]は現在の危険度で、時刻に連動しません。平常時は透明で、ONのままでも見た目は変わりません。取得に失敗することがあります。"
+        "危険の無いときは何も出ません。雷ナウキャスト・竜巻発生確度は60分先まで時刻スライダーで切り替えられます。落雷[発生地点]は最新の観測だけを出します。大雨キキクル・土砂災害キキクル・浸水キキクル・洪水キキクル[河川]は現在の危険度で、時刻に連動しません。取得に失敗することがあります。"
       ],
       "hideMissingRows": false,
       "segmentSeries": null
@@ -295,14 +255,12 @@ export const mapDisplay = {
       "dataSource": "road_surface",
       "category": null,
       "dataNature": "dynamic",
-      "defaultOn": false,
       "drawMinZoom": 12
     },
     "road": {
       "dataSource": "road_surface",
       "category": null,
       "dataNature": "raw",
-      "defaultOn": false,
       "drawMinZoom": null
     }
   },
