@@ -93,8 +93,8 @@ export function GuideText({ text }: { text: string }) {
         ) : (
           <span key={start} role="list" className="block">
             {items.map((item, index) => (
-              // 「・」を字の外へ出し、折り返した2行目を字の頭にそろえる。
-              <span key={index} role="listitem" className="block pl-[1em] -indent-[1em]">
+              // 折り返した2行目は、頭の文と同じく左端から始める（「・」の後ろへ下げない）。
+              <span key={index} role="listitem" className="block">
                 <MarkedLine text={item} />
               </span>
             ))}
