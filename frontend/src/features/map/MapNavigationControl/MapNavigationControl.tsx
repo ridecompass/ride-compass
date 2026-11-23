@@ -137,7 +137,9 @@ function RideZoomButton({ zoomBase, onNextZoom }: { zoomBase: number; onNextZoom
       size="mapCtrl"
       className="rounded-b-none shadow-none"
       aria-label={`縮尺（いまは${step.label}）`}
-      usage="押すたびに、走行中の地図の縮尺を中・遠・近の順に切り替えます。2本指でつまんでも変えられます。速く走るほど、選んだ縮尺より広い範囲を表示します。"
+      usage={
+        "押すたびに、走行中の地図の縮尺を中・遠・近の順に切り替えます。\n・2本指でつまんでも変えられます。\n・速く走るほど、選んだ縮尺より広い範囲を表示します。"
+      }
       onClick={onNextZoom}
     >
       <RideZoomIcon reach={step.reach} />

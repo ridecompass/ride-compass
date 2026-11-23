@@ -1,5 +1,6 @@
 "use client";
 
+import { GuideText } from "@/components/ui/GuideText/GuideText";
 import { vocabulary } from "@/types/generated/vocabulary";
 import { getDbStatus } from "@/features/admin/adminApi";
 import { formatMinutes, secondsToMinutes } from "@/lib/duration";
@@ -163,9 +164,12 @@ export default function DbStatusPanel() {
     <ReportCard
       title="本番DBの状態"
       info={
-        <>
-          生データの取込そのものが失敗していないか、行が本当に入っているか、プランナが使う統計が取れているか、トランザクションが放置されていないかを見る。行数は統計値ではなく実数を数えるため、DB全体を走査し、集計に時間がかかる。
-        </>
+        <GuideText
+          text={
+            "次を見る。\n・生データの取込そのものが失敗していないか\n・行が本当に入っているか\n・プランナが使う統計が取れているか\n" +
+            "・トランザクションが放置されていないか\n行数は統計値ではなく実数を数えるため、DB全体を走査し、集計に時間がかかる。"
+          }
+        />
       }
       load={getDbStatus}
       summary={summaryOf}

@@ -3,6 +3,7 @@
 import { useId, useState, type ReactNode } from "react";
 
 import { Button } from "@/components/ui/Button/Button";
+import { GuideText } from "@/components/ui/GuideText/GuideText";
 import { InfoIcon } from "@/components/ui/icons/lucideIcons";
 import { MarkLegend, MarkLegendItem } from "@/components/ui/MarkLegend/MarkLegend";
 import { cn } from "@/lib/cn";
@@ -37,7 +38,7 @@ export function useRowDescription(label: string, description: string | undefined
           indented && "pl-6",
         )}
       >
-        {description}
+        <GuideText text={description} />
       </p>
     ),
   };

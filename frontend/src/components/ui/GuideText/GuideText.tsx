@@ -16,8 +16,11 @@ const BUTTON_MARKS = new Map<string, { Icon: MapIconComponent; variant: "primary
 
 const QUOTED_NAME = /「([^「」]+)」/g;
 
-/** 案内の文。ここに無い名前（「ルート設定」等）は、かぎ括弧ごと文字のまま残す。 */
-export function GuideText({ text }: { text: string }) {
+/** 説明の文の箇条書きの行の頭。 */
+const LIST_MARK = "・";
+
+/** 1行の文。ここに無い名前（「ルート設定」等）は、かぎ括弧ごと文字のまま残す。 */
+function MarkedLine({ text }: { text: string }) {
   const parts: ReactNode[] = [];
   let rest = 0;
   for (const match of text.matchAll(QUOTED_NAME)) {
@@ -43,4 +46,41 @@ export function GuideText({ text }: { text: string }) {
   }
   parts.push(text.slice(rest));
   return <>{parts}</>;
+}
+
+/**
+ * 説明・案内の文。改行で段落を分け、「・」で始まる行を箇条書きにする（スマホで長い説明を、1文ずつ拾って読めるように）。
+ * 改行の無い文は、囲む文の中にそのまま流す。段落も箇条書きも`span`で組み、`p`の中に置ける（`usage`の属性・backendとDBが配る
+ * 文も同じ書き方で描けるように、書式は文字で持つ）。
+ */
+export function GuideText({ text }: { text: string }) {
+  const lines = text.split("\n");
+  if (lines.length === 1) return <MarkedLine text={text} />;
+  // 続く「・」の行を1つの箇条書きにまとめる。
+  const blocks: { start: number; items: string[] | null; line: string }[] = [];
+  lines.forEach((line, start) => {
+    const list = line.startsWith(LIST_MARK) ? blocks.at(-1)?.items : undefined;
+    if (list) list.push(line);
+    else blocks.push({ start, line, items: line.startsWith(LIST_MARK) ? [line] : null });
+  });
+  return (
+    <>
+      {blocks.map(({ start, line, items }) =>
+        items === null ? (
+          <span key={start} className="block">
+            <MarkedLine text={line} />
+          </span>
+        ) : (
+          <span key={start} role="list" className="block">
+            {items.map((item, index) => (
+              // 「・」を字の外へ出し、折り返した2行目を字の頭にそろえる。
+              <span key={index} role="listitem" className="block pl-[1em] -indent-[1em]">
+                <MarkedLine text={item} />
+              </span>
+            ))}
+          </span>
+        ),
+      )}
+    </>
+  );
 }

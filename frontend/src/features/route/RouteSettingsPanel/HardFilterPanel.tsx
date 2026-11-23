@@ -1,6 +1,7 @@
 "use client";
 
 import Disclosure, { DisclosureChevron } from "@/components/Disclosure/Disclosure";
+import { GuideText } from "@/components/ui/GuideText/GuideText";
 import InfoPopover from "@/components/ui/InfoPopover/InfoPopover";
 import { Badge } from "@/components/ui/Badge/Badge";
 import { Checkbox } from "@/components/ui/Checkbox/Checkbox";
@@ -83,7 +84,7 @@ export default function HardFilterPanel({
             labelClassName="text-[length:var(--font-size-sm)] font-semibold"
             triggerAriaLabel={`${row.label}の説明`}
           >
-            {row.description}
+            <GuideText text={row.description} />
           </InfoPopover>
           <span
             role="img"
@@ -167,11 +168,13 @@ function AvoidanceLevelRow({
         labelClassName={cn("text-[length:var(--font-size-sm)]", customized && "font-semibold")}
         triggerAriaLabel={`${label}の説明`}
       >
-        {description}
+        <GuideText text={description} />
       </InfoPopover>
       <LevelScale
         aria-label={`${label}の避け方`}
-        usage="この行に当たる道の所要時間に掛けて費用にする倍率を、目盛りの点を押して選びます。長い目盛りは指定なしです。左ほど好んで通り[遠回りでも選びやすくなります]、右ほど避けます[遠回りが小さければ別の道を通ります]。右端は経路から完全に外します。"
+        usage={
+          "この行に当たる道の所要時間に掛けて費用にする倍率を、目盛りの点を押して選びます。\n・長い目盛りは指定なしです。\n・左ほど好んで通ります[遠回りでも選びやすくなります]。\n・右ほど避けます[遠回りが小さければ別の道を通ります]。\n・右端は経路から完全に外します。"
+        }
         levels={levels}
         value={level}
         onChange={onLevelChange}

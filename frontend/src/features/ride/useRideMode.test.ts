@@ -99,7 +99,7 @@ describe("useRideMode", () => {
     expect(result.current.status).toBe("off");
     expect(geolocation.watching()).toBe(0);
     expect(result.current.error).toMatch(
-      /許可されていない.*ブラウザか端末の設定で、このサイトの位置情報を許可してください/,
+      /許可されていない[\s\S]*ブラウザか端末の設定で、このサイトの位置情報を許可してください/,
     );
 
     act(() => result.current.press());
