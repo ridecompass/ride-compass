@@ -40,7 +40,7 @@ describe("overlayChips（地図上チップの状態）", () => {
   });
 
   it.each([
-    ["補足があれば句点のあとに続ける", "補足です。", "短い説明。補足です。"],
+    ["補足があれば次の行から続ける", "・補足です。", "短い説明。\n・補足です。"],
     ["補足が無ければ短い説明だけにする", "", "短い説明。"],
   ])("ⓘの文は、短い説明に句点を付け、%s", (_, hint, expected) => {
     const roadLayers = [roadMapLayer("lane", { description: ["短い説明"], panel_hint: hint })];

@@ -29,7 +29,7 @@ export interface OverlayLayerChip {
   /** ▶を開いたときの、軸ごとの全カテゴリの内訳（表示中・非表示のどちらも含む）。 */
   legendDetails?: readonly LegendFilterSummaryAxis[];
   category?: MapLayerCategory;
-  /** 行のⓘから開く説明（短い説明と補足をつないだ文）。 */
+  /** 行のⓘから開く説明（短い説明を頭の文に、補足を次の行からつないだ文）。 */
   panelHint?: string;
   /** データの取得状態。ONの間だけ状態のドットと▶の中の一文で出す。 */
   dataStatus?: LayerDataStatus;

@@ -238,7 +238,7 @@ class MapLayerSpec(NamedTuple):
     #: 何が分かるかの短い説明（1文。句点は付けない）。一覧の行のtitleと、ⓘの文の頭になる。地図に載るものは必ず持つ（`MAP_LAYERS`）。
     #: 費用の軸のレンズの説明は費用の軸の定義から作る。
     description: LayerText = ()
-    #: ⓘで短い説明に続ける補足。短い説明を繰り返さない。
+    #: ⓘで短い説明に続ける補足。1文ずつ「・」で始まる行にし（画面が箇条書きにする）、短い説明を繰り返さない。
     panel_hint: LayerText = ()
     #: 値の無い道の行（データなし・該当なし）を、最初は凡例で隠しておくか。値のある道が少なく、無い道の線が
     #: 地図を覆う道の線の層だけが持つ（利用者は凡例のチェックで出せる）。
@@ -367,7 +367,7 @@ _LAYER_SPECS: dict[str, MapLayerSpec] = {
         segment_series="landcoverClass",
         description=("畑・草地・林・水辺など、土地の使われ方を色で見られます",),
         panel_hint=(
-            f"ルートの結果の「{PRIMARY_ATTRIBUTES_BY_ID['landcover'].label}」は道の周り",
+            f"・ルートの結果の「{PRIMARY_ATTRIBUTES_BY_ID['landcover'].label}」は道の周り",
             LayerTextSlot("landcoverRingOuterM", after="m"),
             "の割合で、この塗りとは別です。",
         ),
@@ -382,9 +382,9 @@ _LAYER_SPECS: dict[str, MapLayerSpec] = {
         "amenity",
         description=(f"{_point_kind_list('supply_poi')}の場所です",),
         panel_hint=(
-            f"「{_row_label('supply_poi', 'vending_drinks')}」は飲み物を売るもの、"
-            f"「{_row_label('supply_poi', 'vending_unknown')}」は売るものが分からないものです。"
-            f"{_row_label('supply_poi', 'convenience')}はチェーンの店だけです。閉店・撤去が反映されていないことがあります。",
+            f"・「{_row_label('supply_poi', 'vending_drinks')}」は飲み物を売るもの、"
+            f"「{_row_label('supply_poi', 'vending_unknown')}」は売るものが分からないものです。\n"
+            f"・{_row_label('supply_poi', 'convenience')}はチェーンの店だけです。\n・閉店・撤去が反映されていないことがあります。",
         ),
     ),
     "stop_place": _tile_layer(
@@ -392,15 +392,15 @@ _LAYER_SPECS: dict[str, MapLayerSpec] = {
         "amenity",
         description=(f"{_point_kind_list('stop_place')}の場所です",),
         panel_hint=(
-            "寺社は国の文化財の建物を持つものです。"
-            "閉店にデータが追いついていないことがあり、現地と違う場合があります。",
+            "・寺社は国の文化財の建物を持つものです。\n"
+            "・閉店にデータが追いついていないことがあり、現地と違う場合があります。",
         ),
     ),
     "accident_point": _tile_layer(
         "accident_point",
         "trafficSafety",
         description=("交通事故の起きた場所です", LayerTextSlot("accidentYears", "[", "]")),
-        panel_hint=(_size_text("accident_point"),),
+        panel_hint=(f"・{_size_text('accident_point')}",),
     ),
     "precipitationNowcast": MapLayerSpec(
         "ownFetch",
@@ -409,9 +409,9 @@ _LAYER_SPECS: dict[str, MapLayerSpec] = {
         label="雨雲",
         description=("雨の降っている所と、この先の雨雲を、時刻を動かして見られます",),
         panel_hint=(
-            f"{_NOWCAST_REACH}先までは実況に近い予測、{_SHORT_RANGE_REACH}先までは短時間予報、"
-            f"{_MSM_REACH}先までは数値予報モデルの値で、赤は線状降水帯です。{MODEL_VALUE_DISCLAIMER}"
-            "取得に失敗することがあります。",
+            f"・{_NOWCAST_REACH}先までは実況に近い予測、{_SHORT_RANGE_REACH}先までは短時間予報、"
+            f"{_MSM_REACH}先までは数値予報モデルの値で、赤は線状降水帯です。\n・{MODEL_VALUE_DISCLAIMER}\n"
+            "・取得に失敗することがあります。",
         ),
     ),
     # 「負担で塗る」の道路の塗り（向かい風・追い風）と見分けられる名前にする。
@@ -422,8 +422,8 @@ _LAYER_SPECS: dict[str, MapLayerSpec] = {
         label="風",
         description=("風の向きと強さを、約5kmごとの矢印で見られます",),
         panel_hint=(
-            "矢印は風の吹いていく向きで、長く太いほど強い風です。"
-            f"{_MSM_REACH}先まで時刻で切り替えられます。{MODEL_VALUE_DISCLAIMER}",
+            "・矢印は風の吹いていく向きで、長く太いほど強い風です。\n"
+            f"・{_MSM_REACH}先まで時刻で切り替えられます。\n・{MODEL_VALUE_DISCLAIMER}",
         ),
     ),
     # 回避するしかない危険なので、費用には入れず表示だけにする。
@@ -435,9 +435,9 @@ _LAYER_SPECS: dict[str, MapLayerSpec] = {
         label="災害の危険度",
         description=("気象庁の防災情報の危険度を地図に出します",),
         panel_hint=(
-            "危険の無いときは何も出ません。"
-            + "".join(labels + detail for labels, detail in _DISASTER_BY_FRAME_RULE)
-            + "取得に失敗することがあります。",
+            "・危険の無いときは何も出ません。\n"
+            + "".join(f"・{labels}{detail}\n" for labels, detail in _DISASTER_BY_FRAME_RULE)
+            + "・取得に失敗することがあります。",
         ),
     ),
 }

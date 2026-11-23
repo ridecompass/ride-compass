@@ -69,7 +69,7 @@ export function overlayChips(options: {
         hiddenKeys: axis.axisId === undefined ? [] : presentHiddenKeys(axis.legend, hiddenKeysOf(hidden, axis.axisId)),
       })),
       category: layer.category,
-      panelHint: `${layer.description}。${layer.panelHint ?? ""}`,
+      panelHint: layer.panelHint ? `${layer.description}。\n${layer.panelHint}` : `${layer.description}。`,
       dataStatus: options.dataStatus[layer.id],
       caveat: options.caveats[layer.id],
     }));

@@ -138,7 +138,7 @@ JSONや落雷の地点のGeoJSONのようにアプリのfetch()で読む小さ�
 ## 説明文に実行時の名前を書き込まない
 
 レイヤーの説明は、何が分かるかの短い説明（`description`。行のtitle）と、それに続ける補足（`panelHint`）に分けて持ち、ⓘは
-「短い説明。補足」をつないで出す（`features/map/view/overlayChips.ts: overlayChips`）。補足は短い説明を繰り返さない。データの出どころの名前は
+短い説明を頭の文に、補足（1文ずつ「・」の行）を次の行からつないで出す（`features/map/view/overlayChips.ts: overlayChips`）。補足は短い説明を繰り返さない。データの出どころの名前は
 ⓘに書かず、地図の出典の表示に任せる。説明は源泉（`domain/map_display.py: MapLayerSpec`。道の線の層は道の区分の定義の要約と補足）が文として持ち、実行時の応答（画面の設定・
 費用の軸の一覧）から来る値だけを差し込み口（`domain/map_display.py: LayerTextSlot`。例: 事故の収録年・ルートの線を塗れるもの）にする
 （[設計原則](../../architecture/design-principles.md)「1つの値の中で混ざるときは、部分ごとに問う」）。口を埋めるのは画面（`features/map/layers/mapLayers.ts: buildMapLayers`）で、値が空の口は前後の文ごと出さない。
