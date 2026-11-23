@@ -1,93 +1,98 @@
-"""地図の配信が評価するタイルの材料を読む口（`services/feature_materials.py: FeatureMaterialService`）が、読んだ材料を
-読み方の署名ごとに持つことと、地図の線の層の値をフィーチャーごとに配ること。差し替えるのはDB（リポジトリ）だけで、ディスクの置き場は`conftest.py`の
-autouseがテストごとの一時ディレクトリへ差し替える。
+"""地図のフィーチャー（路面タイルの`feature_key`の単位）の材料を道路網の配列から引くこと（`domain/road_network.py:
+tile_feature_materials`）と、そこから地図の線の層の値を配ること（`services/region_service.py: road_layer_values`）、押した道の
+小窓へ出すタイルの名前の材料（`domain/feature_materials.py: FeatureMaterials.tile_properties`）。
+
+道路網は`tests/road_network_fixture.py`。東西に並ぶ道10（2区間）と道20（1区間）と、区間を持たない道30がある。
 
 ここで見ないもの:
-- 読み出しのSQLが返す材料 → `test_feature_materials_in_tile.py`・`test_material_values.py`
+- 路面タイルの形と、焼いた値が鍵のフィーチャーへ載ること → `test_road_tile_sql.py`
+- 配列に材料を読み込むこと → `test_road_network_store.py`
 """
 
-import functools
-
 import numpy as np
+import pytest
 
 from app.domain.attributes import CategoricalColumn
 from app.domain.feature_materials import FeatureMaterials
 from app.domain.hard_filters import HARD_FILTER_PROPERTY
-from app.domain.road_classes import EMPTY_ROAD_CLASSES
-from app.infrastructure import debug_log
-from app.infrastructure.road_graph_repository import RoadGraphRepository
-from app.services import feature_materials
-from app.services.feature_materials import FeatureMaterialService
-from tests.bound_fake import bound
+from app.domain.region import EDGE_UNIT_MIN_ZOOM, tile_position
+from app.domain.road_network import tile_feature_materials
+from app.domain.road_network_build import EdgelessWays
+from app.services.region_service import road_layer_values
 from tests.road_class_fixture import classification, fact_is, map_layer, road_classes
+from tests.road_network_fixture import road_network
 
-Z, X, Y = 14, 14551, 6447
-
-
-def _materials(value: float) -> FeatureMaterials:
-    return FeatureMaterials(feature_keys=("1-0",), columns={"num_a": np.array([value])})
-
-
-class FakeFeatureMaterialsRepository:
-    """RoadGraphRepositoryのうち、タイルの材料と事故の収録年数だけを答えるフェイク。引数は本物の定義へ当てて照合する。"""
-
-    def __init__(self, materials: FeatureMaterials):
-        self.materials = materials
-
-    async def get_accident_years_covered(self):
-        return 1
-
-    @functools.partial(bound, RoadGraphRepository.get_feature_materials_in_tile)
-    async def get_feature_materials_in_tile(self, *args, **kwargs):
-        return self.materials
+#: 道10の2区間（東へ約91m・約273m）、道20、区間を持たない道30。どれも北緯35度の上。
+_COORDINATES = {1: (35.0, 139.000), 2: (35.0, 139.001), 3: (35.0, 139.004), 4: (35.0, 139.005), 5: (35.0, 139.006)}
+_SEGMENTS = {(10, 0): (1, 2), (10, 1): (2, 3), (20, 0): (4, 5)}
+_EDGELESS_WAY = 30
 
 
-async def _num_a(service: FeatureMaterialService) -> float:
-    materials = await service.materials(Z, X, Y, EMPTY_ROAD_CLASSES)
-    assert materials is not None
-    return float(materials.columns["num_a"][0])
+def _network():
+    """区間ごとの数値の材料`num_a`（道10の区間は10と40、道20は値なし）と、分類の材料。道10は短い区間が`a`、長い区間が`b`、
+    道20は自転車が通れない（`bicycle=no`）。区間を持たない道30は、`num_a`が7で`cat_a`が`a`。"""
+    by_edge = {(10, 0): (10.0, "a", None), (10, 1): (40.0, "b", None), (20, 0): (np.nan, None, "no")}
+
+    def column(index):
+        return lambda rows: [by_edge[(int(w), int(s))][index] for w, s in zip(rows.way, rows.segment, strict=True)]
+
+    edgeless = EdgelessWays(
+        osm_way_id=np.array([_EDGELESS_WAY]), numeric_values=np.array([[7.0, np.nan]]),
+        categorical_codes=np.array([[1, 0]], dtype=np.int16),
+        min_lon=np.array([139.002]), min_lat=np.array([35.0]), max_lon=np.array([139.003]), max_lat=np.array([35.0]))
+    return road_network(
+        _COORDINATES, _SEGMENTS, numeric={"num_a": column(0)},
+        categorical={"cat_a": column(1), "bicycle": column(2)},
+        edgeless=edgeless)
 
 
-async def test_a_tile_read_once_is_served_from_the_cache():
-    """DBの中身が変わっても、捨てるまでは前に読んだ材料を返す。外した1回と当たった1回が、運用の統計の
-    ヒット率に載る（集計はプロセスの寿命の間に足されるだけなので差で見る）。"""
-    repository = FakeFeatureMaterialsRepository(_materials(1.0))
-    service = FeatureMaterialService(repository)
-    before = debug_log.get_stats().external.get("region:feature-materials")
-
-    first = await _num_a(service)
-    repository.materials = _materials(2.0)
-    second = await _num_a(service)
-
-    assert (first, second) == (1.0, 1.0)
-    after = debug_log.get_stats().external["region:feature-materials"]
-    counted_before = (before.cache_misses, before.cache_hits) if before else (0, 0)
-    assert (after.cache_misses - counted_before[0], after.cache_hits - counted_before[1]) == (1, 1)
+def _tile(z: int) -> tuple[int, int, int]:
+    x, y = (int(v) for v in tile_position(139.003, 35.0, z))
+    return z, x, y
 
 
-async def test_a_deploy_that_changes_how_the_materials_are_read_reads_the_tile_again(monkeypatch):
-    """読み出しのSQLを変えたデプロイはDBを作り直さない。署名が鍵に届いていないと、前の読み方の材料がTTLの間返り続ける。"""
-    repository = FakeFeatureMaterialsRepository(_materials(1.0))
-    service = FeatureMaterialService(repository)
-    await _num_a(service)
-
-    repository.materials = _materials(2.0)
-    monkeypatch.setattr(feature_materials, "FEATURE_MATERIALS_VALUE_SHAPE", "another-reading")
-
-    assert await _num_a(service) == 2.0
+def _values(materials: FeatureMaterials, material_id: str) -> dict:
+    column = materials.columns[material_id]
+    if isinstance(column, CategoricalColumn):
+        return {key: column.value_at(row) for row, key in enumerate(materials.feature_keys)}
+    return {key: None if np.isnan(value) else float(value) for key, value in zip(materials.feature_keys, column.tolist())}
 
 
-async def test_road_layer_values_are_served_per_feature_without_roads_outside_every_class():
+def test_a_tile_painted_by_segment_has_each_segment_and_each_way_without_segments():
+    """区間で塗るズームは、区間ごとの値と、区間を持たない道1本の値を持つ（区間を持たない道を落とすと、拡大したときだけその道が
+    地図から消える）。"""
+    materials = tile_feature_materials(_network(), *_tile(EDGE_UNIT_MIN_ZOOM))
+
+    assert _values(materials, "num_a") == {"10-0": 10.0, "10-1": 40.0, "20-0": None, "30": 7.0}
+
+
+def test_a_tile_painted_by_way_gathers_each_way_from_its_segments_by_length():
+    """道1本で塗るズームの値は、区間の値を区間の長さで重みを付けて集めたもの: 数値は値のある区間の平均、分類は長さの和が一番長い
+    値（値の無い区間は数えず、どの区間にも値が無ければ値無し）。"""
+    network = _network()
+    short, long = (float(d) for d in network.distance_m[[0, 2]])
+
+    materials = tile_feature_materials(network, *_tile(EDGE_UNIT_MIN_ZOOM - 1))
+
+    assert _values(materials, "num_a") == pytest.approx({"10": (10 * short + 40 * long) / (short + long), "20": None,
+                                                         "30": 7.0})
+    assert _values(materials, "cat_a") == {"10": "b", "20": None, "30": "a"}
+
+
+def test_road_layer_values_are_served_per_feature_without_roads_outside_every_class():
     """地図は道ごとの層の値で道の線を塗り、0次ハードフィルタに当たる道を「通らない」の色で塗る。区分の外の道の層を載せると、
     地図はその道を区分の色で塗れない値として受け取る。"""
-    tile = FeatureMaterials(feature_keys=("1-0", "2-0", "3-0"), columns={
-        "cat_a": CategoricalColumn.encode(["a", "b", "b"]),
-        "highway": CategoricalColumn.encode([None, None, None]),
-        "motorroad": CategoricalColumn.encode([None, None, None]),
-        "bicycle": CategoricalColumn.encode([None, None, "no"]),
-    })
     definitions = road_classes({"k": classification({"is_a": [fact_is("cat_a", "a")]})}, map_layers={"k": map_layer()})
 
-    values = await FeatureMaterialService(FakeFeatureMaterialsRepository(tile)).road_layer_values(Z, X, Y, definitions)
+    values = road_layer_values(_network(), *_tile(EDGE_UNIT_MIN_ZOOM), definitions)
 
-    assert values == {"1-0": {"k": "is_a"}, "3-0": {HARD_FILTER_PROPERTY: "no_bicycle"}}
+    assert values == {"10-0": {"k": "is_a"}, "20-0": {HARD_FILTER_PROPERTY: "no_bicycle"}, "30": {"k": "is_a"}}
+
+
+def test_the_popup_shows_the_values_by_their_tile_names_and_only_true_flags():
+    """小窓は無い値を「値なし」として読むので、値の無い材料と非該当の真偽は出さない。"""
+    materials = FeatureMaterials(feature_keys=("1", "2"), columns={
+        "bridge": np.array([1.0, 0.0]), "surface": CategoricalColumn.encode(["asphalt", None]),
+    })
+
+    assert [materials.tile_properties(row) for row in range(2)] == [{"bridge": True, "surface": "asphalt"}, {}]

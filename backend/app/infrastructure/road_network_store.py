@@ -21,7 +21,7 @@ import os
 import re
 import shutil
 import time
-from collections.abc import Iterator, Mapping
+from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import fields
 from pathlib import Path
@@ -29,13 +29,14 @@ from typing import Any
 
 import numpy as np
 import shapely
+from sqlalchemy import Row
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.domain.attributes import EDGE_ROW_ARRAY_FIELDS, EdgeMaterialArrays
 import app.domain.elevation_profile
 import app.domain.road_network_build
-from app.domain.road_network import RoadNetwork
-from app.domain.road_network_build import build_road_network
+from app.domain.road_network import RoadNetwork, positions_in
+from app.domain.road_network_build import EdgelessWays, build_road_network
 from app.domain.search_graph import run_starts
 from app.domain.traffic import HIGHWAY_RANK, highway_rank, travel_allowed
 from app.domain.tuning import STOP_CLUSTER_DISTANCE_ID
@@ -234,7 +235,8 @@ async def build(repository: RoadGraphRepository, revision: int) -> RoadNetwork:
         len(nodes["node_osm_id"]), len(edges["edge_way_id"]), dropped_without_endpoint, topology_s,
     )
 
-    materials = await _read_materials(repository, edges["edge_way_id"], edges["edge_segment"], edges["edge_forward"])
+    materials = await _read_materials(repository, edges["edge_way_id"], edges["edge_segment"], edges["edge_forward"],
+                                      await repository.get_edgeless_ways())
     read_s = time.monotonic() - started
     logger.info("道路網の材料を読みました 有向の区間=%d %.0f秒", len(edges["edge_way_id"]), read_s - topology_s)
     network = build_road_network(revision=revision, stop_cluster_distance_m=tuning[STOP_CLUSTER_DISTANCE_ID],
@@ -291,9 +293,8 @@ async def _read_directed_edges(
         source = np.repeat(np.arange(n), 2)[keep]
         tail = np.where(is_forward, from_osm[source], to_osm[source])
         head = np.where(is_forward, to_osm[source], from_osm[source])
-        tail_row, tail_found = _rows_of(node_osm_id, tail)
-        head_row, head_found = _rows_of(node_osm_id, head)
-        found = tail_found & head_found
+        tail_row, head_row = positions_in(node_osm_id, tail), positions_in(node_osm_id, head)
+        found = (tail_row >= 0) & (head_row >= 0)
         dropped_without_endpoint += int((~found).sum())
         source, is_forward = source[found], is_forward[found]
 
@@ -324,27 +325,33 @@ async def _read_directed_edges(
     return result, dropped_without_endpoint
 
 
-def _rows_of(sorted_ids: np.ndarray, ids: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-    """`ids`の各要素が昇順の`sorted_ids`の何行目か、と、見つかったか。"""
-    if len(sorted_ids) == 0:
-        return np.zeros(len(ids), dtype=np.int64), np.zeros(len(ids), dtype=bool)
-    rows = np.minimum(np.searchsorted(sorted_ids, ids), len(sorted_ids) - 1)
-    return rows, sorted_ids[rows] == ids
-
-
 async def _read_materials(
-    repository: RoadGraphRepository, way: np.ndarray, segment: np.ndarray, forward: np.ndarray
+    repository: RoadGraphRepository, way: np.ndarray, segment: np.ndarray, forward: np.ndarray, edgeless: Sequence[Row]
 ) -> dict[str, Any]:
-    """材料は`get_edge_material_arrays`で引く（式はタイル配信と同じ`material_sql`の断片で、2か所に持たない）。"""
+    """材料は`get_edge_material_arrays`で引く。区間を持たない道`edgeless`の材料も同じ読み出しで、区間の無い道の値として引き
+    （区間の値の表は値を持たない）、区間の材料のあとに続けて詰めてから分ける（分類の語彙を区間と1つにする）。"""
     edge_count = len(way)
     accident_years_covered = await repository.get_accident_years_covered()
-    columns = MaterialColumns(edge_count)
-    for start in range(0, edge_count, _MATERIAL_BATCH):
-        stop = min(start + _MATERIAL_BATCH, edge_count)
-        columns.add(await repository.get_edge_material_arrays(
-            way[start:stop].tolist(), segment[start:stop].tolist(), forward[start:stop].tolist(), accident_years_covered))
-        logger.info("材料 %d/%d", stop, edge_count)
-    return {**columns.result(), **await _read_profiles(repository, way, segment)}
+    way_ids = [r.osm_way_id for r in edgeless]
+    columns = MaterialColumns(edge_count + len(way_ids))
+    batches = [(way[start:start + _MATERIAL_BATCH].tolist(), segment[start:start + _MATERIAL_BATCH].tolist(),
+                forward[start:start + _MATERIAL_BATCH].tolist()) for start in range(0, edge_count, _MATERIAL_BATCH)]
+    batches += [(way_ids[start:start + _MATERIAL_BATCH], [-1] * len(way_ids[start:start + _MATERIAL_BATCH]),
+                 [True] * len(way_ids[start:start + _MATERIAL_BATCH])) for start in range(0, len(way_ids), _MATERIAL_BATCH)]
+    for ways, segments, forwards in batches:
+        columns.add(await repository.get_edge_material_arrays(ways, segments, forwards, accident_years_covered))
+        logger.info("材料 %d/%d", columns.filled, edge_count + len(way_ids))
+    result = columns.result()
+    numeric, codes = result.pop("numeric_values"), result.pop("categorical_codes")
+    return {
+        **{name: values[:edge_count] if isinstance(values, np.ndarray) else values for name, values in result.items()},
+        "numeric_values": numeric[:edge_count], "categorical_codes": codes[:edge_count],
+        "edgeless": EdgelessWays(
+            np.asarray(way_ids, dtype=np.int64), numeric[edge_count:], codes[edge_count:],
+            *(np.fromiter((getattr(r, name) for r in edgeless), dtype=np.float64, count=len(way_ids))
+              for name in ("min_lon", "min_lat", "max_lon", "max_lat"))),
+        **await _read_profiles(repository, way, segment),
+    }
 
 
 async def _read_profiles(repository: RoadGraphRepository, way: np.ndarray, segment: np.ndarray) -> dict[str, Any]:
@@ -376,6 +383,11 @@ class MaterialColumns:
         self._arrays: dict[str, np.ndarray] = {}
         self._vocab: list[dict[str | None, int]] = []
         self._ids: dict[str, tuple[str, ...]] = {}
+
+    @property
+    def filled(self) -> int:
+        """詰めた行の数。"""
+        return self._filled
 
     def add(self, materials: EdgeMaterialArrays) -> None:
         """次の束を、前の束の続きの行へ詰める。"""

@@ -21,9 +21,8 @@ import shapely
 from sqlalchemy import Row, TextClause, select, text
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
-from app.domain.attributes import CategoricalColumn, EdgeMaterialArrays, MaterialColumn
+from app.domain.attributes import CategoricalColumn, EdgeMaterialArrays
 from app.domain.elevation_profile import along_fractions
-from app.domain.feature_materials import FeatureMaterials
 from app.domain.geo import bearing_sql, degrees_covering_m, midpoint_sql
 from app.domain.material_catalog import (
     material_array_columns,
@@ -36,12 +35,12 @@ from app.infrastructure.material_joins import material_from_clause
 from app.infrastructure.orm_base import declared_metadata
 from app.infrastructure.road_tile_sql import (
     DERIVED_DATABASE_ROWS_SQL,
-    FEATURE_MATERIALS_IN_TILE_SQL,
     ROAD_SURFACE_TILE_MVT_SQL,
     ROADS_AT_SQL,
 )
 from app.infrastructure.source_models import (
     INGESTED_BBOX_SQL,
+    WAYS_SOURCE_SQL,
     Source,
     nodes_lookup_sql,
     ways_lookup_sql,
@@ -173,6 +172,16 @@ JOIN LATERAL {nodes_lookup_sql("nm.osm_node_id")} n ON true
 ORDER BY nm.osm_node_id
 """)
 
+#: 区間を1本も持たない道（同じ位置に点が重なり長さ0の区間しか作れない道等）と、その形の外接矩形。地図の区分の層は、区間で
+#: 塗るズームでもこの道を道1本で塗る。
+_EDGELESS_WAYS_SQL = text(f"""
+SELECT w.osm_way_id, ST_XMin(w.geom) AS min_lon, ST_YMin(w.geom) AS min_lat,
+       ST_XMax(w.geom) AS max_lon, ST_YMax(w.geom) AS max_lat
+FROM {WAYS_SOURCE_SQL} w
+WHERE NOT EXISTS (SELECT 1 FROM road_edges re WHERE re.osm_way_id = w.osm_way_id)
+ORDER BY w.osm_way_id
+""")
+
 #: 取込範囲全体の道路網（`infrastructure/road_network_store.py`）を作る読み出し。置き場の
 #: 形の署名はここから導く——材料の式を変えると、作り直すべき置き場が別名になる。較正値は文に値で入れず引数で渡す：
 #: 較正値は派生の世代に結ばれ（作り直すと世代が進む）、署名に値を入れると、値を変えてから作り直すまで読み手の
@@ -182,6 +191,7 @@ NETWORK_SQL_SOURCES = (
     _NETWORK_NODES_SQL,
     _EDGE_MATERIAL_ARRAYS_SQL,
     _EDGE_ELEVATION_PROFILES_SQL,
+    _EDGELESS_WAYS_SQL,
 )
 
 def _float_array(values: list) -> np.ndarray:
@@ -264,14 +274,17 @@ class RoadGraphRepository:
         require_tuning({TURN_BEARING_DISTANCE_ID: bearing_distance_m}, bearing_distance_m >= 0, "0以上")
         return self._stream(_NETWORK_EDGES_SQL.bindparams(bearing_distance_m=bearing_distance_m), chunk_size)
 
+    async def get_edgeless_ways(self) -> Sequence[Row]:
+        """区間を持たない道の、番号と形の外接矩形（`_EDGELESS_WAYS_SQL`の並び）。"""
+        return (await self._session.execute(_EDGELESS_WAYS_SQL)).all()
+
     def stream_network_nodes(self, chunk_size: int) -> AsyncIterator[Sequence[Row]]:
         """区間の端点になりうるノード全件を`chunk_size`行ずつ流す（`osm_node_id`の昇順）。"""
         return self._stream(_NETWORK_NODES_SQL, chunk_size)
 
-    def stream_derived_database_rows(self, accident_years: int, chunk_size: int) -> AsyncIterator[Sequence[Row]]:
-        """派生データベースの全行を`chunk_size`行ずつ流す（`road_tile_sql.py: DERIVED_DATABASE_ROWS_SQL`の列）。
-        `accident_years`は事故の件数を年あたりにする年数（`get_accident_years_covered`）。"""
-        return self._stream(DERIVED_DATABASE_ROWS_SQL, chunk_size, {"accident_years": accident_years})
+    def stream_derived_database_rows(self, chunk_size: int) -> AsyncIterator[Sequence[Row]]:
+        """派生データベースの全行を`chunk_size`行ずつ流す（`road_tile_sql.py: DERIVED_DATABASE_ROWS_SQL`の列）。"""
+        return self._stream(DERIVED_DATABASE_ROWS_SQL, chunk_size)
 
     async def _stream(self, statement: TextClause, chunk_size: int,
                       params: dict[str, object] | None = None) -> AsyncIterator[Sequence[Row]]:
@@ -349,20 +362,22 @@ class RoadGraphRepository:
             return None
         return (row.highway, row.tags)
 
-    async def roads_at(self, lon: float, lat: float, z: int, radius_m: float, limit: int) -> list[RoadAt]:
-        """押した所`(lon, lat)`から`radius_m`以内の道のフィーチャーを、近い順に`limit`本（`road_tile_sql.py: ROADS_AT_SQL`）。
-        フィーチャーの単位とプロパティは、ズーム`z`の路面タイルと同じ。"""
+    async def roads_at(self, lon: float, lat: float, z: int, radius_m: float,
+                       limit: int) -> list[tuple[RoadAt, int | None]]:
+        """押した所`(lon, lat)`から`radius_m`以内の道のフィーチャーと区間の番号（道1本のフィーチャーはNone）を、近い順に`limit`本
+        （`road_tile_sql.py: ROADS_AT_SQL`）。フィーチャーの単位は、ズーム`z`の路面タイルと同じ。プロパティは鍵・道・名前で、材料を
+        持たない。"""
         reach = degrees_covering_m(radius_m)
         rows = await self._session.execute(ROADS_AT_SQL, {
             "lon": lon, "lat": lat, "z": z, "radius_m": radius_m, "limit": limit,
             "xmin": lon - reach, "ymin": lat - reach, "xmax": lon + reach, "ymax": lat + reach,
         })
         return [
-            RoadAt(
+            (RoadAt(
                 properties={column: value for column, value in row._mapping.items()
-                            if column != "shape" and value is not None},
+                            if column not in ("shape", "segment_index") and value is not None},
                 shape=[(lon_, lat_) for lon_, lat_ in shapely.from_geojson(row.shape).coords],
-            )
+            ), row.segment_index)
             for row in rows
         ]
 
@@ -399,20 +414,4 @@ class RoadGraphRepository:
         # 「featureが1つも無い有効なMVT」としてMapLibreがそのまま受理する。
         return bytes(tile) if tile is not None else b""
 
-    async def get_feature_materials_in_tile(
-        self, z: int, x: int, y: int, bbox: BoundingBox, accident_years_covered: int
-    ) -> FeatureMaterials | None:
-        """指定タイルのフィーチャーごとの全材料（探索と同じ値式、`road_tile_sql.py: FEATURE_MATERIALS_IN_TILE_SQL`）。
-        鍵はタイルが焼いた`feature_key`と同じもの。取込範囲外はNone、範囲内0件は0行。"""
-        row = (await self._session.execute(FEATURE_MATERIALS_IN_TILE_SQL, {
-            **_tile_params(z, x, y, bbox), "accident_years": accident_years_covered,
-        })).one()
-        if not row.covered:
-            return None
-        numeric_ids, categorical_ids = material_array_columns()
-        columns: dict[str, MaterialColumn] = {
-            **{material_id: _float_array(getattr(row, f"c_{material_id}") or []) for material_id in numeric_ids},
-            **{material_id: CategoricalColumn.encode(getattr(row, f"c_{material_id}") or [])
-               for material_id in categorical_ids},
-        }
-        return FeatureMaterials(feature_keys=tuple(row.feature_keys or ()), columns=columns)
+

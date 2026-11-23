@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
@@ -8,15 +9,18 @@ from app.domain.cost_preference import CostPreference
 from app.domain.lens_values import RoadInspection
 from app.domain.region import ROADS_AT_LIMIT, BoundingBox, RoadAt, tile_bounds_lonlat
 from app.domain.registry import TileKind
-from app.domain.road_classes import current_road_classes
+from app.domain.hard_filters import HARD_FILTER_PROPERTY, hard_filter_column
+from app.domain.road_classes import RoadClassDefinitions, class_columns, current_road_classes, layer_columns
+from app.domain.road_network import RoadNetwork, feature_materials, feature_rows, tile_feature_materials
+from app.domain.search_materials import ColumnsOrEmpty
 from app.domain.tuning import REBUILT_CLIENT_TUNING_IDS
 from app.infrastructure.debug_log import log_external_call
 from app.infrastructure.point_tile_layers import PointTileLayer
 from app.infrastructure.road_graph_repository import RoadGraphRepository
-from app.infrastructure.vector_tile import ROAD_SURFACE_LAYER_NAME, encode_empty_tile
+from app.infrastructure import road_network_store
+from app.infrastructure.vector_tile import ROAD_FEATURE_PROPERTIES, ROAD_SURFACE_LAYER_NAME, encode_empty_tile
 from app.infrastructure.media_types import MVT_CONTENT_TYPE
 from app.infrastructure.region_tile_cache import MVT_TILE_GENERATIONS, serve_region_tile
-from app.services.feature_materials import FeatureMaterialService
 from app.services.lens_service import LensService
 
 logger = logging.getLogger("ridecompass.region_service")
@@ -77,13 +81,12 @@ class RegionService:
         )
 
     async def get_road_surface_tile(self, z: int, x: int, y: int) -> bytes:
-        """地図の道の線のタイル。地図の線の層の値（`services/feature_materials.py: FeatureMaterialService.road_layer_values`）を
-        焼く。"""
-        materials = FeatureMaterialService(self._repository)
+        """地図の道の線のタイル。フィーチャーごとの地図の線の層の値（`road_layer_values`）を焼く。"""
         definitions = current_road_classes()
 
         async def read_tile(z: int, x: int, y: int, bbox: BoundingBox) -> bytes | None:
-            layer_values = await materials.road_layer_values(z, x, y, definitions)
+            # 引いたズームのタイルは道が数万本あるので、並べる計算はイベントループの外で行う。
+            layer_values = await asyncio.to_thread(road_layer_values, road_network_store.current(), z, x, y, definitions)
             return await self._repository.get_road_surface_tile_mvt(z, x, y, bbox, layer_values)
 
         return await self._get_tile(
@@ -122,11 +125,18 @@ class RegionService:
             return _InspectedRoad(highway, tags)
 
     async def roads_at(self, lon: float, lat: float, z: int, radius_m: float) -> list[RoadAt]:
-        """押した所に近い道（近い順、最大`ROADS_AT_LIMIT`本）。道のタイルを読まずに道を押せるようにする。"""
+        """押した所に近い道（近い順、最大`ROADS_AT_LIMIT`本）。道のタイルを読まずに道を押せるようにする。プロパティの材料は、
+        路面タイルが塗るのと同じ道路網の配列のフィーチャーの値。"""
         with log_external_call("region:roads-at", z=z) as fields:
-            roads = await self._repository.roads_at(lon, lat, z, radius_m, ROADS_AT_LIMIT)
-            fields["found"] = len(roads)
-            return roads
+            found = await self._repository.roads_at(lon, lat, z, radius_m, ROADS_AT_LIMIT)
+            fields["found"] = len(found)
+        network = road_network_store.current()
+        edge_rows, way_rows = feature_rows(network, (int(road.properties[ROAD_FEATURE_PROPERTIES["way_id"]])
+                                                     for road, _ in found), (segment for _, segment in found))
+        materials = feature_materials(network, tuple(str(road.properties[ROAD_FEATURE_PROPERTIES["feature_key"]])
+                                                     for road, _ in found), edge_rows, way_rows)
+        return [RoadAt(properties={**road.properties, **materials.tile_properties(row)}, shape=road.shape)
+                for row, (road, _) in enumerate(found)]
 
     async def get_accident_years(self) -> list[int]:
         """事故データの収録年。地図の説明文へ配る。
@@ -156,6 +166,22 @@ class RegionService:
             if area is None:
                 logger.warning("道路の取込が成功した記録が無く、対象範囲が決まらない")
             return area
+
+
+def road_layer_values(network: RoadNetwork, z: int, x: int, y: int,
+                  definitions: RoadClassDefinitions) -> dict[str, dict[str, str]]:
+    """タイル`z/x/y`のフィーチャーの鍵→地図の線の層のid（`domain/road_classes.py: layer_columns`）と当たる0次ハードフィルタの名前
+    （`domain/hard_filters.py: HARD_FILTER_PROPERTY`）→値。値の無い層は載せず、値の無いフィーチャーは鍵ごと載せない。"""
+    materials = tile_feature_materials(network, z, x, y)
+    n = len(materials)
+    facts = ColumnsOrEmpty(materials.columns, n, definitions)
+    columns = ColumnsOrEmpty({**materials.columns, **class_columns(definitions, facts, n)}, n, definitions)
+    layers = {**layer_columns(definitions, columns, n), HARD_FILTER_PROPERTY: hard_filter_column(columns, n)}
+    out: dict[str, dict[str, str]] = {}
+    for row, key in enumerate(materials.feature_keys):
+        if values := {layer: value for layer, column in layers.items() if (value := column.value_at(row)) is not None}:
+            out[key] = values
+    return out
 
 
 class RoadInspectorService:

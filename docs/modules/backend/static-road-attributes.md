@@ -522,7 +522,7 @@ OSMは中央分離帯のある道路の上下線を別々のwayとして持ち�
 ### 路面タイルが焼くもの
 
 路面タイル（`infrastructure/road_tile_sql.py: ROAD_SURFACE_TILE_MVT_SQL`）は、地図が塗るものだけを焼く: 線の形と、地図の線の層の値
-（層のid→区分の鍵か「データなし」。区分の外の道は持たない。`services/feature_materials.py: FeatureMaterialService.road_layer_values`）と、
+（層のid→区分の鍵か「データなし」。区分の外の道は持たない。`services/region_service.py: road_layer_values`。材料は道路網の配列から引く）と、
 道の当たる0次ハードフィルタの名前（`domain/hard_filters.py: HARD_FILTER_PROPERTY`）。
 `domain/region.py: ROAD_TILE_MIN_ZOOM`以上は道ごとの`feature_key`も焼き（画面が道ごとの値を置く）、それより引いた
 `domain/region.py: ROAD_SURFACE_TILE_MIN_ZOOM`からは層の値が同じ道を1つの地物につなぎ、鍵を持たない。道路名・材料の列は焼かない
@@ -664,8 +664,9 @@ z9で約3MB（28万本・167万点）。z9より引くと1画面で数十MBに�
 
 地図のタイル・道の鍵を付けた値の配信・ルートが公に使う OSM の派生データベースを、受け取った人が取れるようにする
 （ODbL 4.6。どの値を含めるかは[データソース](../../architecture/data-sources.md)「OSM から作った値と独自の層」）。行は路面タイルと
-同じ単位（`road_tile_sql.py: DERIVED_DATABASE_ROWS_SQL`。区間の無い道は道1本で1行）で、材料の値はタイルと同じ値式で読む——
-タイルが出す値と書き出しが出す値が別の式にならない。人が決めた較正の値は材料の値式に入らないので、書き出しにも入らない。
+同じ単位（`road_tile_sql.py: DERIVED_DATABASE_ROWS_SQL`。区間の無い道は道1本で1行）で、材料の値は地図と同じく道路網の配列の
+フィーチャーの値を読む——タイルが出す値と書き出しが出す値が別の求め方にならない。人が決めた較正の値は材料の値式に入らないので、
+書き出しにも入らない。
 
 書くのは派生の作り直しの入口（`derive_cli.py: main`）で、作り直して表を入れ替えた直後に、同じプロセスで打つ（配る書き出しが
 作り直した世代に追いつく時はこれだけ。backend は書かず、置かれたものを配るだけ）。書く前に`SOURCE_DATA_LOCK`を試しに取り、

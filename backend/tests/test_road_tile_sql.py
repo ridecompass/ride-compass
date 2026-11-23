@@ -40,7 +40,7 @@ async def test_the_roads_within_reach_come_nearest_first(road_graph_repository):
     first_only = await road_graph_repository.roads_at(LON, LAT, Z, 100.0, 1)
 
     def ways(roads):
-        return [road.properties["osm_way_id"] for road in roads]
+        return [road.properties["osm_way_id"] for road, _ in roads]
 
     assert [ways(within_both), ways(within_one), ways(first_only)] == [[1, 2], [1], [1]]
 
@@ -59,10 +59,10 @@ async def test_a_road_has_the_key_of_its_tile_feature_and_its_whole_line(road_gr
     """押して開く小窓は、押した道の地図の線の層の値を、同じ鍵のタイルのフィーチャーから読む。"""
     await _ingest_two_ways()
 
-    [road, _] = await road_graph_repository.roads_at(LON, LAT, Z, 100.0, 3)
+    [(road, segment), _] = await road_graph_repository.roads_at(LON, LAT, Z, 100.0, 3)
     keys = [properties["feature_key"] for properties in await _tile(road_graph_repository, Z, {})]
 
-    assert road.properties["feature_key"] == "1"
+    assert (road.properties["feature_key"], segment) == ("1", None)
     assert sorted(keys) == ["1", "2"]
     assert road.shape == [(WAY_ORIGIN[0], LAT - WAY_STEP * 0.2), (WAY_ORIGIN[0] + WAY_STEP, LAT - WAY_STEP * 0.2)]
 

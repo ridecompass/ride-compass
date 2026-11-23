@@ -20,7 +20,7 @@ from app.domain.search_graph import EDGE_VALUE_DTYPE
 from app.domain.stopwatch import add_elapsed_ms, start_timer
 
 
-class _ColumnsOrEmpty(Mapping[str, MaterialColumn]):
+class ColumnsOrEmpty(Mapping[str, MaterialColumn]):
     """材料id→列。`columns`に無い材料カタログの材料は、値の無い列（`_empty_material_column`）を返す——読む材料を先に並べず、
     読まれたときに埋める。並べ上げる（`iter`）のは`columns`の材料だけ。"""
 
@@ -127,7 +127,7 @@ def build_search_materials(
     """
     started = start_timer()
     n = len(materials)
-    columns = _ColumnsOrEmpty(materials.columns, n, road_classes)
+    columns = ColumnsOrEmpty(materials.columns, n, road_classes)
     carried = dict.fromkeys((*travel_model_material_ids(road_classes), *cost_material_ids))
     numeric = {material_id: values for material_id in carried if isinstance(values := columns.get(material_id), np.ndarray)}
     categorical = {

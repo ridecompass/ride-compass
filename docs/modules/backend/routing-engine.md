@@ -1058,14 +1058,13 @@ numbaでJITする探索と、探索の中へ展開する部品を置く。JITの
 
 SQLは`road_tile_sql.py`が持ち、リポジトリが流す。
 
-`ROAD_SURFACE_TILE_MVT_SQL`（路面・道路種別・制限速度等の材料の値をPostGIS側で
-ST_AsMVT丸ごと生成。列は材料の値式から組む。[費用・材料](evaluation-scoring.md)「タイルへ焼く列」）・`road_tile_sql.py: FEATURE_MATERIALS_IN_TILE_SQL`（全材料。値は探索と同じ値式で求め、タイルへ焼くときの
-丸め・係数を通さない。[dynamic-way-values.md](dynamic-way-values.md)「タイルの材料」）は、いずれも
+`ROAD_SURFACE_TILE_MVT_SQL`（道の形と、渡した地図の線の層の値をPostGIS側で
+ST_AsMVT丸ごと生成。層の値は道路網の配列から求める。[dynamic-way-values.md](dynamic-way-values.md)「タイルの材料」）は、
 `COVERAGE_SQL`（取込の宣言した範囲か）をMVT生成と同じ1クエリへ畳み込み、1タイル1DB往復に
 まとめる設計を共有する（点のタイルのSQLも同じ判定を読む。[静的道路属性](static-road-attributes.md)「点のタイル」）。カバレッジ外はNone、カバレッジ内で0件なら空、という契約で呼び出し側
-（`RegionService`）が空タイルと区別する。いずれも**同じ`_TILE_FEATURE_SOURCE_SQL`から
-フィーチャーを引く**——別々に組み立てると、代表の選び方がタイルとずれた瞬間に鍵が噛み合わず
-色が一切付かない。詳細は[dynamic-way-values.md](dynamic-way-values.md)参照。
+（`RegionService`）が空タイルと区別する。路面タイル・押した所に近い道（`ROADS_AT_SQL`）・派生データベースの書き出しの行
+（`DERIVED_DATABASE_ROWS_SQL`）は、どれも**同じ`_TILE_FEATURE_SOURCE_SQL`からフィーチャーを引き**、材料は鍵で道路網の配列から引く
+（`domain/road_network.py: feature_materials`）。
 
 ### 道路網全体の配列（`road_network_store.py`）
 

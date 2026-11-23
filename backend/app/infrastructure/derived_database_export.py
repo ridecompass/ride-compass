@@ -21,12 +21,16 @@ from pathlib import Path
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.domain.attributes import CategoricalColumn
+from app.domain.feature_materials import FeatureMaterials
 from app.domain.map_display import DERIVED_DATABASE_ATTRIBUTIONS
-from app.domain.material_catalog import MATERIAL_CATALOG
+from app.domain.material_catalog import MATERIAL_CATALOG, material_value_sql
+from app.domain.road_network import RoadNetwork, feature_materials, feature_rows
+from app.infrastructure import road_network_store
 from app.infrastructure.cache_identity import shape_digest
 from app.infrastructure.data_paths import DATA_DIR
 from app.infrastructure.road_graph_repository import RoadGraphRepository
-from app.infrastructure.road_tile_sql import DERIVED_DATABASE_MATERIAL_IDS, DERIVED_DATABASE_ROWS_SQL
+from app.infrastructure.road_tile_sql import DERIVED_DATABASE_ROWS_SQL
 
 logger = logging.getLogger("ridecompass.derived_database")
 
@@ -34,6 +38,8 @@ logger = logging.getLogger("ridecompass.derived_database")
 #: （testing.md「確かめる高さ」の (c)）。
 ROOT = DATA_DIR / "derived_database"
 
+#: 書き出す材料（値式を持つ全材料。値は道路網の配列のフィーチャーの値で、地図とルートが読むのと同じ）。
+DERIVED_DATABASE_MATERIAL_IDS = tuple(sorted(material_value_sql()))
 COLUMNS = ("osm_way_id", "segment_index", "length_m", "name", "ref", *DERIVED_DATABASE_MATERIAL_IDS, "geometry_wkt")
 DATA_FILE = "roads.csv"
 README_FILE = "README.txt"
@@ -79,7 +85,7 @@ Weather values (wind, rain) and human-set calibration values are not included.
 """
 
 #: 置き場の名前の形の署名。列・値式・表示を変えたコードは、同じ世代でも別の名前に書く。
-EXPORT_SHAPE = shape_digest(DERIVED_DATABASE_ROWS_SQL, COLUMNS, README)
+EXPORT_SHAPE = shape_digest(DERIVED_DATABASE_ROWS_SQL, road_network_store.NETWORK_SHAPE, COLUMNS, README)
 
 _FILE_PATTERN = re.compile(r"^ridecompass-derived-database-(?P<shape>[0-9a-f]+)-r(?P<derived>\d+|x)-i(?P<imported>\d+)\.zip$")
 _STREAM_CHUNK = 20_000
@@ -129,7 +135,7 @@ async def _write(repository: RoadGraphRepository, target: Path) -> None:
 
 
 async def _write_zip(repository: RoadGraphRepository, path: Path, check_space: Callable[[], None]) -> int:
-    accident_years = await repository.get_accident_years_covered()
+    network = road_network_store.current()
     rows = 0
     started = last_progress = time.perf_counter()
     with zipfile.ZipFile(path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
@@ -138,8 +144,11 @@ async def _write_zip(repository: RoadGraphRepository, path: Path, check_space: C
                 io.TextIOWrapper(raw, encoding="utf-8", newline="") as data:
             writer = csv.writer(data)
             writer.writerow(COLUMNS)
-            async for chunk in repository.stream_derived_database_rows(accident_years, _STREAM_CHUNK):
-                writer.writerows(tuple(row._mapping[column] for column in COLUMNS) for row in chunk)
+            async for chunk in repository.stream_derived_database_rows(_STREAM_CHUNK):
+                materials = _materials_of(network, chunk)
+                writer.writerows((*(row._mapping[column] for column in COLUMNS[:5]),
+                                  *(_cell(materials, material_id, i) for material_id in DERIVED_DATABASE_MATERIAL_IDS),
+                                  row.geometry_wkt) for i, row in enumerate(chunk))
                 rows += len(chunk)
                 check_space()
                 now = time.perf_counter()
@@ -147,6 +156,23 @@ async def _write_zip(repository: RoadGraphRepository, path: Path, check_space: C
                     last_progress = now
                     logger.info("派生データベースを書き出し中 行=%d 経過=%.0f秒", rows, now - started)
     return rows
+
+
+def _materials_of(network: RoadNetwork, chunk) -> FeatureMaterials:
+    """行（区間か、区間を持たない道）ごとの、道路網の配列の材料。"""
+    edge_rows, way_rows = feature_rows(network, (row.osm_way_id for row in chunk), (row.segment_index for row in chunk))
+    return feature_materials(network, tuple("" for _ in chunk), edge_rows, way_rows)
+
+
+def _cell(materials: FeatureMaterials, material_id: str, row: int) -> str | float | bool | None:
+    """材料の値の欄（値の無い材料は空）。真偽は真偽で書く（配列は1.0/0.0で持つ）。"""
+    column = materials.columns[material_id]
+    if isinstance(column, CategoricalColumn):
+        return column.value_at(row)
+    value = float(column[row])
+    if value != value:  # NaN
+        return None
+    return bool(value) if MATERIAL_CATALOG[material_id].dtype == "boolean" else value
 
 
 def _require_free_space() -> None:

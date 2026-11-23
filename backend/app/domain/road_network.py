@@ -27,11 +27,14 @@ from app.domain.attributes import (
     MaterialColumn,
 )
 from app.domain.elevation_profile import ProfileSpans
+from app.domain.feature_materials import FeatureMaterials
 from app.domain.geo import LatLonPoint
+from app.domain.graph import edge_feature_key
 from app.domain.material_catalog import GRADIENT_PERCENT
 from app.domain.msm import MsmGrid
-from app.domain.region import ROAD_TILE_MIN_ZOOM, tile_bounds_lonlat
+from app.domain.region import EDGE_UNIT_MIN_ZOOM, ROAD_TILE_MIN_ZOOM, tile_bounds_lonlat
 from app.domain.road_classes import RoadClassDefinitions, class_columns, layer_columns
+from app.domain.search_graph import run_starts
 from app.domain.stopwatch import elapsed_ms, start_timer
 from app.domain.tuning import RIDER_HEIGHT_ID, ROUGHNESS_CAP_ID, Tuning
 from app.domain.wind_height import ROUGHNESS_LENGTH_M, WindHeights, height_factors
@@ -98,7 +101,7 @@ class RoadNetwork:
     distance_m: np.ndarray  # float64
     bearing_deg: np.ndarray  # float64, NaN=方位が決まらない
     # 区間の道の、道の順方向の始点（一番若い区間の始まり）から終点（一番後の区間の終わり）を見た方位。道1本で塗るレンズが読む。
-    way_bearing_deg: np.ndarray  # float64
+    edge_way_bearing_deg: np.ndarray  # float64
     mid_lat: np.ndarray
     mid_lon: np.ndarray
     # 断面から決まる区間の値（走る向きに見た値。`domain/elevation_profile.py: profile_summaries`）。
@@ -123,6 +126,16 @@ class RoadNetwork:
     unknown_elevation_m: np.ndarray  # float64
     mean_elevation_m: np.ndarray  # float64
 
+    # 道1本の値（区分の層が道1本で塗るズームの値）。道は区間を持つ道と、区間を持たない道（区間の列には現れない）の全部で、
+    # `osm_way_id`の昇順。材料の列は区間の材料と同じ並びと語彙で、区間を持つ道は区間の値を集めたもの（`domain/road_network_build.py`）。
+    way_osm_id: np.ndarray  # int64
+    way_numeric_values: np.ndarray  # (道, 列) float64, NaN=欠損
+    way_categorical_codes: np.ndarray  # (道, 列) int16。0は値なし
+    way_min_lon: np.ndarray  # float64、道の形の外接矩形
+    way_min_lat: np.ndarray
+    way_max_lon: np.ndarray
+    way_max_lat: np.ndarray
+
     def __post_init__(self) -> None:
         """行数と列数が揃っていることを、組み立てた場所で確かめる。
 
@@ -130,11 +143,12 @@ class RoadNetwork:
         """
         node_count = len(self.node_osm_id)
         edge_count = len(self.edge_way_id)
+        rows = {"node_": node_count, "way_": len(self.way_osm_id)}
         wrong = {
             f.name: len(value)
             for f in fields(self)
             if isinstance(value := getattr(self, f.name), np.ndarray) and not f.name.startswith(_POINT_PREFIXES)
-            and len(value) != (node_count if f.name.startswith("node_") else edge_count)
+            and len(value) != rows.get(f.name[:f.name.find("_") + 1], edge_count)
         }
         for start, count, points in (("edge_profile_start", "edge_profile_points", "profile_elevation_m"),
                                      ("edge_shape_start", "edge_shape_points", "shape_lon"),
@@ -151,6 +165,8 @@ class RoadNetwork:
             for name, matrix, ids in (
                 ("numeric_values", self.numeric_values, self.numeric_ids),
                 ("categorical_codes", self.categorical_codes, self.categorical_ids),
+                ("way_numeric_values", self.way_numeric_values, self.numeric_ids),
+                ("way_categorical_codes", self.way_categorical_codes, self.categorical_ids),
             )
             if matrix.shape[1] != len(ids)
         }
@@ -281,12 +297,19 @@ def _rows_in_bbox(network: RoadNetwork, min_lon: float, min_lat: float, max_lon:
                  rows: np.ndarray | None = None) -> np.ndarray:
     """区間の形の外接矩形が範囲に重なる区間の行（昇順）。`rows`（昇順）を渡すと、その行の中だけを比べる。"""
     among = slice(None) if rows is None else rows
-    overlaps = np.asarray(network.edge_max_lon[among]) >= min_lon
-    overlaps &= np.asarray(network.edge_min_lon[among]) <= max_lon
-    overlaps &= np.asarray(network.edge_max_lat[among]) >= min_lat
-    overlaps &= np.asarray(network.edge_min_lat[among]) <= max_lat
-    hit = np.flatnonzero(overlaps)
+    hit = _overlapping(network.edge_min_lon[among], network.edge_min_lat[among], network.edge_max_lon[among],
+                       network.edge_max_lat[among], min_lon, min_lat, max_lon, max_lat)
     return hit if rows is None else rows[hit]
+
+
+def _overlapping(min_lons: np.ndarray, min_lats: np.ndarray, max_lons: np.ndarray, max_lats: np.ndarray,
+                 min_lon: float, min_lat: float, max_lon: float, max_lat: float) -> np.ndarray:
+    """外接矩形の並びのうち、範囲に重なるものの位置（昇順）。"""
+    overlaps = np.asarray(max_lons) >= min_lon
+    overlaps &= np.asarray(min_lons) <= max_lon
+    overlaps &= np.asarray(max_lats) >= min_lat
+    overlaps &= np.asarray(min_lats) <= max_lat
+    return np.flatnonzero(overlaps)
 
 
 def rows_in_tile(network: RoadNetwork, z: int, x: int, y: int) -> np.ndarray:
@@ -495,3 +518,73 @@ def edge_endpoint_points(network: RoadNetwork, edges: Iterable[tuple[int, int, b
         for node in (int(network.edge_from[row]), int(network.edge_to[row])):
             points.append(LatLonPoint(float(network.node_lat[node]), float(network.node_lon[node])))
     return points
+
+
+# --- 地図のフィーチャー（路面タイルの`feature_key`の単位）の材料 --------------------------------------------------
+
+
+def _edge_keys(way: np.ndarray, segment: np.ndarray) -> np.ndarray:
+    """区間の`(道, 区間番号)`を、並びを保つ1つの整数にしたもの（区間番号は smallint）。"""
+    return np.asarray(way, dtype=np.int64) * 2**16 + np.asarray(segment, dtype=np.int64)
+
+
+def feature_rows(network: RoadNetwork, way_ids: Iterable[int],
+                 segment_indexes: Iterable[int | None]) -> tuple[np.ndarray, np.ndarray]:
+    """フィーチャー（区間番号の無いものは道1本）ごとの、区間の一番若い行と道の行（どちらも無ければ-1）。区間のフィーチャーは
+    道の行を、道1本のフィーチャーは区間の行を-1にする。"""
+    ways = np.fromiter(way_ids, dtype=np.int64)
+    segments = np.array([-1 if s is None else s for s in segment_indexes], dtype=np.int64)
+    first = np.flatnonzero(run_starts(network.edge_way_id) | run_starts(network.edge_segment))
+    edge_rows = positions_in(_edge_keys(network.edge_way_id[first], network.edge_segment[first]), _edge_keys(ways, segments))
+    way_rows = positions_in(np.asarray(network.way_osm_id), ways)
+    is_edge = segments >= 0
+    return (np.where(is_edge & (edge_rows >= 0), first[np.maximum(edge_rows, 0)], -1),
+            np.where(is_edge, -1, way_rows))
+
+
+def positions_in(sorted_keys: np.ndarray, keys: np.ndarray) -> np.ndarray:
+    """`keys`の各要素が昇順の`sorted_keys`の何番目か（無ければ-1）。"""
+    if len(sorted_keys) == 0:
+        return np.full(len(keys), -1, dtype=np.int64)
+    at = np.minimum(np.searchsorted(sorted_keys, keys), len(sorted_keys) - 1)
+    return np.where(sorted_keys[at] == keys, at, -1)
+
+
+def feature_materials(network: RoadNetwork, keys: tuple[str, ...], edge_rows: np.ndarray,
+                      way_rows: np.ndarray) -> FeatureMaterials:
+    """フィーチャーの鍵`keys`と同じ並びの、区間の行`edge_rows`か道の行`way_rows`（`feature_rows`）の材料。どちらも無い
+    フィーチャーは値を持たない。"""
+    edge_rows, way_rows = np.asarray(edge_rows, dtype=np.int64), np.asarray(way_rows, dtype=np.int64)
+    on_edge, on_way = edge_rows >= 0, way_rows >= 0
+    numeric = np.full((len(keys), len(network.numeric_ids)), np.nan)
+    numeric[on_edge] = network.numeric_values[edge_rows[on_edge]]
+    numeric[on_way] = network.way_numeric_values[way_rows[on_way]]
+    codes = np.zeros((len(keys), len(network.categorical_ids)), dtype=np.int16)
+    codes[on_edge] = network.categorical_codes[edge_rows[on_edge]]
+    codes[on_way] = network.way_categorical_codes[way_rows[on_way]]
+    columns: dict[str, MaterialColumn] = {
+        **{material_id: numeric[:, i] for i, material_id in enumerate(network.numeric_ids)},
+        **{material_id: CategoricalColumn(codes[:, i], vocab)
+           for i, (material_id, vocab) in enumerate(zip(network.categorical_ids, network.categorical_vocab, strict=True))},
+    }
+    return FeatureMaterials(feature_keys=keys, columns=columns)
+
+
+def tile_feature_materials(network: RoadNetwork, z: int, x: int, y: int) -> FeatureMaterials:
+    """地図の道のタイル`z/x/y`に形の外接矩形が重なるフィーチャーの材料。区間で塗るズーム（`EDGE_UNIT_MIN_ZOOM`から）は区間と、
+    区間を持たない道。引いたズームは道1本。"""
+    bbox = tile_bounds_lonlat(z, x, y)
+    ways = _overlapping(network.way_min_lon, network.way_min_lat, network.way_max_lon, network.way_max_lat,
+                        bbox.min_longitude, bbox.min_latitude, bbox.max_longitude, bbox.max_latitude)
+    if z < EDGE_UNIT_MIN_ZOOM:
+        return feature_materials(network, tuple(str(way) for way in network.way_osm_id[ways].tolist()),
+                                 np.full(len(ways), -1), ways)
+    rows = rows_in_tile(network, z, x, y)
+    rows = rows[run_starts(network.edge_way_id[rows]) | run_starts(network.edge_segment[rows])]
+    # 区間は道の番号の昇順に並ぶので、道が区間を持つかは二分探索で引ける。
+    edgeless = ways[positions_in(np.asarray(network.edge_way_id), np.asarray(network.way_osm_id[ways])) < 0]
+    keys = (*(edge_feature_key(int(way), int(segment))
+              for way, segment in zip(network.edge_way_id[rows].tolist(), network.edge_segment[rows].tolist())),
+            *(str(way) for way in network.way_osm_id[edgeless].tolist()))
+    return feature_materials(network, keys, np.r_[rows, np.full(len(edgeless), -1)],
+                             np.r_[np.full(len(rows), -1), edgeless])

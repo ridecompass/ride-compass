@@ -11,13 +11,12 @@
 
 | レイヤー | ファイル |
 |---|---|
-| domain | `way_value_formula.py`（中立の式の木の型と、numpyでの評価）・`gradient.py`（道を辿る向きを走行方位で選ぶ木と、勾配の桁）・`lens_values.py`（タイルのフィーチャーと辿る向きで網の行を束ね、1kmあたりの代償の秒にする・地図の式の木・押した道の区間の秒と事実）・`lens_equivalents.py`（色の物差しの緑の端〜赤の端を、事実の値で刻んだ段にする）・`lens_total.py`（総合のレンズのidと、軸ごとの値から総合を出す決まり。ルートの線も読む）・`feature_materials.py`（タイル1枚のフィーチャーごとの材料の型） |
-| services | `lens_service.py`（タイル1枚のレンズの値と、押した道のレンズの値と事実）・`feature_materials.py`（タイルのフィーチャーごとの材料を読み、ディスクへ持つ。地図の線の層の値）・`region_service.py: RoadInspectorService`（道の窓） |
-| infrastructure | `feature_material_cache.py`（タイルのフィーチャーごとの材料。ディスク経由）・`tile_persistent_cache.py`（呼び出し元が設計したタプルの鍵でPythonオブジェクトを置く汎用のディスクキャッシュ。`diskcache`の包み。名前空間ごとに捨てられる、24時間持つ口`tile_persistent_cache.py: set_tile_entry`も持つ） |
+| domain | `way_value_formula.py`（中立の式の木の型と、numpyでの評価）・`gradient.py`（道を辿る向きを走行方位で選ぶ木と、勾配の桁）・`lens_values.py`（タイルのフィーチャーと辿る向きで網の行を束ね、1kmあたりの代償の秒にする・地図の式の木・押した道の区間の秒と事実）・`lens_equivalents.py`（色の物差しの緑の端〜赤の端を、事実の値で刻んだ段にする）・`lens_total.py`（総合のレンズのidと、軸ごとの値から総合を出す決まり。ルートの線も読む）・`feature_materials.py`（地図のフィーチャーごとの材料の型と、押した道の小窓へタイルの名前で出す材料） |
+| services | `lens_service.py`（タイル1枚のレンズの値と、押した道のレンズの値と事実）・`region_service.py: road_layer_values`（タイルのフィーチャーごとの地図の線の層の値）・`region_service.py: RoadInspectorService`（道の窓） |
 | api | `region.py`（`GET /api/region/lens/{lens_id}/...`・`POST /api/region/road-inspector`）・`dependencies.py`（`dependencies.py: get_lens_service`・`dependencies.py: get_road_inspector_service`） |
 
-フィーチャーごとの材料をDBから取り出す`infrastructure/road_graph_repository.py: get_feature_materials_in_tile`と、そのSQL
-（`infrastructure/road_tile_sql.py`）は[routing-engine.md](routing-engine.md)が主管するファイルに属する。
+フィーチャーごとの材料を道路網の配列から引く`domain/road_network.py: tile_feature_materials`は[routing-engine.md](routing-engine.md)が
+主管するファイルに属する。
 
 ## 地図へ配る式の木（`domain/way_value_formula.py`）
 
@@ -96,33 +95,16 @@ SQLと式の木の材料では作れない体力（走行の模型）を、backe
   タイルごとの計算がルート生成と共有のスレッドの置き場を埋めないように待たせる）。道の窓は押すたびの
   単発の要求なので専用の上限を持つ。
 
-## タイルの材料（`services/feature_materials.py`）
+## タイルの材料（`domain/road_network.py: tile_feature_materials`）
 
-タイル1枚ぶんのフィーチャーごとに、全部の材料（`domain/material_catalog.py: material_value_sql`を持つ材料）を読む
-（`infrastructure/road_tile_sql.py: FEATURE_MATERIALS_IN_TILE_SQL`）。路面タイルが焼く地図の線の層の値（`FeatureMaterialService.road_layer_values`。
-`services/region_service.py: RegionService.get_road_surface_tile`が読む）は、これに区分の列（`domain/road_classes.py: class_columns`）を
-読むたびに当てて求める——持つものに区分を含めないので、区分を書き換えても材料を作り直さずに済む（路面タイルは区分の書き換えのあとに捨てて焼き直す。
-`infrastructure/region_tile_cache.py: discard_region_tiles`）。
+タイル1枚ぶんのフィーチャーごとの全部の材料を、道路網の配列から引く（DBは読まない）。路面タイルが焼く地図の線の層の値
+（`services/region_service.py: road_layer_values`。`services/region_service.py: RegionService.get_road_surface_tile`が読む）は、これに
+区分の列（`domain/road_classes.py: class_columns`）を読むたびに当てて求める——配列に区分を含めないので、区分を書き換えても配列を
+作り直さずに済む（路面タイルは区分の書き換えのあとに捨てて焼き直す。`infrastructure/region_tile_cache.py: discard_region_tiles`）。
 
-- フィーチャーの並びと材料の表の結び方は路面タイルと同じ（区間単位のズームは区間の値、way単位のズームと区間を
-  持たない道は道1本の行の値。密度の分母の長さもフィーチャーと同じ側から取る）。
-- 値は探索と同じ値式で求める。事故の密度は今の収録年数（`RoadGraphRepository.get_accident_years_covered`）で割る。区間単位のズームで、
-  探索が同じ区間に読む材料と同じ値になる（`tests/test_feature_materials_in_tile.py`）。
-- 取込範囲外・フィーチャーの無いタイルは値なし（地図の配信は`{}`）。DB障害は空へ倒さず投げ、503になる
-  （[横断インフラ](cross-cutting-infrastructure.md)「DB障害として扱う例外」節）——空へ倒すと、応答は200・空のままになり、
-  地図では「データなし」と見分けがつかない。
-
-## キャッシュ（`infrastructure/feature_material_cache.py`）
-
-読んだタイルの材料をディスク（`tile_persistent_cache`）へ持つ。鍵は`(読み方の署名, z, x, y)`で、
-区分・走行方位・時刻を入れない——材料はどれにも依らない。
-
-- **地域タイルと一緒に捨てる**（`infrastructure/region_tile_cache.py: discard_region_tiles`）: 材料は路面タイルの`feature_key`と
-  一致して初めて意味を持ち、派生の作り直しで同じSQLでも別の値になる。事故の収録年数も派生の作り直しと一緒に変わる。
-- **読み方の署名**（`services/feature_materials.py: FEATURE_MATERIALS_VALUE_SHAPE`）: 読み出しのSQLの形と、持つ値の
-  列の組から機械で署名する。SQLを変えたデプロイの直後から前の読み方のエントリは読まれなくなり、TTL（24時間）で失効する。
-- 取込範囲外・空のタイル・DB障害は持たない（次の要求で読み直す）。
-- Redisに置かないのは、失っても自前のPostGISから読み直せるため（[.claude/rules/caching-retention.md](../../../.claude/rules/caching-retention.md)
-  「Redisへ置くもの・置かないもの」）。読み直しの重さは、本番でタイルを焼く文と同じ結び方で全材料を読んで都心 z12 で
-  0.65秒・z14 で0.08秒。1エントリの大きさ（材料の列×フィーチャー数）は未計測。
-- hit/missは`FeatureMaterialService`の`log_external_call`（`region:feature-materials`）の`fields["cache"]`に書く。
+- フィーチャーの単位と鍵は路面タイルと同じ（区間で塗るズームは区間の一番若い行の値と、区間を持たない道1本の値。道1本で塗る
+  ズームは道1本の値）。フィーチャーは形の外接矩形がタイルに重なるもの。道1本の値の集め方は`domain/road_network_build.py`の
+  モジュールの説明が持つ。
+- 鍵が DB の路面タイルの鍵と噛み合うことは`tests/test_feature_materials_in_tile.py`が見る。端点のノードが無く配列が落とした区間と、
+  そういう区間しか持たない道は、配列に値が無いので地図では値なしで描く。
+- 配列に無い材料（テストの道路網）は、値の無い列として読む（`domain/search_materials.py: ColumnsOrEmpty`）。

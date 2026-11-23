@@ -157,7 +157,7 @@ def tile_features(network: RoadNetwork, z: int, x: int, y: int) -> LensFeatures:
         bearing = np.asarray(network.bearing_deg[first], dtype=np.float64)
         bearing = np.where(network.edge_forward[first], bearing, (bearing + 180.0) % 360.0)
     else:
-        bearing = np.asarray(network.way_bearing_deg[first], dtype=np.float64)
+        bearing = np.asarray(network.edge_way_bearing_deg[first], dtype=np.float64)
     return LensFeatures(keys=keys, bearing_deg=bearing, rows=rows, feature=feature,
                         direction=np.where(forward, ALONG, AGAINST))
 
