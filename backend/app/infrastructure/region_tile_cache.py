@@ -9,12 +9,15 @@
 """
 
 import asyncio
+import inspect
 from collections.abc import Awaitable, Callable, Mapping
 from types import MappingProxyType
 
+from app.domain import road_features
 from app.domain.hard_filters import HARD_FILTERS
 from app.domain.registry import TileKind
-from app.infrastructure import feature_material_cache, tile_cache
+from app.domain.road_network import RoadNetwork, edge_key, positions_in
+from app.infrastructure import tile_cache
 from app.infrastructure.landcover_raster import raster_paths
 from app.infrastructure.cache_identity import (
     LANDCOVER_TILE_VERSION,
@@ -26,16 +29,21 @@ from app.infrastructure.cache_identity import (
 )
 from app.infrastructure.debug_log import log_external_call
 from app.infrastructure.point_tile_layers import POINT_TILE_LAYERS
-from app.infrastructure.road_tile_sql import FEATURE_MATERIALS_SHAPE, ROAD_SURFACE_TILE_SHAPE
+from app.infrastructure.road_network_store import NETWORK_SHAPE
+from app.infrastructure.road_tile_sql import ROAD_SURFACE_TILE_SHAPE, TILE_FEATURES_SQL
 
 #: 土地被覆ラスタタイルの系統名。DBから焼かないので、DBから焼くタイルの系統（`TileKind`）の外にある。
 LANDCOVER_TILE_KIND = "landcover"
 
-#: DBから焼いて配るタイルの系統と、ディスクの鍵の世代（形の署名）。路面タイルは地図の線の層の値（材料に道の区分を当てた
-#: もの）と、当たる0次ハードフィルタを焼くので、材料の読み方とフィルタの条件も入れる。点のレイヤーはそれぞれ自分のSQLだけから
-#: 署名を持つので、1つのSQLを変えても他のレイヤーの鍵は変わらない。
+#: DBから焼いて配るタイルの系統と、ディスクの鍵の世代（形の署名）。路面タイルは地図の線の層の値（道路網の配列の材料に道の区分を
+#: 当てたもの）と、当たる0次ハードフィルタを焼くので、配列の形とフィルタの条件と、タイルのフィーチャーの鍵を読むSQLと、その鍵で
+#: 配列から値を引くコードの全文も入れる。点のレイヤーはそれぞれ自分のSQLだけから署名を持つので、1つのSQLを変えても他のレイヤーの
+#: 鍵は変わらない。
 MVT_TILE_GENERATIONS: Mapping[TileKind, str] = MappingProxyType({
-    "road_surface": shape_digest(ROAD_SURFACE_TILE_SHAPE, FEATURE_MATERIALS_SHAPE, HARD_FILTERS),
+    "road_surface": shape_digest(ROAD_SURFACE_TILE_SHAPE, TILE_FEATURES_SQL, NETWORK_SHAPE, HARD_FILTERS, *(
+        inspect.getsource(code) for code in (
+            road_features, positions_in, edge_key, RoadNetwork.__dict__["edge_first_rows"].func,
+            RoadNetwork.__dict__["edge_keys"].func))),
     **{layer.name: layer.shape for layer in POINT_TILE_LAYERS.values()},
 })
 
@@ -110,10 +118,9 @@ def prune_other_generations() -> int:
 
 
 def discard_region_tiles() -> int:
-    """ディスクの地域タイル（全系統）と、路面タイルが焼くタイルの材料を全部消し、消したタイルの数を返す。
+    """ディスクの地域タイル（全系統）を全部消し、消したタイルの数を返す。
 
     タイルが焼く中身（派生の表・道の区分）を変えた側が、変更をコミットしたあとに呼ぶ。コミットの前に読み始めて捨てたあとに
     書き終えた1枚は、前の中身のまま次に捨てるまで残る。
     """
-    feature_material_cache.discard_all()
     return tile_cache.delete_where(lambda key: region_tile_kind(key) is not None)

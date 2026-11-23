@@ -8,8 +8,7 @@ from collections import Counter
 from collections.abc import Iterable
 from typing import Literal, NamedTuple, get_args
 
-from app.domain.gsi_tiles import TERRAIN_MIN_ZOOM
-from app.domain.landcover import LANDCOVER_CLASSES, LANDCOVER_TILE_MIN_ZOOM
+from app.domain.landcover import LANDCOVER_TILE_MIN_ZOOM
 from app.domain.msm_grid import MSM_GRID_MIN_ZOOM
 from app.domain.place_search import ADDRESS_AREA_ATTRIBUTIONS
 from app.domain.primary_attributes import PRIMARY_ATTRIBUTES, PRIMARY_ATTRIBUTES_BY_ID
@@ -39,9 +38,12 @@ class LayerCategory(NamedTuple):
 #: 並びがそのまま「表示」の一覧の群の並び順になる。
 MAP_OVERLAY_GROUPS: tuple[OverlayGroup, ...] = (
     OverlayGroup("road", "道路"),
-    OverlayGroup("environment", "環境"),
+    OverlayGroup("environment", "天気と地形"),
     OverlayGroup("spot", "スポット"),
 )
+
+#: 「表示」の一覧に、どの群も並びの先頭から最初に並べる項目の数。残りは利用者が群ごとに選んで足す。
+OVERLAY_GROUP_INITIAL_ITEMS = 3
 
 
 class _LegendSharedRow(NamedTuple):
@@ -94,7 +96,6 @@ MAP_LAYER_DATA_SOURCES: tuple[MapLayerDataSource, ...] = (
     MapLayerDataSource(_ROAD_LAYER_DATA_SOURCE, ROAD_SURFACE_TILE_MIN_ZOOM),
     *(MapLayerDataSource(kind, ROAD_TILE_MIN_ZOOM) for kind in _TILE_KINDS),
     MapLayerDataSource("gsiRelief"),
-    MapLayerDataSource("gsiTerrain", TERRAIN_MIN_ZOOM),
     MapLayerDataSource("landcoverRaster", LANDCOVER_TILE_MIN_ZOOM),
     MapLayerDataSource("ownFetch"),
     # MSMの格子点（`GET /api/weather/msm-grid`）。自前で取り、取得状態は取った側が出す。
@@ -109,19 +110,16 @@ MODEL_VALUE_DISCLAIMER = "数値予報モデルの計算結果で、大きな誤
 MapLayerDataNature = Literal["raw", "dynamic"]
 MAP_LAYER_DATA_NATURES: tuple[str, ...] = get_args(MapLayerDataNature)
 
-#: レイヤーの種別と、属するグループ。**種別を1つ足すときは必ず所属も決まる**。
+#: レイヤーの種別と、属するグループ。**種別を1つ足すときは必ず所属も決まる**。並びが群の中の並びで、よく使う種別を先に
+#: 置く（群の先頭から`OVERLAY_GROUP_INITIAL_ITEMS`件が最初に一覧へ並ぶ）。
 MAP_LAYER_CATEGORIES: tuple[LayerCategory, ...] = (
     LayerCategory("roadCondition", "road"),
-    LayerCategory("terrain", "environment"),
     LayerCategory("weather", "environment"),
+    LayerCategory("terrain", "environment"),
     LayerCategory("disaster", "environment"),
-    LayerCategory("trafficSafety", "spot"),
     LayerCategory("amenity", "spot"),
+    LayerCategory("trafficSafety", "spot"),
 )
-
-
-#: 陰影は属性ではなく標高の別の描き方。源泉に属性として現れないのが正しい。
-_HILLSHADE_LAYER_ID = "hillshade"
 
 #: 派生データベースの値を作った元の出典（HTML）。地図の出典表記と、書き出しの README の両方がここから組む。
 ELEVATION_ATTRIBUTION = (
@@ -198,9 +196,8 @@ ALWAYS_SHOWN_ATTRIBUTIONS: tuple[str, ...] = (
 
 
 def _static_layer_ids() -> tuple[str, ...]:
-    """地図へ出す一次属性（線・点は行の定義を持つもの、面は幾何が面のもの）＋描き方の派生。"""
-    shown = [attr.attr_id for attr in PRIMARY_ATTRIBUTES if attr.display_axes or attr.geometry == "area"]
-    return (*shown, _HILLSHADE_LAYER_ID)
+    """地図へ出す一次属性（線・点は行の定義を持つもの、面は幾何が面のもの）。"""
+    return tuple(attr.attr_id for attr in PRIMARY_ATTRIBUTES if attr.display_axes or attr.geometry == "area")
 
 
 #: 地図に載るものの名前。費用の軸のレンズは実行時に決まるためここには現れない。
@@ -236,15 +233,12 @@ class MapLayerSpec(NamedTuple):
     #: 種別（`MAP_LAYER_CATEGORIES`の`key`）。どのグループにも属さないものはNone。
     category: str | None
     data_nature: MapLayerDataNature = "raw"
-    #: 利用者の操作を待たずに表示するか。**性質で決める**——明示的にONにして初めて出るのが
-    #: 地図レイヤーの原則で、既定ONの根拠になるのは防災級の情報だけ。
-    default_on: bool = False
     #: 名前。一次属性を描くレイヤーは書かない——属性の名前をそのまま使う（`map_layer_label`）。
     label: str | None = None
-    #: ONにすると何が出るかの短い説明（一覧の行のtitle）。地図に載るものは必ず持つ（`MAP_LAYERS`）。
+    #: 何が分かるかの短い説明（1文。句点は付けない）。一覧の行のtitleと、ⓘの文の頭になる。地図に載るものは必ず持つ（`MAP_LAYERS`）。
     #: 費用の軸のレンズの説明は費用の軸の定義から作る。
     description: LayerText = ()
-    #: 一覧の行のⓘが出す、descriptionより詳しい説明。
+    #: ⓘで短い説明に続ける補足。1文ずつ「・」で始まる行にし（画面が箇条書きにする）、短い説明を繰り返さない。
     panel_hint: LayerText = ()
     #: 値の無い道の行（データなし・該当なし）を、最初は凡例で隠しておくか。値のある道が少なく、無い道の線が
     #: 地図を覆う道の線の層だけが持つ（利用者は凡例のチェックで出せる）。
@@ -260,7 +254,7 @@ def _tile_layer(
     category: str,
     *,
     description: LayerText,
-    panel_hint: LayerText,
+    panel_hint: LayerText = (),
     label: str | None = None,
     hide_missing_rows: bool = False,
 ) -> MapLayerSpec:
@@ -311,9 +305,6 @@ def size_sentence(axis: DisplayAxisSpec) -> str:
     largest = max(axis.categories, key=lambda category: category.radius_px or 0)
     return f"{largest.label}は円を大きく表示します。"
 
-
-#: 面で塗らない土地被覆の分類（ルートの区間の「緑と水」には出る）。
-_UNPAINTED_LANDCOVER = "・".join(cls.label for cls in LANDCOVER_CLASSES if not cls.painted)
 
 
 def _source_jma_elements(source: str) -> tuple[str, ...]:
@@ -367,90 +358,60 @@ _LAYER_SPECS: dict[str, MapLayerSpec] = {
     "elevation": MapLayerSpec(
         "gsiRelief",
         "terrain",
-        description=("国土地理院の色別標高図を重ねる",),
-        panel_hint=("国土地理院の色別標高図を重ねる",),
-    ),
-    # 標高図（何mか）と区別できる名前にする（坂の在りかだけを塗る）。
-    _HILLSHADE_LAYER_ID: MapLayerSpec(
-        "gsiTerrain",
-        "terrain",
-        label="起伏",
-        description=("斜面に陰影を付ける[平地は塗らない]",),
-        panel_hint=("国土地理院の標高データから斜面の陰影を作る。平らな所は塗らないため、下の地図の色が残る",),
+        description=("土地の高さを色で見られます",),
     ),
     # 塗らないのは、広い範囲を単色で覆って基礎地図を隠すわりに何も足さない分類だけ（`LandcoverClass.painted`）。
     "landcover": MapLayerSpec(
         "landcoverRaster",
         "terrain",
         segment_series="landcoverClass",
-        description=(f"周囲の緑・水辺・農地を面で重ねる{f'[{_UNPAINTED_LANDCOVER}は塗らない]' if _UNPAINTED_LANDCOVER else ''}",),
+        description=("畑・草地・林・水辺など、土地の使われ方を色で見られます",),
         panel_hint=(
-            "衛星画像から分類した10m四方ごとの土地の使われ方で、1区画に1種類だけを塗ります。"
-            f"ルートの結果の「{PRIMARY_ATTRIBUTES_BY_ID['landcover'].label}」は「道路の周囲",
+            f"・ルートの結果の「{PRIMARY_ATTRIBUTES_BY_ID['landcover'].label}」は道の周り",
             LayerTextSlot("landcoverRingOuterM", after="m"),
-            "の割合」で、この塗りとは違います。"
-            + (
-                f"{_UNPAINTED_LANDCOVER}は、基礎地図を隠すだけなので塗りません。"
-                if _UNPAINTED_LANDCOVER
-                else ""
-            ),
+            "の割合で、この塗りとは別です。",
         ),
     ),
     "stop_poi": _tile_layer(
         "stop_poi",
         "trafficSafety",
-        description=(f"{_point_kind_list('stop_poi')}の位置を種別ごとに表示",),
-        panel_hint=(
-            f"{_point_kind_list('stop_poi')}の位置です。",
-        ),
+        description=(f"止まったり減速したりする所[{_point_kind_list('stop_poi')}]です",),
     ),
     "supply_poi": _tile_layer(
         "supply_poi",
         "amenity",
-        description=(f"{_point_kind_list('supply_poi')}の位置を種別ごとに表示",),
+        description=(f"{_point_kind_list('supply_poi')}の場所です",),
         panel_hint=(
-            f"{_point_kind_list('supply_poi')}の位置です。「{_row_label('supply_poi', 'vending_drinks')}」は飲み物を売るもの、"
-            f"「{_row_label('supply_poi', 'vending_unknown')}」は売るものが分からないものです。"
-            f"{_row_label('supply_poi', 'convenience')}はチェーンの店だけです。閉店・撤去が反映されていないことがあります。",
+            f"・「{_row_label('supply_poi', 'vending_drinks')}」は飲み物を売るもの、"
+            f"「{_row_label('supply_poi', 'vending_unknown')}」は売るものが分からないものです。\n"
+            f"・{_row_label('supply_poi', 'convenience')}はチェーンの店だけです。\n・閉店・撤去が反映されていないことがあります。",
         ),
     ),
     "stop_place": _tile_layer(
         "stop_place",
         "amenity",
-        description=(f"{_point_kind_list('stop_place')}の位置を群ごとに表示",),
+        description=(f"{_point_kind_list('stop_place')}の場所です",),
         panel_hint=(
-            f"{_point_kind_list('stop_place')}の位置です。寺社は国の文化財の建造物を持つものを、ほかはOverture Mapsの地点を出します。"
-            "閉店にデータが追いついていないことがあり、現地と違う場合があります。",
+            "・寺社は国の文化財の建物を持つものです。\n"
+            "・閉店にデータが追いついていないことがあり、現地と違う場合があります。",
         ),
     ),
     "accident_point": _tile_layer(
         "accident_point",
         "trafficSafety",
-        description=(
-            "警察庁交通事故統計オープンデータ",
-            LayerTextSlot("accidentYears", "[", "]"),
-            "の発生地点を表示",
-        ),
-        panel_hint=(
-            "警察庁が公開する交通事故統計オープンデータ[本票",
-            LayerTextSlot("accidentYears", "、"),
-            f"]の発生地点です。{_size_text('accident_point')}",
-        ),
+        description=("交通事故の起きた場所です", LayerTextSlot("accidentYears", "[", "]")),
+        panel_hint=(f"・{_size_text('accident_point')}",),
     ),
     "precipitationNowcast": MapLayerSpec(
         "ownFetch",
         "weather",
         data_nature="dynamic",
-        label="降水ナウキャスト",
-        description=(
-            "気象庁の降水ナウキャスト・降水短時間予報と、数値予報モデルMSMの格子点の降水量を重ねて表示"
-            f"[{_MSM_REACH}先まで。線状降水帯も重ねる]",
-        ),
+        label="雨雲",
+        description=("雨の降っている所と、この先の雨雲を、時刻を動かして見られます",),
         panel_hint=(
-            f"気象庁の雨雲です。時刻スライダーで、{_NOWCAST_REACH}先までは降水ナウキャスト、"
-            f"{_SHORT_RANGE_REACH}先までは降水短時間予報、{_MSM_REACH}先まではMSMの格子点[約5km間隔]の降水量を"
-            f"升目で塗ります[ズーム{MSM_GRID_MIN_ZOOM}以上]。{MODEL_VALUE_DISCLAIMER}"
-            "赤は線状降水帯で、予測は格子単位のため四角く見えます。取得に失敗することがあります。",
+            f"・{_NOWCAST_REACH}先までは実況に近い予測、{_SHORT_RANGE_REACH}先までは短時間予報、"
+            f"{_MSM_REACH}先までは数値予報モデルの値で、赤は線状降水帯です。\n・{MODEL_VALUE_DISCLAIMER}\n"
+            "・取得に失敗することがあります。",
         ),
     ),
     # 「負担で塗る」の道路の塗り（向かい風・追い風）と見分けられる名前にする。
@@ -458,34 +419,25 @@ _LAYER_SPECS: dict[str, MapLayerSpec] = {
         "msmGrid",
         "weather",
         data_nature="dynamic",
-        label="風[矢印]",
-        description=(
-            f"気象庁の数値予報モデルMSMの格子点の風向・風速を、格子点の位置に矢印で表示[{_MSM_REACH}先まで]",
-        ),
+        label="風",
+        description=("風の向きと強さを、約5kmごとの矢印で見られます",),
         panel_hint=(
-            "気象庁MSMの格子点[約5km間隔]の風を矢印で示します。格子点の間の地点の風ではありません。"
-            f"{MODEL_VALUE_DISCLAIMER}向きは風の吹いていく向き、長さ・太さ・濃さは風速です。"
-            f"ズーム{MSM_GRID_MIN_ZOOM}以上で出し、時刻スライダーで最長{_MSM_REACH}先まで切り替えられます。",
+            "・矢印は風の吹いていく向きで、長く太いほど強い風です。\n"
+            f"・{_MSM_REACH}先まで時刻で切り替えられます。\n・{MODEL_VALUE_DISCLAIMER}",
         ),
     ),
-    # 予兆が出てからONにするのでは手遅れになるため既定ONにする。危険度が出ている間は広い範囲が
-    # 塗られ、他の面レイヤー（緑と水・標高図）も基礎地図の色も覆われるが、危険度ゼロの領域は
-    # 配信元のタイルが透明なので、影響が出るのは警戒度が上がっている間だけ。そのときは防災の
-    # 情報を優先する（利用者は一覧でOFFにすれば戻せる）。回避するしかない危険なので、費用には入れず表示だけにする。
+    # 回避するしかない危険なので、費用には入れず表示だけにする。
     # 要素の名前と、時刻に対する振る舞いは要素の宣言から組み立てる。段の数と名前は凡例に並ぶので文に書かない。
     "disaster": MapLayerSpec(
         "ownFetch",
         "disaster",
         data_nature="dynamic",
-        default_on=True,
-        label="災害",
-        description=(
-            f"気象庁の{'・'.join(labels for labels, _ in _DISASTER_BY_FRAME_RULE)}をまとめて表示",
-        ),
+        label="災害の危険度",
+        description=("気象庁の防災情報の危険度を地図に出します",),
         panel_hint=(
-            "気象庁の防災情報です。"
-            + "".join(labels + detail for labels, detail in _DISASTER_BY_FRAME_RULE)
-            + "平常時は透明で、ONのままでも見た目は変わりません。取得に失敗することがあります。",
+            "・危険の無いときは何も出ません。\n"
+            + "".join(f"・{labels}{detail}\n" for labels, detail in _DISASTER_BY_FRAME_RULE)
+            + "・取得に失敗することがあります。",
         ),
     ),
 }

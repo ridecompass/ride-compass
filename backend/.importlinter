@@ -50,7 +50,6 @@ source_modules =
     app.batch
 forbidden_modules =
     app.infrastructure.tile_cache
-    app.infrastructure.tile_persistent_cache
 allow_indirect_imports = True
 
 [importlinter:contract:domain-formats]

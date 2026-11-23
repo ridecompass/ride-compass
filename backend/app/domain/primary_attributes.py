@@ -60,11 +60,11 @@ PRIMARY_ATTRIBUTES: tuple[PrimaryAttributeSpec, ...] = (
     ATTR_LIT := PrimaryAttributeSpec(attr_id="lit", label="街灯", geometry="line"),
     ATTR_TUNNEL := PrimaryAttributeSpec(attr_id="tunnel", label="トンネル", geometry="line"),
     ATTR_ONEWAY := PrimaryAttributeSpec(attr_id="oneway", label="一方通行", geometry="line"),
-    ATTR_ELEVATION := PrimaryAttributeSpec(attr_id="elevation", label="標高図", geometry="area"),
+    ATTR_ELEVATION := PrimaryAttributeSpec(attr_id="elevation", label="標高", geometry="area"),
     ATTR_STOP_POI := PrimaryAttributeSpec(
         attr_id="stop_poi",
         tile_kind="poi",
-        label="停止要因",
+        label="信号・一時停止",
         geometry="point",
         # 種別は評価へ効く（停止密度の材料になる）が、種別ごとの重みは軸定義が持ち運用で
         # 入れ替わるため、順序を表す評価配色は使わず色相で分ける。
@@ -118,7 +118,7 @@ PRIMARY_ATTRIBUTES: tuple[PrimaryAttributeSpec, ...] = (
     ATTR_ACCIDENT_POINT := PrimaryAttributeSpec(
         attr_id="accident_point",
         tile_kind="accident",
-        label="事故[警察庁統計]",
+        label="事故の地点",
         geometry="point",
         # 1つの点に2つの見方がある。色は先頭の軸（当事者）が決め、重大度は大きさで示す
         # ——重大度を色でも表すと当事者の色と取り合う。
@@ -182,7 +182,7 @@ PRIMARY_ATTRIBUTES: tuple[PrimaryAttributeSpec, ...] = (
     PrimaryAttributeSpec(
         attr_id="supply_poi",
         tile_kind="poi",
-        label="補給・休憩ポイント",
+        label="補給・休憩",
         geometry="point",
         display_axes=(
             DisplayAxisSpec(

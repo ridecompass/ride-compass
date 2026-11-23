@@ -100,10 +100,6 @@ class Settings(BaseSettings):
     # --network=hostで起動するためこの既定値のまま到達できる。
     redis_url: str = "redis://localhost:6379/0"
 
-    # ディスク永続キャッシュ（`infrastructure/tile_persistent_cache.py`）の容量上限（MB）。置く値は鍵ごとの
-    # 失効（expire）で入れ替わるため、上限は伸び続けたときの頭打ちとして置いている（本番VMのディスクは48GB）。
-    tile_persistent_cache_size_limit_mb: int = 1024
-
     # 焼き済みタイル・外部タイルの置き場の容量上限（MB）。この置き場は鍵に世代を持たない
     # ため、形の署名が変わった旧世代は書かれなくなるだけで残り続ける。上限を超えると
     # diskcacheが書いた時刻の古いものから退避する。本番の実測は数十MB規模で、上限は

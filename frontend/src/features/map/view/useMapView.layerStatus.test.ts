@@ -19,12 +19,13 @@ describe("useMapView のチップの取得の状態", () => {
     serve();
     const { result } = renderMapView();
     await waitFor(() => expect(chip(result, "surface")).toBeDefined());
+    act(() => result.current.overlayControls.onToggle("disaster", true));
 
     act(() => result.current.look.onLayerDataStatusChange({ surface: "loading" }));
     act(() => result.current.look.onViewportChange({ ...VIEWPORT, zoom: 8 }));
 
     expect(chip(result, "surface")).toMatchObject({ dataStatus: "loading", notice: TILE_ZOOM_TOO_WIDE_NOTICE });
-    expect(chip(result, "hillshade")?.notice).toBeNull();
+    expect(chip(result, "elevation")?.notice).toBeNull();
     await waitFor(() => expect(chip(result, "disaster")?.dataStatus).toBe("empty"));
   });
 

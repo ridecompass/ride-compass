@@ -15,6 +15,8 @@ import {
   Download,
   Droplet,
   EllipsisVertical,
+  Eye,
+  EyeOff,
   Footprints,
   Gauge,
   GripVertical,
@@ -106,6 +108,9 @@ export const CopyIcon = fromLucide(Copy);
 export const RedrawMapIcon = fromLucide(RotateCw);
 /** 群の中で一覧に並べる項目を選ぶ。 */
 export const ChooseItemsIcon = fromLucide(ListChecks);
+/** 項目を選ぶ間の、一覧に並べる項目（`UnlistedIcon`と対で、並べるかを形で見分ける）。 */
+export const ListedIcon = fromLucide(Eye);
+export const UnlistedIcon = fromLucide(EyeOff);
 /** 負担で道を塗る（「負担で塗る」の入口）。 */
 export const BurdenPaintIcon = fromLucide(Paintbrush);
 /** 負担（所要時間に足す代償）の量。 */

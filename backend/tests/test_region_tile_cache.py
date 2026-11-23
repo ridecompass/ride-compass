@@ -11,10 +11,8 @@
 
 import pytest
 
-import numpy as np
 
-from app.domain.feature_materials import FeatureMaterials
-from app.infrastructure import feature_material_cache, region_tile_cache, tile_cache
+from app.infrastructure import region_tile_cache, tile_cache
 from app.infrastructure.cache_identity import LANDCOVER_TILE_VERSION, region_tile_key
 from app.infrastructure.landcover_raster import raster_paths
 from tests.fake_external_log import record_external_calls
@@ -140,18 +138,15 @@ def test_the_landcover_generation_carries_the_tile_version(configure_rasters):
     assert region_tile_cache.landcover_generation(raster_paths()).startswith(f"{LANDCOVER_TILE_VERSION}/")
 
 
-async def test_discarding_after_a_rebuild_drops_every_region_tile_and_the_feature_materials(configure_rasters):
-    """作り直しのあと、前の表で焼いた絵と材料を配らない。地理院のタイルは表から作らないので残す。"""
+async def test_discarding_after_a_rebuild_drops_every_region_tile(configure_rasters):
+    """作り直しのあと、前の表で焼いた絵を配らない。地理院のタイルは表から作らないので残す。"""
     landcover = region_tile_cache.landcover_generation(raster_paths())
     region_keys = [
         region_tile_key("road_surface", region_tile_cache.MVT_TILE_GENERATIONS["road_surface"], 12, 1, 1, "pbf"),
         region_tile_key("landcover", landcover, 12, 1, 1, "png"),
     ]
     _store(*region_keys, "xyz/dem_png/12/3637/1612.png")
-    materials = FeatureMaterials(feature_keys=("1-0",), columns={"num_a": np.array([1.0])})
-    await feature_material_cache.set_tile_materials(12, 1, 1, materials, value_shape="shape")
 
     removed = region_tile_cache.discard_region_tiles()
 
     assert (removed, _kept(*region_keys, "xyz/dem_png/12/3637/1612.png")) == (len(region_keys), {"xyz/dem_png/12/3637/1612.png"})
-    assert await feature_material_cache.get_tile_materials(12, 1, 1, value_shape="shape") is None

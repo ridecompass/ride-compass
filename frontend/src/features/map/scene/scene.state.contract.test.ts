@@ -33,11 +33,10 @@ describe("状態を地図へ伝えた結果", () => {
     it("表示ONにしたものだけが見えている", () => {
       const { map, handle } = createRecordingMap();
 
-      rebuild(map, shown({ elevation: true, landcover: false, hillshade: false }));
+      rebuild(map, shown({ elevation: true, landcover: false }));
 
       expect(handle.layer(areaLayerId("elevation"))?.visibility).toBe("visible");
       expect(handle.layer(areaLayerId("landcover"))?.visibility).toBe("none");
-      expect(handle.layer(areaLayerId("hillshade"))?.visibility).toBe("none");
     });
   });
 

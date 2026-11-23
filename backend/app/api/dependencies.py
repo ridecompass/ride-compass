@@ -188,15 +188,18 @@ def get_place_search_service(tile_sessions: TileSessions):
     return PlaceSearchService(partial(_open_place_search_reads, tile_sessions))
 
 
-def get_lens_service(weather_service: WeatherService = Depends(get_weather_service)) -> LensService:
-    """地図のレンズの道ごとの値。DBを読まない（取込範囲全体の道の網から求める）。"""
-    return LensService(weather_service)
-
-
-async def get_road_inspector_service(tile_sessions: TileSessions, lens: LensService = Depends(get_lens_service)):
-    """道の窓。道の一次属性を引くセッションと、DBを読まないレンズの値。"""
+async def get_lens_service(tile_sessions: TileSessions, weather_service: WeatherService = Depends(get_weather_service)):
+    """地図のレンズの道ごとの値。タイルのフィーチャーの鍵を読むセッション（値は取込範囲全体の道の網から求める）。"""
     async with tile_sessions() as session:
-        yield RoadInspectorService(RegionService(repository=RoadGraphRepository(session)), lens)
+        yield LensService(weather_service, RoadGraphRepository(session))
+
+
+async def get_road_inspector_service(tile_sessions: TileSessions,
+                                     weather_service: WeatherService = Depends(get_weather_service)):
+    """道の窓。道の一次属性とタイルのフィーチャーの鍵を、同じセッションで引く。"""
+    async with tile_sessions() as session:
+        repository = RoadGraphRepository(session)
+        yield RoadInspectorService(RegionService(repository=repository), LensService(weather_service, repository))
 
 
 def get_jma_tile_client():

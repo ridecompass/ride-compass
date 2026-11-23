@@ -30,9 +30,8 @@ from app.domain.elevation_profile import ProfileSpans
 from app.domain.geo import LatLonPoint
 from app.domain.material_catalog import GRADIENT_PERCENT
 from app.domain.msm import MsmGrid
-from app.domain.region import ROAD_TILE_MIN_ZOOM, tile_bounds_lonlat
 from app.domain.road_classes import RoadClassDefinitions, class_columns, layer_columns
-from app.domain.search_graph import EdgeValues
+from app.domain.search_graph import EdgeValues, run_starts
 from app.domain.stopwatch import elapsed_ms, start_timer
 from app.domain.tuning import RIDER_HEIGHT_ID, ROUGHNESS_CAP_ID, Tuning
 from app.domain.wind_height import ROUGHNESS_LENGTH_M, WindHeights, height_factors
@@ -99,7 +98,7 @@ class RoadNetwork:
     distance_m: np.ndarray  # float64
     bearing_deg: np.ndarray  # float64, NaN=方位が決まらない
     # 区間の道の、道の順方向の始点（一番若い区間の始まり）から終点（一番後の区間の終わり）を見た方位。道1本で塗るレンズが読む。
-    way_bearing_deg: np.ndarray  # float64
+    edge_way_bearing_deg: np.ndarray  # float64
     mid_lat: np.ndarray
     mid_lon: np.ndarray
     # 断面から決まる区間の値（走る向きに見た値。`domain/elevation_profile.py: profile_summaries`）。
@@ -124,6 +123,12 @@ class RoadNetwork:
     unknown_elevation_m: np.ndarray  # float64
     mean_elevation_m: np.ndarray  # float64
 
+    # 道1本の値（区分の層が道1本で塗るズームの値）。道は区間を持つ道と、区間を持たない道（区間の列には現れない）の全部で、
+    # `osm_way_id`の昇順。材料の列は区間の材料と同じ並びと語彙で、区間を持つ道は区間の値を集めたもの（`domain/road_network_build.py`）。
+    way_osm_id: np.ndarray  # int64
+    way_numeric_values: EdgeValues  # (道, 列), NaN=欠損
+    way_categorical_codes: np.ndarray  # (道, 列) int16。0は値なし
+
     def __post_init__(self) -> None:
         """行数と列数が揃っていることを、組み立てた場所で確かめる。
 
@@ -131,11 +136,12 @@ class RoadNetwork:
         """
         node_count = len(self.node_osm_id)
         edge_count = len(self.edge_way_id)
+        rows = {"node_": node_count, "way_": len(self.way_osm_id)}
         wrong = {
             f.name: len(value)
             for f in fields(self)
             if isinstance(value := getattr(self, f.name), np.ndarray) and not f.name.startswith(_POINT_PREFIXES)
-            and len(value) != (node_count if f.name.startswith("node_") else edge_count)
+            and len(value) != rows.get(f.name[:f.name.find("_") + 1], edge_count)
         }
         for start, count, points in (("edge_profile_start", "edge_profile_points", "profile_elevation_m"),
                                      ("edge_shape_start", "edge_shape_points", "shape_lon"),
@@ -152,6 +158,8 @@ class RoadNetwork:
             for name, matrix, ids in (
                 ("numeric_values", self.numeric_values, self.numeric_ids),
                 ("categorical_codes", self.categorical_codes, self.categorical_ids),
+                ("way_numeric_values", self.way_numeric_values, self.numeric_ids),
+                ("way_categorical_codes", self.way_categorical_codes, self.categorical_ids),
             )
             if matrix.shape[1] != len(ids)
         }
@@ -174,10 +182,15 @@ class RoadNetwork:
                             self.unknown_elevation_m, self.mean_elevation_m)
 
     @cached_property
-    def road_tile_rows(self) -> "TileRows":
-        """地図の道のタイルの一番粗いズームのタイルごとの、区間の形の外接矩形が重なる区間の行（`rows_in_tile`が引く）。
-        道路網と同じ寿命で1回だけ作る。"""
-        return TileRows.build(self, ROAD_TILE_MIN_ZOOM)
+    def edge_first_rows(self) -> np.ndarray:
+        """区間ごとの一番若い行（区間の順）。区間の行は、ここから次の区間の一番若い行の前まで。道路網と同じ寿命で1回だけ求める。"""
+        return np.flatnonzero(run_starts(self.edge_way_id) | run_starts(self.edge_segment))
+
+    @cached_property
+    def edge_keys(self) -> np.ndarray:
+        """`edge_first_rows`の区間の鍵（`edge_key`。昇順）。道路網と同じ寿命で1回だけ求める。"""
+        first = self.edge_first_rows
+        return edge_key(self.edge_way_id[first], self.edge_segment[first])
 
     def wind_height_factors(self, grid: MsmGrid, tuning: Tuning) -> np.ndarray:
         """全区間の、予報の10mの風を乗り手の高さへ直す倍率（`domain/wind_height.py: height_factors`）。土地被覆の割合の欠けは、
@@ -278,70 +291,13 @@ def slice_network(
     return slice_rows(network, classes, _rows_in_bbox(network, min_lon, min_lat, max_lon, max_lat))
 
 
-def _rows_in_bbox(network: RoadNetwork, min_lon: float, min_lat: float, max_lon: float, max_lat: float,
-                 rows: np.ndarray | None = None) -> np.ndarray:
-    """区間の形の外接矩形が範囲に重なる区間の行（昇順）。`rows`（昇順）を渡すと、その行の中だけを比べる。"""
-    among = slice(None) if rows is None else rows
-    overlaps = np.asarray(network.edge_max_lon[among]) >= min_lon
-    overlaps &= np.asarray(network.edge_min_lon[among]) <= max_lon
-    overlaps &= np.asarray(network.edge_max_lat[among]) >= min_lat
-    overlaps &= np.asarray(network.edge_min_lat[among]) <= max_lat
-    hit = np.flatnonzero(overlaps)
-    return hit if rows is None else rows[hit]
-
-
-def rows_in_tile(network: RoadNetwork, z: int, x: int, y: int) -> np.ndarray:
-    """タイル`z/x/y`（`ROAD_TILE_MIN_ZOOM`以上）に区間の形の外接矩形が重なる区間の行（昇順）。全区間は比べず、そのタイルを
-    含む`ROAD_TILE_MIN_ZOOM`のタイルに重なる行（`RoadNetwork.road_tile_rows`）の中だけを比べる。"""
-    bbox = tile_bounds_lonlat(z, x, y)
-    return _rows_in_bbox(network, bbox.min_longitude, bbox.min_latitude, bbox.max_longitude, bbox.max_latitude,
-                        network.road_tile_rows.rows_of(z, x, y))
-
-
-@dataclass(frozen=True)
-class TileRows:
-    """`zoom`のタイルごとの、区間の形の外接矩形が重なる区間の行。タイルは番号`x * 2**zoom + y`で引く。
-
-    shapelyの`STRtree`は区間ごとに形のオブジェクトを持ち、網の区間の配列の何倍ものメモリを常駐させるので、行の配列だけで持つ。"""
-
-    zoom: int
-    #: 区間の重なるタイルの番号（昇順）と、タイルごとの`rows`の範囲の始まり（末尾に`rows`の長さ）。
-    tiles: np.ndarray
-    starts: np.ndarray
-    #: タイルごとに昇順に並べてつないだ区間の行。
-    rows: np.ndarray
-
-    @classmethod
-    def build(cls, network: RoadNetwork, zoom: int) -> "TileRows":
-        n = 2**zoom
-        # タイルの境目は`tile_bounds_lonlat`から引き、要求のタイルの範囲と同じ値で比べる（重なる行を取りこぼさない）。
-        bounds = [tile_bounds_lonlat(zoom, i, i) for i in range(n)]
-        # 重なる列は「東の境目 >= 区間の西端」かつ「西の境目 <= 区間の東端」。行は北が若い番号なので、緯度の符号を返して同じに引く。
-        first_x = np.searchsorted([b.max_longitude for b in bounds], np.asarray(network.edge_min_lon), side="left")
-        last_x = np.searchsorted([b.min_longitude for b in bounds], np.asarray(network.edge_max_lon), side="right") - 1
-        first_y = np.searchsorted([-b.min_latitude for b in bounds], -np.asarray(network.edge_max_lat), side="left")
-        last_y = np.searchsorted([-b.max_latitude for b in bounds], -np.asarray(network.edge_min_lat), side="right") - 1
-        width = np.maximum(last_x - first_x + 1, 0)
-        counts = width * np.maximum(last_y - first_y + 1, 0)
-        edge = np.repeat(np.arange(len(counts), dtype=np.int64), counts)
-        # 区間ごとに覆うタイルの中の位置（0から）を、列の幅で横・縦に分ける。
-        position = np.arange(int(counts.sum())) - np.repeat(np.cumsum(counts) - counts, counts)
-        repeated_width = np.repeat(width, counts)
-        tile = ((np.repeat(first_x, counts) + position % repeated_width) * n
-                + np.repeat(first_y, counts) + position // repeated_width)
-        # 安定な並べ替えなので、同じタイルの中では区間の行の昇順が保たれる。
-        order = np.argsort(tile, kind="stable")
-        tiles, starts = np.unique(tile[order], return_index=True)
-        return cls(zoom=zoom, tiles=tiles, starts=np.append(starts, len(order)), rows=edge[order])
-
-    def rows_of(self, z: int, x: int, y: int) -> np.ndarray:
-        """タイル`z/x/y`（`zoom`以上）を含む`zoom`のタイルに重なる区間の行（昇順）。"""
-        shift = z - self.zoom
-        tile = (x >> shift) * 2**self.zoom + (y >> shift)
-        index = int(np.searchsorted(self.tiles, tile))
-        if index == len(self.tiles) or self.tiles[index] != tile:
-            return self.rows[:0]
-        return self.rows[self.starts[index]:self.starts[index + 1]]
+def _rows_in_bbox(network: RoadNetwork, min_lon: float, min_lat: float, max_lon: float, max_lat: float) -> np.ndarray:
+    """区間の形の外接矩形が範囲に重なる区間の行（昇順）。"""
+    overlaps = np.asarray(network.edge_max_lon) >= min_lon
+    overlaps &= np.asarray(network.edge_min_lon) <= max_lon
+    overlaps &= np.asarray(network.edge_max_lat) >= min_lat
+    overlaps &= np.asarray(network.edge_min_lat) <= max_lat
+    return np.flatnonzero(overlaps)
 
 
 def slice_rows(
@@ -496,3 +452,20 @@ def edge_endpoint_points(network: RoadNetwork, edges: Iterable[tuple[int, int, b
         for node in (int(network.edge_from[row]), int(network.edge_to[row])):
             points.append(LatLonPoint(float(network.node_lat[node]), float(network.node_lon[node])))
     return points
+
+
+# --- 区間の鍵と、昇順の鍵の中の位置 --------------------------------------------------------------------------
+
+
+def edge_key(way: np.ndarray, segment: np.ndarray) -> np.ndarray:
+    """区間の`(道, 区間番号)`を、並びを保つ1つの整数にしたもの（区間番号は smallint）。"""
+    return np.asarray(way, dtype=np.int64) * 2**16 + np.asarray(segment, dtype=np.int64)
+
+
+def positions_in(sorted_keys: np.ndarray, keys: np.ndarray) -> np.ndarray:
+    """`keys`の各要素が昇順の`sorted_keys`の何番目か（無ければ-1）。"""
+    if len(sorted_keys) == 0:
+        return np.full(len(keys), -1, dtype=np.int64)
+    at = np.minimum(np.searchsorted(sorted_keys, keys), len(sorted_keys) - 1)
+    return np.where(sorted_keys[at] == keys, at, -1)
+

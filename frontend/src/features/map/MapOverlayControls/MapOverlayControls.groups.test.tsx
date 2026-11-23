@@ -1,6 +1,6 @@
 /**
  * `MapOverlayControls.tsx`——「表示」の一覧が、レイヤーを源泉の群へ束ねて並べ、群をたため、群ごとに一覧に並べる項目を選べ、
- * どちらも次の訪問でも保つこと。「表示する項目を選ぶ」の「すべて」で、群の項目をまとめて選べること。
+ * どちらも次の訪問でも保つこと。項目を選んだことの無い群は、並びの先頭から宣言の数だけを並べること。
  *
  * 群・カテゴリの名前と並びはbackendの宣言（生成物）から導き、テストでも書き写さない。
  *
@@ -11,9 +11,11 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { categoriesOf, chip, LIST_NAME, ROAD, rowNames, setup } from "@/testing/mapOverlayControls";
 import { MAP_OVERLAY_GROUP_LABELS, MAP_OVERLAY_GROUP_ORDER } from "@/features/map/layers/mapLayers";
+import { mapDisplay } from "@/types/generated/mapDisplay";
 
 const ROAD_LABEL = MAP_OVERLAY_GROUP_LABELS[ROAD];
-const chooser = () => screen.getByRole("button", { name: `${ROAD_LABEL}の表示項目を選ぶ` });
+const INITIAL = mapDisplay.overlayGroupInitialItems;
+const chooser = () => screen.getByRole("button", { name: /^項目を選ぶ/ });
 
 afterEach(() => {
   window.localStorage.clear();
@@ -58,44 +60,31 @@ describe("群", () => {
     expect(rowNames(second.list)).toEqual(["member"]);
   });
 
-  it("「表示する項目を選ぶ」で外した項目は一覧に並べず（地図に出していればOFFにする）、次の訪問でも保ち、並べ直してもONにはしない", async () => {
+  it("項目を選んだことの無い群は、並びの先頭から宣言の数だけを並べ、並べていない数を「項目を選ぶ」に出す。地図に出している項目は先頭でなくても並べる", async () => {
+    const names = Array.from({ length: INITIAL + 2 }, (_, i) => `m${i}`);
+    const { list } = await setup(names.map((name, i) => chip(name, { on: i === INITIAL + 1 })));
+
+    expect(rowNames(list)).toEqual([...names.slice(0, INITIAL), names[INITIAL + 1]]);
+    expect(chooser()).toHaveAccessibleName("項目を選ぶ（ほかに 1 件）");
+  });
+
+  it("「項目を選ぶ」で外した項目は一覧に並べず（地図に出していればOFFにする）、次の訪問でも保ち、並べ直してもONにはしない", async () => {
     const first = await setup([chip("kept"), chip("dropped", { on: true })]);
 
     await first.user.click(chooser());
-    await first.user.click(screen.getByRole("checkbox", { name: "droppedを一覧に並べる" }));
-    await first.user.click(chooser());
+    await first.user.click(screen.getByRole("button", { name: "droppedを一覧に並べる" }));
+    await first.user.click(screen.getByRole("button", { name: "完了" }));
 
     expect(first.props.onToggle.mock.calls).toEqual([["dropped", false]]);
-    expect(rowNames(first.list)).toEqual(["kept"]);
     first.unmount();
 
     const second = await setup([chip("kept"), chip("dropped")]);
     expect(rowNames(second.list)).toEqual(["kept"]);
     await second.user.click(chooser());
-    expect(screen.getByRole("checkbox", { name: "droppedを一覧に並べる" })).not.toBeChecked();
-    await second.user.click(screen.getByRole("checkbox", { name: "droppedを一覧に並べる" }));
-    await second.user.click(chooser());
+    expect(screen.getByRole("button", { name: "droppedを一覧に並べる" })).toHaveAttribute("aria-pressed", "false");
+    await second.user.click(screen.getByRole("button", { name: "droppedを一覧に並べる" }));
+    await second.user.click(screen.getByRole("button", { name: "完了" }));
     expect(rowNames(second.list)).toEqual(["kept", "dropped"]);
     expect(second.props.onToggle).not.toHaveBeenCalled();
-  });
-
-  it("「表示する項目を選ぶ」の「すべて」は、1つでも外れていれば全部並べ、全部並んでいれば全部外す（外す項目のONはOFFにする）", async () => {
-    const { user, props, list } = await setup([chip("shown", { on: true }), chip("off"), chip("dropped")]);
-    const all = () => screen.getByRole("checkbox", { name: `${ROAD_LABEL}の項目をすべて選ぶ/外す` });
-
-    await user.click(chooser());
-    expect(all()).toBeChecked();
-    await user.click(screen.getByRole("checkbox", { name: "droppedを一覧に並べる" }));
-    expect(all()).not.toBeChecked();
-    await user.click(all());
-    await user.click(chooser());
-    expect(rowNames(list)).toEqual(["shown", "off", "dropped"]);
-    expect(props.onToggle).not.toHaveBeenCalled();
-
-    await user.click(chooser());
-    await user.click(all());
-    await user.click(chooser());
-    expect(rowNames(list)).toEqual([]);
-    expect(props.onToggle.mock.calls).toEqual([["shown", false]]);
   });
 });
