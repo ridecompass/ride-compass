@@ -35,6 +35,10 @@ export type MapOverlayGroup = (typeof mapDisplay.overlayGroups)[number]["key"];
 export const MAP_OVERLAY_GROUP_LABELS: Readonly<Record<string, string>> = Object.fromEntries(
   mapDisplay.overlayGroups.map((group) => [group.key, group.label]),
 );
+/** 群ごとに、「表示」の一覧へ並びの先頭から最初に並べる項目の数。 */
+export const MAP_OVERLAY_GROUP_INITIAL_ITEMS: Readonly<Record<string, number>> = Object.fromEntries(
+  mapDisplay.overlayGroups.map((group) => [group.key, group.initialItems]),
+);
 /** チップの表示順。**源泉の並びがそのまま並び順**（画面は並べ替えない）。 */
 export const MAP_OVERLAY_GROUP_ORDER: readonly MapOverlayGroup[] = mapDisplay.overlayGroups.map((group) => group.key);
 

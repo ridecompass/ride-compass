@@ -27,6 +27,8 @@ from app.domain.weather_elements import (
 class OverlayGroup(NamedTuple):
     key: str
     label: str
+    #: 「表示」の一覧に、並びの先頭から最初に並べる項目の数。残りは利用者がこの群で選んで足す。
+    initial_items: int
 
 
 class LayerCategory(NamedTuple):
@@ -37,13 +39,10 @@ class LayerCategory(NamedTuple):
 
 #: 並びがそのまま「表示」の一覧の群の並び順になる。
 MAP_OVERLAY_GROUPS: tuple[OverlayGroup, ...] = (
-    OverlayGroup("road", "道路"),
-    OverlayGroup("environment", "天気と地形"),
-    OverlayGroup("spot", "スポット"),
+    OverlayGroup("road", "道路", initial_items=3),
+    OverlayGroup("environment", "天気と地形", initial_items=2),
+    OverlayGroup("spot", "スポット", initial_items=3),
 )
-
-#: 「表示」の一覧に、どの群も並びの先頭から最初に並べる項目の数。残りは利用者が群ごとに選んで足す。
-OVERLAY_GROUP_INITIAL_ITEMS = 3
 
 
 class _LegendSharedRow(NamedTuple):
@@ -111,7 +110,7 @@ MapLayerDataNature = Literal["raw", "dynamic"]
 MAP_LAYER_DATA_NATURES: tuple[str, ...] = get_args(MapLayerDataNature)
 
 #: レイヤーの種別と、属するグループ。**種別を1つ足すときは必ず所属も決まる**。並びが群の中の並びで、よく使う種別を先に
-#: 置く（群の先頭から`OVERLAY_GROUP_INITIAL_ITEMS`件が最初に一覧へ並ぶ）。
+#: 置く（群の先頭から`OverlayGroup.initial_items`件が最初に一覧へ並ぶ）。
 MAP_LAYER_CATEGORIES: tuple[LayerCategory, ...] = (
     LayerCategory("roadCondition", "road"),
     LayerCategory("weather", "environment"),
