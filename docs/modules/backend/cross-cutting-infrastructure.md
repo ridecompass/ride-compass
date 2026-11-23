@@ -42,7 +42,7 @@ DB接続・Redis・HTTPクライアント・レート制限・ログ・デバッ
 | domain | `ride_track.py` | 端末が送る走り（`POST /api/rides`の本文）の型と、自分の走りの一覧・1件の応答の型。走った線の長さ（休んで途切れた線の間は数えない） |
 | domain | `account.py` | 規約の今の版（`domain/account.py: TERMS_VERSION`）・札の期限・自分の状態の応答の型 |
 | infrastructure | `ride_gpx.py` | 走りを GPX 1.1 に直す処理。時刻・緯度経度・標高（走った地点の地形の標高。無い点は端末の高さ）は標準の欄、速さと進む向きは Garmin の`TrackPointExtension` v2、端末の高さ・位置と標高の誤差・出来事・画面とサーバーの版・端末の名前は自前の名前空間。休むごとに`trkseg`を分ける。書いた GPX から線を読み戻す（`infrastructure/ride_gpx.py: read_ride_lines`。走りを受けたときの距離と、1件の口が使う） |
-| infrastructure | `ride_track_models.py` | 走りの記録の表`ride_tracks`（走り1回を1行。GPX と、推したルート（候補を受けたまま）、生成の条件と予報（`context`）を受けたまま）。同じ走りの id は先の行のまま書かない。走った地点ごとの地形の標高を、取り込んだ標高タイルから製品の優先の順に引く問い合わせ（`infrastructure/dem_elevation.py: fill_elevations`）も持つ。行は送った人（`accounts`）に結び、本人の分だけを読んで消す口を持つ。一覧に出す走り始めの時刻・距離・かかった時間は列に持ち、一覧は GPX を読まない。利用者の無い行はログインを入れる前の走りで、本人の口からは読まれない。開発機の較正の道具（`run_probe.py`）は全部を読む |
+| infrastructure | `ride_track_models.py` | 走りの記録の表`ride_tracks`（走り1回を1行。GPX と、推したルート（候補を受けたまま）、生成の条件と予報（`context`）を受けたまま）。同じ走りの id は先の行のまま書かない。走った地点ごとの地形の標高を、取り込んだ標高タイルから製品の優先の順に引く問い合わせ（`infrastructure/dem_elevation.py: fill_elevations`）も持つ。行は送った人（`accounts`）に結び、本人の分だけを読んで消す口を持つ。一覧に出す走り始めの時刻・距離・かかった時間は列に持ち（利用者のある行は表の制約で空にできない）、一覧は GPX を読まない。利用者の無い行はログインを入れる前の走りで、本人の口からは読まれない。開発機の較正の道具（`run_probe.py`）は全部を読む |
 | infrastructure | `account_models.py` | 利用者（ログインの方法とその方法での番号で1行）・ログインの札（乱数は持たず hash だけ）・同意（版ごとに1行、やめたら時刻を書いて残す）の表と読み書き |
 | infrastructure | `google_identity.py` | Google の ID トークンを公式のライブラリで確かめて`sub`を取り出す。クライアント ID が無ければログインを断り、証明書を取れない失敗はトークンの誤りと分けて送り出す |
 | services | `account_service.py` | ログイン（札を作る）・ログアウト・状態・同意・同意のやめ・自分の走りの一覧と1件と消す取引。一覧の距離とかかった時間は GPX から求める |

@@ -2,7 +2,7 @@
 
 行は書いたあと変えない。同じ走り（端末が付けた id）が二度届いても、先の行のまま書かない（応答だけを失った端末が送り直すため）。
 走りは送った利用者のもので、本人だけが読めて消せる（利用者の無い行は、ログインを入れる前に受けた走り）。
-走りの一覧に出す走り始めの時刻・距離・かかった時間は、受けたときに1回だけ求めて列に書き、一覧は GPX を読まない（ログインを入れる前の行は空）。
+走りの一覧に出す走り始めの時刻・距離・かかった時間は、受けたときに1回だけ求めて列に書き、一覧は GPX を読まない（ログインを入れる前の行は空で、利用者のある行は空にできない）。
 """
 
 from datetime import datetime
@@ -10,7 +10,7 @@ from typing import cast
 from uuid import UUID
 
 import asyncpg
-from sqlalchemy import DateTime, ForeignKey, Integer, Row, Text, delete, func, select
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Integer, Row, Text, delete, func, select
 from sqlalchemy.dialects.postgresql import JSONB, insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, mapped_column
@@ -23,6 +23,12 @@ from app.infrastructure.orm_base import Base
 
 class RideTrackRow(Base):
     __tablename__ = "ride_tracks"
+    __table_args__ = (
+        CheckConstraint(
+            "account_id IS NULL OR (started_at IS NOT NULL AND distance_m IS NOT NULL AND duration_s IS NOT NULL)",
+            name="ride_tracks_summary_check",
+        ),
+    )
 
     ride_id: Mapped[UUID] = mapped_column(primary_key=True)
     gpx: Mapped[str] = mapped_column(Text, nullable=False)

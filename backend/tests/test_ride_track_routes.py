@@ -1,4 +1,5 @@
 """`api/routers/ride_tracks.py`——走りの記録を受ける口。ログインして同意した人の走り1回を、その人の1行で書く。
+その行の表の制約（`infrastructure/ride_track_models.py`）も見る。
 
 注入から本物を通し、アプリのセッション工場をテストDBへ向ける。
 
@@ -7,6 +8,7 @@
 
 import gzip
 import json
+from datetime import UTC, datetime
 from uuid import uuid4
 from xml.etree import ElementTree as ET
 
@@ -14,6 +16,7 @@ import httpx
 import pytest
 import pytest_asyncio
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 
 from app.api.account_auth import SESSION_COOKIE
 from app.api.routers.ride_tracks import MAX_DECOMPRESSED_BYTES
@@ -131,3 +134,18 @@ async def test_a_ride_is_refused_without_a_session_or_consent(anonymous_client, 
     await sign_in(anonymous_client, "google-sub-a")
     assert (await anonymous_client.post(PATH, **body)).status_code == 403
     assert await _rows(road_graph_session) == []
+
+
+@pytest.mark.parametrize("empty", ["started_at", "distance_m", "duration_s"])
+async def test_a_ride_of_an_account_cannot_be_written_without_its_summary(road_graph_session, empty):
+    """表の制約で、利用者のある行は走り始めの時刻・距離・かかった時間のどれも空にできない。
+    利用者の無い行（ログインを入れる前に受けた走り）は空のまま書ける。"""
+    account = AccountRow(id=uuid4(), login_method="google", login_subject="google-sub-a")
+    road_graph_session.add(account)
+    road_graph_session.add(RideTrackRow(ride_id=uuid4(), gpx="", routes={}, context={}))
+    await road_graph_session.flush()
+
+    summary = {"started_at": datetime.now(UTC), "distance_m": 1000, "duration_s": 60} | {empty: None}
+    road_graph_session.add(RideTrackRow(ride_id=uuid4(), gpx="", routes={}, context={}, account_id=account.id, **summary))
+    with pytest.raises(IntegrityError, match="ride_tracks_summary_check"):
+        await road_graph_session.flush()
