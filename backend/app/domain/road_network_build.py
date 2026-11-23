@@ -22,7 +22,7 @@ from app.domain.elevation_profile import (
 from app.domain.geo import bearings_between
 from app.domain.material_catalog import ELEVATION_GAIN_PER_KM, GRADIENT_PERCENT
 from app.domain.road_network import RoadNetwork
-from app.domain.search_graph import run_starts
+from app.domain.search_graph import EDGE_VALUE_DTYPE, run_starts
 
 
 def build_road_network(
@@ -62,7 +62,7 @@ def build_road_network(
         distance, STEEPEST_MIN_INTERVAL_M).T, strict=True))
 
     # 材料の行列は取込範囲全体で道路網の配列の大半を占めるので、写さずに断面から決まる列だけを書き換える。
-    values = np.asarray(numeric_values, dtype=np.float64)
+    values = np.asarray(numeric_values, dtype=EDGE_VALUE_DTYPE)
     gain_per_km = np.divide(summaries["elevation_gain_m"], distance / 1000.0, out=np.full(len(distance), np.nan),
                             where=distance > 0)
     for material_id, column in ((GRADIENT_PERCENT, summaries.pop("average_grade")), (ELEVATION_GAIN_PER_KM, gain_per_km)):
@@ -89,8 +89,9 @@ def build_road_network(
 
 def filled_bearings(bearing_deg: np.ndarray, node_lat: np.ndarray, node_lon: np.ndarray, edge_from: np.ndarray,
                     edge_to: np.ndarray) -> np.ndarray:
-    """区間の端のそばの向き。形から決まらない（NaNの）区間は、始点の頂点から終点の頂点を見た向きで埋める。"""
-    bearing = np.array(bearing_deg, dtype=np.float64)
+    """区間の端のそばの向き。形から決まらない（NaNの）区間は、始点の頂点から終点の頂点を見た向きで埋める。倍精度の配列を
+    渡すと、写さずにその中で埋める。"""
+    bearing = np.asarray(bearing_deg, dtype=np.float64)
     missing = np.flatnonzero(np.isnan(bearing))
     tail, head = edge_from[missing], edge_to[missing]
     bearing[missing] = bearings_between(node_lat[tail], node_lon[tail], node_lat[head], node_lon[head])

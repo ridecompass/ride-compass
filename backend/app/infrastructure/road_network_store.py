@@ -44,6 +44,7 @@ from app.domain.search_graph import run_starts
 from app.domain.traffic import HIGHWAY_RANK, highway_rank, travel_allowed
 from app.domain.tuning import STOP_CLUSTER_DISTANCE_ID
 from app.infrastructure.cache_identity import shape_digest
+from app.infrastructure.container_memory import memory_note
 from app.infrastructure.data_paths import DATA_DIR
 from app.infrastructure.road_graph_repository import NETWORK_SQL_SOURCES, RoadGraphRepository, float_array
 
@@ -168,7 +169,7 @@ def publish(pending: Path) -> Path:
     pending.rename(target)
     for removed in prune(target):
         logger.info("古い道路網の置き場を消しました %s", removed.name)
-    logger.info("道路網の置き場を作りました %s", target.name)
+    logger.info("道路網の置き場を作りました %s %s", target.name, memory_note())
     return target
 
 
@@ -256,23 +257,25 @@ async def build(repository: RoadGraphRepository, revision: int) -> RoadNetwork:
     """DBから道路網全体の事実を読み、`revision`の世代の`RoadNetwork`を組む（`domain/road_network_build.py`）。較正値は、読む表を
     作り直したときに使った値で読む。"""
     started = time.monotonic()
+    _return_large_buffers_at_once()
     nodes = await _read_nodes(repository)
     tuning = await repository.get_network_tuning()
     edges, dropped_without_endpoint = await _read_directed_edges(repository, nodes["node_osm_id"], tuning)
     _release_freed_memory()
     topology_s = time.monotonic() - started
     logger.info(
-        "道路網のつながりを読みました ノード=%d 有向の区間=%d 端点のノードが無く落とした有向の区間=%d %.0f秒",
-        len(nodes["node_osm_id"]), len(edges["edge_way_id"]), dropped_without_endpoint, topology_s,
+        "道路網のつながりを読みました ノード=%d 有向の区間=%d 端点のノードが無く落とした有向の区間=%d %.0f秒 %s",
+        len(nodes["node_osm_id"]), len(edges["edge_way_id"]), dropped_without_endpoint, topology_s, memory_note(),
     )
 
     materials = await _read_materials(repository, edges["edge_way_id"], edges["edge_segment"], edges["edge_forward"])
     _release_freed_memory()
     read_s = time.monotonic() - started
-    logger.info("道路網の材料を読みました 有向の区間=%d %.0f秒", len(edges["edge_way_id"]), read_s - topology_s)
+    logger.info("道路網の材料を読みました 有向の区間=%d %.0f秒 %s", len(edges["edge_way_id"]), read_s - topology_s,
+                memory_note())
     network = build_road_network(revision=revision, stop_cluster_distance_m=tuning[STOP_CLUSTER_DISTANCE_ID],
                                  **nodes, **edges, **materials)
-    logger.info("道路網の配列を組みました %.0f秒", time.monotonic() - started - read_s)
+    logger.info("道路網の配列を組みました %.0f秒 %s", time.monotonic() - started - read_s, memory_note())
     return network
 
 
@@ -281,6 +284,14 @@ def _release_freed_memory() -> None:
     それも上限に数えられる。"""
     if sys.platform == "linux":
         ctypes.CDLL("libc.so.6").malloc_trim(0)
+
+
+def _return_large_buffers_at_once() -> None:
+    """このプロセスの以後の、境目より大きい割り当てをヒープの外に置かせ、捨てたらすぐOSへ返させる。glibcは既定では、大きな割り当てを
+    捨てるたびに境目を引き上げるので、組む途中の数十MBの一時の配列がヒープに溜まって返されず、上限付きのコンテナではそれも上限に
+    数えられる。境目を明示して置くと、引き上げが止まる。"""
+    if sys.platform == "linux":
+        ctypes.CDLL("libc.so.6").mallopt(-3, 128 * 1024)  # M_MMAP_THRESHOLDを、glibcの既定の初めの値に置く
 
 
 #: `RoadNetwork`の欄 → (ノードの行の列, 型)。
