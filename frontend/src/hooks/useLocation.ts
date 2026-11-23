@@ -132,7 +132,7 @@ export function useLocation(ridingAt: Coordinates | null): UseLocationResult {
         ? {
             id: "location",
             label: "現在地",
-            effect: `現在地が分からないため、天候・警報を出していません。位置情報を許可するか、出発地を置いてください[${HOW_TO_PLACE_ORIGIN}]。`,
+            effect: `現在地が分からないため、天候・警報を出していません。\n位置情報を許可するか、出発地を置いてください。\n・出発地は、${HOW_TO_PLACE_ORIGIN}ます。`,
             onRetry: () => locateMe(),
           }
         : null,

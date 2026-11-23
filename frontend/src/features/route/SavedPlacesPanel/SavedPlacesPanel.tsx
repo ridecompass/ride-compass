@@ -32,7 +32,9 @@ export default function SavedPlacesPanel({ places, waypointsFull, loop, onRecall
     <SavedList
       items={places}
       noun="地点"
-      howToSave="条件タブで地点の行を押して探し、候補の右の☆で保存します。保存した地点は、行の「呼び出す」を押すと出発地・経由地・目的地に使えます。"
+      howToSave={
+        "条件タブで地点の行を押して探し、候補の右の☆で保存します。\n・保存した地点は、行の「呼び出す」を押すと出発地・経由地・目的地に使えます。"
+      }
       renderMain={(place) => <PlaceName place={place} className="font-semibold" />}
       renderActions={(place) => (
         <Popover open={recalling === place.name} onOpenChange={(open) => setRecalling(open ? place.name : null)}>

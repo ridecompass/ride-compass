@@ -111,9 +111,10 @@ describe("選んだ候補の中身", () => {
         expect(screen.queryByText(/平均の値で計算しています/)).not.toBeInTheDocument();
         return;
       }
-      expect(screen.getByText(expected)).not.toHaveTextContent(routeGenerateConfig.missing_travel_data_wording);
+      const [wordingHead] = routeGenerateConfig.missing_travel_data_wording.split("\n");
+      expect(screen.getByText(expected)).not.toHaveTextContent(wordingHead);
       await userEvent.click(screen.getByRole("button", { name: "平均で計算した道のりの説明を表示" }));
-      expect(await screen.findByText(routeGenerateConfig.missing_travel_data_wording)).toBeInTheDocument();
+      expect(await screen.findByText(wordingHead)).toBeInTheDocument();
     },
   );
 

@@ -43,7 +43,9 @@ export default function RouteCandidateActions({ route, splice, onClearSegment, o
             onClearSegment();
           }}
           aria-label="ルートを合成"
-          usage="選んでいる候補の一部の区間を、ほかの候補が通る道へ乗り換えて新しいルートを作ります。押すと、乗り換えられる道が地図に破線で出ます。"
+          usage={
+            "選んでいる候補の一部の区間を、ほかの候補が通る道へ乗り換えて新しいルートを作ります。\n・押すと、乗り換えられる道が地図に破線で出ます。"
+          }
         >
           <RouteSpliceIcon size={18} />
         </Button>
@@ -52,7 +54,7 @@ export default function RouteCandidateActions({ route, splice, onClearSegment, o
         size="panelIcon"
         onClick={() => downloadGpx(route)}
         aria-label="GPX出力"
-        usage={`選んでいる候補をGPXファイルで書き出します。サイクルコンピューターやほかの地図アプリに読み込めます。点の数は${MAX_GPX_TRACK_POINTS}点に収まるように間引きます。`}
+        usage={`選んでいる候補をGPXファイルで書き出します。\n・サイクルコンピューターやほかの地図アプリに読み込めます。\n・点の数は${MAX_GPX_TRACK_POINTS}点に収まるように間引きます。`}
       >
         <DownloadIcon size={18} />
       </Button>

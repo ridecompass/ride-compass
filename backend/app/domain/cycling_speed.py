@@ -73,13 +73,14 @@ CRUISE_SPEED_LABEL = "平地・無風で巡航する速さ"
 def travel_model_wording(tuning: Tuning) -> str:
     """巡航速度から区間の速度を決める決まりを、`tuning`の較正値を入れて利用者に言う文。"""
     return (
-        f"所要時間は、平地・無風[気温{STANDARD_TEMPERATURE_C:g}℃・海面の空気]をこの速度で走る力を求め、区間ごとの{'・'.join(SEGMENT_SPEED_CONDITIONS)}に合わせて"
-        "速度を変えて計算します。"
-        f"風は、予報の地上{FORECAST_HEIGHT_M:g}mの風を、道の周りの土地被覆から乗り手の高さ[{tuning.value(RIDER_HEIGHT_ID):g}m]の風へ直して使います。"
-        f"体格と機材は標準の値で計算します。総質量は{tuning.value('speed.mass_kg'):g}kg[体重・車体・装備の合計]、"
-        f"空気抵抗CdAは{tuning.value('speed.cda_m2'):g}m²[ロードバイクでブラケットを握る姿勢]です。"
-        f"下りは{tuning.value('speed.max_descent_kmh'):g}km/hまで[想定速度のほうが速ければ想定速度まで]出し、"
-        f"登りで{tuning.value('speed.walking_kmh'):g}km/h以下になる所は押して歩くとみなします。"
+        "所要時間は、次のように計算します。\n"
+        f"・平地・無風[気温{STANDARD_TEMPERATURE_C:g}℃・海面の空気]をこの速度で走る力を求めます。\n"
+        f"・区間ごとの{'・'.join(SEGMENT_SPEED_CONDITIONS)}に合わせて、速度を変えます。\n"
+        f"・風は、予報の地上{FORECAST_HEIGHT_M:g}mの風を、道の周りの土地被覆から乗り手の高さ[{tuning.value(RIDER_HEIGHT_ID):g}m]の風へ直して使います。\n"
+        f"・体格と機材は標準の値です。総質量は{tuning.value('speed.mass_kg'):g}kg[体重・車体・装備の合計]です。\n"
+        f"・空気抵抗CdAは{tuning.value('speed.cda_m2'):g}m²[ロードバイクでブラケットを握る姿勢]です。\n"
+        f"・下りは{tuning.value('speed.max_descent_kmh'):g}km/hまで出します[想定速度のほうが速ければ想定速度まで]。\n"
+        f"・登りで{tuning.value('speed.walking_kmh'):g}km/h以下になる所は、押して歩くとみなします。"
     )
 
 def rolling_resistance_material_id(road_classes: RoadClassDefinitions) -> str | None:

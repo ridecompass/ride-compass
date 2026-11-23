@@ -59,10 +59,10 @@ describe("RouteForm 距離の目標", () => {
   it.each([
     [
       { [CLIENT_TUNING_IDS.distanceToleranceRatio]: 0.15 },
-      "ルート全体の距離の目標です。候補は、この長さの±15%[30kmなら±4.5km]に収まるものだけを作ります。",
+      "ルート全体の距離の目標です。・候補は、この長さの±15%[30kmなら±4.5km]に収まるものだけを作ります。",
     ],
     // 「距離を決める」は入り切りのボタンと同じアイコンに替わり、名前は読み上げにだけ残る。
-    [{}, "ルート全体の距離の目標です。距離を決めるを外すと距離を決めず"],
+    [{}, "ルート全体の距離の目標です。・距離を決めるを外すと、距離を決めません。"],
   ])("(i)の奥に、画面の設定が配る許容差（%o）を割合と今の目標での長さで書く", async (clientTuning, text) => {
     serveClientConfig(clientConfigResponse({ client_tuning: clientTuning }));
     renderForm({ distanceInput: "30" });

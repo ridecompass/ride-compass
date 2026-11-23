@@ -6,6 +6,7 @@ import { useStoredState } from "@/hooks/useStoredState";
 
 import { Checkbox } from "@/components/ui/Checkbox/Checkbox";
 import { Dot } from "@/components/ui/Dot/Dot";
+import { GuideText } from "@/components/ui/GuideText/GuideText";
 import InfoPopover from "@/components/ui/InfoPopover/InfoPopover";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/Tabs/Tabs";
 import { BurdenPaintIcon, LayersStackIcon } from "@/components/ui/icons/lucideIcons";
@@ -147,8 +148,9 @@ export default function RouteProfile({
             triggerClassName="rounded-full bg-[color-mix(in_srgb,var(--background)_85%,transparent)]"
           >
             <p>
-              チェックした種類だけを積み上げます。高さは区間ごとの{LENS_QUANTITY_LABEL}
-              で、上端はこのルートで最大の区間の値です[曲がる所の負担と、好む道・避ける道の増減は含みません]。色ごとの面積がその種類の負担の合計、横軸の右端は最も長い候補の距離です。
+              <GuideText
+                text={`チェックした種類だけを積み上げます。\n・高さは、区間ごとの${LENS_QUANTITY_LABEL}です。\n・上端は、このルートで最大の区間の値です[曲がる所の負担と、好む道・避ける道の増減は含みません]。\n・色ごとの面積は、その種類の負担の合計です。\n・横軸の右端は、最も長い候補の距離です。`}
+              />
             </p>
           </InfoPopover>
         )}
