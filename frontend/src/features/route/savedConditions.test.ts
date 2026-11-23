@@ -53,7 +53,6 @@ const COST_CATALOG: CostAxisCatalog = {
   ],
   axisColors: {},
   lenses: null,
-  turnKickoffWording: null,
   loaded: true,
   failed: false,
 };

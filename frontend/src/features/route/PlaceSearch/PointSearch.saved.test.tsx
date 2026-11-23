@@ -2,7 +2,8 @@
  * `PlaceSearch/PointSearch.tsx`——地点を探す小窓の、打つ前に出す保存した地点と検索の履歴と、候補の☆での保存。開くと保存した地点を出し、
  * 打った文字を名前に含むものに絞り、選んだ地点を置く。住所・施設の候補か履歴を選ぶと履歴に残し、次に開くと保存した地点の下に
  * 新しい順に出し、打った文字で絞り、1件ずつ消せる。保存した地点も行の ✕ でその場で保存をやめられる。候補の☆はその候補を名前のまま保存し、もう一度押すと保存をやめる。置いている地点の
- * 保存のチップは、探して置いた地点をその候補のまま、地図で置いた地点を辺りを名前にして保存する。
+ * 保存のチップは、探して置いた地点をその候補のまま、地図で置いた地点を辺りを名前にして保存する。地点の行の☆は、欄を出さずに保存した地点だけの
+ * 小窓を開き、保存が無ければ押せない。
  *
  * ここで見ないもの:
  * - 打つ欄で引く・候補を並べる・選ぶこと → `PlaceSearch/PointSearch.test.tsx`
@@ -21,7 +22,7 @@ import { SAVED_PLACES_STORAGE_KEY } from "@/features/route/useSavedPlaces";
 import { onBackend, serveClientConfig } from "@/testing/backendServer";
 import { NEAR_SENSOJI, renderSearch, searchBox, searchFor } from "@/testing/placeSearch";
 import { AZA_CANDIDATE as AZA, FACILITY_CANDIDATE as FACILITY } from "@/testing/routeFixtures";
-import { openPointSearch, renderForm } from "@/testing/routeForm";
+import { openPointSearch, renderForm, waypointsOf } from "@/testing/routeForm";
 
 beforeEach(() => {
   window.localStorage.clear();
@@ -69,6 +70,39 @@ describe("PointSearch 保存した地点", () => {
     ]);
     expect(JSON.parse(window.localStorage.getItem(SAVED_PLACES_STORAGE_KEY) ?? "[]")).toEqual([HOME]);
     expect(onPlace).not.toHaveBeenCalled();
+  });
+
+  it("地点の行の☆は、欄と履歴を出さずに保存した地点だけの小窓を開き、選んだ地点をその行に置いて閉じる", async () => {
+    storeSavedPlaces([CAFE, HOME]);
+    const { onPlace } = renderForm({ waypoints: waypointsOf(1) });
+
+    await userEvent.click(screen.getByRole("button", { name: "経由地1を保存した地点から選ぶ" }));
+    const picker = screen.getByRole("dialog", { name: "経由地1を保存した地点から選ぶ" });
+    expect(within(picker).queryByRole("searchbox")).toBeNull();
+    expect(within(picker).queryByRole("list", { name: "検索の履歴" })).toBeNull();
+    await userEvent.click(within(picker).getByRole("button", { name: HOME.name }));
+
+    expect(onPlace).toHaveBeenCalledExactlyOnceWith({ role: "waypoint", index: 0 }, HOME);
+    expect(screen.queryByRole("dialog", { name: "経由地1を保存した地点から選ぶ" })).toBeNull();
+  });
+
+  it("地点の行の☆から開いた小窓を閉じると、フォーカスは押した☆へ戻る", async () => {
+    storeSavedPlaces([HOME]);
+    renderForm({ waypoints: waypointsOf(1) });
+    const star = screen.getByRole("button", { name: "経由地1を保存した地点から選ぶ" });
+    star.focus();
+
+    await userEvent.keyboard("{Enter}");
+    await userEvent.keyboard("{Escape}");
+
+    expect(screen.queryByRole("dialog", { name: "経由地1を保存した地点から選ぶ" })).toBeNull();
+    expect(star).toHaveFocus();
+  });
+
+  it("保存した地点が無ければ、地点の行の☆は押せない", () => {
+    renderForm();
+
+    expect(screen.getByRole("button", { name: "目的地を保存した地点から選ぶ" })).toBeDisabled();
   });
 
   it("候補の☆でその候補を名前のまま保存し、もう一度押すと保存をやめる", async () => {

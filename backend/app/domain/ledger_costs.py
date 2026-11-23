@@ -27,13 +27,6 @@ from app.domain.tuning import Tuning
 #: 曲がる所の漕ぎ出しを数える体力の費目。
 _KICKOFF_ITEM: EffortItem = "inertia"
 
-
-def turn_kickoff_wording(definitions: CostAxisDefinitions) -> str:
-    """曲がる所の漕ぎ出しをどの軸の負担に入れるかを、利用者に言う文（軸の名前は定義の`label`）。"""
-    axis_id = next(axis_id for axis_id, item in EFFORT_AXES.items() if item == _KICKOFF_ITEM)
-    return f"曲がる所の漕ぎ出しは、{definitions.effort[axis_id].label}の負担に入れます"
-
-
 #: 体力の費目 → 走りの内訳のその費目の欄（`EFFORT_AXES`の費目と1対1）。
 _EFFORT_ITEM_J: dict[EffortItem, Callable[[SegmentRide], np.ndarray]] = {
     "gravity": lambda ride: ride.gravity_extra_j,
