@@ -86,6 +86,19 @@ describe("PointSearch 保存した地点", () => {
     expect(screen.queryByRole("dialog", { name: "経由地1を保存した地点から選ぶ" })).toBeNull();
   });
 
+  it("地点の行の☆から開いた小窓を閉じると、フォーカスは押した☆へ戻る", async () => {
+    storeSavedPlaces([HOME]);
+    renderForm({ waypoints: waypointsOf(1) });
+    const star = screen.getByRole("button", { name: "経由地1を保存した地点から選ぶ" });
+    star.focus();
+
+    await userEvent.keyboard("{Enter}");
+    await userEvent.keyboard("{Escape}");
+
+    expect(screen.queryByRole("dialog", { name: "経由地1を保存した地点から選ぶ" })).toBeNull();
+    expect(star).toHaveFocus();
+  });
+
   it("保存した地点が無ければ、地点の行の☆は押せない", () => {
     renderForm();
 

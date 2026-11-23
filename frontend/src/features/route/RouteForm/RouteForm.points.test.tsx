@@ -96,10 +96,10 @@ describe("RouteForm 地点の一覧", () => {
     expect(button("経由地1 地図で選んだ地点")).toHaveAttribute("aria-pressed", "true");
   });
 
-  it("地図で置けない間は、行の「地図で置く」を押せない", () => {
+  it("地図で置けない間は、行の「地図で置く」を出さない", () => {
     renderForm({ waypoints: waypointsOf(1), placing: false });
 
-    expect(button("経由地1を地図で置く")).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "経由地1を地図で置く" })).toBeNull();
   });
 
   it("置いていない目的地は消せず、出発地の行には消す✕を出さない", () => {

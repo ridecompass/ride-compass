@@ -16,6 +16,7 @@ import { textVariants } from "@/components/ui/Text/Text";
 import ErrorText from "@/features/route/ErrorText/ErrorText";
 import KnownPlaces, { PlaceRow } from "@/features/route/PlaceSearch/KnownPlaces";
 import { PREDICTION_MIN_LENGTH, type usePlaceLookup } from "@/features/route/PlaceSearch/usePlaceLookup";
+import { placeOnMapUsage } from "@/features/route/pointNames";
 import { historyMatching, savedPlaceAt, savedPlacesMatching } from "@/features/route/savedPlaces";
 import { usePlaceHistory } from "@/features/route/usePlaceHistory";
 import type { SavedPlacesState } from "@/features/route/useSavedPlaces";
@@ -188,7 +189,7 @@ export default function PointSearch({
             現在地
           </Button>
           {placing && (
-            <Button size="xs" onClick={onClose} usage={`小窓を閉じます。地図をタップすると、そこを${title}にします。`}>
+            <Button size="xs" onClick={onClose} usage={`小窓を閉じます。${placeOnMapUsage(title)}`}>
               <SelectedSpotIcon size={14} />
               地図で置く
             </Button>

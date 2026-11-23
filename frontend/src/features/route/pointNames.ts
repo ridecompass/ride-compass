@@ -58,6 +58,11 @@ export function chooseResultOf(target: PointTarget): string {
   return PLACINGS[target.role].result;
 }
 
+/** 地図で置く操作（小窓のチップと地点の行）の、そのあとの置き方の文。 */
+export function placeOnMapUsage(title: string): string {
+  return `地図をタップすると、そこを${title}にします。`;
+}
+
 /** 見つけた地点（保存した地点）を新しく置ける先とその名前と、置けないか。経由地は上限まで置いてあれば、目的地は周回の間は置けない。 */
 export function newPlacings({ waypointsFull, loop }: { waypointsFull: boolean; loop: boolean }): {
   role: PinRole;
