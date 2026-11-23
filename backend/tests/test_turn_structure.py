@@ -58,6 +58,21 @@ def rank_array(lazy, by_edge_id):
 # --- build_turn_expanded_structure ---
 
 
+def test_an_edge_whose_shape_gives_no_bearing_is_measured_from_its_end_nodes():
+    """曲がりを測る端のそばの向きは、形から決まる区間はその向き、決まらない区間は両端のノードから見た向き（道路網の配列と
+    同じ決まり）。"""
+    graph = make_graph(
+        {"a": (35.0, 139.0), "b": (35.0, 139.01)},
+        {"stored": ("a", "b", 100.0, 123.0), "derived": ("b", "a", 100.0, None)},
+    )
+    lazy, _, structure = build_all(graph)
+
+    bearings = dict(zip(lazy.edge_ids, structure.start_bearing_deg.tolist()))
+    assert bearings["stored"] == pytest.approx(123.0)
+    assert bearings["derived"] == pytest.approx(270.0, abs=1.0)
+
+
+
 # 十字路の各区間を、Cから離れた側で60度向きを変える折れ線にしたもの。Cのそばの向きは`PLUS_EDGES`と同じ。
 CURVED_PLUS_EDGES = {
     edge_id: (tail, head, distance_m, (bearing + 60.0, bearing) if head == "C" else (bearing, bearing - 60.0))
