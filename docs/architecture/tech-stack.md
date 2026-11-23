@@ -480,6 +480,13 @@ Docker の既定（`json-file`）のログはコンテナに付き、デプロ�
   `ridecompass-backend`。`docker run --rm` のバッチは名前を付けなければ Docker が付けた名前になるので、`IMAGE_NAME=ridecompass-backend:latest`
   で絞って日時で見分ける）。動いているコンテナの分は `docker logs` でも読める。
 - **管理画面の「開発者」タブ**の直近のログはプロセスのメモリの中だけにあり、再起動で消える。後から調べる記録には journal を読む。
+- **応答の速さの1行**: 配信のコンテナは、外部I/Oとキャッシュの記録（`backend/app/infrastructure/debug_log.py: log_external_call`。地図のタイルの
+  `region:road-surface-tile`・`region:<点のレイヤー>-tile`・`region:landcover-tile`・レンズの`region:lens`等）を時計の10分ちょうどで区切り、その間に記録の
+  あった種類ごとに1行を INFO で出す（コンテナを止めるときも、その時点までの分を出す）。書式は
+  `[summary:<種類>] window_s=<区切りの秒> calls=<件数> errors=<誤りの数> hit_rate=<持ちに当たった割合。持ちを見ない種類は-> <組>_ms=n:<件数>,p50:<中央値>,p90:<90%点>,max:<最大>`
+  で、組は持ちに当たった要求（`hit`）・当たらなかった要求（`miss`）・持ちを見ない要求（`nocache`）のうち件数のあるもの。所要はミリ秒で、
+  中央値と90%点は比が1.1の刻みの上端で出す（真の値より最大で1割大きい）。起動の直後の区切りは10分より短い（`window_s`で分かる）。
+  種類ごとに拾うには `sudo journalctl CONTAINER_NAME=ridecompass-backend --since "<日時>" -o cat | grep -F "[summary:region:road-surface-tile]"`。
 
 根拠は Docker の journald ドライバの公式の文書（https://docs.docker.com/engine/logging/drivers/journald/ ）と
 journald.conf（https://www.freedesktop.org/software/systemd/man/latest/journald.conf.html ）。

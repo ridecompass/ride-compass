@@ -1,5 +1,5 @@
 """`infrastructure/debug_log.py`——外部I/Oの記録（`log_external_call`・`mark_failed`）、429の記録
-（`record_rate_limit_rejection`）と、それらの集計（`get_stats`）。
+（`record_rate_limit_rejection`）と、それらの集計（`get_stats`）と、区切りごとの1行（`log_window_summary`）。
 
 集計はプロセスの寿命の間残るので、テストごとに別のカテゴリ（`cat`）で数える。経過の時間は
 `monotonic_clock`で、失敗の時刻は`clock`で進める。
@@ -16,8 +16,10 @@ import httpx
 import pytest
 
 from app.infrastructure.debug_log import (
+    LATENCY_BUCKET_UPPER_MS,
     get_stats,
     log_external_call,
+    log_window_summary,
     mark_failed,
     record_rate_limit_rejection,
 )
@@ -130,3 +132,65 @@ class TestRateLimitRejections:
         rejections = get_stats().rate_limit_rejections
         assert (rejections[tiles], rejections[generate]) == (2, 1)
         assert warnings_of(logs)[0] == f"[ratelimit:{tiles}] rejected client=203.0.113.5 limit=120/min"
+
+
+def summary_of(logs, category: str) -> list[str]:
+    return [record.getMessage() for record in logs.records
+            if record.levelno == logging.INFO and record.getMessage().startswith(f"[summary:{category}] ")]
+
+
+class TestWindowSummary:
+    """区切りの1行は、本番のログだけで地図のタイル等の応答の速さとその前後の変化を読むためのもの。"""
+
+    @pytest.fixture
+    def window(self, logs, monotonic_clock):
+        """前のテストの記録を区切りの外へ出してから、テストの記録を数える。"""
+        log_window_summary()
+        logs.clear()
+        return monotonic_clock
+
+    def test_a_window_gives_counts_hit_rate_and_latency_per_cache_result(self, cat, logs, window):
+        for ms in range(1, 11):
+            call(cat, ms / 1000, window, cache="hit")
+        call(cat, 0.208, window, cache="miss")
+        call(cat, 0.3, window, cache="miss", result="error")
+        window.advance(600 - 0.563)  # 区切りは記録の所要（0.563秒）と合わせて600秒
+
+        log_window_summary()
+
+        assert summary_of(logs, cat) == [
+            f"[summary:{cat}] window_s=600 calls=12 errors=1 hit_rate=0.833 "
+            "hit_ms=n:10,p50:5,p90:9,max:10 miss_ms=n:2,p50:208,p90:300,max:300"
+        ]
+
+    def test_a_category_without_a_cache_has_no_hit_rate(self, cat, logs, window):
+        call(cat, 0.04, window)
+
+        log_window_summary()
+
+        assert summary_of(logs, cat) == [f"[summary:{cat}] window_s=0 calls=1 errors=0 hit_rate=- nocache_ms=n:1,p50:40,p90:40,max:40"]
+
+    @pytest.mark.parametrize(
+        ("ms", "p50"),
+        # 中央値は遅い方の値に引かれない1件目で、刻みの上端ちょうどならその刻み、1つ越えると次の刻みの上端。
+        # 最後の刻みより遅い値は、刻みの上端の代わりに区切りの最大の値で出る。
+        [([LATENCY_BUCKET_UPPER_MS[20], 1000], LATENCY_BUCKET_UPPER_MS[20]),
+         ([LATENCY_BUCKET_UPPER_MS[20] + 1, 1000], LATENCY_BUCKET_UPPER_MS[21]),
+         ([LATENCY_BUCKET_UPPER_MS[-1] + 5000, LATENCY_BUCKET_UPPER_MS[-1] + 6000], LATENCY_BUCKET_UPPER_MS[-1] + 6000)],
+    )
+    def test_a_quantile_is_the_upper_end_of_its_bucket(self, cat, logs, window, ms, p50):
+        for each in ms:
+            call(cat, each / 1000, window)
+
+        log_window_summary()
+
+        assert f",p50:{p50}," in summary_of(logs, cat)[0]
+
+    def test_the_next_window_starts_empty(self, cat, logs, window):
+        call(cat)
+        log_window_summary()
+        logs.clear()
+
+        log_window_summary()
+
+        assert summary_of(logs, cat) == []
