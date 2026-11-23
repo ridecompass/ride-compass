@@ -72,13 +72,13 @@ def _layer(source="s", category="c") -> MapLayerSpec:
 @pytest.mark.parametrize(
     ("groups", "categories", "sources", "specs"),
     [
-        pytest.param((G("g", "群"), G("g", "群")), (C("c", "g"),), (S("s"),), (_layer(),), id="グループの名前が重なる"),
-        pytest.param((G("g", "群"),), (C("c", "g"), C("c", "g")), (S("s"),), (_layer(),), id="種別の名前が重なる"),
-        pytest.param((G("g", "群"),), (C("c", "g"),), (S("s"), S("s")), (_layer(),), id="情報源の名前が重なる"),
-        pytest.param((G("g", "群"),), (C("c", "g"), C("d", "h")), (S("s"),), (_layer(),), id="宣言に無いグループ"),
-        pytest.param((G("g", "群"), G("h", "空")), (C("c", "g"),), (S("s"),), (_layer(),), id="種別の無いグループ"),
-        pytest.param((G("g", "群"),), (C("c", "g"),), (S("s"),), (_layer(category="d"),), id="宣言に無い種別"),
-        pytest.param((G("g", "群"),), (C("c", "g"),), (S("s"),), (_layer(source="t"),), id="宣言に無い情報源"),
+        pytest.param((G("g", "群", 1), G("g", "群", 1)), (C("c", "g"),), (S("s"),), (_layer(),), id="グループの名前が重なる"),
+        pytest.param((G("g", "群", 1),), (C("c", "g"), C("c", "g")), (S("s"),), (_layer(),), id="種別の名前が重なる"),
+        pytest.param((G("g", "群", 1),), (C("c", "g"),), (S("s"), S("s")), (_layer(),), id="情報源の名前が重なる"),
+        pytest.param((G("g", "群", 1),), (C("c", "g"), C("d", "h")), (S("s"),), (_layer(),), id="宣言に無いグループ"),
+        pytest.param((G("g", "群", 1), G("h", "空", 1)), (C("c", "g"),), (S("s"),), (_layer(),), id="種別の無いグループ"),
+        pytest.param((G("g", "群", 1),), (C("c", "g"),), (S("s"),), (_layer(category="d"),), id="宣言に無い種別"),
+        pytest.param((G("g", "群", 1),), (C("c", "g"),), (S("s"),), (_layer(source="t"),), id="宣言に無い情報源"),
     ],
 )
 def test_declarations_pointing_to_no_single_name_are_refused(groups, categories, sources, specs):

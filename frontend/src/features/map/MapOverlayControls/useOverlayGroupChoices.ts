@@ -1,7 +1,11 @@
 "use client";
 
 import { useStoredState } from "@/hooks/useStoredState";
-import { MAP_OVERLAY_GROUP_INITIAL_ITEMS, type MapLayerId, type MapOverlayGroup } from "@/features/map/layers/mapLayers";
+import {
+  MAP_OVERLAY_GROUP_INITIAL_ITEMS,
+  type MapLayerId,
+  type MapOverlayGroup,
+} from "@/features/map/layers/mapLayers";
 import type { OverlayLayerChip } from "./OverlayLayerRow";
 
 // たたんだ群と、群ごとに一覧から外した項目は次の訪問でも保つ。ⓘ・▶の開閉は一時の確かめなので保たない。
