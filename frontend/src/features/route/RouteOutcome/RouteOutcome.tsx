@@ -34,7 +34,7 @@ import type { RouteResults } from "@/features/route/useRouteResults";
 import type { SpliceSessionView } from "@/features/route/useSpliceSession";
 import type { RouteCandidate } from "@/types/route";
 
-const CANDIDATE_TAB_USAGE = `この候補を地図と内訳に出し、地図に全体を収めます。${CANDIDATE_MARKS_WORDING}上の段は距離、下の段は所要時間と負担[重りの印]、下の帯は${LENS_QUANTITY_LABEL}を地図と同じ色で表します。`;
+const CANDIDATE_TAB_USAGE = `この候補を地図と内訳に出し、地図に全体を収めます。\n${CANDIDATE_MARKS_WORDING}\n・上の段: 距離\n・下の段: 所要時間と負担[重りの印]\n・下の帯: ${LENS_QUANTITY_LABEL}[地図と同じ色]`;
 
 /** 名前の列で群を見分ける印と、その意味（指を置いたときの吹き出しと読み上げの名前）。生成した候補は印を持たない。 */
 const GROUP_MARKS: Partial<Record<RouteListGroup, { Icon: typeof FastestRouteIcon; meaning: string }>> = {
