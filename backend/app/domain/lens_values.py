@@ -18,6 +18,7 @@ import numpy as np
 
 from app.domain.attributes import MaterialColumn
 from app.domain.cost_axes import EFFORT_AXES, CostAxisDefinitions, EffortItem
+from app.domain.road_classes import CLASS_MATERIAL_PREFIX
 from app.domain.cycling_speed import STANDARD_TEMPERATURE_C
 from app.domain.lens_total import TOTAL_LENS_ID, lens_values_with_total
 from app.domain.elevation_profile import ElevationProfiles
@@ -69,17 +70,20 @@ class MapLens(StrictModel):
 
 
 def lens_conditions(definitions: CostAxisDefinitions) -> dict[str, tuple[WayValueConditionName, ...]]:
-    """レンズid（総合と軸id）→ そのレンズの値が変わる走る条件。道のストレスの軸は材料 × 1kmあたりの重さ × 距離で、どの条件でも
-    変わらない（材料は道の向きに依らない）。総合は、どれかの軸の値が変わる条件。"""
+    """レンズid（総合と軸id）→ そのレンズの値が変わる走る条件。道のストレスの軸は材料 × 1kmあたりの重さ × 距離で、速度と時刻では
+    変わらない。区分の材料（道の区分は道1本の性質）なら向きでも変わらず、数値の材料は勾配のように進む向きで値が変わりうるので
+    向きで変わるとみなす。総合は、どれかの軸の値が変わる条件（利用者が無効にした軸も数える。一覧は利用者に依らない）。"""
     by_axis = {axis_id: _EFFORT_ITEM_CONDITIONS[item] for axis_id, item in EFFORT_AXES.items()}
-    by_axis |= {axis_id: () for axis_id in definitions.burden}
+    by_axis |= {axis_id: () if axis.burden.material.startswith(CLASS_MATERIAL_PREFIX) else ("bearing_deg",)
+                for axis_id, axis in definitions.burden.items()}
     total = tuple(name for name in _CONDITION_ORDER if any(name in names for names in by_axis.values()))
     return {TOTAL_LENS_ID: total, **by_axis}
 
 
 def map_lens(conditions: tuple[WayValueConditionName, ...], tuning: Tuning) -> MapLens:
     """値が変わる走る条件が`conditions`のレンズの塗り方。走行方位で変わるなら辿る向きを走行方位で選び（`lens_way_formula`）、
-    変わらないなら辿れる向きの値をそのまま塗る（どちらの向きも同じ値で、向きで決まらない道は無い）。"""
+    変わらないなら辿れる向きの値をそのまま塗る（どちらの向きも同じ値で、向きで決まらない道は無い。一方通行の道も、走れない向きへ
+    地図を向けたまま辿れる向きの値で塗る）。"""
     if "bearing_deg" in conditions:
         formula = lens_way_formula(tuning)
     else:
