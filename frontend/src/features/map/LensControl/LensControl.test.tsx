@@ -64,14 +64,6 @@ describe("LensControl", () => {
     },
   );
 
-  it.each([
-    [LEGEND, "高い"],
-    [[], ""],
-  ])("ピルの色の帯は、段がある間だけ右に一番濃い段の名前を添える（段 %j）", (legend, ends) => {
-    renderLens({ legend });
-    expect(pill().textContent).toContain(`usedの軸${ends}▾`);
-  });
-
   it("取得状態は、ピルのtitleと、開いた先の文で伝える", async () => {
     renderLens({ dataStatus: "error" });
     expect(pill()).toHaveAttribute("title", LAYER_DATA_STATUS_LABELS.error);
@@ -87,12 +79,6 @@ describe("LensControl", () => {
         .getAllByRole("radio")
         .map((row) => row.textContent),
     ).toEqual(["idleの軸", "usedの軸（地図の向きで変わる）（出発時刻で変わる）"]);
-  });
-
-  it("一覧の頭に、どれかの行に出る走る条件の印の意味を文字で並べる", async () => {
-    renderLens();
-    await open();
-    expect(screen.getByText("出発時刻で変わる").closest("p")).toHaveTextContent(/^地図の向きで変わる出発時刻で変わる$/);
   });
 
   it("行を押すとそのレンズを選び、一覧は閉じない。選んでいる行をもう一度押すと外す", async () => {

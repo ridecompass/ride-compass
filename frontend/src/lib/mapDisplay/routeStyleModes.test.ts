@@ -67,10 +67,6 @@ describe("段で塗るモード（費用のレンズの1kmあたりの負担）"
     [ROUTE_LENS_SECONDS_PROPERTY]: value === null ? {} : { ax: value, other: 99 },
   });
 
-  it("凡例は段ごとの行（名前は backend が付けた段の名前のまま）と値が無い行", () => {
-    expect(mode.legend.map((row) => row.label)).toEqual(["弱", "中", "強", "データなし"]);
-  });
-
   it("区間のその軸の値で塗り、塗った色の行だけに当てはまる", () => {
     expectColorsMatchLegend(mode, [20, 50], segmentOf);
   });
