@@ -12,6 +12,7 @@ from typing import NamedTuple
 
 import numpy as np
 
+from app.domain.road_network_build import filled_bearings, node_max_ranks
 from app.domain import search_graph, stop_events, turn_structure
 from app.domain.traffic import NO_EVENT, StopEvent
 from tests.tuning_fixture import TUNING
@@ -140,26 +141,27 @@ TURN_SPEC = turn_structure.TurnCostSpec(
 )
 
 
-def build_all(graph, spec=FLAT_SPEC, edge_rank=None, node_has_signal=None, node_db_rank=None):
+def build_all(graph, spec=FLAT_SPEC, edge_rank=None, node_has_signal=None, node_rank=None):
     """lazy graph・静的派生物・ターン展開構造を一度に組む。
 
     ターンの費用に要る列は`None`を渡せない（渡し忘れが「上位の道の横断に待ちが付かない」
     構造を黙って作るため）。省略したときは、待ちが付かない値——階級0・信号なし——で埋める。
-    集まる道の本数は、渡した区間から数える。
+    集まる道の本数は、渡した区間から数える。頂点の階級（省略したとき）と、向きの無い区間の端のそばの向きは、渡した区間から
+    道路網の配列と同じ決まりで求める（`domain/road_network_build.py: node_max_ranks`・`filled_bearings`）。
     """
     lazy = lazy_of(graph)
     statics = search_graph.build_search_graph_statics(lazy.graph, graph.distance_m)
-    start_bearings, end_bearings = (
-        turn_structure.edge_bearings(lazy.graph, bearing_deg, graph.latitude, graph.longitude)
-        for bearing_deg in (graph.start_bearing_deg, graph.end_bearing_deg)
-    )
+    rows = lazy.graph.edge_rows
     node_count = lazy.node_count
+    edge_rank = np.zeros(len(lazy.edge_ids), dtype=np.int64) if edge_rank is None else edge_rank
     structure = turn_structure.build_turn_expanded_structure(
-        statics.csr, lazy.graph, start_bearings, end_bearings,
-        np.zeros(len(lazy.edge_ids), dtype=np.int64) if edge_rank is None else edge_rank,
+        statics.csr, lazy.graph, *(
+            filled_bearings(np.asarray(bearing, dtype=float)[rows], graph.latitude, graph.longitude,
+                            lazy.graph.edge_from, lazy.graph.edge_to)
+            for bearing in (graph.start_bearing_deg, graph.end_bearing_deg)), edge_rank,
         spec,
         np.zeros(node_count, dtype=bool) if node_has_signal is None else node_has_signal,
-        np.zeros(node_count, dtype=np.int64) if node_db_rank is None else node_db_rank,
+        node_max_ranks(node_count, lazy.graph.edge_from, lazy.graph.edge_to, edge_rank) if node_rank is None else node_rank,
         branch_counts(graph.edge_from, graph.edge_to, node_count),
         np.asarray(graph.distance_m, dtype=np.float64)[lazy.graph.edge_rows], TUNING["stop.cluster_distance_m"],
     )

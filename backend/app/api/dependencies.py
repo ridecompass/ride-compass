@@ -127,27 +127,23 @@ _search_memory = SearchMemory()
 
 @asynccontextmanager
 async def _open_route_generation_setup(
-    long_sessions: async_sessionmaker[AsyncSession], requested: RequestedConditions, network: RoadNetwork
+    requested: RequestedConditions, network: RoadNetwork
 ) -> AsyncIterator[RouteGenerationSetup]:
-    """ルート生成ジョブが使う`RouteGenerationSetup`を、生成の入口が1度だけ読んだ道路網`network`の上に組み立てる非同期コンテキストマネージャ。"""
-    async with long_sessions() as session:
-        graph_service = GraphService(RoadGraphRepository(session), _search_memory, network)
-        try:
-            yield assemble_route_generation_setup(graph_service, get_weather_service(), requested)
-        finally:
-            graph_service.release_search_memory()
+    """ルート生成ジョブが使う`RouteGenerationSetup`を、生成の入口が1度だけ読んだ道路網`network`の上に組み立てる非同期コンテキスト
+    マネージャ。抜けるときに生成のメモリを返す。"""
+    graph_service = GraphService(_search_memory, network)
+    try:
+        yield assemble_route_generation_setup(graph_service, get_weather_service(), requested)
+    finally:
+        graph_service.release_search_memory()
 
 
 RouteGenerationSetupOpener = Callable[[RequestedConditions, RoadNetwork], AbstractAsyncContextManager[RouteGenerationSetup]]
 
 
-def get_route_generation_setup_opener(long_sessions: LongSessions) -> RouteGenerationSetupOpener:
-    """ルート生成ジョブがエンジンを組むときの開き方。
-
-    セッションそのものではなく開き方を注入する——ジョブは応答の送出後も走り続け、リクエストの
-    DBセッションはハンドラ関数が返った時点で閉じられるため、ジョブが自分でセッションを開いて閉じる。
-    """
-    return partial(_open_route_generation_setup, long_sessions)
+def get_route_generation_setup_opener() -> RouteGenerationSetupOpener:
+    """ルート生成ジョブがエンジンを組むときの開き方。ジョブは応答の送出後も走り続けるので、組み立てと後始末をジョブの側で行う。"""
+    return _open_route_generation_setup
 
 
 #: ルート生成の同時実行の枠と待ち行列。生成はリクエストをまたいで走るため、プロセスの側で持つ。

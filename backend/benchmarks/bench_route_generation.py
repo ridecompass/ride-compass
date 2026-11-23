@@ -35,7 +35,7 @@ from app.api.dependencies import get_route_generation_setup_opener
 from app.batch.common import asyncpg_dsn
 from app.config import settings
 from app.infrastructure import road_network_store
-from app.infrastructure.database import get_route_generation_session_factory, get_session_factory
+from app.infrastructure.database import get_session_factory
 from app.services.definitions_loading import refresh_definitions
 from app.domain.cost_preference import CostPreference
 from app.domain.route import Coordinates
@@ -151,7 +151,7 @@ async def main() -> int:
     # 評価条件を省いた生成の要求と、画面の既定の除外・避け方で組む。
     # 道路網は本番の生成と同じく1度だけ読み、組み立てに渡す。
     network = await asyncio.to_thread(road_network_store.current)
-    async with get_route_generation_setup_opener(get_route_generation_session_factory())(RequestedConditions(
+    async with get_route_generation_setup_opener()(RequestedConditions(
         cost_preference=CostPreference(), road_avoidance={}, assumed_speed_kmh=ASSUMED_SPEED_KMH,
     ), network) as setup:
         generator = setup.generator

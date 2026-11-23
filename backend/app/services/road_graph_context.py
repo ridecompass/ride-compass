@@ -17,7 +17,7 @@ import numpy as np
 from app.domain.errors import RoutingError
 from app.domain.leg_costs import LegCostArrays, LegCostComposer
 from app.domain.graph import LeanEdge, edge_key, node_key, parse_edge_key
-from app.domain.road_network import RoadSlice, edge_row_of
+from app.domain.road_network import RoadSlice, edge_profile, edge_row_of, edge_shape
 from app.domain.route import (
     Coordinates,
     DISTANCE_KM_DECIMALS,
@@ -233,7 +233,7 @@ def path_km(context: RoadGraphContext, path: list[int]) -> float:
 
 
 def lean_edge(context: RoadGraphContext, index: int) -> LeanEdge:
-    """区間の番号から、形を持たない`LeanEdge`（区間の文字列の鍵・両端のノードの鍵付き）を作る。"""
+    """区間の番号から`LeanEdge`（区間の文字列の鍵・両端のノードの鍵・形・断面の点付き）を作る。"""
     road, lazy_graph = context.road, context.lazy_graph
     network = road.network
     row = network_row_of(context, index)
@@ -241,7 +241,8 @@ def lean_edge(context: RoadGraphContext, index: int) -> LeanEdge:
         edge_id=edge_key(int(network.edge_way_id[row]), int(network.edge_segment[row]), bool(network.edge_forward[row])),
         from_node_id=node_key_of(road, int(lazy_graph.edge_from[index])),
         to_node_id=node_key_of(road, int(lazy_graph.edge_to[index])),
-        geometry=[],
+        geometry=edge_shape(network, row),
+        profile=edge_profile(network, row),
         distance_m=float(network.distance_m[row]),
         osm_way_id=int(network.edge_way_id[row]),
         segment_index=int(network.edge_segment[row]),

@@ -21,6 +21,7 @@ from app.domain.landcover import LANDCOVER_CLASSES
 from app.domain.region import tile_position
 from app.domain.route_request import ASSUMED_SPEED_KMH
 from app.domain.traffic import POI_COUNT_KINDS, stop_event
+from app.domain.gradient import ROAD_BEARING_LEAF
 from app.domain.lens_values import LENS_AGAINST_LEAF, LENS_ALONG_LEAF
 from app.domain.material_catalog import MATERIAL_CATALOG
 from app.domain.route import AxisFact
@@ -295,6 +296,28 @@ async def test_the_lens_tells_that_it_painted_the_wind_of_a_previous_run(
 
     assert response.status_code == 200, response.text
     assert response.json()["wind_previous_run_from"] == expected
+
+
+async def test_each_road_carries_the_direction_from_its_start_to_its_end(client, cost_axes, road_network_root):
+    """地図の向きで辿る向きを選ぶ値（道の向き）は、道の始点から終点を見た向き。201は南から北へ、103は西から東へ向く。"""
+    serve_road_network(road_network_root, road_network(WAYS, COORDINATES))
+
+    total = await _lens(client, "total")
+
+    assert total[str(CLIMBING_WAY)][ROAD_BEARING_LEAF] == pytest.approx(0.0, abs=0.1)
+    assert total[str(FLAT_ROUGH_WAY)][ROAD_BEARING_LEAF] == pytest.approx(90.0, abs=0.1)
+
+
+async def test_a_tile_without_roads_paints_nothing(client, cost_axes, road_network_root):
+    """道の無いタイル（取込範囲の中の海・道の無い山）は、値の無い応答を返す。落ちると、地図がその場所の要求を失敗として扱う。"""
+    serve_road_network(road_network_root, road_network(WAYS, COORDINATES))
+    lat, lon = COORDINATES[NORTH_EAST]
+    x, y = (int(v) for v in tile_position(lon + 0.05, lat + 0.05, 14))
+
+    response = await client.get(f"/api/region/lens/total/14/{x}/{y}", params={"speed_kmh": ASSUMED_SPEED_KMH})
+
+    assert response.status_code == 200, response.text
+    assert response.json()["materials"] == {}
 
 
 async def test_an_unknown_lens_has_nothing_to_paint(client, road_network_root, cost_axes):

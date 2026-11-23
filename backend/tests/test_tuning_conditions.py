@@ -16,6 +16,7 @@ import numpy as np
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.domain.elevation_profile import profile_spans
 from app.batch import derive_counts, derive_elevation
 from app.domain import cycling_speed, ledger_costs, route_search, traffic
 from app.domain.cost_preference import CostPreference
@@ -63,7 +64,8 @@ def test_a_value_is_refused_when_the_condition_fails_or_it_is_not_finite(value, 
 
 def _speed_model() -> None:
     tuning = current_tuning()
-    cycling_speed.SegmentSpeedModel(cycling_speed.RiderProfile.standard(20.0, tuning), road_profiles([0.0, 0.0]),
+    cycling_speed.SegmentSpeedModel(cycling_speed.RiderProfile.standard(20.0, tuning),
+                                    profile_spans(road_profiles([0.0, 0.0]), np.array([1000.0])),
                                     np.array([1000.0]), np.array([TUNING["speed.crr"]]), np.zeros(1), tuning)
 
 

@@ -53,11 +53,14 @@ https://maps.gsi.go.jp/development/hyokochi.html ）に合わせる。平らな�
 
 断面の点の標高と位置（`elevation_profile_m`・`elevation_profile_along_m`。順方向の並びで、逆向きの行は読む側が勾配の符号を返す）を
 区間の標高の表に残す。間引いた点なので間隔はそろわず、点の間の長さは位置の差で測る。所要時間と体力は
-この点の間ごとに求め（[経路エンジン](routing-engine.md)）、獲得標高・平均勾配・一番急な所の要約の列も同じ点の間から出す——
-目的ごとに別の束ね方で持つと、読む所によって値が食い違う。点の間を勾配として数えるかも両方で同じにする。判定は派生のSQL（`domain/attributes.py: elevation_values_sql`）と所要時間
-（`domain/elevation_profile.py: interval_grade`）の2つの書き方にあり、同じ断面を両方に通して比べるテストが一致を守る。
-道路網の配列は、向きつきの行ごとの始まりの位置と点の数と、
-全行をつないだ標高と点の位置（区間の長さに対する割合）の配列で持つ（`domain/road_network.py: RoadNetwork.elevation_profiles`）。
+この点の間ごとに求め（[経路エンジン](routing-engine.md)）、獲得標高・平均勾配・一番急な所の要約も同じ点の間から出す——
+目的ごとに別の束ね方で持つと、読む所によって値が食い違う。点の間を勾配として数えるかも両方で同じにする。ルート生成と地図のレンズが
+読む要約は、道路網の配列を作るときに断面から出し（`domain/elevation_profile.py: profile_summaries`。判定は所要時間と同じ
+`domain/elevation_profile.py: interval_grade`）、派生の表の要約の列（`domain/attributes.py: elevation_values_sql`）は地図のタイルの
+材料だけが読む。2つの書き方は、同じ断面を両方に通して同じ値を見るテスト（`test_elevation_values.py`）が一致を守る。
+道路網の配列は、向きつきの行ごとの始まりの位置と点の数と、全行をつないだ標高と点の位置（区間の長さに対する割合）の配列で持ち、
+所要時間と体力を解く点の間（`domain/elevation_profile.py: ProfileSpans`）も、配列を作るときに全区間について1回だけ作って持つ
+（`domain/road_network.py: RoadNetwork.elevation_spans`）。
 位置を持たない行（作り直す前の行）は、点を等しい間隔に置いて読む（`domain/elevation_profile.py: along_fractions`）。標高の無い点の間と
 点が2つ未満の区間は、道路網全体の点の間の勾配の分布どおりの坂として走る（`domain/elevation_profile.py`）。
 

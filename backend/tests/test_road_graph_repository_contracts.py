@@ -12,8 +12,7 @@
 ここで見ないもの:
 - 材料の値式そのもの → `test_material_values.py`、欠損率 → `test_material_coverage.py`
 - タイルの形の署名 → `test_cache_identity.py`
-- 有向な枝の鍵の書式（`domain/graph.py`の持ち物。逆の`parse_edge_key`を持つので衝突しない）。向きで分かれる
-  ことは、ここの両向きの取り直しが通す
+- 有向な枝の鍵の書式（`domain/graph.py`の持ち物）と、区間の形と断面の点を向きで読み替えること（`test_road_network.py`）
 - スキーマの作成（`create_tables`）と、SQLが実際に返す値
 
 **セッションは差し替えて与える。** 実行した文とパラメータを記録するだけのフェイクを使い、
@@ -24,11 +23,9 @@
 
 import numpy as np
 import pytest
-import shapely
 from sqlalchemy import text
 
 from app.domain.attributes import CategoricalColumn
-from app.domain.graph import LeanEdge, edge_key, node_key
 from app.domain.material_catalog import MATERIAL_CATALOG, material_array_columns
 from app.domain.region import BoundingBox
 from app.infrastructure.derived_models import EdgeCountsRow, EdgeElevationRow, EdgeLandcoverRow
@@ -120,41 +117,6 @@ def test_reversing_twice_returns_to_the_original_column():
         assert reversed_partner(partner) == (name, negated)
 
 
-# --- ジオメトリ付きの取り直し -------------------------------------------------
-
-
-def _geometry_row():
-    return _Row(osm_way_id=1, segment_index=0, from_node_id=1, to_node_id=2,
-                distance_m=100.0, wkb=shapely.to_wkb(shapely.LineString(((139.0, 35.0), (139.1, 35.2)))),
-                elevation_profile_m=[10.0, None, 14.0], elevation_profile_along_m=[0.0, 30.0, 100.0])
-
-
-async def test_both_directions_of_a_segment_share_one_row():
-    """形は向きに依らず、逆向きは同じ行の形を逆順にし、端点を入れ替える。断面の点も逆順にし、位置を終わりから測り直す。
-
-    同じ区間を向きの数だけ引き直さないことは見ない——結果の辞書は引き直しても同じで、違いはDBの手間だけ
-    （読むだけの問い合わせの引数になる）。理由は実装のコメントが持つ。"""
-    repo, _ = _repo([_geometry_row()])
-    requested = [_lean_edge(1, 0, True), _lean_edge(1, 0, False)]
-
-    edges = await repo.get_edges_with_geometry(requested)
-
-    forward = edges[edge_key(1, 0, True)]
-    backward = edges[edge_key(1, 0, False)]
-    assert forward.geometry == [[35.0, 139.0], [35.2, 139.1]]
-    assert backward.geometry == [[35.2, 139.1], [35.0, 139.0]]
-    assert (backward.from_node_id, backward.to_node_id) == (node_key(2), node_key(1))
-    assert forward.profile == ((0.0, 10.0), (pytest.approx(0.3), None), (1.0, 14.0))
-    assert backward.profile == ((0.0, 14.0), (pytest.approx(0.7), None), (1.0, 10.0))
-
-
-def _lean_edge(way_id=1, segment=0, forward=True) -> LeanEdge:
-    return LeanEdge(edge_id=edge_key(way_id, segment, forward),
-                    from_node_id=node_key(1), to_node_id=node_key(2),
-                    geometry=[], distance_m=100.0,
-                    osm_way_id=way_id, segment_index=segment, forward=forward)
-
-
 # --- 材料の行列 ---------------------------------------------------------------
 
 
@@ -192,13 +154,13 @@ async def test_material_values_land_in_the_matrix_of_their_dtype():
 
 class _EchoingArraysSession:
     """材料配列のクエリに、受け取った区間をそのまま値として返すセッション（DBの`WITH ORDINALITY`の代わり）。
-    way・区間の番号・向きを、それぞれ距離・獲得標高・始まりの標高（順向きは1、逆向きは0）の列に入れる。"""
+    way・区間の番号・向きを、それぞれ距離・方位・中点の緯度（順向きは1、逆向きは0）の列に入れる。"""
 
     async def execute(self, statement, params):
         count = len(params["way_ids"])
         return _Result([_arrays_row(count, {"distance_m": params["way_ids"],
-                                            "elevation_gain_m": params["segment_indexes"],
-                                            "start_elevation_m": [float(f) for f in params["forwards"]]})])
+                                            "bearing_deg": params["segment_indexes"],
+                                            "mid_lat": [float(f) for f in params["forwards"]]})])
 
 
 async def test_rows_keep_the_order_of_the_given_edges_across_chunks():
@@ -212,23 +174,17 @@ async def test_rows_keep_the_order_of_the_given_edges_across_chunks():
         way_ids, segment_indexes, forwards, 1)
 
     assert arrays.distance_m.tolist() == way_ids
-    assert arrays.elevation_gain_m.tolist() == segment_indexes
-    assert arrays.start_elevation_m.tolist() == [float(f) for f in forwards]
+    assert arrays.bearing_deg.tolist() == segment_indexes
+    assert arrays.mid_lat.tolist() == [float(f) for f in forwards]
 
 
 async def test_paired_edge_columns_are_not_swapped():
-    """取り違えても型では落ちない対だけを見る（緯度と経度・登りと下り・始まりと終わりの標高）。"""
-    repo, _ = _repo([_arrays_row(1, {
-        "mid_lat": [35.5], "mid_lon": [139.5],
-        "elevation_gain_m": [2.0], "elevation_loss_m": [1.0],
-        "start_elevation_m": [10.0], "end_elevation_m": [12.0],
-    })])
+    """取り違えても型では落ちない対（緯度と経度）だけを見る。"""
+    repo, _ = _repo([_arrays_row(1, {"mid_lat": [35.5], "mid_lon": [139.5]})])
 
     arrays = await repo.get_edge_material_arrays([1], [0], [True], 1)
 
     assert (arrays.mid_lat[0], arrays.mid_lon[0]) == (35.5, 139.5)
-    assert (arrays.elevation_gain_m[0], arrays.elevation_loss_m[0]) == (2.0, 1.0)
-    assert (arrays.start_elevation_m[0], arrays.end_elevation_m[0]) == (10.0, 12.0)
 
 
 async def test_an_edge_without_an_elevation_row_has_no_profile_points():

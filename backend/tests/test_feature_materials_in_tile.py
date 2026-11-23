@@ -1,5 +1,6 @@
 """地図の配信が評価するタイルの材料（`infrastructure/road_graph_repository.py: RoadGraphRepository.get_feature_materials_in_tile`）が、
-区間単位のズームで、探索が同じ区間に読む材料（`RoadGraphRepository.get_edge_material_arrays`）と同じ値になること。
+区間単位のズームで、探索が同じ区間に読む材料（`RoadGraphRepository.get_edge_material_arrays`）と同じ値になること。断面から
+決まる材料は、探索の側は道路網の配列を作るときに断面から同じ規則で求め直す（2つの書き方の一致は`test_elevation_values.py`）。
 
 区間は道路網の形の導出（`batch/derive_topology.py`）が切り、勾配・密度の件数は派生の段（`batch/derive_elevation.py`・
 `batch/derive_counts.py`）が出したものを使う——区間と区間の値の行を手で書くと、2つの読み出しが同じ表を読むという前提を

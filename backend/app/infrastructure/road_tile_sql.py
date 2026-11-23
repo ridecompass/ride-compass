@@ -7,7 +7,6 @@ from collections.abc import Iterable
 
 from sqlalchemy import text
 
-from app.domain.geo import bearing_sql, midpoint_sql
 from app.domain.graph import edge_feature_key_sql
 from app.domain.material_catalog import (
     material_tile_columns,
@@ -56,9 +55,6 @@ _TILE_FEATURE_SOURCE_SQL = f"""
       AND ST_Intersects(w3.geom, ST_MakeEnvelope(:xmin, :ymin, :xmax, :ymax, 4326))
       AND NOT EXISTS (SELECT 1 FROM road_edges re2 WHERE re2.osm_way_id = w3.osm_way_id)
 """
-#: フィーチャー（`_TILE_FEATURE_SOURCE_SQL`の行`src`）の始点と終点で決める中点と方位。
-_FEATURE_MIDPOINT_SQL = midpoint_sql("ST_StartPoint(src.geom)", "ST_EndPoint(src.geom)")
-_FEATURE_BEARING_SQL = bearing_sql("ST_StartPoint(src.geom)", "ST_EndPoint(src.geom)")
 
 
 #: 材料の焼き込み列。`tile_property`を持つ全材料について、値式から組んだ式を並べる

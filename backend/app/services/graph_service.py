@@ -5,7 +5,7 @@ from collections.abc import Mapping, Sequence
 from app.domain.stopwatch import elapsed_ms, start_timer
 from app.domain.errors import SearchAreaTooLargeError, SearchMemoryBusyError
 from app.domain.geo import LatLonPoint
-from app.domain.graph import LeanEdge, parse_edge_key
+from app.domain.graph import parse_edge_key
 from app.domain.region import BoundingBox, tiles_covering_bbox
 from app.domain.attributes import CategoricalColumn
 from app.domain.cost_axes import Burden, CostAxisDefinitions
@@ -22,7 +22,6 @@ from app.domain.road_network import (
 from app.domain.route_search import DETOUR_RATIO_SHARING_ZOOM
 from app.infrastructure import container_memory
 from app.infrastructure.detour_ratio_cache import TileSet
-from app.infrastructure.road_graph_repository import RoadGraphRepository
 
 logger = logging.getLogger("ridecompass.graph")
 
@@ -116,15 +115,13 @@ def _slice(network: RoadNetwork, bbox: BoundingBox) -> RoadSlice:
 
 class GraphService:
     """探索範囲の道路網を、取込範囲全体の配列（`infrastructure/road_network_store.py`）から
-    切り出す。**読むだけで、作らない。**
+    切り出す。**読むだけで、作らない。** DB は読まない。
 
     道路網は取込範囲の中にしか無いので、取込範囲の外は区間が0本の切り出しになる。
-    作ったときに渡した道路網だけを切り出す（切り出しのたびに置き場を読み直さない）。確定した経路の形は DB
-    （`get_edges_with_geometry`）から引くので、派生の表を入れ替えた直後は、切り出した区間と形の世代が揃わないことがある。
+    作ったときに渡した道路網だけを切り出す（切り出しのたびに置き場を読み直さない）。
     """
 
-    def __init__(self, repository: RoadGraphRepository, memory: SearchMemory, network: RoadNetwork):
-        self._repository = repository
+    def __init__(self, memory: SearchMemory, network: RoadNetwork):
         self._memory = memory
         self._network = network
         self._reserved = 0
@@ -163,7 +160,3 @@ class GraphService:
         """区間の鍵の列の、両端の地点（取込範囲全体の道路網から引く）。形の合わない鍵と道路網に無い区間は飛ばす。"""
         edges = [parsed for edge_id in edge_ids if (parsed := parse_edge_key(edge_id)) is not None]
         return edge_endpoint_points(self._network, edges)
-
-    async def get_edges_with_geometry(self, edges: list[LeanEdge]) -> dict[str, LeanEdge]:
-        """探索用グラフは形を持たない。確定した経路の区間へ実体を後付けする。"""
-        return await self._repository.get_edges_with_geometry(edges)

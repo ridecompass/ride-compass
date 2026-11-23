@@ -4,7 +4,7 @@ from typing import Any
 
 import numpy as np
 
-from app.domain.elevation_profile import MAX_PLAUSIBLE_GRADE_PERCENT, ElevationProfiles
+from app.domain.elevation_profile import MAX_PLAUSIBLE_GRADE_PERCENT, ProfileSpans
 from app.domain.strict_model import StrictModel
 from app.domain.wind_height import WindHeights
 
@@ -104,9 +104,6 @@ class EdgeMaterialArrays:
     1.0/0.0/NaNで載る。分け方は`material_catalog.material_array_columns`が決める）。
     カテゴリは列ごとに語彙が違うため、行列ではなく列ごとの`CategoricalColumn`で持つ。
 
-    標高の列は**材料ではない表示用の値**で、経路が確定したあとの区間について
-    `domain/road_network.py: elevation_attribute`が`ElevationAttribute`を組み立てる。勾配そのものは材料
-    `gradient_percent`にあるため、ここでは重複して持たない。
     """
 
     numeric_ids: tuple[str, ...]
@@ -118,12 +115,6 @@ class EdgeMaterialArrays:
     bearing_deg: np.ndarray  # dtype=float64, NaN=方位が決まらない
     mid_lat: np.ndarray  # dtype=float64
     mid_lon: np.ndarray  # dtype=float64
-    start_elevation_m: np.ndarray  # dtype=float64, NaN=標高が無い（獲得・損失も無い）
-    end_elevation_m: np.ndarray  # dtype=float64, NaN=標高が無い
-    elevation_gain_m: np.ndarray  # dtype=float64, NaN=欠損
-    elevation_loss_m: np.ndarray
-    steepest_gain_percent: np.ndarray  # dtype=float64, NaN=欠損
-    steepest_loss_percent: np.ndarray
 
     def __len__(self) -> int:
         return len(self.distance_m)
@@ -141,8 +132,8 @@ class EdgeMaterialColumns:
     bearing_deg: np.ndarray  # dtype=float64, NaN=方位が決まらない
     mid_lat: np.ndarray  # dtype=float64
     mid_lon: np.ndarray  # dtype=float64
-    # 区間の断面の点（所要時間が読む）。
-    elevation_profiles: ElevationProfiles
+    # 区間の断面の点の間（所要時間が読む）。
+    elevation_spans: ProfileSpans
     # 区間の、予報の10mの風を乗り手の高さへ直す倍率の引き口。
     wind_heights: WindHeights
 

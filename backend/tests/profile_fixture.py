@@ -2,7 +2,7 @@
 
 import numpy as np
 
-from app.domain.elevation_profile import FLAT, ElevationProfiles, GradeDistribution, along_fractions
+from app.domain.elevation_profile import FLAT, ElevationProfiles, GradeDistribution, ProfileSpans, along_fractions, profile_spans
 
 
 def profiles(*rows: list[float | None], forward=None, distribution: GradeDistribution = FLAT,
@@ -18,8 +18,8 @@ def profiles(*rows: list[float | None], forward=None, distribution: GradeDistrib
                              distribution)
 
 
-def grade_profiles(gradient_percent: np.ndarray, distance_m: np.ndarray) -> ElevationProfiles:
-    """区間ごとに、平均勾配`gradient_percent`で一様に登る2点の断面。勾配がNaNの区間は点を持たず、平地で埋める。"""
+def grade_spans(gradient_percent: np.ndarray, distance_m: np.ndarray) -> ProfileSpans:
+    """区間ごとに、平均勾配`gradient_percent`で一様に登る2点の断面の点の間。勾配がNaNの区間は点を持たず、平地で埋める。"""
     rise = np.asarray(gradient_percent, dtype=np.float64) / 100.0 * np.asarray(distance_m, dtype=np.float64)
-    return profiles(*([] if np.isnan(r) else [0.0, float(r)] for r in rise))
+    return profile_spans(profiles(*([] if np.isnan(r) else [0.0, float(r)] for r in rise)), distance_m)
 

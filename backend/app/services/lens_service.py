@@ -138,7 +138,7 @@ def _tile_lens(features: LensFeatures, materials: EdgeMaterialColumns, settings:
         series, target = wind
         components = WindContext.of(series, materials).components(series.time_index(target, 0.0))
         previous_run_from = series.previous_run_from(target, 0.0)
-    return _TileLens(*lens_table(features, materials.columns, materials.distance_m, materials.elevation_profiles, settings,
+    return _TileLens(*lens_table(features, materials.columns, materials.distance_m, materials.elevation_spans, settings,
                                  ledger_parameters(preference, settings.tuning), speed_kmh, fills, burden_fills, components,
                                  elevation_gain_m),
                      previous_run_from)

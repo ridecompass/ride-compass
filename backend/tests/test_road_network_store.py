@@ -18,6 +18,8 @@ DBから組むテストは、道とノードを取込の入口から入れ、派
 （`MaterialColumns`）へ束を値で渡して見る——束の大きさ（20万区間）の区間をテストのDBに作らない。
 """
 
+import importlib
+import inspect
 import json
 import logging
 import math
@@ -29,8 +31,11 @@ import pytest
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from app.batch import derive_cli
+from app.domain import elevation_profile, road_network_build
 from app.domain.attributes import CategoricalColumn, EdgeMaterialArrays
-from app.domain.road_network import RoadNetwork
+from app.domain.material_catalog import ELEVATION_GAIN_PER_KM, GRADIENT_PERCENT
+from app.domain.road_network import RoadNetwork, edge_shape
+from app.domain.traffic import highway_rank
 from app.infrastructure import road_network_store
 from app.infrastructure.road_graph_repository import RoadGraphRepository
 from tests.conftest import postgis_database_url, raw_connection
@@ -63,7 +68,7 @@ def _network(revision: int, east_lon: float = 139.001) -> RoadNetwork:
         elevation_of={(10, 0): (10.0, 12.0)},
         numeric={"num_a": lambda rows: [1.5, np.nan]},
         categorical={"cat_a": lambda rows: ["x", "y"], "cat_b": lambda rows: [None, "z"]},
-        signal_nodes=[2], max_rank_of={2: 3}, revision=revision,
+        signal_nodes=[2], revision=revision,
     )
 
 
@@ -160,6 +165,21 @@ def test_cleaning_up_after_start_removes_only_networks_of_other_shapes(store):
         [road_network_store.directory_name(2), "not-a-network", _other_shape(3)])
 
 
+@pytest.mark.parametrize("module", [road_network_build, elevation_profile])
+def test_the_shape_changes_when_the_code_that_builds_the_network_changes(module):
+    """事実から配列を組むコードを直すと、置き場の形の署名が変わる。変わらないと、直したコードのデプロイが、直す前のコードで
+    組んだ置き場を読み続ける。"""
+    before = road_network_store.NETWORK_SHAPE
+    real = inspect.getsource
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(inspect, "getsource", lambda obj: real(obj) + "# 直した" if obj is module else real(obj))
+        changed = importlib.reload(road_network_store).NETWORK_SHAPE
+    importlib.reload(road_network_store)
+
+    assert changed != before
+    assert road_network_store.NETWORK_SHAPE == before
+
+
 # --- 束ごとの材料を詰める（DBを使わない） ---------------------------------------------
 
 
@@ -171,8 +191,6 @@ def _batch(distance_m: list[float], surface: list[str | None]) -> EdgeMaterialAr
         numeric_ids=("num",), numeric_values=np.array(distance_m).reshape(n, 1),
         categorical_ids=("surface",), categorical_columns=(CategoricalColumn.encode(surface),),
         distance_m=np.array(distance_m), bearing_deg=nan, mid_lat=nan, mid_lon=nan,
-        start_elevation_m=nan, end_elevation_m=nan,
-        elevation_gain_m=nan, elevation_loss_m=nan, steepest_gain_percent=nan, steepest_loss_percent=nan,
     )
 
 
@@ -258,11 +276,19 @@ async def test_the_network_is_built_from_the_derived_tables_with_one_row_per_dri
         ]
         assert "端点のノードが無く落とした有向の区間=2" in caplog.text
 
-        # 道路の種別は語彙への番号。
-        assert [network.highway_vocab[code] for code in network.edge_highway] == [
-            "residential"] * 4 + ["primary", "residential", "tertiary", "tertiary"]
+        # 区間の階級は道の種別の階級、頂点の階級は集まる区間の一番高い階級（入る区間も出る区間も数える）。
+        highways = ["residential"] * 4 + ["primary", "residential", "tertiary", "tertiary"]
+        assert network.edge_rank.tolist() == [highway_rank(highway) for highway in highways]
+        assert dict(zip(network.node_osm_id.tolist(), network.node_max_rank.tolist())) == {
+            1: highway_rank("residential"), 2: highway_rank("tertiary"), 3: highway_rank("primary"),
+            4: highway_rank("primary"), 5: highway_rank("residential"), 6: highway_rank("tertiary")}
 
-        # 区間の外接矩形は区間の両端を囲む。
+        # 区間の形は区間の両端を結び、外接矩形は形を囲む。
+        for row, (_, _, _, a, b) in enumerate(directed):
+            shape = edge_shape(network, row)
+            assert (shape[0], shape[-1]) == (pytest.approx([_NODES[a][1], _NODES[a][0]]),
+                                             pytest.approx([_NODES[b][1], _NODES[b][0]]))
+
         for row, (_, _, _, a, b) in enumerate(directed):
             lons, lats = (_NODES[a][0], _NODES[b][0]), (_NODES[a][1], _NODES[b][1])
             assert network.edge_min_lon[row] == pytest.approx(min(lons))
@@ -280,11 +306,14 @@ async def test_the_network_is_built_from_the_derived_tables_with_one_row_per_dri
         assert vocab[0] is None
         assert [vocab[code] for code in network.categorical_codes[:, column]] == [
             expected.vocab[code] for code in expected.codes]
-    # 分類の材料は語彙ごとの番号なので上で読み比べ、ほかの列は値をそのまま比べる。
-    copied = [f.name for f in fields(materials) if f.name != "categorical_columns"]
+    # 分類の材料は語彙ごとの番号なので上で読み比べ、ほかの列は値をそのまま比べる（断面から求める材料は配列を作るときに
+    # 求めるので、読み出しの値を持たない。`test_road_network.py`）。
+    copied = [f.name for f in fields(materials) if f.name not in ("categorical_columns", "numeric_values")]
     assert copied
     for name in copied:
         np.testing.assert_array_equal(getattr(network, name), getattr(materials, name), err_msg=name)
+    read = [i for i, material_id in enumerate(network.numeric_ids) if material_id not in (GRADIENT_PERCENT, ELEVATION_GAIN_PER_KM)]
+    np.testing.assert_array_equal(network.numeric_values[:, read], materials.numeric_values[:, read])
 
 
 def _bearing(a: int, b: int) -> float:
@@ -317,8 +346,7 @@ async def test_a_network_already_placed_for_the_current_revision_is_not_built_ag
     session_factory = async_sessionmaker(road_graph_engine)
     placed = await road_network_store.ensure_current(session_factory)
     manifest = json.loads((placed / "manifest.json").read_text(encoding="utf-8"))
-    (placed / "manifest.json").write_text(json.dumps({**manifest, "highway_vocab": ["置いたまま"]}),
-                                          encoding="utf-8")
+    (placed / "manifest.json").write_text(json.dumps({**manifest, "stop_cluster_distance_m": -1.0}), encoding="utf-8")
 
     assert await road_network_store.ensure_current(session_factory) == placed
-    assert road_network_store.current().highway_vocab == ("置いたまま",)
+    assert road_network_store.current().stop_cluster_distance_m == -1.0

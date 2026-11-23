@@ -9,10 +9,12 @@ backendは置かれたものを読むだけにする。
 拾わない名前（先頭が`.`）のディレクトリに書き、最後に名前を付け替える——途中で落ちても、読む側が
 書きかけを掴まない。
 
-形の署名は`RoadNetwork`の列と、読み出しのSQL（材料の式を含む）から導く。材料の式を変えた
+形の署名は`RoadNetwork`の列と、読み出しのSQL（材料の式を含む）と、事実から配列を組むコード（`domain/road_network_build.py`と、
+それが断面を読む`domain/elevation_profile.py`の全文・道の種別の階級の表）から導く。材料の式や組み方を変えた
 コードをデプロイすると署名が変わり、古い置き場は選ばれなくなる。
 """
 
+import inspect
 import json
 import logging
 import os
@@ -26,13 +28,16 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
+import shapely
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.domain.attributes import EDGE_ROW_ARRAY_FIELDS, EdgeMaterialArrays
-from app.domain.elevation_profile import grade_distribution
+import app.domain.elevation_profile
+import app.domain.road_network_build
 from app.domain.road_network import RoadNetwork
+from app.domain.road_network_build import build_road_network
 from app.domain.search_graph import run_starts
-from app.domain.traffic import travel_allowed
+from app.domain.traffic import HIGHWAY_RANK, highway_rank, travel_allowed
 from app.domain.tuning import STOP_CLUSTER_DISTANCE_ID
 from app.infrastructure.cache_identity import shape_digest
 from app.infrastructure.data_paths import DATA_DIR
@@ -44,7 +49,8 @@ logger = logging.getLogger("ridecompass.road_network")
 #: （testing.md「確かめる高さ」の (c)）。
 ROOT = DATA_DIR / "road_network"
 
-NETWORK_SHAPE = shape_digest(RoadNetwork, *NETWORK_SQL_SOURCES)
+NETWORK_SHAPE = shape_digest(RoadNetwork, *NETWORK_SQL_SOURCES, HIGHWAY_RANK, *(
+    inspect.getsource(module) for module in (app.domain.road_network_build, app.domain.elevation_profile)))
 
 _MANIFEST = "manifest.json"
 _DIRECTORY_PATTERN = re.compile(r"^(?P<shape>[0-9a-f]+)-r(?P<revision>\d+)$")
@@ -216,7 +222,8 @@ async def ensure_current(session_factory: async_sessionmaker[AsyncSession]) -> P
 
 
 async def build(repository: RoadGraphRepository, revision: int) -> RoadNetwork:
-    """DBから道路網全体を読み、`revision`の世代の`RoadNetwork`を組む。較正値は、読む表を作り直したときに使った値で読む。"""
+    """DBから道路網全体の事実を読み、`revision`の世代の`RoadNetwork`を組む（`domain/road_network_build.py`）。較正値は、読む表を
+    作り直したときに使った値で読む。"""
     started = time.monotonic()
     nodes = await _read_nodes(repository)
     tuning = await repository.get_network_tuning()
@@ -228,24 +235,24 @@ async def build(repository: RoadGraphRepository, revision: int) -> RoadNetwork:
     )
 
     materials = await _read_materials(repository, edges["edge_way_id"], edges["edge_segment"], edges["edge_forward"])
-    logger.info(
-        "道路網の材料を読みました 有向の区間=%d %.0f秒", len(edges["edge_way_id"]), time.monotonic() - started - topology_s)
-    return RoadNetwork(revision=revision, stop_cluster_distance_m=tuning[STOP_CLUSTER_DISTANCE_ID],
-                       **nodes, **edges, **materials)
+    read_s = time.monotonic() - started
+    logger.info("道路網の材料を読みました 有向の区間=%d %.0f秒", len(edges["edge_way_id"]), read_s - topology_s)
+    network = build_road_network(revision=revision, stop_cluster_distance_m=tuning[STOP_CLUSTER_DISTANCE_ID],
+                                 **nodes, **edges, **materials)
+    logger.info("道路網の配列を組みました %.0f秒", time.monotonic() - started - read_s)
+    return network
 
 
 #: `RoadNetwork`の欄 → (ノードの行の列, 型)。
 _NODE_COLUMNS = {
     "node_osm_id": ("osm_node_id", np.int64), "node_lat": ("latitude", np.float64),
     "node_lon": ("longitude", np.float64), "node_has_signals": ("has_traffic_signals", np.bool_),
-    "node_max_rank": ("max_highway_rank", np.int64), "node_branch_count": ("branch_count", np.int16),
+    "node_branch_count": ("branch_count", np.int16),
 }
-#: `RoadNetwork`の区間の欄 → 型。
+#: 有向の区間の欄 → 型。
 _EDGE_DTYPES = {"edge_way_id": np.int64, "edge_segment": np.int32, "edge_forward": np.bool_, "edge_from": np.int32,
-                "edge_to": np.int32, "edge_highway": np.int16, "edge_min_lon": np.float64, "edge_min_lat": np.float64,
-                "edge_max_lon": np.float64, "edge_max_lat": np.float64, "edge_start_bearing_deg": np.float64,
-                "edge_end_bearing_deg": np.float64}
-_BBOX_COLUMNS = ("min_lon", "min_lat", "max_lon", "max_lat")
+                "edge_to": np.int32, "edge_rank": np.int8, "edge_start_bearing_deg": np.float64,
+                "edge_end_bearing_deg": np.float64, "edge_shape_start": np.int64, "edge_shape_points": np.int32}
 _BEARING_COLUMNS = ("start_bearing_deg", "end_bearing_deg", "reverse_start_bearing_deg", "reverse_end_bearing_deg")
 
 
@@ -260,21 +267,19 @@ async def _read_nodes(repository: RoadGraphRepository) -> dict[str, Any]:
 async def _read_directed_edges(
     repository: RoadGraphRepository, node_osm_id: np.ndarray, tuning: Mapping[str, float]
 ) -> tuple[dict[str, Any], int]:
-    """区間を有向の行へ広げ、`RoadNetwork`の区間の欄と、端点のノードが無く落とした有向の行の数を返す。
-    一方通行は走れる向きだけを持つ（道の値の行は、区間が持つ外部キーが保証する）。"""
-    highway_vocab: dict[str, int] = {}
+    """区間を有向の行へ広げ、有向の区間の欄と区間の形（`shape_lon`・`shape_lat`）と、端点のノードが無く落とした有向の行の数を
+    返す。一方通行は走れる向きだけを持つ（道の値の行は、区間が持つ外部キーが保証する）。形は有向の行が残った区間の分だけ、
+    区間の順に隙間なく並べる。"""
     dropped_without_endpoint = 0
-    parts: dict[str, list[np.ndarray]] = {name: [] for name in _EDGE_DTYPES}
+    shape_count = 0
+    parts: dict[str, list[np.ndarray]] = {name: [] for name in (*_EDGE_DTYPES, "shape_lon", "shape_lat")}
     async for rows in repository.stream_network_edges(_STREAM_CHUNK, tuning):
         n = len(rows)
         way = np.fromiter((r.osm_way_id for r in rows), dtype=np.int64, count=n)
         segment = np.fromiter((r.segment_index for r in rows), dtype=np.int32, count=n)
         from_osm = np.fromiter((r.from_node_id for r in rows), dtype=np.int64, count=n)
         to_osm = np.fromiter((r.to_node_id for r in rows), dtype=np.int64, count=n)
-        highway = np.fromiter(
-            (highway_vocab.setdefault(r.highway, len(highway_vocab)) for r in rows), dtype=np.int16, count=n)
-        bbox = {name: np.fromiter((getattr(r, name) for r in rows), dtype=np.float64, count=n)
-                for name in _BBOX_COLUMNS}
+        rank = np.fromiter((highway_rank(r.highway) for r in rows), dtype=np.int8, count=n)
         # 方位は2点が同じならNULLで、NaNとして読む。
         bearings = {name: np.fromiter((np.nan if (v := getattr(r, name)) is None else v for r in rows),
                                       dtype=np.float64, count=n)
@@ -292,20 +297,30 @@ async def _read_directed_edges(
         dropped_without_endpoint += int((~found).sum())
         source, is_forward = source[found], is_forward[found]
 
+        coordinates, owner = shapely.get_coordinates(shapely.from_wkb([bytes(r.wkb) for r in rows]), return_index=True)
+        used = np.zeros(n, dtype=bool)
+        used[source] = True
+        kept_points = used[owner]
+        points = np.bincount(owner[kept_points], minlength=n).astype(np.int32)
+        starts = shape_count + np.cumsum(points, dtype=np.int64) - points
+        shape_count += int(points.sum())
+
         parts["edge_way_id"].append(way[source])
         parts["edge_segment"].append(segment[source])
         parts["edge_forward"].append(is_forward)
         parts["edge_from"].append(tail_row[found].astype(np.int32))
         parts["edge_to"].append(head_row[found].astype(np.int32))
-        parts["edge_highway"].append(highway[source])
-        for name, values in bbox.items():
-            parts[f"edge_{name}"].append(values[source])
+        parts["edge_rank"].append(rank[source])
         for end in ("start", "end"):
             parts[f"edge_{end}_bearing_deg"].append(np.where(
                 is_forward, bearings[f"{end}_bearing_deg"][source], bearings[f"reverse_{end}_bearing_deg"][source]))
+        parts["edge_shape_start"].append(starts[source])
+        parts["edge_shape_points"].append(points[source])
+        parts["shape_lon"].append(coordinates[kept_points, 0])
+        parts["shape_lat"].append(coordinates[kept_points, 1])
 
-    result: dict[str, Any] = {name: _concatenate(values, _EDGE_DTYPES[name]) for name, values in parts.items()}
-    result["highway_vocab"] = tuple(sorted(highway_vocab, key=highway_vocab.__getitem__))
+    result: dict[str, Any] = {name: _concatenate(values, _EDGE_DTYPES.get(name, np.float64))
+                              for name, values in parts.items()}
     return result, dropped_without_endpoint
 
 
@@ -329,28 +344,22 @@ async def _read_materials(
         columns.add(await repository.get_edge_material_arrays(
             way[start:stop].tolist(), segment[start:stop].tolist(), forward[start:stop].tolist(), accident_years_covered))
         logger.info("材料 %d/%d", stop, edge_count)
-    materials = columns.result()
-    return {**materials, **await _read_profiles(repository, way, segment, materials["distance_m"])}
+    return {**columns.result(), **await _read_profiles(repository, way, segment)}
 
 
-async def _read_profiles(
-    repository: RoadGraphRepository, way: np.ndarray, segment: np.ndarray, distance_m: np.ndarray
-) -> dict[str, Any]:
+async def _read_profiles(repository: RoadGraphRepository, way: np.ndarray, segment: np.ndarray) -> dict[str, Any]:
     """区間の断面の点（`RoadNetwork`の`edge_profile_*`・`profile_*`の欄）。点は区間ごとに1回だけ持ち、同じ区間の両向きの行
-    （有向の行は区間ごとに隣り合って並ぶ）は同じ点を指す。標高の無い所を埋める分布も、ここで1回だけ求める。"""
+    （有向の行は区間ごとに隣り合って並ぶ）は同じ点を指す。"""
     first = run_starts(way) | run_starts(segment)
     owner = np.cumsum(first) - 1  # 行 → 点を持つ区間の番号
     unique_rows = np.flatnonzero(first)
     profiles = await repository.get_edge_elevation_profiles(way[unique_rows].tolist(), segment[unique_rows].tolist())
     points = np.fromiter((len(elevation) for elevation, _ in profiles), dtype=np.int32, count=len(profiles))
     starts = np.cumsum(points, dtype=np.int64) - points
-    elevation = _concatenate([elevation for elevation, _ in profiles], np.float32)
-    position = _concatenate([position for _, position in profiles], np.float32)
-    distribution = grade_distribution(starts, points, elevation, position, distance_m[unique_rows])
     return {
-        "edge_profile_start": starts[owner], "edge_profile_points": points[owner], "profile_elevation_m": elevation,
-        "profile_position": position,
-        "profile_distribution_grade": distribution.grade, "profile_distribution_share": distribution.share,
+        "edge_profile_start": starts[owner], "edge_profile_points": points[owner],
+        "profile_elevation_m": _concatenate([elevation for elevation, _ in profiles], np.float32),
+        "profile_position": _concatenate([position for _, position in profiles], np.float32),
     }
 
 

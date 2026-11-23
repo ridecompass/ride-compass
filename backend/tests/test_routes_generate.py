@@ -5,7 +5,7 @@
 同時実行の待ちとレート制限（429）。
 
 裏の生成は本物の`RouteGenerator`とエンジンを、小さな格子の道路網（`tests/route_world.py`）の上で通す。
-差し替えるのはプロセス境界だけ——DBのセッションと天気の予報ファイル（生成の開き方の注入の口`get_route_generation_setup_opener`）・
+差し替えるのはプロセス境界だけ——天気の予報ファイル（生成の開き方の注入の口`get_route_generation_setup_opener`）・
 道路網の置き場・レート制限の記録。
 
 ここで見ないもの:
@@ -52,7 +52,6 @@ from tests.route_world import (
     NORTH_EAST,
     SOUTH_EAST,
     SOUTH_WEST,
-    NetworkRepository,
     Weather,
     at,
     LATTICE,
@@ -83,8 +82,7 @@ def _point(osm_node_id):
 
 
 class World:
-    """道路網の置き場と天気の代役。`serve`で置いた道路網（Noneなら置き場が空）が次の生成から効く。
-    区間の形を返すDBの代役（`NetworkRepository`）は、最後に置いた道路網を読む。"""
+    """道路網の置き場と天気の代役。`serve`で置いた道路網（Noneなら置き場が空）が次の生成から効く。"""
 
     def __init__(self, root: Path):
         self._root = root
@@ -116,7 +114,7 @@ def world(override_dependency, road_network_root):
 
     @asynccontextmanager
     async def open_setup(requested, network):
-        yield assemble_route_generation_setup(GraphService(NetworkRepository(world.network), SearchMemory(), network), world.weather, requested)
+        yield assemble_route_generation_setup(GraphService(SearchMemory(), network), world.weather, requested)
 
     override_dependency(dependencies.get_route_generation_setup_opener, lambda: open_setup)
     # 枠を待つ生成はテストごとのイベントループに結び付くので、持ち主をテストごとに作り直す。

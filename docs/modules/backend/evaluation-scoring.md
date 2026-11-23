@@ -143,8 +143,8 @@ wayの長さ（0はNULL）になる——件数と長さは必ず同じ側から
   負の分（好む側の段）と正の分（避ける側の段）を分けて持つ（`domain/route.py: PenaltyBreakdown`の`preferred_seconds`・`avoided_seconds`）。
   曲がる所の漕ぎ出しの代償（`domain/ledger_costs.py: LedgerCosts.turn_penalty_by_axis`。その費目を持つ軸の秒）は、区間には
   置かず、候補の内訳の軸の秒に足す（`services/road_graph_candidates.py`。区間の軸の秒は地図のレンズと同じ道の量）。
-- **欠けの埋め方**: 停止要因の密度の欠けは、取込範囲全体の数値の材料の平均（`RoadNetwork.numeric_means`。道路網と同じ寿命で1回
-  だけ求める）で埋める。道のストレスの軸の材料の欠けは、軸ごとに、取込範囲全体の材料のある道の1kmあたりの重さの距離で重みを
+- **欠けの埋め方**: 停止要因の密度の欠けは、取込範囲全体の数値の材料の平均（`RoadNetwork.numeric_means`。道路網の配列を作るときに
+  1回だけ求める）で埋める。道のストレスの軸の材料の欠けは、軸ごとに、取込範囲全体の材料のある道の1kmあたりの重さの距離で重みを
   付けた平均（`domain/leg_costs.py: burden_fills`）で埋め、道路網・区分の列・道のストレスの軸の費目の組ごとに1回だけ求めて取っておく
   （`services/graph_service.py: network_burden_fills`。軸の名前やレンズの段を直しても求め直さない）。道路網の層は材料ごとの値
   （`domain/road_network.py: network_material_column`）だけを渡し、軸ごとの重さは費用の層が求める。道のストレスを材料の値の平均で
