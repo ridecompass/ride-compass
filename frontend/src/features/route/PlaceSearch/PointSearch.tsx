@@ -26,6 +26,8 @@ import type { PlaceCandidate } from "@/types/route";
 interface PointSearchProps {
   /** 置く地点の呼び名（見出しと欄の読み上げに出す）。 */
   title: string;
+  /** 保存した地点から選ぶだけの小窓にするか（欄・チップ・履歴を出さず、キーボードも出さない）。 */
+  savedOnly: boolean;
   /** 見出しの地点の印。 */
   mark: React.ReactNode;
   /** 候補を選ぶと何が起きるか（「目的地にします」等）。 */
@@ -55,9 +57,11 @@ interface PointSearchProps {
  * チップを出し、保存した地点・検索の履歴を打った文字で絞って出し、打つと住所・施設の候補を出す（候補の☆でその地点を保存する）。候補を押すと、その地点に置いて
  * 閉じる。保存した地点と履歴は、行のごみ箱でその場で消せる。開いた時点で、スマホは欄へ移ってキーボードを出し、PC は小窓そのものへ
  * フォーカスを移す（Tab で中へ進める）。✕・選ぶ・ブラウザの「戻る」で閉じる（小窓の外と Escape は、呼ぶ側の `Popover` が閉じる）。
+ * `savedOnly` なら、欄・チップ・履歴を出さず、保存した地点だけを出す（キーボードは出さない）。
  */
 export default function PointSearch({
   title,
+  savedOnly,
   mark,
   chooseResult,
   lookup,
@@ -77,6 +81,9 @@ export default function PointSearch({
   const savedMatches = savedPlacesMatching(savedPlaces.places, lookup.text);
   const historyMatches = historyMatching(history.places, savedPlaces.places, lookup.text);
   const placedSaved = placed === null ? null : savedPlaceAt(savedPlaces.places, placed);
+
+  // スマホで欄へ移ってキーボードを出すのは、住所・施設で探す小窓だけ。
+  const typing = isMobile && !savedOnly;
 
   useCloseOnBack(true, onClose);
 
@@ -98,19 +105,19 @@ export default function PointSearch({
       // スマホの目印（キーボードの上の線）は、見える範囲が変わると動くが、窓の大きさの変化としては届かないので、毎フレーム測り直す。
       updatePositionStrategy={isMobile ? "always" : "optimized"}
       sideOffset={8}
-      aria-label={`${title}を探す`}
+      aria-label={savedOnly ? `${title}を保存した地点から選ぶ` : `${title}を探す`}
       className={cn(
         "flex max-h-[var(--radix-popover-content-available-height)] flex-col gap-1 overflow-y-auto px-2 py-1.5",
         isMobile ? "w-[var(--radix-popover-trigger-width)]" : "w-[22rem]",
       )}
       onOpenAutoFocus={(event) => {
         event.preventDefault();
-        (isMobile ? inputRef : contentRef).current?.focus();
+        (typing ? inputRef : contentRef).current?.focus();
       }}
       onCloseAutoFocus={onCloseAutoFocus}
       // スマホは、欄の外を押してもフォーカスを欄に残し、キーボードを出したままチップ・一覧を押せるようにする。
       onMouseDown={(event) => {
-        if (isMobile && event.target !== inputRef.current) event.preventDefault();
+        if (typing && event.target !== inputRef.current) event.preventDefault();
       }}
     >
       {!isMobile && <PopoverArrow className="fill-[var(--color-surface)]" width={14} height={7} />}
@@ -128,43 +135,45 @@ export default function PointSearch({
           ✕
         </Button>
       </div>
-      <form
-        role="search"
-        className="flex h-8 flex-none items-center gap-1.5 rounded-sm border border-[var(--color-border-strong)] bg-[var(--color-surface)] px-2 focus-within:border-[var(--color-accent)]"
-        onSubmit={(event) => {
-          event.preventDefault();
-          lookup.submit();
-          inputRef.current?.blur();
-        }}
-      >
-        <SearchPlaceIcon size={16} />
-        <input
-          ref={inputRef}
-          type="search"
-          aria-label={`${title}を住所・施設で探す`}
-          placeholder="住所・施設で探す"
-          enterKeyHint="search"
-          className="min-w-0 flex-auto self-stretch bg-transparent text-[length:var(--font-size-md)] text-[var(--foreground)] outline-none placeholder:text-[var(--color-muted)] [&::-webkit-search-cancel-button]:appearance-none"
-          {...lookup.inputProps()}
-          data-usage={`住所か施設の名前を入れて探します。${PREDICTION_MIN_LENGTH}文字以上入力して手を止めると、候補が出ます。候補を選ぶと${chooseResult}。`}
-        />
-        {typed && (
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => {
-              lookup.clear();
-              inputRef.current?.focus();
-            }}
-            aria-label="入力を消す"
-            className="size-6 flex-none text-[var(--foreground)]"
-            usage="入力した文字を消します。"
-          >
-            ✕
-          </Button>
-        )}
-      </form>
-      {!typed && (
+      {!savedOnly && (
+        <form
+          role="search"
+          className="flex h-8 flex-none items-center gap-1.5 rounded-sm border border-[var(--color-border-strong)] bg-[var(--color-surface)] px-2 focus-within:border-[var(--color-accent)]"
+          onSubmit={(event) => {
+            event.preventDefault();
+            lookup.submit();
+            inputRef.current?.blur();
+          }}
+        >
+          <SearchPlaceIcon size={16} />
+          <input
+            ref={inputRef}
+            type="search"
+            aria-label={`${title}を住所・施設で探す`}
+            placeholder="住所・施設で探す"
+            enterKeyHint="search"
+            className="min-w-0 flex-auto self-stretch bg-transparent text-[length:var(--font-size-md)] text-[var(--foreground)] outline-none placeholder:text-[var(--color-muted)] [&::-webkit-search-cancel-button]:appearance-none"
+            {...lookup.inputProps()}
+            data-usage={`住所か施設の名前を入れて探します。${PREDICTION_MIN_LENGTH}文字以上入力して手を止めると、候補が出ます。候補を選ぶと${chooseResult}。`}
+          />
+          {typed && (
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => {
+                lookup.clear();
+                inputRef.current?.focus();
+              }}
+              aria-label="入力を消す"
+              className="size-6 flex-none text-[var(--foreground)]"
+              usage="入力した文字を消します。"
+            >
+              ✕
+            </Button>
+          )}
+        </form>
+      )}
+      {!typed && !savedOnly && (
         <div className="flex flex-wrap gap-1">
           <Button
             size="xs"
@@ -212,18 +221,25 @@ export default function PointSearch({
           onForget: savedPlaces.remove,
         }}
       />
-      <KnownPlaces
-        label="検索の履歴"
-        icon={PlaceHistoryIcon}
-        places={historyMatches}
-        usage={`前に検索で選んだ地点です。選ぶと${chooseResult}。`}
-        onChoose={chooseFound}
-        forget={{
-          name: (place) => `「${place.name}」を履歴から消す`,
-          usage: "この地点を検索の履歴から消します。",
-          onForget: history.forget,
-        }}
-      />
+      {savedOnly && savedPlaces.places.length === 0 && (
+        <p role="status" className={cn(textVariants({ variant: "hint" }), "px-1")}>
+          保存した地点はありません。
+        </p>
+      )}
+      {!savedOnly && (
+        <KnownPlaces
+          label="検索の履歴"
+          icon={PlaceHistoryIcon}
+          places={historyMatches}
+          usage={`前に検索で選んだ地点です。選ぶと${chooseResult}。`}
+          onChoose={chooseFound}
+          forget={{
+            name: (place) => `「${place.name}」を履歴から消す`,
+            usage: "この地点を検索の履歴から消します。",
+            onForget: history.forget,
+          }}
+        />
+      )}
       {typed && (
         <Candidates lookup={lookup} savedPlaces={savedPlaces} onChoose={chooseFound} chooseResult={chooseResult} />
       )}

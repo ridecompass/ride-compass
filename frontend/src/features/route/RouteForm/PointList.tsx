@@ -5,7 +5,7 @@ import { createPortal } from "react-dom";
 
 import { Button } from "@/components/ui/Button/Button";
 import { LocateIcon, LoopRouteIcon } from "@/components/ui/icons/icons";
-import { ReorderHandleIcon } from "@/components/ui/icons/lucideIcons";
+import { ReorderHandleIcon, SavedPlaceIcon, SelectedSpotIcon } from "@/components/ui/icons/lucideIcons";
 import { Popover, PopoverAnchor } from "@/components/ui/Popover/Popover";
 import { textVariants } from "@/components/ui/Text/Text";
 import PointMark from "@/components/PinMark/PointMark";
@@ -74,6 +74,7 @@ export interface PointListProps {
  * 選んだ地点を置く。
  * 経由地と目的地は右の✕で消し、つまみを押さえて上下へ動かすと通る順を入れ替える（一番上が出発地、一番下が目的地）。
  * 「＋ 経由地」は目的地の手前に足す経由地の行を出し、その行の小窓を開く。
+ * 行の「地図で置く」は小窓を開かずにその地点を選び（地図をタップすると置く）、☆は保存した地点だけの小窓を開く。
  */
 export default function PointList({
   conditions,
@@ -94,7 +95,9 @@ export default function PointList({
 }: PointListProps) {
   const { loop, waypoints, removeWaypoint, reorderPoints, destination, clearDestination, foundAt } = conditions;
   const selected = conditions.selectedPoint;
-  const [searching, setSearching] = useState(false);
+  // 開いている小窓（住所・施設で探すか、保存した地点から選ぶか）。閉じていれば null。
+  const [opened, setOpened] = useState<"search" | "saved" | null>(null);
+  const searching = opened !== null;
   // 置き方の文。見える文（出発地が仮の地点のままの間の出発地の行と、足そうとしている経由地の行の名前の所）と使い方の文が読み、
   // 地図で置けない間は地図を言わない。
   const howToPlace = placing
@@ -103,7 +106,7 @@ export default function PointList({
 
   function closeSearch() {
     lookup.clear();
-    setSearching(false);
+    setOpened(null);
   }
 
   const originPlaced = originLocated ? origin : null;
@@ -143,16 +146,16 @@ export default function PointList({
     target.role === selected.role &&
     (target.role !== "waypoint" || (selected.role === "waypoint" && target.index === selected.index));
 
-  function open(target: PointTarget) {
+  function open(target: PointTarget, kind: "search" | "saved" = "search") {
     conditions.selectPoint(target);
-    setSearching(true);
+    setOpened(kind);
   }
 
   const full = waypointsFull(waypoints);
   const newWaypoint: PointTarget = { role: "waypoint", index: null };
   const adding = isSelected(newWaypoint) && !full;
   // スマホは開くと欄へ移ってキーボードを出すので、小窓ははじめからキーボードのすぐ上へ置く（行はキーボードに隠れる）。
-  const aboveKeyboard = isMobile && searching;
+  const aboveKeyboard = isMobile && opened === "search";
   const visible = useVisualViewport(aboveKeyboard);
 
   const markOf = (target: PointTarget, size: number) => (
@@ -197,6 +200,42 @@ export default function PointList({
   const nameButtonClass =
     "flex min-h-8 min-w-0 flex-auto cursor-pointer items-center gap-1.5 bg-transparent py-0 pl-1.5 text-left";
 
+  // 行の右の、小窓の検索の欄を開かずに置く2つ（地図で置く・保存した地点から選ぶ）。
+  const noSaved = savedPlaces.places.length === 0;
+  const placeShortcuts = (target: PointTarget, title: string) => (
+    <>
+      <Button
+        variant="ghost"
+        size="icon"
+        className="flex-none"
+        aria-label={`${title}を地図で置く`}
+        disabled={!placing}
+        onClick={() => {
+          conditions.selectPoint(target);
+          setOpened(null);
+        }}
+        usage={`${title}を選びます。地図をタップすると、そこを${title}にします。`}
+      >
+        <SelectedSpotIcon size={18} />
+      </Button>
+      <Button
+        variant="ghost"
+        size="icon"
+        className="flex-none"
+        aria-label={`${title}を保存した地点から選ぶ`}
+        disabled={noSaved}
+        onClick={() => open(target, "saved")}
+        usage={
+          noSaved
+            ? "保存した地点がありません。地点を探す小窓の候補の☆で保存すると、ここから選べます。"
+            : `保存した地点の一覧を開きます。選ぶと${chooseResultOf(target)}。`
+        }
+      >
+        <SavedPlaceIcon size={18} />
+      </Button>
+    </>
+  );
+
   const newRow = adding && (
     <li key="new" className={rowClass(newWaypoint)}>
       <button
@@ -213,13 +252,14 @@ export default function PointList({
           {`探す${howToPlace.short}`}
         </span>
       </button>
+      {placeShortcuts(newWaypoint, "新しい経由地")}
       <Button
         variant="ghost"
         size="icon"
         className="flex-none"
         aria-label="経由地を足すのをやめる"
         onClick={() => {
-          setSearching(false);
+          setOpened(null);
           conditions.selectPoint({ role: "origin" });
         }}
         usage="経由地を足すのをやめます。"
@@ -298,6 +338,7 @@ export default function PointList({
                   {name ?? (isOrigin ? `押して探す${howToPlace.short}` : "")}
                 </span>
               </button>
+              {placeShortcuts(target, title)}
               {isOrigin ? (
                 <Button
                   variant="ghost"
@@ -373,6 +414,7 @@ export default function PointList({
       {searching && (
         <PointSearch
           title={pointTitle(selected)}
+          savedOnly={opened === "saved"}
           mark={markOf(selected, 20)}
           chooseResult={chooseResultOf(selected)}
           lookup={lookup}

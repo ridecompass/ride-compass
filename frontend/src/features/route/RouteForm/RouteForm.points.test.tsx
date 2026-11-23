@@ -4,7 +4,7 @@
  *
  * 見るもの: 2択（選んでいる側と、押して上げる値）、地点の一覧（出発地・経由地・終点を通る順に並べ、周回の間の終点は押せない
  * 「出発地へ戻る」）、行を押すとその地点を選んで上げ、その地点を探す小窓を開くこと、行の✕で消すこと、「＋ 経由地」で目的地の手前に
- * 足す行を出し、✕でやめること・上限で押せないこと、つまみを押さえて上下へ動かす並べ替えと、動かせない行。仮の出発地の置き方の文と、
+ * 足す行を出し、✕でやめること・上限で押せないこと、行の「地図で置く」で小窓を開かずにその地点を選ぶこと、つまみを押さえて上下へ動かす並べ替えと、動かせない行。仮の出発地の置き方の文と、
  * 地図で置けない間は地図を案内しないこと。キーボードで小窓へ入って出られること、説明を見る状態の案内へ移っても小窓を閉じないこと。
  *
  * ここで見ないもの: 選んでいる地点をどう決めるか・並べ替えで地点の役割がどう変わるか →
@@ -84,6 +84,22 @@ describe("RouteForm 地点の一覧", () => {
     await userEvent.click(button(`${title}を消す`));
 
     expect(handlers[raised]).toHaveBeenCalledExactlyOnceWith(...args);
+  });
+
+  it("行の「地図で置く」は、小窓を開かずにその地点を選んで上げる", async () => {
+    const { selectPoint } = renderForm({ waypoints: waypointsOf(1) });
+
+    await userEvent.click(button("経由地1を地図で置く"));
+
+    expect(selectPoint).toHaveBeenCalledExactlyOnceWith({ role: "waypoint", index: 0 });
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(button("経由地1 地図で選んだ地点")).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("地図で置けない間は、行の「地図で置く」を押せない", () => {
+    renderForm({ waypoints: waypointsOf(1), placing: false });
+
+    expect(button("経由地1を地図で置く")).toBeDisabled();
   });
 
   it("置いていない目的地は消せず、出発地の行には消す✕を出さない", () => {
