@@ -68,9 +68,8 @@ export default function LensControl({
       : UNSELECTED_LABEL
     : (selected?.label ?? lens);
   const pillColor = selected?.color ?? LENS_NEUTRAL_COLOR;
-  // 帯は色の段だけを並べ、右端の段の名前（一番濃い色の値）を帯の右に添える。受け皿の段（「データなし」等）は一覧の頭で色見本と名前を出す。
+  // 帯は色の段だけを並べ（受け皿の「データなし」等は除く）、右端の段の名前（一番濃い色の値）を帯の右に添える。
   const bands = legend.filter((entry) => !entry.isFallback);
-  const fallbacks = legend.filter((entry) => entry.isFallback);
   const reddest = bands.length > 0 ? bands[bands.length - 1].label : null;
 
   return (
@@ -83,7 +82,6 @@ export default function LensControl({
             shape="pill"
             className="max-w-full flex-row items-center gap-1.5 border-0 px-2.5 py-1 text-[length:var(--font-size-sm)] whitespace-nowrap focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-accent-strong)]"
             aria-label={`${LENS_SCREEN_NAME}: ${pillLabel}（タップで変更）`}
-            aria-description={reddest === null ? undefined : `一番濃い色は${reddest}`}
             title={statusLabel}
             usage={`選んだ負担の種類の${LENS_QUANTITY_LABEL}で、地図の道路[ルートを作った後はルートの線]を塗ります。横の帯は左ほど小さく、右ほど大きい負担で、右の値から一番濃い色です。道を押すと、その道の値が出ます。`}
           >
@@ -128,20 +126,6 @@ export default function LensControl({
             </p>
           )}
           {caveat && <p className={cn(textVariants({ variant: "warning" }), "mb-1.5")}>{caveat}</p>}
-          {fallbacks.length > 0 && (
-            <p className="mb-1.5 flex flex-wrap gap-x-3 text-[length:var(--font-size-xs)] text-[var(--color-muted)]">
-              {fallbacks.map((entry) => (
-                <span key={entry.key} className="inline-flex items-center gap-1">
-                  <span
-                    aria-hidden="true"
-                    className={cn("h-2 w-3 rounded-[1px]", LEGEND_SWATCH_RING_CLASS)}
-                    style={{ background: legendSwatchBackground(entry) }}
-                  />
-                  {entry.label}
-                </span>
-              ))}
-            </p>
-          )}
           {catalogNotice !== null && (
             <p className="mb-1.5 text-[length:var(--font-size-sm)]" role="status">
               {catalogNotice}
