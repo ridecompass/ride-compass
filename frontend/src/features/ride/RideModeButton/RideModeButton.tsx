@@ -4,6 +4,7 @@ import { useState } from "react";
 import { createPortal } from "react-dom";
 
 import { Button } from "@/components/ui/Button/Button";
+import { GuideText } from "@/components/ui/GuideText/GuideText";
 import { cardVariants } from "@/components/ui/Card/Card";
 import { dotVariants } from "@/components/ui/Dot/Dot";
 import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/Popover/Popover";
@@ -15,7 +16,7 @@ import type { RideStatus } from "../useRideMode";
 import type { ScreenWakeLockStatus } from "../useScreenWakeLock";
 
 const WAKE_LOCK_UNAVAILABLE =
-  "この端末では画面を点けたままにできません。画面が消えると現在地も届かなくなるので、自動ロックの設定を確かめてください。";
+  "この端末では画面を点けたままにできません。\n画面が消えると現在地も届かなくなるので、自動ロックの設定を確かめてください。";
 
 const HEADING_NEEDS_GESTURE = "現在地のマーカーにスマホの向きを表示するには、向きの取得を許可する必要があります。";
 
@@ -74,7 +75,7 @@ export default function RideModeButton({
           noticePlace,
         )}
       >
-        {error}
+        <GuideText text={error} />
       </p>
     ) : onRequestHeading !== null ? (
       <div
@@ -100,7 +101,9 @@ export default function RideModeButton({
         <div
           className={cn(cardVariants({ variant: "float" }), "pointer-events-auto flex items-start gap-1", noticePlace)}
         >
-          <p className={textVariants({ variant: "hint" })}>{WAKE_LOCK_UNAVAILABLE}</p>
+          <p className={textVariants({ variant: "hint" })}>
+            <GuideText text={WAKE_LOCK_UNAVAILABLE} />
+          </p>
           <Button
             usage="このお知らせを閉じます。"
             variant="ghost"
@@ -128,7 +131,9 @@ export default function RideModeButton({
             aria-haspopup={status === "off" ? undefined : "dialog"}
             aria-expanded={status === "off" ? undefined : choosing}
             aria-description={wakeLockUnavailable ? WAKE_LOCK_UNAVAILABLE : undefined}
-            usage="押すと走行モードを始め、現在地に地図を合わせ続けます[画面も点けたままにします]。走行中に押すと「案内を終える」か「休む」を選べ、休んだ後は地図の下の「続きから走る」で再開します。地図を指で動かすと追従が止まり、「現在地へ戻る」で戻ります。"
+            usage={
+              "押すと走行モードを始め、現在地に地図を合わせ続けます[画面も点けたままにします]。\n・走行中に押すと「案内を終える」か「休む」を選べます。\n・休んだ後は、地図の下の「続きから走る」で再開します。\n・地図を指で動かすと追従が止まり、「現在地へ戻る」で戻ります。"
+            }
             data-ride={status}
             className={cn(
               "relative",
@@ -159,7 +164,9 @@ export default function RideModeButton({
               variant="primary"
               size="md"
               onClick={choose(onRest)}
-              usage="現在地の取得と画面の常時点灯を止め、電池の減りを抑えます。ルートと進み具合は残り、再読み込みしても休止中のまま戻ります。地図の下の「続きから走る」で再開できます。"
+              usage={
+                "現在地の取得と画面の常時点灯を止め、電池の減りを抑えます。\n・ルートと進み具合は残り、再読み込みしても休止中のまま戻ります。\n・地図の下の「続きから走る」で再開できます。"
+              }
             >
               休む
             </Button>

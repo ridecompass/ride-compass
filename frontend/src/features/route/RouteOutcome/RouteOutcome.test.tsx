@@ -137,7 +137,7 @@ describe("候補の一覧", () => {
     expect(within(spliced).getByRole("img", { name: "合成ルート" })).toHaveAttribute("title", "合成ルート");
   });
 
-  it("並びの先頭の見本は、カードの数字の位置に距離と所要・負担を出し、押しても候補を選ばない。その(i)を開くと、段と印の読み方・所要時間の見積もり方・費用の軸の一覧の名前を差し込んだ負担・候補の並べ方を、1つずつ1文で出す", async () => {
+  it("並びの先頭の見本は、カードの数字の位置に距離と所要・負担を出し、押しても候補を選ばない。その(i)を開くと、段と印の読み方・所要時間の見積もり方・費用の軸の一覧の名前を差し込んだ負担・候補の並べ方を、1つずつ箇条書きの1行か1文で出す", async () => {
     serveCostAxisCatalog(
       costAxisCatalog(costAxisEntry("ascent", { label: "軸ア" }), costAxisEntry("stopping", { label: "軸イ" })),
     );
@@ -150,9 +150,8 @@ describe("候補の一覧", () => {
     expect(screen.getByRole("tab", { name: /^1 / })).toHaveAttribute("aria-selected", "true");
 
     await userEvent.click(within(cardSample()).getByRole("button", { name: "所要時間と負担の説明を表示" }));
-    expect(
-      await screen.findByText(/^上の段は距離、下の段は所要時間と負担です。稲妻の印は最速ルート、合成の印は/),
-    ).toBeInTheDocument();
+    expect(await screen.findByText("・上の段: 距離")).toBeInTheDocument();
+    expect(screen.getByText("・稲妻の印: 最速ルート")).toBeInTheDocument();
     expect(screen.getByText(`所要時間: ${routeGenerateConfig.duration_estimate_wording}`)).toBeInTheDocument();
     expect(screen.getByText("負担: 避けたいもの[軸ア・軸イ]を通る分を時間に直したものです。")).toBeInTheDocument();
     expect(

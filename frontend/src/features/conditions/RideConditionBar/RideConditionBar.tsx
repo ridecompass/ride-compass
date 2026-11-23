@@ -23,6 +23,7 @@ import { Button } from "@/components/ui/Button/Button";
 import { NumberInput } from "@/components/ui/NumberInput/NumberInput";
 import { Input } from "@/components/ui/Input/Input";
 import { textVariants } from "@/components/ui/Text/Text";
+import { GuideText } from "@/components/ui/GuideText/GuideText";
 import InfoPopover from "@/components/ui/InfoPopover/InfoPopover";
 import { useClientConfigSelect } from "@/hooks/useClientConfig";
 import type { ClientConfigResponse } from "@/types/route";
@@ -237,7 +238,11 @@ export default function RideConditionBar({
             <p className={textVariants({ variant: "hint" })}>{CRUISE_SPEED_LABEL}</p>
             <InfoPopover triggerAriaLabel="想定速度の説明">
               <p>{`${CRUISE_SPEED_LABEL}です。信号待ちや坂を含めた普段の平均速度ではありません。`}</p>
-              {travelModelWording && <p>{travelModelWording}</p>}
+              {travelModelWording && (
+                <p>
+                  <GuideText text={travelModelWording} />
+                </p>
+              )}
             </InfoPopover>
           </div>
         </PopoverContent>

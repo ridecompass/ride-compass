@@ -1,5 +1,6 @@
 "use client";
 
+import { GuideText } from "@/components/ui/GuideText/GuideText";
 import InfoPopover from "@/components/ui/InfoPopover/InfoPopover";
 import { axisIconFor } from "@/components/ui/icons/axisIconPalette";
 import { COST_MULTIPLIER_LEVELS, COST_STRENGTH_LEVELS, type CostLevel } from "@/features/route/costPreference";
@@ -90,13 +91,16 @@ export default function RouteSettingsPanel({ costPreference, onCostPreferenceCha
         <span className="flex min-w-0 flex-1 items-center gap-1">
           <span className="truncate font-semibold">全体</span>
           <InfoPopover triggerAriaLabel="全体の説明">
-            {/* JSXの改行は半角スペースになるので、文字列として繋ぐ。 */}
-            {"所要時間に足す負担の全部を、どれだけの割合で数えるかを決めます。" +
-              `負担は、平地を走るより余分にかかるもの${costAxisNamesNote(catalog)}を時間に直したものです。` +
-              "道は、所要時間と、この割合を掛けた負担との和が小さくなるように選びます。" +
-              `${STANDARD_LABEL} が標準で、大きくすると所要時間が延びても負担の小さい道を選びやすくなります。` +
-              `${DISABLED_LABEL}にすると負担を数えず、所要時間だけで選びます[結果にも地図にも負担を出しません]。` +
-              "下の種類ごとの割合は、この割合にさらに掛かります。"}
+            <GuideText
+              text={[
+                "所要時間に足す負担の全部を、どれだけの割合で数えるかを決めます。",
+                `・負担は、平地を走るより余分にかかるもの${costAxisNamesNote(catalog)}を時間に直したものです。`,
+                "・道は、所要時間と、この割合を掛けた負担との和が小さくなるように選びます。",
+                `・${STANDARD_LABEL} が標準で、大きくすると所要時間が延びても負担の小さい道を選びやすくなります。`,
+                `・${DISABLED_LABEL}にすると負担を数えず、所要時間だけで選びます[結果にも地図にも負担を出しません]。`,
+                "・下の種類ごとの割合は、この割合にさらに掛かります。",
+              ].join("\n")}
+            />
           </InfoPopover>
         </span>
         <LevelScale
@@ -123,11 +127,15 @@ export default function RouteSettingsPanel({ costPreference, onCostPreferenceCha
                   {renderAxisIcon(axis)}
                 </span>
                 <span className="truncate">{axis.label}</span>
-                <InfoPopover triggerAriaLabel={`${axis.label}の説明`}>{axis.description}</InfoPopover>
+                <InfoPopover triggerAriaLabel={`${axis.label}の説明`}>
+                  <GuideText text={axis.description} />
+                </InfoPopover>
               </span>
               <LevelScale
                 aria-label={`${axis.label}の割合`}
-                usage="この種類の負担を、どれだけの割合で数えるかを、目盛りの点を押して選びます。長い目盛りが標準です。左ほどこの負担を軽く見て通りやすくし、右ほど重く見て避けます。左端の「–」はこの負担を数えず、結果にも地図にも出しません。"
+                usage={
+                  "この種類の負担を、どれだけの割合で数えるかを、目盛りの点を押して選びます。\n・長い目盛りが標準です。\n・左ほどこの負担を軽く見て通りやすくし、右ほど重く見て避けます。\n・左端の「–」はこの負担を数えず、結果にも地図にも出しません。"
+                }
                 levels={AXIS_SCALE}
                 value={String(setting)}
                 onChange={(key) =>
