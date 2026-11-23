@@ -150,9 +150,9 @@ def tile_features(network: RoadNetwork, z: int, x: int, y: int) -> LensFeatures:
     rows = np.asarray(rows, dtype=np.int64)
     feature = np.asarray(feature, dtype=np.int64).reshape(-1)
     forward = np.asarray(network.edge_forward[rows], dtype=bool)
-    # フィーチャーごとの一番若い行（行は昇順で、区間の順方向の行は逆向きの行より前にある）。重なる添字への代入は最後の値が残る。
-    first = np.zeros(len(keys), dtype=np.int64)
-    first[feature[::-1]] = rows[::-1]
+    # フィーチャーごとの一番若い行（行は昇順で、区間の順方向の行は逆向きの行より前にある）。どのフィーチャーも行を持つ。
+    _, first_of_feature = np.unique(feature, return_index=True)
+    first = rows[first_of_feature]
     if z >= EDGE_UNIT_MIN_ZOOM:
         bearing = np.asarray(network.bearing_deg[first], dtype=np.float64)
         bearing = np.where(network.edge_forward[first], bearing, (bearing + 180.0) % 360.0)

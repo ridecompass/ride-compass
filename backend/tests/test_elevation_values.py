@@ -15,10 +15,11 @@ from decimal import Decimal
 
 from functools import partial
 
-from app.domain.attributes import STEEPEST_MIN_INTERVAL_M, elevation_values_sql
+from app.domain.attributes import elevation_values_sql
 from app.domain.elevation_profile import (
     FLAT,
     MAX_PLAUSIBLE_GRADE_PERCENT,
+    STEEPEST_MIN_INTERVAL_M,
     SUMMARY_COLUMNS,
     along_fractions,
     flatten_spans,

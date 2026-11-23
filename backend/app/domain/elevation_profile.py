@@ -32,6 +32,12 @@ from numpy.typing import ArrayLike
 MAX_PLAUSIBLE_GRADE_PERCENT = 40.0
 _MAX_PLAUSIBLE_GRADE = MAX_PLAUSIBLE_GRADE_PERCENT / 100.0
 
+#: 一番急な勾配を測る最短の長さ（m）。1つ前の点の間がこれ以下なら、その点で測らない。数える間の途切れない続きの長さが
+#: これより短ければ、その続きの両端では測らない。短い間ほど標高データの揺れが勾配を大きく揺らす（GraphHopper の
+#: https://github.com/graphhopper/graphhopper/blob/master/core/src/main/java/com/graphhopper/routing/util/SlopeCalculator.java
+#: の`MIN_LENGTH`と同じ値と理由）。獲得標高・平均勾配と所要時間は、短い間も数える。
+STEEPEST_MIN_INTERVAL_M = 2.0
+
 #: 勾配の分布の階級の幅と、端の階級の勾配（どちらも勾配の小数。0.01は1%）。端より急な間は端の階級に数える。
 _DISTRIBUTION_STEP = 0.01
 _DISTRIBUTION_LIMIT = 0.20
@@ -60,10 +66,6 @@ class ElevationProfiles:
     elevation_m: np.ndarray  # float32、値の無い点はNaN
     position: np.ndarray  # float32、点ごとの位置（区間の長さに対する割合）
     distribution: GradeDistribution
-
-    def take(self, rows: np.ndarray) -> "ElevationProfiles":
-        return ElevationProfiles(np.asarray(self.start[rows]), np.asarray(self.points[rows]),
-                                 np.asarray(self.forward[rows]), self.elevation_m, self.position, self.distribution)
 
 
 def along_fractions(along_m: ArrayLike, points: int) -> np.ndarray:

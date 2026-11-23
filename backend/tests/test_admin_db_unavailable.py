@@ -54,7 +54,7 @@ ROUTES = [(method, route.path) for route in admin_routes(app) for method in sort
 @pytest.fixture
 def database_down(monkeypatch):
     engine = create_async_engine(UNREACHABLE_DATABASE_URL, poolclass=NullPool)
-    for factory in (database.get_session_factory, database.get_route_generation_session_factory):
+    for factory in (database.get_session_factory, database.get_long_session_factory):
         monkeypatch.setitem(app.dependency_overrides, factory, lambda: async_sessionmaker(engine))
 
 

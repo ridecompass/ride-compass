@@ -9,9 +9,8 @@ backendは置かれたものを読むだけにする。
 拾わない名前（先頭が`.`）のディレクトリに書き、最後に名前を付け替える——途中で落ちても、読む側が
 書きかけを掴まない。
 
-形の署名は`RoadNetwork`の列と、読み出しのSQL（材料の式を含む）と、事実から配列を組むコード（`domain/road_network_build.py`と、
-それが断面を読む`domain/elevation_profile.py`の全文・道の種別の階級の表）から導く。材料の式や組み方を変えた
-コードをデプロイすると署名が変わり、古い置き場は選ばれなくなる。
+形の署名は`RoadNetwork`の列と、読み出しのSQL（材料の式を含む）と、配列を組むときに通るコードの全文から導く（`NETWORK_SHAPE`）。
+材料の式や組み方を変えたコードをデプロイすると署名が変わり、古い置き場は選ばれなくなる。
 """
 
 import inspect
@@ -20,6 +19,7 @@ import logging
 import os
 import re
 import shutil
+import sys
 import time
 from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
@@ -31,9 +31,11 @@ import numpy as np
 import shapely
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.domain.attributes import EDGE_ROW_ARRAY_FIELDS, EdgeMaterialArrays
+from app.domain.attributes import EDGE_ROW_ARRAY_FIELDS, CategoricalColumn, EdgeMaterialArrays
 import app.domain.elevation_profile
 import app.domain.road_network_build
+from app.domain.geo import bearings_between
+from app.domain.material_catalog import material_array_columns
 from app.domain.road_network import RoadNetwork
 from app.domain.road_network_build import build_road_network
 from app.domain.search_graph import run_starts
@@ -41,7 +43,7 @@ from app.domain.traffic import HIGHWAY_RANK, highway_rank, travel_allowed
 from app.domain.tuning import STOP_CLUSTER_DISTANCE_ID
 from app.infrastructure.cache_identity import shape_digest
 from app.infrastructure.data_paths import DATA_DIR
-from app.infrastructure.road_graph_repository import NETWORK_SQL_SOURCES, RoadGraphRepository
+from app.infrastructure.road_graph_repository import NETWORK_SQL_SOURCES, RoadGraphRepository, float_array
 
 logger = logging.getLogger("ridecompass.road_network")
 
@@ -49,8 +51,16 @@ logger = logging.getLogger("ridecompass.road_network")
 #: （testing.md「確かめる高さ」の (c)）。
 ROOT = DATA_DIR / "road_network"
 
-NETWORK_SHAPE = shape_digest(RoadNetwork, *NETWORK_SQL_SOURCES, HIGHWAY_RANK, *(
-    inspect.getsource(module) for module in (app.domain.road_network_build, app.domain.elevation_profile)))
+#: 署名には、配列を組むときに通るコードの全文を入れる——組み方を直したのに署名が変わらないと、直す前のコードで組んだ置き場を
+#: 読み続ける。このファイル（つながり・形・階級・向きを組む所と、材料と断面を詰める所）・事実から値を導く2つのモジュール・
+#: それらが呼ぶ関数と、DBの行を配列にする読み出しの関数。
+NETWORK_SHAPE = shape_digest(RoadNetwork, *NETWORK_SQL_SOURCES, HIGHWAY_RANK, material_array_columns(), *(
+    inspect.getsource(code) for code in (
+        sys.modules[__name__], app.domain.road_network_build, app.domain.elevation_profile, bearings_between,
+        highway_rank, travel_allowed, EdgeMaterialArrays, CategoricalColumn.encode, float_array,
+        RoadGraphRepository.stream_network_nodes, RoadGraphRepository.stream_network_edges,
+        RoadGraphRepository.get_network_tuning, RoadGraphRepository.get_edge_material_arrays,
+        RoadGraphRepository.get_edge_elevation_profiles)))
 
 _MANIFEST = "manifest.json"
 _DIRECTORY_PATTERN = re.compile(r"^(?P<shape>[0-9a-f]+)-r(?P<revision>\d+)$")

@@ -184,7 +184,7 @@ NETWORK_SQL_SOURCES = (
     _EDGE_ELEVATION_PROFILES_SQL,
 )
 
-def _float_array(values: list) -> np.ndarray:
+def float_array(values: list) -> np.ndarray:
     """NoneはNaNになる。"""
     return np.array(values, dtype=np.float64)
 
@@ -305,13 +305,13 @@ class RoadGraphRepository:
 
         numeric_values = np.empty((n, len(numeric_ids)), dtype=np.float64)
         for i, material_id in enumerate(numeric_ids):
-            numeric_values[:, i] = _float_array(raw[material_id])
+            numeric_values[:, i] = float_array(raw[material_id])
 
         return EdgeMaterialArrays(
             numeric_ids=numeric_ids, numeric_values=numeric_values,
             categorical_ids=categorical_ids,
             categorical_columns=tuple(CategoricalColumn.encode(raw[material_id]) for material_id in categorical_ids),
-            **{name: _float_array(raw[name]) for name in _EXTRA_MATERIAL_ARRAY_COLUMNS},
+            **{name: float_array(raw[name]) for name in _EXTRA_MATERIAL_ARRAY_COLUMNS},
         )
 
     async def get_edge_elevation_profiles(
@@ -411,7 +411,7 @@ class RoadGraphRepository:
             return None
         numeric_ids, categorical_ids = material_array_columns()
         columns: dict[str, MaterialColumn] = {
-            **{material_id: _float_array(getattr(row, f"c_{material_id}") or []) for material_id in numeric_ids},
+            **{material_id: float_array(getattr(row, f"c_{material_id}") or []) for material_id in numeric_ids},
             **{material_id: CategoricalColumn.encode(getattr(row, f"c_{material_id}") or [])
                for material_id in categorical_ids},
         }
