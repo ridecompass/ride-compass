@@ -23,7 +23,6 @@ from app.domain.route import (
     DISTANCE_KM_DECIMALS,
 )
 from app.domain.route_search import (
-    MAX_SNAP_CORRECTION_KM,
     heuristic_seconds,
     median_detour_ratio,
     retrace_penalized,
@@ -31,7 +30,7 @@ from app.domain.route_search import (
 )
 from app.domain.search_graph import LazyRoadGraph, SearchGraphStatics, edge_index_between
 from app.domain.node_spatial_index import NodeSpatialIndex, snap_to_accessible_node
-from app.domain.tuning import Tuning
+from app.domain.tuning import SNAP_CORRECTION_ID, Tuning
 from app.domain.turn_structure import TurnCostSpec, TurnExpandedStructure
 from app.domain.route_diversity import lengths_by_physical_segment
 from app.domain.wind import (
@@ -185,7 +184,7 @@ def node_coordinates(context: RoadGraphContext, node: int) -> Coordinates:
 
 def snap_point(context: RoadGraphContext, point: Coordinates) -> tuple[int, bool] | None:
     """置いた点を、起点と同じく出て戻れるNodeへ寄せる（`domain/node_spatial_index.py: snap_to_accessible_node`）。"""
-    return snap_to_accessible_node(context.node_index, context.accessible, point, MAX_SNAP_CORRECTION_KM)
+    return snap_to_accessible_node(context.node_index, context.accessible, point, context.tuning.value(SNAP_CORRECTION_ID))
 
 
 @dataclass(frozen=True)

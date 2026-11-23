@@ -74,7 +74,7 @@ async def test_a_route_ridden_on_the_wind_of_a_previous_run_is_marked(engine_ove
 
 
 async def test_the_route_rides_the_forecast_wind_lowered_to_the_rider_by_the_roughness_around_the_road(engine_over):
-    """予報は地上10mの風で、乗り手の高さ（1m）では道の周りが粗いほど弱い。北へ1km走る道の向かい風の事実は、予報の北風6m/sに
+    """予報は地上10mの風で、乗り手の高さでは道の周りが粗いほど弱い。北へ1km走る道の向かい風の事実は、予報の北風6m/sに
     周りの土地被覆の粗度長の対数則の倍率（森0.23・水辺0.80）を掛けた値で、同じ道・同じ予報でも森の中のほうが速く着く。"""
     wind = replace(CALM, speed_ms=np.full_like(CALM.speed_ms, 6.0))
 

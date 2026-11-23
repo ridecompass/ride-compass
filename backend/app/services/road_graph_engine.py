@@ -28,6 +28,7 @@ from app.domain.stopwatch import elapsed_ms, start_timer, steps_note
 from app.domain.time_zone import as_series_time
 from app.domain.traffic import highway_rank
 from app.domain.model_settings import ModelSettings
+from app.domain.tuning import SNAP_CORRECTION_ID
 from app.domain.errors import RoutingError
 from app.domain.search_materials import SearchMaterials, build_search_materials
 from app.domain.hard_filters import compute_routable_nodes, compute_search_exclusion
@@ -50,7 +51,6 @@ from app.domain.route import (
 )
 from app.domain.route_search import (
     LengthBand,
-    MAX_SNAP_CORRECTION_KM,
     corridor_overlap_ratios,
     leg_duration_hours,
     leg_of_edge_by_half,
@@ -124,7 +124,7 @@ logger = logging.getLogger("ridecompass.graph")
 def _search_materials(road: RoadSlice, steps_ms: dict[str, int], cost_material_ids: tuple[str, ...],
                       settings: ModelSettings) -> SearchMaterials:
     """切り出した区間の材料から探索の材料の表を組む。段ごとの時間を`steps_ms`へ足す。"""
-    return build_search_materials(material_arrays_of(road), steps_ms, cost_material_ids, settings.road_classes)
+    return build_search_materials(material_arrays_of(road, settings.tuning), steps_ms, cost_material_ids, settings.road_classes)
 
 
 @dataclass
@@ -372,7 +372,7 @@ class RoadGraphEngine:
         if search is None:
             return None
         node_index, accessible, passable, statics, turn_structure = await self._build_search_structures(search)
-        snapped = snap_to_accessible_node(node_index, accessible, origin, MAX_SNAP_CORRECTION_KM)
+        snapped = snap_to_accessible_node(node_index, accessible, origin, self._settings.tuning.value(SNAP_CORRECTION_ID))
         if snapped is None:
             raise RoutingError("no accessible node near origin")
         origin_node, moved = snapped

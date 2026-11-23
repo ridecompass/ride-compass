@@ -67,7 +67,6 @@
     "landcover.ring_outer_m": null,
     "speed.max_descent_kmh": null,
     "search.distance_tolerance_ratio": null,
-    "gradient.perpendicular_band_deg": null,
     "splice.min_stretch_km": null
   }
 }

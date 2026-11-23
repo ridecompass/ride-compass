@@ -27,11 +27,9 @@ from app.domain.lens_total import TOTAL_LENS_ID
 from app.domain.material_catalog import MATERIAL_CATALOG
 from app.domain.model_settings import ModelSettings
 from app.domain.route_request import ASSUMED_SPEED_KMH
-from app.domain.tuning import BASE_CRR_ID
+from app.domain.tuning import BASE_CRR_ID, LENS_SCALE_STEPS_ID
 
 _ROAD_M = 1000.0
-#: 緑の端から赤の端までの刻みの数。
-_STEPS = 10
 
 #: 物差し → 段。
 _Facts = Callable[[LensScale], LensBands]
@@ -41,21 +39,22 @@ def lens_bands(settings: ModelSettings) -> dict[str, LensBands]:
     """レンズid（総合と軸id）→ 地図のレンズの段。"""
     axes, road_classes = settings.cost_axes, settings.road_classes
     parameters = ledger_parameters(CostPreference(), settings.tuning)
+    steps = int(settings.tuning.value(LENS_SCALE_STEPS_ID))
 
     def seconds_of(axis_id: str) -> Callable[..., np.ndarray]:
         return lambda **road: _axis_seconds_per_km(settings, parameters, axis_id, **road)
 
     # 総合の秒は利用者に伝わる事実ではないので、段に名前を付けない（色だけで見せる）。
-    result = {TOTAL_LENS_ID: _unnamed(_bands_of(axes.total_lens, lambda scale: _numeric(scale, "", lambda v: v)))}
+    result = {TOTAL_LENS_ID: _unnamed(_bands_of(axes.total_lens, lambda scale: _numeric(scale, steps, "", lambda v: v)))}
     for axis_id, item in EFFORT_AXES.items():
         seconds = seconds_of(axis_id)
         facts: _Facts
         if item == "gravity":
-            facts = lambda scale: _numeric(scale, "%", lambda v: seconds(grade_percent=v))  # noqa: E731
+            facts = lambda scale: _numeric(scale, steps, "%", lambda v: seconds(grade_percent=v))  # noqa: E731
         elif item == "air":
-            facts = lambda scale: _numeric(scale, "m/s", lambda v: seconds(headwind_ms=v))  # noqa: E731
+            facts = lambda scale: _numeric(scale, steps, "m/s", lambda v: seconds(headwind_ms=v))  # noqa: E731
         elif item == "inertia":
-            facts = lambda scale: _numeric(scale, "回/km", lambda v: seconds(kickoffs=v))  # noqa: E731
+            facts = lambda scale: _numeric(scale, steps, "回/km", lambda v: seconds(kickoffs=v))  # noqa: E731
         else:
             classification = road_classes.rolling_resistance_classification or ""
             keys = list(road_classes.rolling_resistance_classes.get(classification, {}))
@@ -72,7 +71,7 @@ def lens_bands(settings: ModelSettings) -> dict[str, LensBands]:
             spec = MATERIAL_CATALOG.get(burden.material)
             points = burden.points
             facts = lambda scale: _numeric(  # noqa: E731
-                scale, spec.unit if spec else "", lambda v: seconds(burden=evaluate_breakpoint_linear(v, points)))
+                scale, steps, spec.unit if spec else "", lambda v: seconds(burden=evaluate_breakpoint_linear(v, points)))
         result[axis_id] = _bands_of(axis, facts)
     return result
 
@@ -85,9 +84,9 @@ def _bands_of(presentation: AxisPresentation, facts: _Facts) -> LensBands:
     return presentation.lens
 
 
-def _numeric(scale: LensScale, unit: str, seconds_of: Callable[[np.ndarray], np.ndarray]) -> LensBands:
-    """緑の端から赤の端までを`_STEPS`に等分した事実の値（緑の端を除く）ごとに境目を置いた段（名前は事実の値の範囲）。"""
-    ticks = np.linspace(float(scale.green), float(scale.red), _STEPS + 1)
+def _numeric(scale: LensScale, steps: int, unit: str, seconds_of: Callable[[np.ndarray], np.ndarray]) -> LensBands:
+    """緑の端から赤の端までを`steps`に等分した事実の値（緑の端を除く）ごとに境目を置いた段（名前は事実の値の範囲）。"""
+    ticks = np.linspace(float(scale.green), float(scale.red), steps + 1)
     seconds = np.maximum.accumulate(np.asarray(seconds_of(ticks), dtype=np.float64))
     text = [f"{round(float(value), 1):g}" for value in ticks]
     # 緑の端より小さい値は最初の段（一番緑）に入れ、赤の端より大きい値は最後の段（一番赤）に入れる。名前は軸の名前を繰り返さない。

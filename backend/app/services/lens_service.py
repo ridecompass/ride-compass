@@ -12,7 +12,7 @@ from datetime import datetime
 
 import numpy as np
 
-from app.domain.cost_axes import CostAxisDefinitions, cost_axis_ids
+from app.domain.cost_axes import cost_axis_ids
 from app.domain.lens_total import TOTAL_LENS_ID
 from app.domain.cost_preference import CostPreference
 from app.domain.wind_context import WindContext
@@ -87,9 +87,8 @@ class LensService:
     async def _tile(self, settings: ModelSettings, z: int, x: int, y: int, at: datetime | None, speed_kmh: float,
                     preference: CostPreference, only: str | None = None) -> _TileLens | None:
         """タイルのレンズの値。`only`を渡すとそのフィーチャーだけで求める（無ければNone）。"""
-        axes = settings.cost_axes
         with log_external_call(_CATEGORY, z=z, x=x, y=y) as fields:
-            prepared = await asyncio.to_thread(_prepare, road_network_store.current(), z, x, y, axes, only)
+            prepared = await asyncio.to_thread(_prepare, road_network_store.current(), z, x, y, settings, only)
             if prepared is None:
                 return None
             features, materials, fills, burden_fills, elevation_gain_m = prepared
@@ -116,7 +115,7 @@ class LensService:
         return series, target
 
 
-def _prepare(network: RoadNetwork, z: int, x: int, y: int, axes: CostAxisDefinitions, only: str | None
+def _prepare(network: RoadNetwork, z: int, x: int, y: int, settings: ModelSettings, only: str | None
              ) -> tuple[LensFeatures, EdgeMaterialColumns, MaterialFills, Mapping[str, float], np.ndarray] | None:
     """風に依らない入力（フィーチャーと行・材料・欠けを埋める材料の平均と道のストレスの重さの平均・行の向きの登り）。道路網ごとの
     初回は、タイルの区間の表（`domain/road_network.py: RoadNetwork.road_tile_rows`）と取込範囲全体の区分の列と平均も求めるので、
@@ -125,8 +124,9 @@ def _prepare(network: RoadNetwork, z: int, x: int, y: int, axes: CostAxisDefinit
     features = tile if only is None else tile.only(only)
     if features is None:
         return None
-    materials = material_arrays_of(slice_rows(network, network_classes(network), features.rows))
-    return (features, materials, MaterialFills(numeric_means=network.numeric_means), network_burden_fills(network, axes),
+    materials = material_arrays_of(slice_rows(network, network_classes(network), features.rows), settings.tuning)
+    return (features, materials, MaterialFills(numeric_means=network.numeric_means),
+            network_burden_fills(network, settings.cost_axes),
             network.elevation_gain_m[features.rows])
 
 
