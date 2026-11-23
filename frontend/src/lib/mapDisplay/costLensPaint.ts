@@ -21,7 +21,7 @@ export function costLensPaint(presentation: CostLensBands, ground: MapTheme): Ma
     boundaries: presentation.lens.thresholds,
     unit: LENS_SECONDS_UNIT,
     bandLabels: presentation.lens.band_labels,
-    // 段の名前は backend が事実の値の範囲で付ける。
+    // 段の名前は backend が付けたもの（物差しから刻んだ事実の値の範囲か区分の名前）をそのまま出し、秒の範囲を添えない。
     labelsCarryRange: true,
   };
 }

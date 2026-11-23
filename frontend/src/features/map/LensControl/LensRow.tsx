@@ -46,7 +46,7 @@ function AxisIcon({ iconId }: { iconId?: string }) {
   return createElement(axisIconFor(iconId), { size: 14 });
 }
 
-/** 選択肢の1行。チェックの代わりに1つだけ選ぶ印を出し、(i) は説明を、▶（選んでいる行だけ）は凡例を、行のすぐ下に開く。 */
+/** 選択肢の1行。チェックの代わりに1つだけ選ぶ印を出し、(i) は説明を行のすぐ下に開く。 */
 export function LensRow({ option }: { option: LensOption }) {
   const hint = useRowDescription(option.label, option.description, "この負担の種類の説明を、行のすぐ下に開きます。");
   return (

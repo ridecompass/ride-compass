@@ -23,7 +23,7 @@ export interface RouteStyleMode {
   noDataExpression?: unknown[];
 }
 
-// 段の数は境界（レンズの`thresholds`）の数で決まり、ラベルは凡例の目盛りの境界の数字から作る
+// 段の数は境界（レンズの`thresholds`）の数で決まり、ラベルは段の塗りの宣言（`valueScale.ts: valueBands`）が作る
 // （しきい値を変えても一致する）。区間の値にはnullが明示的に入り、to-numberはnullを0にするため、null（データなし）を先に分ける。
 // `valueExpression`は入れ子のプロパティも指せる（例: `["get", <レンズid>, ["get", ROUTE_LENS_SECONDS_PROPERTY]]`）。
 export function buildRangeSteppedMode(options: {
