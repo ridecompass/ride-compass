@@ -16,8 +16,8 @@ from typing import Any
 
 import numpy as np
 
-from app.domain.attributes import STEEPEST_MIN_INTERVAL_M
 from app.domain.elevation_profile import (
+    STEEPEST_MIN_INTERVAL_M,
     SUMMARY_COLUMNS,
     ElevationProfiles,
     grade_distribution,

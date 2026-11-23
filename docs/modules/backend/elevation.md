@@ -45,7 +45,7 @@ https://maps.gsi.go.jp/development/hyokochi.html ）に合わせる。平らな�
 
 **一番急な登りと下り**（`steepest_gain_percent`・`steepest_loss_percent`）は、GraphHopper の`SlopeCalculator`の max_slope の式で
 残した点から測る（1つ前の2点の標高の平均から今の点までの勾配と、区間の両端の勾配の最大。式と最短の長さは
-`domain/attributes.py: elevation_values_sql`・`STEEPEST_MIN_INTERVAL_M`）。隣り合う2点だけで測ると、5m おきに拾った断面の
+`domain/attributes.py: elevation_values_sql`・`domain/elevation_profile.py: STEEPEST_MIN_INTERVAL_M`）。隣り合う2点だけで測ると、5m おきに拾った断面の
 短い間の揺れがそのまま一番急になる。下りは逆向きに走ったときの登りとして、逆の順に並べた点に同じ式を当てる（式は前の点を見るので、並べる向きで値が変わる）。平均（`average_grade`）と違い、区間の中で登って下っても打ち消し合わない。ルートの区間の続く坂の斜度はこれから作る（`domain/route.py: steepest_signed_percent`）。区間の中で計算し直さず、
 道の値を同じ所から読む。距離は点の道のりの位置の差で測る（点どうしの直線で測ると、曲がった区間で勾配が大きく出る）。
 

@@ -14,7 +14,7 @@ from sqlalchemy import text
 from app.infrastructure import database
 from tests.conftest import UNREACHABLE_DATABASE_URL, app_database_at
 
-FACTORIES = [database.get_session_factory, database.get_route_generation_session_factory]
+FACTORIES = [database.get_session_factory, database.get_long_session_factory]
 
 
 @pytest.fixture

@@ -4,7 +4,7 @@ from typing import Any
 
 import numpy as np
 
-from app.domain.elevation_profile import MAX_PLAUSIBLE_GRADE_PERCENT, ProfileSpans
+from app.domain.elevation_profile import MAX_PLAUSIBLE_GRADE_PERCENT, STEEPEST_MIN_INTERVAL_M, ProfileSpans
 from app.domain.strict_model import StrictModel
 from app.domain.wind_height import WindHeights
 
@@ -147,12 +147,6 @@ EDGE_ROW_ARRAY_FIELDS: tuple[str, ...] = tuple(
     field.name for field in fields(EdgeMaterialArrays) if field.type is np.ndarray
 )
 
-
-#: 一番急な勾配を測る最短の長さ（m）。1つ前の点の間がこれ以下なら、その点で測らない。数える間の途切れない続きの長さが
-#: これより短ければ、その続きの両端では測らない。短い間ほど標高データの揺れが勾配を大きく揺らす（GraphHopper の
-#: https://github.com/graphhopper/graphhopper/blob/master/core/src/main/java/com/graphhopper/routing/util/SlopeCalculator.java
-#: の`MIN_LENGTH`と同じ値と理由）。獲得標高・平均勾配と所要時間は、短い間も数える。
-STEEPEST_MIN_INTERVAL_M = 2.0
 
 
 def elevation_values_sql(vertices: str, tolerance_m: str) -> str:

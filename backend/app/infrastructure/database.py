@@ -27,21 +27,21 @@ def get_session_factory() -> async_sessionmaker[AsyncSession]:
     return _session_factory
 
 
-# ルート生成と、全表走査を伴う管理APIの集計と、走りの記録の書き込み（地形の標高を引く）が使う。どれも1本の接続を長く持つため、タイル配信とはプールを分ける。
-_route_generation_session_factory: async_sessionmaker[AsyncSession] | None = None
+# 全表走査を伴う管理APIの集計と、走りの記録の書き込み（地形の標高を引く）が使う（ルート生成はDBを読まない）。どれも1本の接続を長く持つため、タイル配信とはプールを分ける。
+_long_session_factory: async_sessionmaker[AsyncSession] | None = None
 
 
-def get_route_generation_session_factory() -> async_sessionmaker[AsyncSession]:
-    global _route_generation_session_factory
-    if _route_generation_session_factory is None:
-        _route_generation_session_factory = _new_session_factory()
-    return _route_generation_session_factory
+def get_long_session_factory() -> async_sessionmaker[AsyncSession]:
+    global _long_session_factory
+    if _long_session_factory is None:
+        _long_session_factory = _new_session_factory()
+    return _long_session_factory
 
 
 async def dispose_engines() -> None:
     """エンジンを閉じる。次の取得で作り直す。"""
-    global _session_factory, _route_generation_session_factory
-    for factory in (_session_factory, _route_generation_session_factory):
+    global _session_factory, _long_session_factory
+    for factory in (_session_factory, _long_session_factory):
         if factory is not None:
             await factory.kw["bind"].dispose()
-    _session_factory = _route_generation_session_factory = None
+    _session_factory = _long_session_factory = None

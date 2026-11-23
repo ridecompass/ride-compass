@@ -22,7 +22,7 @@ from app.config import settings
 from app.domain.road_network import RoadNetwork
 from app.domain.route_request import RequestedConditions
 from app.infrastructure.address_search import AddressSearchQuery
-from app.infrastructure.database import get_route_generation_session_factory, get_session_factory
+from app.infrastructure.database import get_long_session_factory, get_session_factory
 from app.infrastructure.db_status import DbStatusQuery
 from app.infrastructure.flood_client import new_flood_cache
 from app.infrastructure.gsi_tile_client import NOT_FOUND_MAX_ENTRIES, GsiTileClient
@@ -65,7 +65,7 @@ from app.services.weather_service import WeatherService
 
 #: DBのセッション工場。タイル配信と同じプールのものと、1本の接続を長く持つもの（ルート生成・全表走査の集計・走りの記録の書き込み）。
 TileSessions = Annotated[async_sessionmaker[AsyncSession], Depends(get_session_factory)]
-LongSessions = Annotated[async_sessionmaker[AsyncSession], Depends(get_route_generation_session_factory)]
+LongSessions = Annotated[async_sessionmaker[AsyncSession], Depends(get_long_session_factory)]
 
 
 #: 気象の取得のプロセス内キャッシュ。サービス・クライアントはリクエストごとに作られるため、プロセスの側で持つ。
