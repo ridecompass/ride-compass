@@ -32,7 +32,6 @@ from app.domain.tuning import BASE_CRR_ID
 _ROAD_M = 1000.0
 #: 緑の端から赤の端までの刻みの数。
 _STEPS = 10
-_SECONDS_UNIT = "秒/km"
 
 #: 物差し → 段。
 _Facts = Callable[[LensScale], LensBands]
@@ -46,7 +45,8 @@ def lens_bands(settings: ModelSettings) -> dict[str, LensBands]:
     def seconds_of(axis_id: str) -> Callable[..., np.ndarray]:
         return lambda **road: _axis_seconds_per_km(settings, parameters, axis_id, **road)
 
-    result = {TOTAL_LENS_ID: _bands_of(axes.total_lens, lambda scale: _numeric(scale, _SECONDS_UNIT, lambda v: v))}
+    # 総合の秒は利用者に伝わる事実ではないので、段に名前を付けない（色だけで見せる）。
+    result = {TOTAL_LENS_ID: _bands_of(axes.total_lens, lambda scale: _unnamed(_numeric(scale, "", lambda v: v)))}
     for axis_id, item in EFFORT_AXES.items():
         seconds = seconds_of(axis_id)
         facts: _Facts
@@ -108,7 +108,13 @@ def _classes(scale: LensScale, keys: list[str], labels: dict[str, str], seconds:
     for key, value in sorted(by_key.items(), key=lambda item: item[1]):
         groups.setdefault(min(max(value, low), high), []).append(labels.get(key, key))
     values = sorted(groups)
-    return LensBands(thresholds=values[1:], band_labels=["・".join(groups[value]) for value in values])
+    # 同じ重さでまとめた区分は、先頭の区分の名前で代表させる（名前を全部つなぐと長くなる。どの区分かは道の窓に出る）。
+    return LensBands(thresholds=values[1:], band_labels=[
+        groups[value][0] if len(groups[value]) == 1 else f"{groups[value][0]}など" for value in values])
+
+
+def _unnamed(bands: LensBands) -> LensBands:
+    return LensBands(thresholds=bands.thresholds, band_labels=[""] * len(bands.band_labels))
 
 
 def _distinct(thresholds: list[float], names: list[str]) -> LensBands:

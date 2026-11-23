@@ -70,7 +70,8 @@ export default function LensControl({
   const pillColor = selected?.color ?? LENS_NEUTRAL_COLOR;
   // 帯は色の段だけを並べ（受け皿の「データなし」等は除く）、右端の段の名前（一番濃い色の値）を帯の右に添える。
   const bands = legend.filter((entry) => !entry.isFallback);
-  const reddest = bands.length > 0 ? bands[bands.length - 1].label : null;
+  // 名前の無い段（総合）は値を出さない。
+  const reddest = bands.length > 0 && bands[bands.length - 1].label !== "" ? bands[bands.length - 1].label : null;
 
   return (
     <div className="pointer-events-auto min-w-0 max-w-56">
@@ -100,7 +101,7 @@ export default function LensControl({
                 className="flex min-w-0 shrink-[8] items-center gap-0.5 text-[0.65rem] text-[var(--color-muted-strong)]"
                 aria-hidden="true"
               >
-                <span className="flex h-1.5 w-12 min-w-0 shrink overflow-hidden rounded-[1px]">
+                <span className="flex h-1.5 w-12 min-w-6 shrink overflow-hidden rounded-[1px]">
                   {bands.map((entry) => (
                     <span key={entry.key} className="flex-1" style={{ background: legendSwatchBackground(entry) }} />
                   ))}
