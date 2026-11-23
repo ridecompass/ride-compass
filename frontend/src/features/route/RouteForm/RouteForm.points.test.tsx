@@ -111,15 +111,15 @@ describe("RouteForm 地点の一覧", () => {
 });
 
 describe("RouteForm 経由地を足す", () => {
-  it("「＋ 経由地」で目的地の手前に足す行を出して、その行の小窓を開き、行の✕でやめる", async () => {
+  it("「＋ 経由地」で目的地の手前に足す行を、小窓を開かずにほかの行と同じ操作で出し、行の✕でやめる", async () => {
     const { selectPoint } = renderForm({ waypoints: waypointsOf(1), destination: DESTINATION });
 
     await userEvent.click(button("＋ 経由地"));
 
     expect(selectPoint).toHaveBeenLastCalledWith({ role: "waypoint", index: null });
-    expect(screen.getByRole("dialog", { name: "新しい経由地を探す" })).toBeInTheDocument();
-
-    await userEvent.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(button("新しい経由地を地図で置く")).toBeInTheDocument();
+    expect(button("新しい経由地を保存した地点から選ぶ")).toBeInTheDocument();
     expect(pointRows()).toEqual([
       "出発地 現在地",
       "経由地1 地図で選んだ地点",

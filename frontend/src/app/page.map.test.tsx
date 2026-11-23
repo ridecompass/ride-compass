@@ -57,9 +57,7 @@ describe("地図で扱えること", () => {
     expect(marksAt(DESTINATION)).toEqual([expect.objectContaining({ draggable: true })]);
     expect(screen.getByRole("button", { name: "目的地を消す" })).toBeInTheDocument();
 
-    // 小窓を閉じてから地図を押す（開いている間に地図を押すと、閉じるだけで置かない）。
     await user.click(screen.getByRole("button", { name: "＋ 経由地" }));
-    await user.keyboard("{Escape}");
     await user.click(screen.getByRole("tab", { name: "負担" }));
     clickMap(ELSEWHERE);
     expect(marksAt(ELSEWHERE)).toEqual([]);
