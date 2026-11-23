@@ -5,6 +5,7 @@ from typing import Any
 import numpy as np
 
 from app.domain.elevation_profile import MAX_PLAUSIBLE_GRADE_PERCENT, STEEPEST_MIN_INTERVAL_M, ProfileSpans
+from app.domain.search_graph import EdgeValues
 from app.domain.strict_model import StrictModel
 from app.domain.wind_height import WindHeights
 
@@ -107,7 +108,7 @@ class EdgeMaterialArrays:
     """
 
     numeric_ids: tuple[str, ...]
-    numeric_values: np.ndarray  # shape=(n, len(numeric_ids)), `domain/search_graph.py: EDGE_VALUE_DTYPE`, NaN=欠損
+    numeric_values: EdgeValues  # shape=(n, len(numeric_ids)), NaN=欠損
     categorical_ids: tuple[str, ...]
     categorical_columns: tuple[CategoricalColumn, ...]  # categorical_idsと同じ並び
     # 区間そのものの値。グラフのオブジェクトから組み直さず、材料と同じクエリで受ける。
@@ -144,7 +145,7 @@ class EdgeMaterialColumns:
 #: `EdgeMaterialArrays`のうち、区間の行をそのまま並べる配列の欄。区間の束を継ぐ・行を切り出す側はこれを回し、
 #: 欄の名前を並べ直さない。分類の材料は列ごとに語彙が違うので含めない。
 EDGE_ROW_ARRAY_FIELDS: tuple[str, ...] = tuple(
-    field.name for field in fields(EdgeMaterialArrays) if field.type is np.ndarray
+    field.name for field in fields(EdgeMaterialArrays) if field.type in (np.ndarray, EdgeValues)
 )
 
 

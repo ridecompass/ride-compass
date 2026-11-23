@@ -31,7 +31,7 @@ from app.domain.geo import LatLonPoint
 from app.domain.material_catalog import GRADIENT_PERCENT
 from app.domain.msm import MsmGrid
 from app.domain.road_classes import RoadClassDefinitions, class_columns, layer_columns
-from app.domain.search_graph import run_starts
+from app.domain.search_graph import EdgeValues, run_starts
 from app.domain.stopwatch import elapsed_ms, start_timer
 from app.domain.tuning import RIDER_HEIGHT_ID, ROUGHNESS_CAP_ID, Tuning
 from app.domain.wind_height import ROUGHNESS_LENGTH_M, WindHeights, height_factors
@@ -88,7 +88,7 @@ class RoadNetwork:
 
     # 材料（`EdgeMaterialArrays`と同じ列。区間と同じ行順）。
     numeric_ids: tuple[str, ...]
-    numeric_values: np.ndarray  # (区間, 列) `domain/search_graph.py: EDGE_VALUE_DTYPE`, NaN=欠損
+    numeric_values: EdgeValues  # (区間, 列), NaN=欠損
     categorical_ids: tuple[str, ...]
     categorical_codes: np.ndarray  # (区間, 列) int16。0は値なし
     categorical_vocab: tuple[tuple[str | None, ...], ...]  # 列ごとの語彙。先頭は必ずNone
@@ -126,7 +126,7 @@ class RoadNetwork:
     # 道1本の値（区分の層が道1本で塗るズームの値）。道は区間を持つ道と、区間を持たない道（区間の列には現れない）の全部で、
     # `osm_way_id`の昇順。材料の列は区間の材料と同じ並びと語彙で、区間を持つ道は区間の値を集めたもの（`domain/road_network_build.py`）。
     way_osm_id: np.ndarray  # int64
-    way_numeric_values: np.ndarray  # (道, 列) `domain/search_graph.py: EDGE_VALUE_DTYPE`, NaN=欠損
+    way_numeric_values: EdgeValues  # (道, 列), NaN=欠損
     way_categorical_codes: np.ndarray  # (道, 列) int16。0は値なし
 
     def __post_init__(self) -> None:
