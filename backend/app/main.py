@@ -172,6 +172,8 @@ app = FastAPI(title="RideCompass API", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_allowed_origins_list,
+    # ログインの札（cookie）を付けた要求を、許した画面の宛先からだけ受ける（宛先を`*`にしない）。
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
     # フロントエンドはbackendへ直接fetchする(cross-origin)ため、X-Request-IDを

@@ -15,6 +15,7 @@ from typing import Annotated
 
 from cachetools import LRUCache
 from fastapi import Depends
+from google.auth.transport.requests import Request as GoogleRequestsTransport
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.services.generation_slots import GenerationSlots
@@ -25,6 +26,7 @@ from app.infrastructure.address_search import AddressSearchQuery
 from app.infrastructure.database import get_long_session_factory, get_session_factory
 from app.infrastructure.db_status import DbStatusQuery
 from app.infrastructure.flood_client import new_flood_cache
+from app.infrastructure.google_identity import GoogleIdTokenVerifier
 from app.infrastructure.gsi_tile_client import NOT_FOUND_MAX_ENTRIES, GsiTileClient
 from app.infrastructure.http_client import get_http_client
 from app.infrastructure.jma_amedas_client import new_latest_time_cache, new_station_table_cache
@@ -38,6 +40,7 @@ from app.infrastructure.facility_search import FacilitySearchQuery
 from app.infrastructure.place_address_query import PlaceAddressQuery
 from app.infrastructure.tuning_overrides import TuningOverrideStore
 from app.infrastructure.wbgt_client import new_forecast_cache, new_point_master_cache
+from app.services.account_service import AccountService
 from app.services.db_status_service import DbStatusService
 from app.services.flood_service import FloodService
 from app.services.graph_service import GraphService, SearchMemory
@@ -211,6 +214,19 @@ def get_gsi_tile_client():
 def get_jma_tile_prewarm() -> Callable[[], Awaitable[None]]:
     """気象庁タイルの定期プリウォームの1回（HTTPの要求の外の定期ジョブが呼ぶ）。"""
     return partial(prewarm_ingested_area, partial(_open_region_service, get_session_factory()), get_jma_tile_client())
+
+
+async def get_account_service(tile_sessions: TileSessions):
+    async with tile_sessions() as session:
+        yield AccountService(session)
+
+
+#: Google の証明書を取る口。接続を使い回すよう、プロセスで1つを持つ。
+_google_transport = GoogleRequestsTransport()
+
+
+def get_google_id_token_verifier() -> GoogleIdTokenVerifier:
+    return GoogleIdTokenVerifier(client_id=settings.google_client_id, transport=_google_transport)
 
 
 async def get_ride_track_service(long_sessions: LongSessions):

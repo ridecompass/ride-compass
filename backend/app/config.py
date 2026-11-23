@@ -51,6 +51,8 @@ class Settings(BaseSettings):
     # 地図の点の名前から開くリンクは、点の小窓を開くたびに、小窓に並ぶ名前のある点（束ねた点はその中の店の全部）の数だけ
     # 呼ばれる。1件は地点を索引で1つ引くだけ。
     place_link_rate_limit_per_minute: int = 600
+    # Google でのログインは、1件ごとに Google の証明書を取って確かめる。人がログインし直す速さに当たらない値。
+    google_login_rate_limit_per_minute: int = 10
     # ルート生成は最も高コストなエンドポイント（1件で数秒〜数十秒CPUを使い、探索範囲に比例して
     # メモリを使う）のため、per-IPレート制限に加えプロセス全体の同時実行数も絞る。
     # 同時に動く生成は、この件数の枠とは別に、探索範囲の大きさに比例するメモリを分け合う（`services/graph_service.py: SearchMemory`）。
@@ -89,6 +91,9 @@ class Settings(BaseSettings):
     # frontend側も同じ資格情報を別の環境変数として持ち、同じ値を設定して運用する。
     admin_basic_auth_username: str = ""
     admin_basic_auth_password: str = ""
+
+    # Google でのログインの OAuth のクライアント ID（秘密の値ではない）。空の環境ではログインを断る。
+    google_client_id: str = ""
 
     # 短命キャッシュ専用で、失っても外部から取り直せるものしか置かない——Redis側に
     # 永続化（RDB/AOF）設定は要らない。本番はVM上にネイティブ導入し、backendコンテナは

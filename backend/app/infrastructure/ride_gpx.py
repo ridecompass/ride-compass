@@ -1,6 +1,6 @@
-"""走りの記録（端末が走行モードの間に溜め、走り終えに送るもの）を GPX 1.1 に直す処理。
+"""走りの記録（端末が走行モードの間に溜め、走り終えに送るもの）を GPX 1.1 に直す処理と、書いた GPX から走った線を読み戻す処理。
 
-端末は欄の名前を毎点くり返さない詰めた形で送り、ここで GPX に直す。GPX の書き方を知るのはこのモジュールだけにする。
+端末は欄の名前を毎点くり返さない詰めた形で送り、ここで GPX に直す。GPX の書き方と読み方を知るのはこのモジュールだけにする。
 点の値は端末が出したままで、止まり・外れ等の解釈は足さない（解釈は、取り出した GPX を読む側がする）。ただし標高の標準の欄は、
 走った地点の地形の標高（道の標高と同じ地理院の製品の並び。呼び出し元が引いて渡す）にする——端末の GPS の高さは誤差が大きく、
 地図と道の標高と食い違う。地形の標高が無い点（取り込んだ範囲の外）は端末の高さにし、端末の高さはどの点も自前の欄に残す。
@@ -15,6 +15,7 @@ GPX の置き場:
 
 from bisect import bisect_right
 from collections.abc import Sequence
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from xml.etree import ElementTree as ET
 
@@ -96,3 +97,36 @@ def ride_gpx(upload: RideUpload, *, server_commit: str | None, ground_elevation_
         if ele_accuracy is not None:
             ET.SubElement(point_extensions, _q(RIDE_NAMESPACE, "altitudeAccuracy")).text = _scaled(ele_accuracy, 1)
     return ET.tostring(root, encoding="unicode", xml_declaration=True)
+
+
+@dataclass(frozen=True)
+class RideLine:
+    """書いた GPX から読み戻した、走った線。"""
+
+    started_at: datetime
+    #: 線（`trkseg`）ごとの点（緯度, 経度）。
+    lines: list[list[tuple[float, float]]]
+    #: 最後の点の時刻。点が無ければ走り始めの時刻。
+    last_point_at: datetime
+
+
+def read_ride_line(gpx: str) -> RideLine:
+    """`ride_gpx`が書いた GPX から、走り始めの時刻と走った線を読む。"""
+    root = ET.fromstring(gpx)
+    started_at = _read_time(root.find(_q(GPX_NAMESPACE, "metadata")))
+    lines = []
+    last_point_at = started_at
+    for segment in root.iter(_q(GPX_NAMESPACE, "trkseg")):
+        line = []
+        for point in segment.iter(_q(GPX_NAMESPACE, "trkpt")):
+            line.append((float(point.attrib["lat"]), float(point.attrib["lon"])))
+            last_point_at = _read_time(point)
+        lines.append(line)
+    return RideLine(started_at=started_at, lines=lines, last_point_at=last_point_at)
+
+
+def _read_time(element: ET.Element | None) -> datetime:
+    text = None if element is None else element.findtext(_q(GPX_NAMESPACE, "time"))
+    if text is None:
+        raise ValueError("GPX に時刻がありません")
+    return datetime.fromisoformat(text)

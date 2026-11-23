@@ -34,3 +34,5 @@ redis==8.1.0
 apscheduler==3.11.3
 # リクエストIDの引き継ぎ・発行・応答ヘッダとログ行への付与（main.py・infrastructure/request_log.py）。
 asgi-correlation-id==5.0.1
+# Google でのログインの ID トークンを確かめる公式のライブラリ（infrastructure/google_identity.py）。証明書の取得に requests を使う。
+google-auth[requests]==2.63.1

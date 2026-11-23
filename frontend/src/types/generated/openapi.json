@@ -1738,12 +1738,292 @@
               }
             }
           }
+        },
+        "security": [
+          {
+            "APIKeyCookie": []
+          }
+        ]
+      }
+    },
+    "/api/me": {
+      "get": {
+        "tags": [
+          "account"
+        ],
+        "operationId": "get_status_api_me_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountStatus"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "APIKeyCookie": []
+          }
+        ]
+      }
+    },
+    "/api/me/google-login": {
+      "post": {
+        "tags": [
+          "account"
+        ],
+        "operationId": "sign_in_with_google_api_me_google_login_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GoogleLoginRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountStatus"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/me/logout": {
+      "post": {
+        "tags": [
+          "account"
+        ],
+        "operationId": "sign_out_api_me_logout_post",
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyCookie": []
+          }
+        ]
+      }
+    },
+    "/api/me/consent": {
+      "put": {
+        "tags": [
+          "account"
+        ],
+        "operationId": "consent_api_me_consent_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConsentRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "APIKeyCookie": []
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "account"
+        ],
+        "operationId": "withdraw_consent_api_me_consent_delete",
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyCookie": []
+          }
+        ]
+      }
+    },
+    "/api/me/rides": {
+      "get": {
+        "tags": [
+          "account"
+        ],
+        "operationId": "list_rides_api_me_rides_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/RideSummary"
+                  },
+                  "type": "array",
+                  "title": "Response List Rides Api Me Rides Get"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "APIKeyCookie": []
+          }
+        ]
+      }
+    },
+    "/api/me/rides/{ride_id}": {
+      "get": {
+        "tags": [
+          "account"
+        ],
+        "operationId": "get_ride_api_me_rides__ride_id__get",
+        "security": [
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "ride_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Ride Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RideDetail"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "account"
+        ],
+        "operationId": "delete_ride_api_me_rides__ride_id__delete",
+        "security": [
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "ride_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Ride Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
         }
       }
     }
   },
   "components": {
     "schemas": {
+      "AccountStatus": {
+        "properties": {
+          "signed_in": {
+            "type": "boolean",
+            "title": "Signed In"
+          },
+          "consented": {
+            "type": "boolean",
+            "title": "Consented"
+          },
+          "terms_version": {
+            "type": "integer",
+            "title": "Terms Version"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "signed_in",
+          "consented",
+          "terms_version"
+        ],
+        "title": "AccountStatus"
+      },
       "ActiveFloodForecast": {
         "properties": {
           "river_code": {
@@ -2795,6 +3075,20 @@
         ],
         "title": "ConnectionEntry"
       },
+      "ConsentRequest": {
+        "properties": {
+          "terms_version": {
+            "type": "integer",
+            "title": "Terms Version"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "terms_version"
+        ],
+        "title": "ConsentRequest"
+      },
       "Constant": {
         "properties": {
           "op": {
@@ -3332,6 +3626,20 @@
           "corrected_destination"
         ],
         "title": "GenerationConditions"
+      },
+      "GoogleLoginRequest": {
+        "properties": {
+          "credential": {
+            "type": "string",
+            "title": "Credential"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "credential"
+        ],
+        "title": "GoogleLoginRequest"
       },
       "GridPointToday": {
         "properties": {
@@ -4700,6 +5008,95 @@
           "candidates"
         ],
         "title": "PlaceSearchResult"
+      },
+      "RideDetail": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "started_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Started At"
+          },
+          "distance_m": {
+            "type": "integer",
+            "title": "Distance M"
+          },
+          "duration_s": {
+            "type": "integer",
+            "title": "Duration S"
+          },
+          "track": {
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "MultiLineString"
+              },
+              "coordinates": {
+                "items": {
+                  "items": {
+                    "items": {
+                      "type": "number"
+                    },
+                    "type": "array"
+                  },
+                  "type": "array"
+                },
+                "type": "array"
+              }
+            },
+            "type": "object",
+            "required": [
+              "type",
+              "coordinates"
+            ],
+            "title": "Track"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "started_at",
+          "distance_m",
+          "duration_s",
+          "track"
+        ],
+        "title": "RideDetail"
+      },
+      "RideSummary": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "started_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Started At"
+          },
+          "distance_m": {
+            "type": "integer",
+            "title": "Distance M"
+          },
+          "duration_s": {
+            "type": "integer",
+            "title": "Duration S"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "started_at",
+          "distance_m",
+          "duration_s"
+        ],
+        "title": "RideSummary"
       },
       "RideUpload": {
         "properties": {
@@ -6845,6 +7242,11 @@
       "HTTPBasic": {
         "type": "http",
         "scheme": "basic"
+      },
+      "APIKeyCookie": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "ridecompass_session"
       }
     }
   }

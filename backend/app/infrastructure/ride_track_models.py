@@ -1,6 +1,7 @@
 """走りの記録の表（走り1回を1行）。端末が送った走りを GPX に直したものと、推したルート、生成の条件と予報を受けたまま持つ。
 
 行は書いたあと変えない。同じ走り（端末が付けた id）が二度届いても、先の行のまま書かない（応答だけを失った端末が送り直すため）。
+走りは送った利用者のもので、本人だけが読めて消せる（利用者の無い行は、ログインを入れる前に受けた走り）。
 """
 
 from datetime import datetime
@@ -8,7 +9,7 @@ from typing import cast
 from uuid import UUID
 
 import asyncpg
-from sqlalchemy import DateTime, Text, func
+from sqlalchemy import DateTime, ForeignKey, Text, delete, func, select
 from sqlalchemy.dialects.postgresql import JSONB, insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, mapped_column
@@ -28,6 +29,7 @@ class RideTrackRow(Base):
     #: 生成の条件と予報（`{"conditions": …, "forecasts": […]}`）。
     context: Mapped[dict] = mapped_column(JSONB, nullable=False)
     received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    account_id: Mapped[UUID | None] = mapped_column(ForeignKey("accounts.id"), index=True)
 
 
 #: 地点（`$1`・`$2`は緯度・経度の配列）を渡した順の番号（`vid`）つきで。地図の投影（Web Mercator）の範囲の外の点はタイルの
@@ -57,16 +59,39 @@ async def ride_track_exists(session: AsyncSession, ride_id: UUID) -> bool:
     return await session.get(RideTrackRow, ride_id) is not None
 
 
-async def insert_ride_track(session: AsyncSession, upload: RideUpload, *, gpx: str) -> None:
+async def insert_ride_track(session: AsyncSession, upload: RideUpload, *, gpx: str, account_id: UUID) -> None:
     """走り1回の行を書く。同じ id の行が既にあれば書かない。"""
     dumped = upload.model_dump(mode="json", include={"routes", "conditions", "forecasts"})
     await session.execute(
         pg_insert(RideTrackRow)
         .values(
             ride_id=upload.id,
+            account_id=account_id,
             gpx=gpx,
             routes=dumped["routes"],
             context={"conditions": dumped["conditions"], "forecasts": dumped["forecasts"]},
         )
         .on_conflict_do_nothing(index_elements=["ride_id"])
     )
+
+
+async def account_ride_gpxs(session: AsyncSession, account_id: UUID) -> list[tuple[UUID, str]]:
+    """その利用者の走りの id と GPX の全部。"""
+    rows = await session.execute(select(RideTrackRow.ride_id, RideTrackRow.gpx).where(RideTrackRow.account_id == account_id))
+    return [(ride_id, gpx) for ride_id, gpx in rows]
+
+
+async def account_ride_gpx(session: AsyncSession, account_id: UUID, ride_id: UUID) -> str | None:
+    """その利用者の走り1件の GPX。無い・ほかの人の走りならNone。"""
+    return (await session.execute(
+        select(RideTrackRow.gpx).where(RideTrackRow.ride_id == ride_id, RideTrackRow.account_id == account_id)
+    )).scalar_one_or_none()
+
+
+async def delete_account_ride(session: AsyncSession, account_id: UUID, ride_id: UUID) -> bool:
+    """その利用者の走り1件を消す。無い・ほかの人の走りなら何もせず偽。"""
+    result = await session.execute(
+        delete(RideTrackRow).where(RideTrackRow.ride_id == ride_id, RideTrackRow.account_id == account_id)
+        .returning(RideTrackRow.ride_id)
+    )
+    return result.first() is not None
