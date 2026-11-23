@@ -68,7 +68,6 @@
     "speed.max_descent_kmh": null,
     "search.distance_tolerance_ratio": null,
     "gradient.perpendicular_band_deg": null,
-    "lens.scale_steps": null,
     "splice.min_stretch_km": null
   }
 }

@@ -438,7 +438,7 @@ TUNING_PARAMETERS: tuple[TuningParameter, ...] = (
         "（地図では勾配の段で塗らない）。広げるほど勾配を示さない道が増える。",
     ),
     TuningParameter(
-        LENS_SCALE_STEPS_ID, "色の物差しを刻む数", "段", TuningEffect.CLIENT_RELOAD,
+        LENS_SCALE_STEPS_ID, "色の物差しを刻む数", "段", TuningEffect.IMMEDIATE,
         "負担で塗る色を、緑の端から赤の端までこの数に刻む。",
     ),
     # --- 画面が使う値（カタログ取得でフロントへ配る） ---
