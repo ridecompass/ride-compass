@@ -16,7 +16,6 @@ from app.domain.material_catalog import GRADIENT_PERCENT
 from app.domain.road_network import RoadNetwork
 from app.domain.road_network_build import EdgelessWays, build_road_network
 from app.domain.traffic import highway_rank
-from tests.tuning_fixture import TUNING
 
 
 @dataclass(frozen=True)
@@ -78,8 +77,9 @@ def road_network(
     classes = {name: CategoricalColumn.encode(values(rows)) for name, values in (categorical or {}).items()}
 
     return build_road_network(
-        revision=revision, stop_cluster_distance_m=TUNING["stop.cluster_distance_m"],
-        node_osm_id=node_ids, node_lat=lat, node_lon=lon, node_has_signals=np.isin(node_ids, list(signal_nodes)),
+        revision=revision, node_osm_id=node_ids, node_lat=lat, node_lon=lon,
+        # 信号の頂点は、それぞれ別の信号の交差点に入る。
+        node_signal_place=np.where(np.isin(node_ids, list(signal_nodes)), np.arange(len(node_ids)), -1).astype(np.int32),
         node_branch_count=np.bincount(
             [row_of[osm] for pair in segments.values() for osm in pair], minlength=len(node_ids)).astype(np.int16),
         edge_way_id=rows.way, edge_segment=rows.segment, edge_forward=rows.forward, edge_from=tail, edge_to=head,

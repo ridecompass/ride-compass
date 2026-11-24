@@ -23,7 +23,6 @@ from tests.search_graph_world import (
     make_graph,
     state_index,
 )
-from tests.tuning_fixture import TUNING
 
 
 def transitions(lazy, structure):
@@ -241,8 +240,8 @@ def test_crossing_wait_follows_the_node_rank_and_signal(crossing_rank, entering_
     graph = make_graph(PLUS_NODES, PLUS_EDGES)
     lazy = lazy_of(graph)
     center = lazy.node_id_to_index["C"]
-    signals = np.zeros(lazy.node_count, dtype=bool)
-    signals[center] = signal
+    signals = np.full(lazy.node_count, -1, dtype=np.int32)
+    signals[center] = 0 if signal else -1
     edge_rank = _plus_ranks(lazy, crossing_rank, entering_rank)
     node_rank = node_max_ranks(lazy.node_count, lazy.graph.edge_from, lazy.graph.edge_to, edge_rank)
     node_rank[center] = max(node_rank[center], network_rank)
@@ -250,7 +249,7 @@ def test_crossing_wait_follows_the_node_rank_and_signal(crossing_rank, entering_
         graph,
         spec=TURN_SPEC,
         edge_rank=edge_rank,
-        node_has_signal=signals,
+        node_signal_place=signals,
         node_rank=node_rank,
     )
     assert transition_seconds(lazy, structure)[("WC", "CE")] == pytest.approx(expected)
@@ -270,9 +269,9 @@ def test_a_turn_at_a_signal_adds_the_signal_wait_to_the_slowing(rank, left, righ
     """信号のある交差点で上位の道を渡らない通り方。直進は基本の待ち（区間が運ぶ）のほかに足さない。"""
     graph = make_graph(PLUS_NODES, PLUS_EDGES)
     lazy = lazy_of(graph)
-    signals = np.zeros(lazy.node_count, dtype=bool)
-    signals[lazy.node_id_to_index["C"]] = True
-    _, _, structure = build_all(graph, spec=TURN_SPEC, edge_rank=_plus_ranks(lazy, rank, rank), node_has_signal=signals)
+    signals = np.full(lazy.node_count, -1, dtype=np.int32)
+    signals[lazy.node_id_to_index["C"]] = 0
+    _, _, structure = build_all(graph, spec=TURN_SPEC, edge_rank=_plus_ranks(lazy, rank, rank), node_signal_place=signals)
     seconds = transition_seconds(lazy, structure)
     assert (seconds[("WC", "CS")], seconds[("WC", "CN")], seconds[("WC", "CE")]) == pytest.approx((right, left, 0.0))
 
@@ -282,60 +281,58 @@ DIVIDED_NODES = {"W": (35.0, 138.99), "A": (35.0, 139.0), "B": (35.0, 139.0003),
                  "N": (35.01, 139.0), "S": (34.99, 139.0003)}
 
 
-def divided_edges(between_m):
-    """AとBの間の区間の長さを`between_m`にした、上下線の分かれた幹線と脇道。"""
-    return {
-        "WA": ("W", "A", 900.0, 90.0), "AB": ("A", "B", between_m, 90.0), "BE": ("B", "E", 900.0, 90.0),
-        "AN": ("A", "N", 1000.0, 0.0), "NA": ("N", "A", 1000.0, 180.0),
-        "BS": ("B", "S", 1000.0, 180.0), "SB": ("S", "B", 1000.0, 0.0),
-    }
+DIVIDED_EDGES = {
+    "WA": ("W", "A", 900.0, 90.0), "AB": ("A", "B", 25.0, 90.0), "BE": ("B", "E", 900.0, 90.0),
+    "AN": ("A", "N", 1000.0, 0.0), "NA": ("N", "A", 1000.0, 180.0),
+    "BS": ("B", "S", 1000.0, 180.0), "SB": ("S", "B", 1000.0, 0.0),
+}
 
 
 @pytest.mark.parametrize(
-    ("between_m", "at_b"),
+    ("places", "at_b"),
     [
-        # 2つの信号の頂点が停止の点をまとめる距離より近い: 1つの交差点として、待ちの表は1回だけ引く。
-        (TUNING["stop.cluster_distance_m"] - 1.0, 0.0),
-        # 離れていれば別の交差点で、それぞれで引く。
-        (TUNING["stop.cluster_distance_m"] + 1.0, wait("signal", "large", "yield", "straight")),
+        # 2つの信号の頂点が同じ信号の交差点に入る: 1つの交差点として、待ちの表は1回だけ引く。
+        ((0, 0), 0.0),
+        # 別の交差点なら、それぞれで引く。
+        ((0, 1), wait("signal", "large", "yield", "straight")),
     ],
 )
-def test_crossing_a_divided_road_at_a_signal_adds_the_wait_once_per_intersection(between_m, at_b):
-    edges = divided_edges(between_m)
+def test_crossing_a_divided_road_at_a_signal_adds_the_wait_once_per_intersection(places, at_b):
+    edges = DIVIDED_EDGES
     graph = make_graph(DIVIDED_NODES, edges)
     lazy = lazy_of(graph)
-    signals = np.zeros(lazy.node_count, dtype=bool)
-    signals[[lazy.node_id_to_index["A"], lazy.node_id_to_index["B"]]] = True
+    signals = np.full(lazy.node_count, -1, dtype=np.int32)
+    signals[[lazy.node_id_to_index["A"], lazy.node_id_to_index["B"]]] = places
     ranks = rank_array(lazy, {edge_id: (MAJOR if edge_id in {"AN", "NA", "BS", "SB"} else MAJOR - 1) for edge_id in edges})
-    _, _, structure = build_all(graph, spec=TURN_SPEC, edge_rank=ranks, node_has_signal=signals)
+    _, _, structure = build_all(graph, spec=TURN_SPEC, edge_rank=ranks, node_signal_place=signals)
     seconds = transition_seconds(lazy, structure)
     assert (seconds[("WA", "AB")], seconds[("AB", "BE")]) == pytest.approx(
         (wait("signal", "large", "yield", "straight"), at_b))
 
 
 def test_a_signal_just_before_the_junction_on_the_same_road_does_not_hide_the_junction_wait():
-    """入る区間の始点が信号の判定の付いた道の継ぎ目（分かれ道でない頂点。信号の判定は半径で付く）でも、そこは交差点では
-    ないので、次の信号の交差点では待ちの表を引く。"""
-    edges = {k: v for k, v in divided_edges(TUNING["stop.cluster_distance_m"] - 1.0).items() if k not in {"AN", "NA"}}
+    """入る区間の始点が同じ信号の交差点に入る道の継ぎ目（分かれ道でない頂点。信号の交差点は半径で点を入れる）でも、そこは
+    交差点ではないので、信号の交差点では待ちの表を引く。"""
+    edges = {k: v for k, v in DIVIDED_EDGES.items() if k not in {"AN", "NA"}}
     graph = make_graph(DIVIDED_NODES, edges)
     lazy = lazy_of(graph)
-    signals = np.zeros(lazy.node_count, dtype=bool)
-    signals[[lazy.node_id_to_index["A"], lazy.node_id_to_index["B"]]] = True
+    signals = np.full(lazy.node_count, -1, dtype=np.int32)
+    signals[[lazy.node_id_to_index["A"], lazy.node_id_to_index["B"]]] = 0
     ranks = rank_array(lazy, {edge_id: (MAJOR if edge_id in {"BS", "SB"} else MAJOR - 1) for edge_id in edges})
-    _, _, structure = build_all(graph, spec=TURN_SPEC, edge_rank=ranks, node_has_signal=signals)
+    _, _, structure = build_all(graph, spec=TURN_SPEC, edge_rank=ranks, node_signal_place=signals)
     assert transition_seconds(lazy, structure)[("AB", "BE")] == pytest.approx(wait("signal", "large", "yield", "straight"))
 
 
 def test_a_right_turn_inside_a_signal_intersection_counts_only_the_slowing():
     """下の階級の道から、上下線の分かれた上位の道へ信号で右折する（Aで上り線を渡り、Bで下り線へ右折する）。待ちの表はAで
     1回だけ引き、Bでは曲がりの減速だけを数える。"""
-    edges = divided_edges(TUNING["stop.cluster_distance_m"] - 1.0)
+    edges = DIVIDED_EDGES
     graph = make_graph(DIVIDED_NODES, edges)
     lazy = lazy_of(graph)
-    signals = np.zeros(lazy.node_count, dtype=bool)
-    signals[[lazy.node_id_to_index["A"], lazy.node_id_to_index["B"]]] = True
+    signals = np.full(lazy.node_count, -1, dtype=np.int32)
+    signals[[lazy.node_id_to_index["A"], lazy.node_id_to_index["B"]]] = 0
     ranks = rank_array(lazy, {edge_id: (MAJOR if edge_id in {"AN", "NA", "BS", "SB"} else MAJOR - 1) for edge_id in edges})
-    _, _, structure = build_all(graph, spec=TURN_SPEC, edge_rank=ranks, node_has_signal=signals)
+    _, _, structure = build_all(graph, spec=TURN_SPEC, edge_rank=ranks, node_signal_place=signals)
     seconds = transition_seconds(lazy, structure)
     assert (seconds[("WA", "AB")], seconds[("AB", "BS")]) == pytest.approx(
         (wait("signal", "large", "yield", "straight"), TURN_SPEC.slow_right.expected_seconds))

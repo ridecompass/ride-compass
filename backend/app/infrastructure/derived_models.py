@@ -31,6 +31,7 @@ from sqlalchemy import (
     ForeignKey,
     ForeignKeyConstraint,
     Index,
+    Integer,
     SmallInteger,
     String,
     column,
@@ -155,8 +156,8 @@ class RoadEdgeRow(Base):
     #: 道の何番目の区間か。
     segment_index: Mapped[int] = mapped_column(SmallInteger, primary_key=True)
 
-    #: 区間の端点。**必ず`road_nodes`に行がある**——頂点の値（`NodeTurnRow`）は`road_nodes`の全行に付くので、探索が
-    #: 端点の値を欠かさずに読める。親子の向きがそのままなので外部キーで縛れる（`derive_topology`がノードを先に入れる）。
+    #: 区間の端点。**必ず`road_nodes`に行がある**——道路網の配列の頂点は`road_nodes`から読むので、探索が端点を欠かさずに読める。
+    #: 親子の向きがそのままなので外部キーで縛れる（`derive_topology`がノードを先に入れる）。
     from_node_id: Mapped[int] = mapped_column(
         BigInteger, ForeignKey("road_nodes.osm_node_id"), nullable=False)
     to_node_id: Mapped[int] = mapped_column(
@@ -282,22 +283,32 @@ class NodeKindRow(Base):
     osm_node_id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=False)
     #: 分類器が付けた種別。
     kind: Mapped[str] = mapped_column(String, nullable=False)
-    #: 近くに信号があるか。交差点の段が頂点の値（`NodeTurnRow`）と1回の探索から書き、種別の信号の読み替え
-    #: （`domain/traffic.py: stop_kind_sql`）が読む。
-    has_traffic_signals: Mapped[bool] = mapped_column(Boolean, nullable=False)
 
 
-class NodeTurnRow(Base):
-    """グラフの頂点の、曲がる費用が読む値。`road_nodes`の全行が行を持つ。"""
+class SignalPlaceRow(Base):
+    """信号の交差点（信号の点を較正値`stop.cluster_distance_m`でまとめた場所）。交差点の段（`batch/derive_nodes.py`）が書く。"""
 
-    __tablename__ = "node_turns"
+    __tablename__ = "signal_places"
     __table_args__ = ({"info": DERIVED},)
 
-    osm_node_id: Mapped[int] = mapped_column(
-        BigInteger, ForeignKey("road_nodes.osm_node_id", ondelete="CASCADE"), primary_key=True, autoincrement=False)
-    has_traffic_signals: Mapped[bool] = mapped_column(Boolean, nullable=False)
-    #: そこに集まる道の最大階級。
-    max_highway_rank: Mapped[int] = mapped_column(SmallInteger, nullable=False)
+    place_id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=False)
+    #: 場所の信号の点の重心。地図の信号の点はここに出す。
+    geom: Mapped[object] = mapped_column(Geometry("POINT", srid=4326, spatial_index=False), nullable=False)
+
+
+class SignalPlaceNodeRow(Base):
+    """信号の交差点に入る点（グラフの頂点も、種別の付いた点も）。点ごとに1行。
+
+    場所の信号の点から較正値`signal.match_radius_m`以内の点で、2つの場所に入る点は一番近い信号の点の場所に入る。曲がる所の信号
+    （道路網の配列の頂点）・種別の信号の読み替え（`domain/traffic.py: stop_kind_sql`）・数の段の信号の止まる場所が読む。
+    """
+
+    __tablename__ = "signal_place_nodes"
+    __table_args__ = ({"info": DERIVED},)
+
+    osm_node_id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=False)
+    place_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("signal_places.place_id", ondelete="CASCADE"), nullable=False)
 
 
 class AddressAreaRow(Base):

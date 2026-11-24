@@ -19,6 +19,7 @@ from app.domain.traffic import (
     INTERSECTION_DEGREE_THRESHOLD,
     PLACE_SHARE_PER_END,
     POI_COUNT_KINDS,
+    SIGNAL_COUNT_KIND,
     count_kind_sql,
     place_count_sql,
     poi_count_column,
@@ -27,17 +28,20 @@ from app.domain.traffic import (
 
 logger = logging.getLogger("ridecompass.derive_counts")
 
-#: 同じ種別の点をまとまりへ分ける。まとまりの点はすべて残す——どの区間に触れるかを点ごとに見るため。
+#: 同じ種別の点をまとまりへ分ける。信号は、交差点の段の信号の交差点（`signal_place_nodes`）を1つのまとまりにする——曲がる所の
+#: 信号の待ちと同じ交差点で数える。まとまりの点はすべて残す——どの区間に触れるかを点ごとに見るため。
 _CLUSTER_SQL = f"""
 CREATE TEMP TABLE _stop_nodes ON COMMIT DROP AS
 WITH classified AS (
-    SELECT nm.osm_node_id, {count_kind_sql("nm")} AS count_kind, n.geom
+    SELECT nm.osm_node_id, {count_kind_sql("nm", "sp.place_id")} AS count_kind, sp.place_id, n.geom
     FROM node_kinds nm
+    LEFT JOIN signal_place_nodes sp ON sp.osm_node_id = nm.osm_node_id
     JOIN LATERAL {nodes_lookup_sql("nm.osm_node_id")} n ON true
-    WHERE {count_kind_sql("nm")} IS NOT NULL
+    WHERE {count_kind_sql("nm", "sp.place_id")} IS NOT NULL
 )
 SELECT osm_node_id, count_kind, geom,
-       {stop_cluster_sql("geom", "$1", "count_kind")} AS cluster_id
+       CASE WHEN count_kind = '{SIGNAL_COUNT_KIND}' THEN place_id
+            ELSE {stop_cluster_sql("geom", "$1", "count_kind")} END AS cluster_id
 FROM classified
 """
 

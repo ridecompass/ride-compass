@@ -42,7 +42,6 @@ from app.domain.road_network import RoadNetwork, positions_in
 from app.domain.road_network_build import EdgelessWays, build_road_network
 from app.domain.search_graph import run_starts
 from app.domain.traffic import HIGHWAY_RANK, highway_rank, travel_allowed
-from app.domain.tuning import STOP_CLUSTER_DISTANCE_ID
 from app.infrastructure.cache_identity import shape_digest
 from app.infrastructure.container_memory import memory_note
 from app.infrastructure.data_paths import DATA_DIR
@@ -274,8 +273,7 @@ async def build(repository: RoadGraphRepository, revision: int) -> RoadNetwork:
     read_s = time.monotonic() - started
     logger.info("道路網の材料を読みました 有向の区間=%d %.0f秒 %s", len(edges["edge_way_id"]), read_s - topology_s,
                 memory_note())
-    network = build_road_network(revision=revision, stop_cluster_distance_m=tuning[STOP_CLUSTER_DISTANCE_ID],
-                                 **nodes, **edges, **materials)
+    network = build_road_network(revision=revision, **nodes, **edges, **materials)
     logger.info("道路網の配列を組みました %.0f秒 %s", time.monotonic() - started - read_s, memory_note())
     return network
 
@@ -298,7 +296,7 @@ def _return_large_buffers_at_once() -> None:
 #: `RoadNetwork`の欄 → (ノードの行の列, 型)。
 _NODE_COLUMNS = {
     "node_osm_id": ("osm_node_id", np.int64), "node_lat": ("latitude", np.float64),
-    "node_lon": ("longitude", np.float64), "node_has_signals": ("has_traffic_signals", np.bool_),
+    "node_lon": ("longitude", np.float64), "node_signal_place": ("signal_place", np.int32),
     "node_branch_count": ("branch_count", np.int16),
 }
 #: 有向の区間の欄 → 型。

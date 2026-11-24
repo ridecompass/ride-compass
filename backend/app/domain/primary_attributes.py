@@ -330,15 +330,16 @@ check_point_rows(PRIMARY_ATTRIBUTES_BY_ID["supply_poi"], NODE_KINDS - STOP_POI_K
 
 
 
-def stop_poi_map_group_sql(alias: str) -> str:
-    """地図の停止要因の点を近いものどうしまとめる単位を返すSQL式（`node_kinds`の別名`alias`）。
+def stop_poi_map_group_sql(alias: str, signal_place: str) -> str:
+    """地図の停止要因の点を近いものどうしまとめる単位を返すSQL式（`node_kinds`の別名`alias`。`signal_place`は
+    `domain/traffic.py: stop_kind_sql`と同じ）。
 
     単位は凡例の行で、数える種別（`COUNT_KIND_OF`）ではない。地図の点は「そこに何があるか」を
     示すため、凡例で分けて見せている種別（例: 車止めとハンプ・狭さく）は近くても別の点のまま
     出し、評価では1回と数える。凡例で同じ行に入る種別は地図で見分けられないので1点にまとめる。
     凡例の行に無い種別（補給休憩）は種別そのままを返す。
     """
-    kind = stop_kind_sql(alias)
+    kind = stop_kind_sql(alias, signal_place)
     row_of = {
         value: category.key
         for category in ATTR_STOP_POI.display_axes[0].categories

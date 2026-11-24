@@ -31,7 +31,7 @@ from app.domain.material_catalog import (
 )
 from app.domain.region import BoundingBox, RoadAt
 from app.domain.search_graph import EDGE_VALUE_DTYPE
-from app.domain.tuning import STOP_CLUSTER_DISTANCE_ID, TURN_BEARING_DISTANCE_ID, require_tuning
+from app.domain.tuning import TURN_BEARING_DISTANCE_ID, require_tuning
 from app.infrastructure import derived_data_meta
 from app.infrastructure.material_joins import material_from_clause
 from app.infrastructure.orm_base import declared_metadata
@@ -165,17 +165,17 @@ ORDER BY re.osm_way_id, re.segment_index
 
 
 #: 道路網全体の配列を作る読み出しが読む較正値。値は作り直しに使った値（`get_recorded_tuning`）で、文へ引数で渡る。
-NETWORK_TUNING = (TURN_BEARING_DISTANCE_ID, STOP_CLUSTER_DISTANCE_ID)
+NETWORK_TUNING = (TURN_BEARING_DISTANCE_ID,)
 
-#: 区間の端点全件（`road_edges`の端点は`road_nodes`に行を持ち、`road_nodes`の全行が`node_turns`に行を持つ）。
+#: 区間の端点全件（`road_edges`の端点は`road_nodes`に行を持つ）と、入る信号の交差点（入らなければ-1）。
 #: 座標はノードの生データから読み、生データが無いノードは現れない。
 _NETWORK_NODES_SQL = text(f"""
-SELECT nm.osm_node_id, ST_X(n.geom) AS longitude, ST_Y(n.geom) AS latitude,
-       nm.has_traffic_signals, rn.branch_count
-FROM node_turns nm
-JOIN road_nodes rn ON rn.osm_node_id = nm.osm_node_id
-JOIN LATERAL {nodes_lookup_sql("nm.osm_node_id")} n ON true
-ORDER BY nm.osm_node_id
+SELECT rn.osm_node_id, ST_X(n.geom) AS longitude, ST_Y(n.geom) AS latitude,
+       coalesce(sp.place_id, -1) AS signal_place, rn.branch_count
+FROM road_nodes rn
+LEFT JOIN signal_place_nodes sp ON sp.osm_node_id = rn.osm_node_id
+JOIN LATERAL {nodes_lookup_sql("rn.osm_node_id")} n ON true
+ORDER BY rn.osm_node_id
 """)
 
 #: 区間を1本も持たない道（同じ位置に点が重なり長さ0の区間しか作れない道等）。地図の区分の層は、区間で塗るズームでもこの道を

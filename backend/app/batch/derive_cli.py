@@ -114,8 +114,9 @@ class DeriveStage:
 
 STAGES: tuple[DeriveStage, ...] = (
     DeriveStage("topology", derive_topology, frozenset({Source.OSM_WAY}), (), ("road_edges", "road_ways", "road_nodes")),
-    DeriveStage("nodes", derive_nodes, frozenset({Source.OSM_NODE, Source.OSM_WAY}), ("topology",),
-                ("node_kinds", "node_turns"), {"signal_radius_m": SIGNAL_MATCH_RADIUS_ID}),
+    DeriveStage("nodes", derive_nodes, frozenset({Source.OSM_NODE}), ("topology",),
+                ("node_kinds", "signal_places", "signal_place_nodes"),
+                {"signal_radius_m": SIGNAL_MATCH_RADIUS_ID, "cluster_distance_m": STOP_CLUSTER_DISTANCE_ID}),
     DeriveStage("counts", derive_counts, frozenset({Source.OSM_NODE, Source.OSM_WAY}),
                 ("topology", "nodes"), ("edge_counts",),
                 {"cluster_distance_m": STOP_CLUSTER_DISTANCE_ID}),

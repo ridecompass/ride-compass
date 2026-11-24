@@ -328,7 +328,7 @@ class RoadGraphEngine:
         return node_index, accessible, passable, statics, turn_structure
 
     def _build_turn_structure(self, search: _SearchGraph, statics: SearchGraphStatics) -> TurnExpandedStructure:
-        """状態＝有向区間の遷移構造。区間と頂点の階級・端のそばの向き・信号の有無は道路網の配列の欄を読む。"""
+        """状態＝有向区間の遷移構造。区間と頂点の階級・端のそばの向き・信号の交差点は道路網の配列の欄を読む。"""
         road, lazy_graph = search.road, search.lazy_graph
         network = road.network
         rows = road.rows[lazy_graph.edge_rows]
@@ -336,11 +336,9 @@ class RoadGraphEngine:
             statics.csr, lazy_graph, np.asarray(network.edge_start_bearing_deg[rows], dtype=np.float64),
             np.asarray(network.edge_end_bearing_deg[rows], dtype=np.float64),
             np.asarray(network.edge_rank[rows], dtype=np.int64), self._turn_cost,
-            np.asarray(network.node_has_signals[road.nodes], dtype=bool),
+            np.asarray(network.node_signal_place[road.nodes], dtype=np.int32),
             np.asarray(network.node_max_rank[road.nodes], dtype=np.int64),
             np.asarray(network.node_branch_count[road.nodes], dtype=np.int16),
-            statics.edge_length_m,
-            network.stop_cluster_distance_m,
         )
 
     async def prepare(

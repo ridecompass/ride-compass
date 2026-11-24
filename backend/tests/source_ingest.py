@@ -214,8 +214,9 @@ def dem_tile_records(product: str, zoom: int, bbox: BoundingBox,
 
 
 async def derive_nodes_at_default_radius(conn: asyncpg.Connection) -> None:
-    """ノードの派生の段を、信号を区間へ寄せる半径をテストの較正値にして流す。"""
-    await derive_nodes.derive(conn, TUNING["signal.match_radius_m"])
+    """ノードの派生の段を、信号の交差点へ点を入れる半径と信号の点をまとめる距離をテストの較正値にして流す。"""
+    await derive_nodes.derive(conn, signal_radius_m=TUNING["signal.match_radius_m"],
+                              cluster_distance_m=TUNING[STOP_CLUSTER_DISTANCE_ID])
 
 
 async def derive_elevation_at_default_step(conn: asyncpg.Connection, **tuning: float) -> None:

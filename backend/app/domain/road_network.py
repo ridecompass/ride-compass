@@ -51,14 +51,12 @@ class RoadNetwork:
     """`revision`は作った時点の派生データの世代（`derived_data_meta.revision`）。"""
 
     revision: int
-    # 停止の点を1つの場所にまとめる距離（較正値`stop.cluster_distance_m`の、作り直しに使った値）。信号の頂点どうしを結ぶ区間が
-    # これより短ければ、同じ交差点の中を進む区間。
-    stop_cluster_distance_m: float
 
     node_osm_id: np.ndarray  # int64, 昇順
     node_lat: np.ndarray  # float64
     node_lon: np.ndarray  # float64
-    node_has_signals: np.ndarray  # bool
+    # 頂点が入る信号の交差点の番号（`signal_place_nodes.place_id`。入らなければ-1）。番号が同じ頂点は同じ交差点。
+    node_signal_place: np.ndarray  # int32
     # そこに集まる区間の一番高い階級（`edge_rank`の最大。道路網全体で数える）。
     node_max_rank: np.ndarray  # int8
     # そこに集まる道の本数（`road_nodes.branch_count`）。3本以上なら分かれ道。

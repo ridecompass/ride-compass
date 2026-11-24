@@ -208,9 +208,8 @@ async def test_rerunning_after_a_crash_between_the_swap_and_the_publish_places_t
 
 
 async def _nodes_with_signal(conn: asyncpg.Connection) -> set[int]:
-    return {r["osm_node_id"] for r in await conn.fetch(
-        "SELECT osm_node_id FROM node_turns WHERE has_traffic_signals"
-        " UNION SELECT osm_node_id FROM node_kinds WHERE has_traffic_signals")}
+    """信号の交差点に入る点。"""
+    return {r["osm_node_id"] for r in await conn.fetch("SELECT osm_node_id FROM signal_place_nodes")}
 
 
 async def test_the_signal_radius_set_on_the_admin_screen_decides_which_nodes_get_the_signal(derived_before):

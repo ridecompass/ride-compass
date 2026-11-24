@@ -1,13 +1,16 @@
-"""ノードの種別（`node_kinds`）と、グラフの頂点の信号の有無・集まる道の最大階級（`node_turns`）を作る。
+"""ノードの種別（`node_kinds`）と、信号の交差点（`signal_places`）とそこに入る点（`signal_place_nodes`）を作る。
 
 **種別（`kind`）は取込ではなく、ここで付ける。**取込は外部が持っていたタグをそのまま
 入れるだけで、「これはPOIか」「どの種別か」という判断は派生の側の仕事である。判断が
 変わったら、生データを取り直さずにこの段を作り直せばよい（後ろの段は入口が足す）。
 
+**信号の交差点は、信号の点を`cluster_distance_m`でまとめた場所の1通りに決める。**点（頂点も、種別の付いた点も）は、
+場所の信号の点から`signal_radius_m`以内ならその場所に入り、2つの場所に入る点は一番近い信号の点の場所に入る。曲がる所の
+信号の待ち（道路網の配列の頂点）・道の側の信号の数（数の段）・地図の信号の点は、どれもこの場所を読む——別々に決めると、
+同じ交差点で待ちが抜けるか片方だけ付く。
+
 **処理はDB内で完結する。**タグを読むためだけに行を取り出さない。タグから種別への
 引き当ては`domain/traffic.py`が表と式で持ち、このバッチはそれをSQLへ渡すだけである。
-
-頂点と枝数（`road_nodes`）は`derive_topology.py`が先に作る。
 """
 
 import logging
@@ -17,12 +20,9 @@ import asyncpg
 
 from app.batch.common import affected_rows
 from app.domain.geo import degrees_covering_m
-from app.infrastructure.source_models import NODES_SOURCE_SQL, WAYS_SOURCE_SQL
-from app.domain.traffic import (
-    HIGHWAY_RANK,
-    TRAFFIC_SIGNAL_SQL,
-    tag_kind_sql,
-)
+from app.domain.traffic import SIGNAL_KIND, TRAFFIC_SIGNAL_SQL, stop_cluster_sql, tag_kind_sql
+from app.domain.tuning import STOP_CLUSTER_DISTANCE_ID, require_tuning
+from app.infrastructure.source_models import NODES_SOURCE_SQL
 
 logger = logging.getLogger("ridecompass.derive_nodes")
 
@@ -34,67 +34,56 @@ def _source_nodes(extra_columns: str = "") -> str:
             f" FROM {NODES_SOURCE_SQL} n WHERE n.tags <> '{{}}'::jsonb")
 
 
-#: 種別は、信号の読み替えが読む近くの信号の有無と一緒に書く。
 _INSERT_KINDS = f"""
-INSERT INTO node_kinds (osm_node_id, kind, has_traffic_signals)
-SELECT k.id, k.kind, EXISTS (SELECT 1 FROM _near_signal s WHERE s.osm_node_id = k.id)
-FROM ({tag_kind_sql(_source_nodes())}) k
+INSERT INTO node_kinds (osm_node_id, kind)
+SELECT k.id, k.kind FROM ({tag_kind_sql(_source_nodes())}) k
 """
 
+#: 信号の点と、その場所の番号（`$1`はまとめる距離）。信号の判定（`TRAFFIC_SIGNAL_SQL`）に当たる点に、種別が信号の点を足す——
+#: 種別の規則は値を揃えてから比べるので、判定に当たらない書き方の信号もある。足すと、種別が信号の点は必ずどこかの場所に入る。
 _SIGNAL_NODES = f"""
 CREATE TEMP TABLE _signal_nodes ON COMMIT DROP AS
-SELECT s.id AS osm_node_id, s.geom FROM ({_source_nodes(", geom")}) s WHERE {TRAFFIC_SIGNAL_SQL}
+SELECT s.id AS osm_node_id, s.geom, {stop_cluster_sql("s.geom", "$1", "true")} AS place_id
+FROM ({_source_nodes(", geom")}) s LEFT JOIN node_kinds k ON k.osm_node_id = s.id
+WHERE {TRAFFIC_SIGNAL_SQL} OR k.kind = '{SIGNAL_KIND}'
 """
 
-#: 信号の近くのノード。種別の付いた点と頂点の両方が読むので、1回だけ探す。
-#: 信号の側から近くのノードを探す——索引を引く回数が、全ノード数ではなく信号の数で決まる。
-#: 半径で探すのは、交差点そのものではなく流入路ごとに信号ノードが置かれ、`osm_node_id`の
-#: 一致では大半を取りこぼすため。
-#: `&&`の前置フィルタを先に置くのは、`::geography`へのキャストがgeometryのGiSTを
-#: 使えなくするため。矩形で絞ってから正確な距離を測る。
-_NEAR_SIGNAL = f"""
-CREATE TEMP TABLE _near_signal ON COMMIT DROP AS
-SELECT DISTINCT near.osm_node_id
-FROM _signal_nodes sk
+_INSERT_PLACES = """
+INSERT INTO signal_places (place_id, geom)
+SELECT place_id, ST_Centroid(ST_Collect(geom)) FROM _signal_nodes GROUP BY place_id
+"""
+
+#: 信号の点の側から近くの点を探す——索引を引く回数が、全ノード数ではなく信号の数で決まる。半径で探すのは、交差点そのもの
+#: ではなく流入路ごとに信号の点が置かれ、`osm_node_id`の一致では大半を取りこぼすため。`&&`の前置フィルタを先に置くのは、
+#: `::geography`へのキャストがgeometryのGiSTを使えなくするため。矩形で絞ってから正確な距離を測る。
+_INSERT_PLACE_NODES = f"""
+INSERT INTO signal_place_nodes (osm_node_id, place_id)
+SELECT DISTINCT ON (near.osm_node_id) near.osm_node_id, s.place_id
+FROM _signal_nodes s
 JOIN {NODES_SOURCE_SQL} near
-  ON near.geom && ST_Expand(sk.geom, $2)
- AND ST_DWithin(sk.geom::geography, near.geom::geography, $1)
-"""
-
-_HIGHWAY_RANKS = ", ".join(f"('{h}', {r})" for h, r in sorted(HIGHWAY_RANK.items()))
-
-#: 頂点ごとに、信号の有無と、そこに集まる道の最大階級。階級の表に無い道しか集まらない頂点は0。
-_INSERT_TURNS = f"""
-WITH ranked AS (
-    SELECT e.from_node_id AS node_id, r.rank FROM road_edges e
-    JOIN {WAYS_SOURCE_SQL} w ON w.osm_way_id = e.osm_way_id
-    JOIN (VALUES {_HIGHWAY_RANKS}) AS r(highway, rank) ON r.highway = w.highway
-    UNION ALL
-    SELECT e.to_node_id, r.rank FROM road_edges e
-    JOIN {WAYS_SOURCE_SQL} w ON w.osm_way_id = e.osm_way_id
-    JOIN (VALUES {_HIGHWAY_RANKS}) AS r(highway, rank) ON r.highway = w.highway
-),
-best AS (SELECT node_id, max(rank) AS max_rank FROM ranked GROUP BY node_id)
-INSERT INTO node_turns (osm_node_id, has_traffic_signals, max_highway_rank)
-SELECT n.osm_node_id, EXISTS (SELECT 1 FROM _near_signal s WHERE s.osm_node_id = n.osm_node_id),
-       COALESCE(best.max_rank, 0)
-FROM road_nodes n LEFT JOIN best ON best.node_id = n.osm_node_id
+  ON near.geom && ST_Expand(s.geom, $2)
+ AND ST_DWithin(s.geom::geography, near.geom::geography, $1)
+ORDER BY near.osm_node_id, ST_Distance(s.geom::geography, near.geom::geography), s.place_id
 """
 
 
-async def derive(conn: asyncpg.Connection, signal_radius_m: float) -> None:
-    """`signal_radius_m`は較正値`signal.match_radius_m`（交差点から何m以内の信号をその交差点のものとみなすか）。"""
+async def derive(conn: asyncpg.Connection, *, signal_radius_m: float, cluster_distance_m: float) -> None:
+    """`signal_radius_m`は較正値`signal.match_radius_m`（信号の点から何m以内の点をその交差点のものとみなすか）、
+    `cluster_distance_m`は較正値`stop.cluster_distance_m`（信号の点をまとめる距離）。"""
+    require_tuning({STOP_CLUSTER_DISTANCE_ID: cluster_distance_m}, cluster_distance_m >= 0, "0以上")
     started = time.perf_counter()
 
     async with conn.transaction():
-        await conn.execute("TRUNCATE node_kinds, node_turns")
-        await conn.execute(_SIGNAL_NODES)
+        await conn.execute("TRUNCATE node_kinds, signal_place_nodes, signal_places")
+        classified = affected_rows(await conn.execute(_INSERT_KINDS))
+        await conn.execute("ANALYZE node_kinds")
+        await conn.execute(_SIGNAL_NODES, cluster_distance_m)
         signals = await conn.fetchval("SELECT count(*) FROM _signal_nodes")
         await conn.execute("ANALYZE _signal_nodes")
-        await conn.execute(_NEAR_SIGNAL, signal_radius_m, degrees_covering_m(signal_radius_m))
-        await conn.execute("ANALYZE _near_signal")
-        classified = affected_rows(await conn.execute(_INSERT_KINDS))
-        await conn.execute(_INSERT_TURNS)
+        places = affected_rows(await conn.execute(_INSERT_PLACES))
+        in_places = affected_rows(await conn.execute(
+            _INSERT_PLACE_NODES, signal_radius_m, degrees_covering_m(signal_radius_m)))
 
-    logger.info("ノードの値を埋めた: 種別が付いた %d点 / 信号 %d点（半径 %.1fm） / %.1f秒",
-                classified, signals, signal_radius_m, time.perf_counter() - started)
+    logger.info("ノードの値を埋めた: 種別が付いた %d点 / 信号 %d点・交差点 %d（まとめる距離 %.1fm）・入る点 %d（半径 %.1fm） / %.1f秒",
+                classified, signals, places, cluster_distance_m, in_places, signal_radius_m,
+                time.perf_counter() - started)
