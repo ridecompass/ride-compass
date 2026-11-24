@@ -97,7 +97,8 @@ async def _stop_counts(conn: asyncpg.Connection) -> dict[int, dict[str, float]]:
     """道ごとの、停止要因の集計キーごとの数（0は省く）。"""
     columns = {kind: poi_count_column(kind) for kind in sorted(POI_COUNT_KINDS)}
     rows = await conn.fetch(
-        "SELECT osm_way_id, " + ", ".join(columns.values()) + " FROM way_counts")
+        "SELECT osm_way_id, " + ", ".join(f"sum({c}) AS {c}" for c in columns.values())
+        + " FROM edge_counts GROUP BY osm_way_id")
     return {r["osm_way_id"]: {kind: r[c] for kind, c in columns.items() if r[c]} for r in rows}
 
 
@@ -143,14 +144,13 @@ async def test_a_crossing_near_a_signal_is_counted_as_a_signal(counts_conn):
 
 
 async def test_rerun_on_changed_input_keeps_no_count_the_input_no_longer_supports(counts_conn):
-    """入力を変えて流し直すと、停止要因も事故も無くなった区間・道の数は0へ戻る。道の数は区間の和。"""
+    """入力を変えて流し直すと、停止要因も事故も無くなった区間の数は0へ戻る。"""
     columns = ("accident_count", *(poi_count_column(k) for k in sorted(POI_COUNT_KINDS)))
     total = " + ".join(f"sum({c})" for c in columns)
 
-    async def counted() -> tuple[float, float]:
-        """(区間の数の総和, 道の数の総和)。"""
-        return (await counts_conn.fetchval(f"SELECT {total} FROM edge_counts"),
-                await counts_conn.fetchval(f"SELECT {total} FROM way_counts"))
+    async def counted() -> float:
+        """区間の数の総和。"""
+        return await counts_conn.fetchval(f"SELECT {total} FROM edge_counts")
 
     await _derive_with_nodes(counts_conn, {TIED_NODE: (zigzag_point(TIED_NODE), CROSSING)})
     before = await counted()
@@ -158,19 +158,16 @@ async def test_rerun_on_changed_input_keeps_no_count_the_input_no_longer_support
     await _derive_with_nodes(counts_conn, {TIED_NODE: (zigzag_point(TIED_NODE), {})})
     after = await counted()
 
-    assert before[0] > 0 and before[1] == before[0]
-    assert after == (0, 0)
+    assert before > 0
+    assert after == 0
 
 
-async def test_every_segment_and_way_has_a_row_even_without_anything_to_count(counts_conn):
-    """数えるものの無い区間・道も0の行を持つ。行が無いと、その区間は材料の欠損に数えられ、地図では値の無い道に塗られる。"""
+async def test_every_segment_has_a_row_even_without_anything_to_count(counts_conn):
+    """数えるものの無い区間も0の行を持つ。行が無いと、その区間は材料の欠損に数えられ、地図では値の無い道に塗られる。"""
     edges = await counts_conn.fetch("SELECT e.osm_way_id, c.accident_count FROM road_edges e"
                                     " LEFT JOIN edge_counts c USING (osm_way_id, segment_index)")
-    ways = await counts_conn.fetch("SELECT w.osm_way_id, c.accident_count FROM road_ways w"
-                                   " LEFT JOIN way_counts c USING (osm_way_id)")
 
     assert {r["osm_way_id"]: r["accident_count"] for r in edges} == {300: 0.0, 200: 0.0, 100: 1.0}
-    assert {r["osm_way_id"]: r["accident_count"] for r in ways} == {300: 0.0, 200: 0.0, 100: 1.0}
 
 
 async def test_an_accident_without_a_bicycle_is_not_counted(counts_conn):

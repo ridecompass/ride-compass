@@ -210,9 +210,9 @@ LATEST_SUCCEEDED_RUNS_SQL`）を、そうでなければ前回の記録を、段
 |---|---|
 | `derive_topology.py` | 道を交差点で切って`road_edges`。切る位置は2本以上の道が通るノード。区間を持つ道の鍵（`road_ways`）と区間の端点（`road_nodes`）も作る |
 | `derive_nodes.py` | ノードの種別（`node_kinds`）と、頂点の信号の有無・集まる道の最大階級（`node_turns`） |
-| `derive_counts.py` | 区間と道に付く数の値（事故・停止要因・交差点。`edge_counts`・`way_counts`） |
+| `derive_counts.py` | 区間に付く数の値（事故・停止要因・交差点。`edge_counts`） |
 | `derive_elevation.py` | 標高のタイルを区間を等しい刻みに分けた点で引き、区間の標高と勾配にする（`derive_elevation.py: edge_elevation`） |
-| `derive_landcover.py` | 土地被覆の画像を区間の周りの帯で数え、区間と道の土地被覆の割合にする（`derive_landcover.py: edge_landcover`・`way_landcover`） |
+| `derive_landcover.py` | 土地被覆の画像を区間の周りの帯で数え、区間の土地被覆の割合にする（`derive_landcover.py: edge_landcover`） |
 | `derive_traffic_regulations.py` | 交通規制（歩行者用道路）が当たる区間と、効く時間帯（`edge_traffic_regulations`）。線の規制は線の周りの帯、面の規制は面を場所とし、区間の長さのうち一定の割合以上が場所の中にある区間へ当てる。線の規制は、さらに区間の始点→終点の向きと、区間の中点に一番近い所の線の1辺の向きの差（向きを問わず0〜90度）が上限以下の、線に沿う区間に限る（線を交差点で横切る道の短い区間は帯にまるごと入り、割合では外せない）。帯の半幅と割合と向きの差の上限は較正値（`domain/tuning.py: REGULATION_LINE_HALF_WIDTH_ID`・`domain/tuning.py: REGULATION_EDGE_SHARE_ID`・`domain/tuning.py: REGULATION_MAX_ANGLE_ID`）。1つの区間に2つ以上が当たれば列ごとに強い方を取る。値はOSMのデータを含まない層（[外部データソースの利用条件](../../architecture/data-sources.md)「OSM から作った値と独自の層」）で、時間帯は配布の規制の値だけから決め、区間の形と長さは当てる区間を決める参照にだけ使う |
 | `derive_way_directions.py` | 道1本の性質（通行方向・上下線分離。`way_directions`）。道ごとに1行を書く |
 | `derive_addresses.py` | 住所の区画`address_areas`・鍵・街区と地番（道の網を読まない。[地点の検索](place-search.md)「住所の区画の表」） |
@@ -606,7 +606,7 @@ z9で約3MB（28万本・167万点）。z9より引くと1画面で数十MBに�
 
 ### 土地被覆ラスタタイル（`landcover_raster.py`・`landcover_tile_service.py`）
 
-道の周りの帯をクラス別の割合へ畳んだ値（`way_landcover.lc_*`）とは別に、**元の
+道の周りの帯をクラス別の割合へ畳んだ値（`edge_landcover.lc_*`）とは別に、**元の
 ラスタをそのまま面として配る**。割合の混合をどう塗るかという問題が起きない代わりに、
 道路との対応は利用者が目で取る。
 
@@ -760,7 +760,7 @@ PBF取込時にしか変わらないため、再訪時の同一タイル再取�
 - **道の値と区間の値は同じ数え方から作る**——道の値は区間の値の集約で、別々に数えない。
   片方だけ数え方を変えると、地図に出ている値と採点が使う値が別物になる。
 - **土地被覆は、中心線の周りの帯に落ちる有効画素が足りない区間では値を持たない**
-  （`lc_valid_pixels`も割合もNULL）。ラスタが覆っていない場所でもっともらしい
+  （`edge_landcover`に行が無い）。ラスタが覆っていない場所でもっともらしい
   数値を書かない。覆うラスタを足して派生を流し直せば値が付く。帯は中心線から
   外の幅（`domain/tuning.py: LANDCOVER_RING_OUTER_ID`）までで、内の幅（`domain/tuning.py: LANDCOVER_RING_INNER_ID`）より内側
   （路面そのもの）の画素は数えない——道の周りの景色を表す値で、道の舗装の画素を混ぜない。幅は派生の作り直しで効く較正値で、

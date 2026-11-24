@@ -243,7 +243,7 @@ async def test_a_partial_rebuild_runs_only_the_chosen_stages_and_records_only_wh
     await _ingest_landcover(world)
     await override_tuning(SIGNAL_RADIUS, 150.0)
     await override_tuning(LANDCOVER_RING_OUTER_ID, 50.0)
-    written = {"node_kinds", "node_turns", "edge_counts", "way_counts"}
+    written = {"node_kinds", "node_turns", "edge_counts"}
 
     assert await derive_cli.run(postgis_database_url(), ["nodes"]) == 0
 

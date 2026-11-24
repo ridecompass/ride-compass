@@ -1,4 +1,4 @@
-"""土地被覆の画像を区間の周りの帯で数えて、区間と道の土地被覆の割合（`edge_landcover`・`way_landcover`）にする。
+"""土地被覆の画像を区間の周りの帯で数えて、区間の土地被覆の割合（`edge_landcover`）にする。
 
 土地被覆の生データは`source_features`にタイル1枚=1行、`raster`として入っている。**面のまま
 持つ派生は作らない**——面を読む出口は「そのまま見せる」か「線へ落とす」のどちらかで、
@@ -7,8 +7,7 @@
 **処理はDB内で完結する。**画素をプロセスへ取り出さず、帯に重なる画素を数える
 （`ST_Clip` + `ST_ValueCount`）。
 
-**道の値は区間の値から作る。**
-値の出た区間・道だけが行を持つ。
+値の出た区間だけが行を持つ。
 
 値の出し方そのものはdomainが持つ（`class_percentages_sql`）。このバッチは画素の数え方を
 組み立てるだけで、有効画素数の下限を持たない。
@@ -50,11 +49,11 @@ GROUP BY r.osm_way_id, r.segment_index, (vc).value
 
 #: (割合の項目名, 表の列名) の対応。
 _LANDCOVER_COLUMNS = [(name, "lc_" + landcover_key(name)) for name, _ in PERCENT_CLASSES]
-_VALUE_COLUMNS = ["lc_valid_pixels", *(column for _, column in _LANDCOVER_COLUMNS)]
+_VALUE_COLUMNS = [column for _, column in _LANDCOVER_COLUMNS]
 
 _INSERT_LANDCOVER = f"""
 INSERT INTO edge_landcover (osm_way_id, segment_index, {", ".join(_VALUE_COLUMNS)})
-SELECT osm_way_id, segment_index, valid_pixels, {", ".join(f"p.{name}" for name, _ in _LANDCOVER_COLUMNS)}
+SELECT osm_way_id, segment_index, {", ".join(f"p.{name}" for name, _ in _LANDCOVER_COLUMNS)}
 FROM ({class_percentages_sql(_COUNT_CLASSES)}) p
 """
 
@@ -74,27 +73,9 @@ async def _derive_edges(conn: asyncpg.Connection, ring_outer_m: float, ring_inne
                 updated, edges, tiles, time.perf_counter() - started)
 
 
-# --- 道への集約 -------------------------------------------------------------
-
-
-#: 道の値は区間から導く。長さで重み付けた平均にするのは、どちらも割合のため。割合を持つ区間が1本も無い道は
-#: 集約に出ず、行を持たない。倍精度で平均してからREALの列へ入れる——REALのまま足すと丸めで100をわずかに
-#: 超え、表の制約に断られる。
-_WAY_ROLLUP = f"""
-INSERT INTO way_landcover (osm_way_id, {", ".join(_VALUE_COLUMNS)})
-SELECT m.osm_way_id, sum(m.lc_valid_pixels), {", ".join(
-    f"sum(m.{c}::double precision * e.distance_m) / sum(e.distance_m::double precision) AS {c}"
-    for _, c in _LANDCOVER_COLUMNS)}
-FROM edge_landcover m JOIN road_edges e
-  ON e.osm_way_id = m.osm_way_id AND e.segment_index = m.segment_index
-GROUP BY m.osm_way_id
-"""
-
-
 async def derive(conn: asyncpg.Connection, *, ring_outer_m: float, ring_inner_m: float) -> None:
     """帯は道の中心線から`ring_inner_m`より外・`ring_outer_m`までで、路面そのものの幅を除く。"""
     async with conn.transaction():
-        await conn.execute("TRUNCATE edge_landcover, way_landcover")
+        await conn.execute("TRUNCATE edge_landcover")
         await _derive_edges(conn, ring_outer_m, ring_inner_m)
         await conn.execute("ANALYZE edge_landcover")
-        await conn.execute(_WAY_ROLLUP)

@@ -108,7 +108,7 @@ _TRAFFIC_CALMING_VALUES: frozenset[str] = frozenset(
 STOP_POI_KINDS: frozenset[str] = frozenset(get_args(_StopPoiKind))
 
 
-# 停止要因の集計キー（`edge_counts`・`way_counts`の件数列`poi_<キー>`）と、
+# 停止要因の集計キー（`edge_counts`の件数列`poi_<キー>`）と、
 # その日本語ラベル。止まる出来事の宣言（`domain/stop_events.py: STOP_EVENT_KINDS`）の停止要因から導き、材料
 # （`domain/material_catalog.py`の`poi_*_per_km`）はこの一覧から生成する。
 #
@@ -189,7 +189,7 @@ def stop_event(group: EventGroup, name: str, tuning: Tuning) -> StopEvent:
 
 
 def poi_count_column(kind: str) -> str:
-    """停止要因の種別`kind`の件数を持つ列（`edge_counts`・`way_counts`）の名前。"""
+    """停止要因の種別`kind`の件数を持つ列（`edge_counts`）の名前。"""
     return f"poi_{kind}"
 
 

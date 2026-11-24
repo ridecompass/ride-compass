@@ -31,7 +31,6 @@ from sqlalchemy import (
     ForeignKey,
     ForeignKeyConstraint,
     Index,
-    Integer,
     SmallInteger,
     String,
     column,
@@ -65,16 +64,15 @@ _PERCENT_SUM_TOLERANCE = 0.1
 
 
 def _count_checks(table: str) -> tuple[CheckConstraint, ...]:
-    """数の表（区間・道）の「値が不整合になりえない」制約。読み出し側が毎回この条件を書かずに済むように、入れられない側で止める。"""
+    """数の表の「値が不整合になりえない」制約。読み出し側が毎回この条件を書かずに済むように、入れられない側で止める。"""
     return tuple(CheckConstraint(f"{column} >= 0", name=f"{table}_{column}_not_negative")
                  for column in _COUNT_COLUMNS)
 
 
 def _landcover_checks(table: str) -> tuple[CheckConstraint, ...]:
-    """土地被覆の表（区間・道）の制約。有効画素は正で、割合は全部あって合計が100。"""
+    """土地被覆の表の制約。割合は全部あって合計が100。"""
     total = " + ".join(_LANDCOVER_COLUMNS)
     return (
-        CheckConstraint("lc_valid_pixels > 0", name=f"{table}_lc_valid_pixels_positive"),
         *(CheckConstraint(f"{column} BETWEEN 0 AND 100", name=f"{table}_{column}_is_percent")
           for column in _LANDCOVER_COLUMNS),
         CheckConstraint(f"abs(({total}) - 100) <= {_PERCENT_SUM_TOLERANCE}", name=f"{table}_landcover_shares_sum_to_100"),
@@ -123,7 +121,6 @@ class _Counts:
 
 
 class _Landcover:
-    lc_valid_pixels: Mapped[int] = mapped_column(Integer, nullable=False)
     lc_water: Mapped[float] = mapped_column(REAL, nullable=False)
     lc_trees: Mapped[float] = mapped_column(REAL, nullable=False)
     lc_flooded_veg: Mapped[float] = mapped_column(REAL, nullable=False)
@@ -278,24 +275,6 @@ class WayDirectionRow(_WayKey, Base):
 
     #: 上下線が分かれた道の片側か。
     divided: Mapped[bool] = mapped_column(Boolean, nullable=False)
-
-
-class WayLandcoverRow(_WayKey, _Landcover, Base):
-    """道1本の土地被覆の割合（区間の値の長さで重み付けた平均）。割合を持つ区間がある道だけが行を持つ。
-
-    区間の値を道にも持つのは、低ズームのタイルが道1本を1フィーチャーとして塗るため（数も同じ）。区間から集約して作ると
-    都心のz12で実測1.2秒かかり、タイル生成が倍になる。
-    """
-
-    __tablename__ = "way_landcover"
-    __table_args__ = (*_landcover_checks("way_landcover"), {"info": DERIVED})
-
-
-class WayCountsRow(_WayKey, _Counts, Base):
-    """道1本の数（区間の和）。全部の道が行を持つ。"""
-
-    __tablename__ = "way_counts"
-    __table_args__ = (*_count_checks("way_counts"), {"info": DERIVED})
 
 
 class NodeKindRow(Base):

@@ -1,7 +1,4 @@
-"""区間と道に付く「数」の値（事故・停止要因・交差点）を埋める。
-
-区間（`edge_counts`）と道（`way_counts`）の両方を同じ規則で埋める——同じ知識を2つの粒度で持つ
-以上、数え方が違ってはいけない（地図と評価で値が食い違う原因になる）。道の値は区間の和から導く。
+"""区間に付く「数」の値（事故・停止要因・交差点）を埋める（`edge_counts`）。
 
 **停止要因は、まとまり1つを道路網の上の1つの場所として数える。**場所に端から入る区間と
 出る区間が0.5ずつ持ち、場所を通り抜ける区間が1を持つので、経路上ではどう通っても合計1回に
@@ -150,16 +147,6 @@ FROM (
 WHERE s.osm_way_id = m.osm_way_id AND s.segment_index = m.segment_index
 """
 
-#: 道1本へ区間の和として写す列。
-_WAY_SUMMED_COLUMNS = ("accident_count", "intersection_count", *_STOP_COLUMNS.values())
-
-#: どの道も区間を持つ（`derive_topology`は区間のある道だけを入れる）ので、全部の道が行を持つ。
-_WAY_FROM_EDGES = f"""
-INSERT INTO way_counts (osm_way_id, {", ".join(_WAY_SUMMED_COLUMNS)})
-SELECT osm_way_id, {", ".join(f"sum({c})" for c in _WAY_SUMMED_COLUMNS)}
-FROM edge_counts GROUP BY osm_way_id
-"""
-
 
 async def derive(conn: asyncpg.Connection, *, cluster_distance_m: float, accident_fatal_weight: float,
                  accident_match_distance_m: float) -> None:
@@ -176,14 +163,13 @@ async def derive(conn: asyncpg.Connection, *, cluster_distance_m: float, acciden
             "SELECT (SELECT count(*) FROM _stop_nodes) AS points,"
             " (SELECT count(DISTINCT (count_kind, cluster_id)) FROM _stop_nodes) AS clusters,"
             " (SELECT count(DISTINCT osm_node_id) FROM _stop_touches) AS on_network")
-        await conn.execute("TRUNCATE edge_counts, way_counts")
+        await conn.execute("TRUNCATE edge_counts")
         await conn.execute(_EDGE_ROWS)
         await conn.execute("ANALYZE edge_counts")
         await conn.execute(_EDGE_STOP_COUNTS)
         await conn.execute(_EDGE_INTERSECTIONS, INTERSECTION_DEGREE_THRESHOLD)
         await conn.execute(_EDGE_ACCIDENTS, accident_fatal_weight, degrees_covering_m(accident_match_distance_m),
                            accident_match_distance_m)
-        await conn.execute(_WAY_FROM_EDGES)
 
     logger.info("数の値を埋めた: 停止要因 %d点（まとまり %d・区間に乗る点 %d） / %.1f秒",
                 stops["points"], stops["clusters"], stops["on_network"],

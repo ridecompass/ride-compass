@@ -107,25 +107,23 @@ async def landcover_conn(prepared_conn):
     return prepared_conn
 
 
-async def test_rerun_on_pixels_left_out_keeps_no_share_on_segments_or_ways(landcover_conn):
-    """画素が欠測になって流し直すと、区間も道も割合も有効画素も持たない（有効画素が足りない）。"""
+async def test_rerun_on_pixels_left_out_keeps_no_share_on_segments(landcover_conn):
+    """画素が欠測になって流し直すと、区間は割合を持たない（有効画素が足りない）。"""
     first = landcover_key(PERCENT_CLASSES[0][0])
 
-    async def shares() -> list[tuple[int | None, float | None]]:
-        """区間と道それぞれの (有効画素数, 塗ったクラスの割合)。"""
-        return [(r["lc_valid_pixels"], r[f"lc_{first}"]) for r in await landcover_conn.fetch(
-            f"SELECT lc_valid_pixels, lc_{first} FROM road_edges LEFT JOIN edge_landcover USING (osm_way_id, segment_index)"
-            f" UNION ALL SELECT lc_valid_pixels, lc_{first} FROM road_ways LEFT JOIN way_landcover USING (osm_way_id)")]
+    async def shares() -> list[float | None]:
+        """区間ごとの、塗ったクラスの割合。"""
+        return [r[f"lc_{first}"] for r in await landcover_conn.fetch(
+            f"SELECT lc_{first} FROM road_edges LEFT JOIN edge_landcover USING (osm_way_id, segment_index)")]
 
     await derive_landcover.derive(landcover_conn, **_DEFAULT_RING)
     before = await shares()
     await _ingest_tile(landcover_conn, _raster(NODATA))
     await derive_landcover.derive(landcover_conn, **_DEFAULT_RING)
 
-    # 前提: 1回目は区間にも道にも値が付いている。
-    assert len(before) == 2
-    assert all(pixels and share == pytest.approx(100) for pixels, share in before)
-    assert await shares() == [(None, None), (None, None)]
+    # 前提: 1回目は区間に値が付いている。
+    assert before == [pytest.approx(100)]
+    assert await shares() == [None]
 
 
 #: 既定の帯と、外・内の幅を両方変えた帯。変えた帯は既定の帯の内径・外径をまたぐ。
@@ -135,7 +133,7 @@ _RINGS = [_DEFAULT_RING, {"ring_inner_m": 30.0, "ring_outer_m": 60.0}]
 @pytest.mark.parametrize("band", _RINGS, ids=["既定の帯", "幅を変えた帯"])
 async def test_only_pixels_in_the_band_around_the_road_are_counted(landcover_conn, band):
     """数えるのは中心線から渡した帯の内径〜外径の画素だけ。路面そのもの（内径より内側）と、
-    外径より外側の画素は、区間の割合にも道の割合にも入らない。"""
+    外径より外側の画素は、区間の割合に入らない。"""
     classes = PERCENT_CLASSES[:3]
     await _ingest_tile(landcover_conn, _ring_raster(*(value for _, value in classes),
                                                     inner_m=band["ring_inner_m"], outer_m=band["ring_outer_m"]))
@@ -145,6 +143,5 @@ async def test_only_pixels_in_the_band_around_the_road_are_counted(landcover_con
 
     rows = await landcover_conn.fetch(
         f"SELECT lc_{inside} AS inside, lc_{ring} AS ring, lc_{outside} AS outside"
-        " FROM edge_landcover UNION ALL"
-        f" SELECT lc_{inside}, lc_{ring}, lc_{outside} FROM way_landcover")
-    assert [(r["inside"], r["ring"], r["outside"]) for r in rows] == [(0, 100, 0), (0, 100, 0)]
+        " FROM edge_landcover")
+    assert [(r["inside"], r["ring"], r["outside"]) for r in rows] == [(0, 100, 0)]
