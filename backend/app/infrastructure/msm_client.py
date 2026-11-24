@@ -498,6 +498,17 @@ async def read_grid_points(latitudes: np.ndarray, longitudes: np.ndarray) -> Msm
     return MsmGridPointWeatherSeries(times=times, points=points, latest_run_end=latest_run_end, **values)
 
 
+async def forecast_times() -> list[datetime]:
+    """今の正時から読める予報の時刻（系列の時刻の形）。読む時刻の並びは格子のどの点でも同じなので、格子の真ん中の1点で決める。
+    読めなければ`MsmUnavailableError`。"""
+    _, times, _, _ = await _read(
+        lambda grid: grid.nearest_points(grid.latitude_of(np.array([grid.n_lat // 2])),
+                                         grid.longitude_of(np.array([grid.n_lon // 2]))),
+        MsmGridPoints.values, _WIND_VARIABLES,
+    )
+    return times
+
+
 async def read_grid_block(south: float, west: float, north: float, east: float) -> MsmGridPointSeries:
     """矩形を覆う格子点（`domain/msm.py: MsmGrid.block_covering`）の全部の風と気温の時系列（格子点の値のまま、点の番号の順）。
     読めなければ`MsmUnavailableError`。"""

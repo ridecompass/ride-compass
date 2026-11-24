@@ -32,6 +32,7 @@ from app.infrastructure.vector_tile import ROAD_FEATURE_PROPERTIES, ROAD_SURFACE
 from app.infrastructure.media_types import MVT_CONTENT_TYPE
 from app.infrastructure.region_tile_cache import MVT_TILE_GENERATIONS, serve_region_tile
 from app.services.lens_service import LensService
+from app.services.time_frame_service import TimeFrameService
 
 logger = logging.getLogger("ridecompass.region_service")
 
@@ -92,11 +93,12 @@ class RegionService:
             variant=variant,
         )
 
-    async def get_road_surface_tile(self, z: int, x: int, y: int, at: datetime | None) -> bytes:
-        """地図の道の線のタイル。フィーチャーごとの地図の線の層の値（`road_layer_values`）を焼く。時刻`at`を渡すと、道ごとの鍵を
-        焼くズーム（`ROAD_TILE_MIN_ZOOM`以上）では、規制の当たる道の区分をその時刻に効く規制で焼き、持ちはタイルの規制の効き方
-        （`domain/timed_regulations.py: regulation_variant`）で分ける。引いたズームは時刻で変わらない規制だけで焼く（地図は時刻で
-        変わる規制の層を、そのズームでは描かない）。"""
+    async def get_road_surface_tile(self, z: int, x: int, y: int, frame: str | None, time_frames: TimeFrameService) -> bytes:
+        """地図の道の線のタイル。フィーチャーごとの地図の線の層の値（`road_layer_values`）を焼く。路面タイルのコマの印`frame`を
+        渡すと、道ごとの鍵を焼くズーム（`ROAD_TILE_MIN_ZOOM`以上）では、規制の当たる道の区分をそのコマの始まりの時刻に効く規制で
+        焼き、持ちはタイルの規制の効き方（`domain/timed_regulations.py: regulation_variant`）で分ける。引いたズームは時刻で変わらない
+        規制だけで焼く（地図は時刻で変わる規制の層を、そのズームでは描かない）。今の一覧に無い印は投げる。"""
+        at = await time_frames.road_surface_at(frame)
         definitions = current_road_classes()
         timed_at = at if at is not None and z >= ROAD_TILE_MIN_ZOOM else None
         variant = ""
@@ -229,7 +231,7 @@ class RoadInspectorService:
         self._lens = lens
 
     async def inspect(
-        self, osm_way_id: int, feature_key: str, tile: tuple[int, int, int], bearing_deg: float, at: datetime | None,
+        self, osm_way_id: int, feature_key: str, tile: tuple[int, int, int], bearing_deg: float, frame: str | None,
         speed_kmh: float, cost_preference: CostPreference,
     ) -> RoadInspection | None:
         """押した道（osm_way_id）か、タイル`tile`（押したフィーチャー`feature_key`を焼いた`(z, x, y)`）にそのフィーチャーが
@@ -237,7 +239,7 @@ class RoadInspectorService:
         road = await self._region_service.inspected_road(osm_way_id)
         if road is None:
             return None
-        lens = await self._lens.inspect(feature_key, *tile, bearing_deg, at, speed_kmh, cost_preference)
+        lens = await self._lens.inspect(feature_key, *tile, bearing_deg, frame, speed_kmh, cost_preference)
         if lens is None:
             return None
         return RoadInspection(highway=road.highway, tags=road.tags, lens=lens)

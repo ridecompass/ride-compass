@@ -44,6 +44,7 @@ from app.infrastructure.debug_log import log_external_call
 from app.infrastructure.msm_client import MsmUnavailableError, forecast_version
 from app.services.graph_service import network_burden_fills, network_classes
 from app.services.weather_service import WeatherService
+from app.services.time_frame_service import TimeFrameService
 
 _CATEGORY = "region:lens"
 
@@ -67,19 +68,21 @@ class _TileLens:
 
 
 class LensService:
-    def __init__(self, weather_service: WeatherService, responses: LRUCache[str, bytes]):
+    def __init__(self, weather_service: WeatherService, responses: LRUCache[str, bytes], time_frames: TimeFrameService):
         self._weather_service = weather_service
         self._responses = responses
+        self._time_frames = time_frames
 
-    async def way_materials(self, lens_id: str, z: int, x: int, y: int, at: datetime | None,
+    async def way_materials(self, lens_id: str, z: int, x: int, y: int, frame: str | None,
                             speed_kmh: float, preference: CostPreference) -> bytes | None:
-        """レンズ`lens_id`の、タイルのフィーチャーの、時刻`at`（省略すると今）の風と想定速度`speed_kmh`と利用者の値
+        """レンズ`lens_id`の、タイルのフィーチャーの、レンズのコマの印`frame`（省略すると今）の風と想定速度`speed_kmh`と利用者の値
         `preference`（つまみと倍率。ルート生成と同じ値で塗る）での道ごとの材料（`LensMaterials`のJSON）。知らないレンズか、
-        利用者が無効にした軸のレンズ（表に無い）ならNone。風を読めない・時刻が予報の範囲の外なら投げる。"""
+        利用者が無効にした軸のレンズ（表に無い）ならNone。風を読めない・時刻が予報の範囲の外・今の一覧に無い印なら投げる。"""
         settings = current_model_settings()
         conditions = lens_conditions(settings.cost_axes).get(lens_id)
         if conditions is None:
             return None
+        at = await self._time_frames.lens_at(frame) if "at" in conditions else None
         with log_external_call(_CATEGORY, z=z, x=x, y=y) as fields:
             key = dynamic_tile_key("lens", road_network_store.current_generation(), model_settings_signature(settings),
                                    lens_id, z, x, y, _response_inputs(conditions, at, speed_kmh, preference))
@@ -97,10 +100,11 @@ class LensService:
             self._responses[key] = body
             return body
 
-    async def inspect(self, feature_key: str, z: int, x: int, y: int, bearing_deg: float, at: datetime | None,
+    async def inspect(self, feature_key: str, z: int, x: int, y: int, bearing_deg: float, frame: str | None,
                       speed_kmh: float, preference: CostPreference) -> LensInspection | None:
-        """押したフィーチャー（地図がタイル`z/x/y`で塗っている単位）の、地図と同じ秒を区間の長さぶん足したものと、その元の事実。
-        タイルにそのフィーチャーが無ければNone。"""
+        """押したフィーチャー（地図がタイル`z/x/y`で塗っている単位）の、レンズのコマの印`frame`（省略すると今）の、地図と同じ秒を
+        区間の長さぶん足したものと、その元の事実。タイルにそのフィーチャーが無ければNone。"""
+        at = await self._time_frames.lens_at(frame)
         settings = current_model_settings()
         with log_external_call(_CATEGORY, z=z, x=x, y=y) as fields:
             tile = await self._tile(settings, z, x, y, at, speed_kmh, preference, fields, only=feature_key)

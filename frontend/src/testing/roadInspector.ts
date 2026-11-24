@@ -20,7 +20,7 @@ export const RIDE = {
   costPreference: STANDARD_COST_PREFERENCE,
   conditions: {
     bearingDeg: 0,
-    at: new Date("2026-09-24T00:00:00Z"),
+    lensFrame: "v1-2026092409",
     speedKmh: 20,
     z: 14,
     x: 1,

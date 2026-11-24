@@ -736,20 +736,22 @@
             }
           },
           {
-            "name": "at",
+            "name": "frame",
             "in": "query",
             "required": false,
             "schema": {
               "anyOf": [
                 {
                   "type": "string",
-                  "format": "date-time"
+                  "minLength": 1,
+                  "maxLength": 64,
+                  "pattern": "^[0-9A-Za-z-]+$"
                 },
                 {
                   "type": "null"
                 }
               ],
-              "title": "At"
+              "title": "Frame"
             }
           }
         ],
@@ -957,20 +959,22 @@
             }
           },
           {
-            "name": "at",
+            "name": "frame",
             "in": "query",
             "required": false,
             "schema": {
               "anyOf": [
                 {
                   "type": "string",
-                  "format": "date-time"
+                  "minLength": 1,
+                  "maxLength": 64,
+                  "pattern": "^[0-9A-Za-z-]+$"
                 },
                 {
                   "type": "null"
                 }
               ],
-              "title": "At"
+              "title": "Frame"
             }
           },
           {
@@ -1033,6 +1037,23 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/region/time-frames": {
+      "get": {
+        "operationId": "region_time_frames_api_region_time_frames_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TimeFrames"
                 }
               }
             }
@@ -5261,17 +5282,19 @@
             "minimum": 0.0,
             "title": "Bearing Deg"
           },
-          "at": {
+          "frame": {
             "anyOf": [
               {
                 "type": "string",
-                "format": "date-time"
+                "maxLength": 64,
+                "minLength": 1,
+                "pattern": "^[0-9A-Za-z-]+$"
               },
               {
                 "type": "null"
               }
             ],
-            "title": "At"
+            "title": "Frame"
           },
           "speed_kmh": {
             "type": "number",
@@ -6277,6 +6300,57 @@
           "note"
         ],
         "title": "TableEntry"
+      },
+      "TimeFrame": {
+        "properties": {
+          "start": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Start"
+          },
+          "end": {
+            "type": "string",
+            "format": "date-time",
+            "title": "End"
+          },
+          "key": {
+            "type": "string",
+            "title": "Key"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "start",
+          "end",
+          "key"
+        ],
+        "title": "TimeFrame"
+      },
+      "TimeFrames": {
+        "properties": {
+          "road_surface": {
+            "items": {
+              "$ref": "#/components/schemas/TimeFrame"
+            },
+            "type": "array",
+            "title": "Road Surface"
+          },
+          "lens": {
+            "items": {
+              "$ref": "#/components/schemas/TimeFrame"
+            },
+            "type": "array",
+            "title": "Lens"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "road_surface",
+          "lens"
+        ],
+        "title": "TimeFrames"
       },
       "TimelineKind": {
         "type": "string",

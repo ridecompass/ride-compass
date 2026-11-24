@@ -17,7 +17,9 @@ from app.infrastructure.region_tile_cache import discard_region_tiles
 from app.infrastructure.point_tile_layers import POINT_TILE_LAYERS
 from app.infrastructure.vector_tile import ROAD_SURFACE_LAYER_NAME, encode_empty_tile
 from app.services.region_service import RegionService
-from tests.route_world import grid_network, serve_road_network
+from app.domain.time_frames import StaleTimeFrameError
+from app.services.time_frame_service import TimeFrameService, new_frame_cache
+from tests.route_world import Weather, grid_network, serve_road_network
 
 
 Z, X, Y = 14, 14551, 6447
@@ -37,8 +39,8 @@ class _TileRepository:
         return self.tile
 
 
-def _road_surface_tile(service):
-    return service.get_road_surface_tile(Z, X, Y, None)
+def _road_surface_tile(service, frame=None):
+    return service.get_road_surface_tile(Z, X, Y, frame, TimeFrameService(Weather(), new_frame_cache()))
 
 
 def _point_tile(service):
@@ -69,6 +71,14 @@ async def test_a_baked_tile_is_served_from_disk_until_the_region_tiles_are_disca
     discard_region_tiles()
 
     assert (kept, await _road_surface_tile(service)) == (b"first", b"second")
+
+
+async def test_a_tile_of_a_frame_outside_the_current_frames_is_refused(road_network_root):
+    """終わったコマ・作り直す前の道路網のコマの印では焼かない（前の効き方で焼いたタイルを今のものとして配らない）。"""
+    serve_road_network(road_network_root, grid_network())
+
+    with pytest.raises(StaleTimeFrameError):
+        await _road_surface_tile(RegionService(repository=_TileRepository(tile=b"tile")), frame="0-unknown")
 
 
 # --- 道の窓 ---

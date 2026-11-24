@@ -42,7 +42,7 @@ class FakeCoverageQuery:
     def __init__(self, counts: MaterialCoverageCounts):
         self._counts = counts
 
-    async def get_material_coverage_counts(self, network) -> MaterialCoverageCounts:
+    async def get_material_coverage_counts(self, read_network) -> MaterialCoverageCounts:
         return self._counts
 
 

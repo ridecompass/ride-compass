@@ -9,7 +9,7 @@
 import hashlib
 from collections.abc import Mapping
 from dataclasses import dataclass, replace
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import numpy as np
 
@@ -19,10 +19,16 @@ from app.domain.road_avoidance import AvoidanceLevel, RoadAvoidanceMasks, road_a
 from app.domain.road_classes import RoadClassDefinitions, class_columns, fact_keys, layer_columns
 from app.domain.search_graph import range_positions
 from app.domain.road_network import RoadNetwork
+from app.domain.time_frames import TimeFrame, frames_from
+from app.domain.time_zone import as_jst
 from app.domain.traffic_regulation import (
     EXCEPTED_CODE,
+    MINUTES_PER_DAY,
     PEDESTRIAN_ROAD_VOCAB,
     PROHIBITED_CODE,
+    SLOT_FIELDS,
+    RegulationSlot,
+    active_between,
     active_kinds,
     active_slots,
     invariant_slots,
@@ -179,3 +185,25 @@ def pedestrian_road_codes_at(network: RoadNetwork, rows: np.ndarray, at: datetim
         network.regulation_slot_start, network.regulation_slot_count, network.regulation_slot_values, active,
         slotless_active=True)
     return np.where(bicycle, PROHIBITED_CODE, np.where(excepted, EXCEPTED_CODE, 0)).astype(np.int16)
+
+
+def regulation_frames(network: RoadNetwork, start: datetime, end: datetime) -> list[TimeFrame]:
+    """`start`〜`end`の路面タイルのコマ。取込範囲の全体で、時刻で変わる規制の組の効き方が同じ間を1つのコマにする。印は道路網の
+    世代と効き方から作るので、効き方が同じなら日をまたいでも同じ印になる（時刻で変わる組が無ければ、範囲の全体で1つの印）。
+    組の効き方が変わるのは、組の時間の欄の両端と0:00（曜日・期間の変わり目）だけなので、その時刻ごとに効き方を求める。"""
+    values = np.asarray(network.regulation_slot_values, dtype=np.int16).reshape(-1, len(SLOT_FIELDS))
+    slots = [slot for slot in (RegulationSlot.from_values(row) for row in np.unique(values, axis=0))
+             if not slot.time_invariant]
+    minutes = sorted({0, *(minute for slot in slots for minute in (slot.hours_from, slot.hours_to, slot.except_hours_from,
+                                                                     slot.except_hours_to)
+                           if minute is not None and minute < MINUTES_PER_DAY)})
+    start, end = as_jst(start), as_jst(end)
+    day = start.replace(hour=0, minute=0, second=0, microsecond=0)
+    instants = [start]
+    while day < end:
+        instants += [moment for minute in minutes if start < (moment := day + timedelta(minutes=minute)) < end]
+        day += timedelta(days=1)
+    keys = [f"{network.revision}-" + hashlib.sha256(
+        np.packbits(np.array([active_between(slot, moment, moment) for slot in slots], dtype=bool)).tobytes()).hexdigest()[:12]
+            for moment in instants]
+    return frames_from(instants, keys, end)

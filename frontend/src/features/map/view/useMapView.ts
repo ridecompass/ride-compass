@@ -34,6 +34,7 @@ import type { Coordinates, RoadAvoidanceOverride } from "@/types/route";
 import { avoidanceChoiceOf, type RoadTabMap } from "@/lib/roadAvoidance";
 import type { MapTheme } from "@/lib/mapTheme";
 import type { RideConditions } from "@/features/map/regionApi";
+import { useTimeFrames } from "@/features/map/useTimeFrames";
 import { snapDeg } from "@/lib/cardinalLabel";
 import { countsAxis, DISABLED_LABEL, STANDARD_COST_FACTOR } from "@/lib/costPreference";
 import type { WayValueCondition } from "@/lib/mapDisplay/mapLens";
@@ -180,7 +181,11 @@ export function useMapView({
   // 解き直さないため。式の木と道の窓は同じ丸めた向きで値を求める。
   const bearingDeg = snapDeg(riding?.bearingDeg ?? viewport?.bearing ?? 0, WAY_BEARING_STEP_DEG);
   const speedKmh = riding?.speedKmh ?? ride.speedKmh;
-  const wayConditions = useMemo(() => ({ bearingDeg, at: ride.at, speedKmh }), [bearingDeg, ride.at, speedKmh]);
+  const frames = useTimeFrames(ride.at);
+  const wayConditions = useMemo(
+    () => ({ bearingDeg, lensFrame: frames.lens, speedKmh }),
+    [bearingDeg, frames.lens, speedKmh],
+  );
   const wayMaterials = useWayMaterials(fetchLenses, viewport, wayConditions, costPreference, totalLens?.axisId ?? null);
   const [roadTabOnMap, setRoadTabOnMap] = useStoredState("ridecompass:road-tab-on-map", "道路タブを地図で見るか", true);
   // 道路タブを出していて「地図で見る」がONの間だけ、段を地図の道に塗る。段の値は出し入れで作り直さない。
@@ -214,7 +219,7 @@ export function useMapView({
       roadAvoidanceShown,
       wayMaterials,
       wayConditions: formulaConditions,
-      departureAt: ride.at,
+      roadSurfaceFrame: frames.roadSurface,
       hiddenLegendKeys: debouncedHidden,
       refreshToken,
       mapTheme,
@@ -232,7 +237,7 @@ export function useMapView({
       roadAvoidanceShown,
       wayMaterials,
       formulaConditions,
-      ride.at,
+      frames.roadSurface,
       debouncedHidden,
       refreshToken,
       mapTheme,

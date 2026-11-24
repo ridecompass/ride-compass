@@ -232,7 +232,11 @@ export const roadLineGroup = declareGroup<RoadLineState>((state) => {
   // 見出しの段を塗らない（塗ると、タイルの時刻で変わらない値で塗り、寄せたときと色が違う）。
   const timed = state.layers.filter((layer) => layer.min_zoom > tiles.minZoom);
   const timedFrom = Math.max(tiles.minZoom, ...timed.map((layer) => layer.min_zoom));
-  const avoidanceEntry = (role: string, avoided: readonly (readonly [string, unknown])[], zooms: object): SceneLayerEntry => ({
+  const avoidanceEntry = (
+    role: string,
+    avoided: readonly (readonly [string, unknown])[],
+    zooms: object,
+  ): SceneLayerEntry => ({
     ...line,
     ...zooms,
     role,

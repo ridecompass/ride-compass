@@ -3,7 +3,6 @@
 レポートの型は`GET /api/admin/material-catalog/coverage`の応答の型を兼ねる。
 """
 
-import asyncio
 import logging
 from datetime import datetime, timezone
 from typing import Annotated, Literal
@@ -105,8 +104,7 @@ class MaterialCoverageService:
         空のレポートへ倒して「欠損0件」に見せるより失敗を明示する方が安全。"""
         started = start_timer()
         with log_external_call("admin:material-coverage") as fields:
-            # 道路網を読むのは、イベントループの外で行う。
-            counts = await self._repository.get_material_coverage_counts(await asyncio.to_thread(road_network_store.current))
+            counts = await self._repository.get_material_coverage_counts(road_network_store.current)
             fields["way_total"] = counts.way_total
             fields["edge_total"] = counts.edge_total
         report = build_material_coverage_report(counts, datetime.now(timezone.utc))

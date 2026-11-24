@@ -17,6 +17,8 @@
 """
 
 
+import asyncio
+from collections.abc import Callable
 from dataclasses import dataclass
 
 import numpy as np
@@ -98,8 +100,9 @@ class MaterialCoverageQuery:
     def __init__(self, session: AsyncSession):
         self._session = session
 
-    async def get_material_coverage_counts(self, network: RoadNetwork) -> MaterialCoverageCounts:
-        """道の生データと区間の表をDBで数え、配列を作るときに求める材料は道路網`network`の値で数える。"""
+    async def get_material_coverage_counts(self, read_network: Callable[[], RoadNetwork]) -> MaterialCoverageCounts:
+        """道の生データと区間の表をDBで数え、配列を作るときに求める材料は`read_network`で読んだ道路網の値で数える（DBを先に
+        読むので、DBに届かない失敗はDBの失敗として出る）。"""
         missing_by_material: dict[str, int] = {}
 
         way_row = (await self._session.execute(_way_coverage_sql())).mappings().one()
@@ -112,6 +115,8 @@ class MaterialCoverageQuery:
         for material_id in _EDGE_SPECS:
             missing_by_material[material_id] = edge_total - int(edge_row[material_id])
 
+        # 道路網を読むのは、イベントループの外で行う。
+        network = await asyncio.to_thread(read_network)
         first = network.edge_first_rows
         for material_id in _NETWORK_SPECS:
             # 配列に無い材料（テストの道路網）は、値の無い列として数える。
