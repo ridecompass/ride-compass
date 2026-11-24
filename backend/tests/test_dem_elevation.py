@@ -105,3 +105,21 @@ async def _elevations(conn: asyncpg.Connection, points) -> list[float | None]:
 async def test_a_point_takes_the_bilinear_value_of_the_four_pixels_around_it(dem_conn):
     got = await _elevations(dem_conn, [position for position, _ in CASES])
     assert got == [None if expected is None else pytest.approx(expected, abs=1e-6) for _, expected in CASES]
+
+
+async def test_calling_it_again_in_one_transaction_reuses_the_tables_instead_of_piling_files_on_disk(dem_conn):
+    """取引の中で消した表のファイルは取引の終わりまで残る——呼ぶたびに作り直すと、塊の数だけディスクに積もる。"""
+    tables = ("_elev", "_dem_point_pixel")
+    filenodes = "SELECT " + ", ".join(f"pg_relation_filenode('{t}')" for t in tables)
+    (first, _), (second, second_value) = CASES[0], CASES[1]
+    async with dem_conn.transaction():
+        await dem_conn.execute("CREATE TEMP TABLE _point (vid bigint, lon float8, lat float8) ON COMMIT DROP")
+        products = await products_in_priority(dem_conn)
+        await dem_conn.execute("INSERT INTO _point VALUES (0, $1, $2)", *_point(*first))
+        await fill_elevations(dem_conn, "_point", "_elev", products)
+        before = await dem_conn.fetchrow(filenodes)
+        await dem_conn.execute("TRUNCATE _point")
+        await dem_conn.execute("INSERT INTO _point VALUES (1, $1, $2)", *_point(*second))
+        await fill_elevations(dem_conn, "_point", "_elev", products)
+        assert await dem_conn.fetchrow(filenodes) == before
+        assert [tuple(r) for r in await dem_conn.fetch("SELECT vid, elev FROM _elev")] == [(1, pytest.approx(second_value, abs=1e-6))]
