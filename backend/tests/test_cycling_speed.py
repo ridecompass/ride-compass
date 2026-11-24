@@ -231,13 +231,73 @@ def test_a_road_that_climbs_and_descends_takes_longer_than_a_flat_one_of_the_sam
 
 
 def test_a_backward_row_runs_the_points_of_its_road_the_other_way():
-    """両向きの行は同じ点を指し、逆向きの行は点を逆順にたどって勾配の符号を返して読む。読み違えると、登りを下りとして走り、
-    勢いを走る順と逆に持ち越す。"""
-    climbing, descending, down_as_read = _seconds([0.0, 30.0], [0.0, 30.0], [30.0, 0.0], distance=600.0,
+    """両向きの行は同じ点を指し、逆向きの行は点を逆順にたどって勾配の符号を返して読む。平地のあとに登る道を逆向きに走るのは、
+    下りのあとに平地を走るのと同じ——点の順を読み違えると平地のあとに下ることになり、下りの勢いを平地へ持ち越さない。"""
+    climbing, descending, down_as_read = _seconds([0.0, 0.0, 30.0], [0.0, 0.0, 30.0], [30.0, 0.0, 0.0], distance=600.0,
                                                   forward=[True, False, True])
 
     assert descending == pytest.approx(down_as_read)
     assert descending < climbing
+
+
+def test_the_momentum_is_not_carried_over_a_gap_in_the_elevation():
+    """標高の無い間（値の無い点）のすぐあとの点の間は、勢いを引き継がずに釣り合いの速さで入る——間の長さは全体の分布で別に
+    走るので、前後をつなげると、下りの勢いで間のあとの登りを登ってしまう。下り・標高の無い間・登りの道の登坂の体力は、
+    その登りだけを1本の道として走ったのと同じ（どちらも標高の平均は15m）。"""
+    gapped = SegmentSpeedModel(RIDER, profile_spans(road_profiles([30.0, 0.0, None, 0.0, 30.0]), np.array([800.0])),
+                               np.array([800.0]), np.array([RIDER.crr]), np.zeros(1), TUNED)
+    climb = SegmentSpeedModel(RIDER, profile_spans(road_profiles([0.0, 30.0]), np.array([200.0])), np.array([200.0]),
+                              np.array([RIDER.crr]), np.zeros(1), TUNED)
+
+    ridden = [model.ride(np.zeros(1), np.zeros(1), _standard(1), 0.0) for model in (gapped, climb)]
+
+    assert float(ridden[0].gravity_extra_j[0]) == pytest.approx(float(ridden[1].gravity_extra_j[0]))
+
+
+def _integrated_ride(speed: float, power_w: float, grade: float, length_m: float, settled: float) -> tuple[float, float]:
+    """勢いを持ったまま、出力`power_w`で勾配`grade`の道を`length_m`走る（走行方程式に運動エネルギーの項を足した式を、5cmの刻みで
+    積んだ期待値）。速さが釣り合いの速さ`settled`に着いたら、残りを釣り合いの速さで走る。`(秒, 釣り合いの速さで走った秒)`。"""
+    flat_power_w = cycling_speed.wheel_power_w(RIDER)
+    cruise = RIDER.cruise_speed_ms
+    rolling_n = RIDER.crr * RIDER.mass_kg * GRAVITY_M_S2
+    drag = (flat_power_w / cruise - rolling_n) / cruise**2
+    step, ridden, seconds = 0.05, 0.0, 0.0
+    while ridden < length_m and (speed - settled) * (speed - settled) > 1e-4:
+        force = power_w / speed - (drag * speed * speed + rolling_n + RIDER.mass_kg * GRAVITY_M_S2 * grade)
+        following = float(np.sqrt(max(speed * speed + 2.0 * force * step / RIDER.mass_kg, 1e-6)))
+        following = max(following, settled) if speed > settled else min(following, settled)
+        seconds += step * 2.0 / (speed + following)
+        ridden += step
+        speed = following
+    rest = max(length_m - ridden, 0.0) / settled
+    return seconds + rest, rest
+
+
+@pytest.mark.parametrize(
+    ("first_grade", "second_grade"),
+    [(0.10, 0.0), (-0.08, 0.08)],
+    ids=["急な登りのあとの平地で加速する", "急な下りの勢いで登ってから踏み増す"],
+)
+def test_the_momentum_follows_the_equation_of_motion(first_grade, second_grade):
+    """勢いの持ち越しは、走行方程式に運動エネルギーの項 ½m·d(v²)/ds = 出力/速さ − 抵抗 を足した運動に従う。300mの坂を
+    釣り合いの速さで走った勢いのまま、次の300mを走る秒と登坂の体力が、その式を細かく積んだ値と合う。速さより遅ければその間の
+    出力で加速し、速ければ平地の出力で減速して、釣り合いの速さに着いたら踏み増す（標高の平均は海面）。"""
+    rise = 300.0 * first_grade, 300.0 * second_grade
+    middle = -(rise[0] + (rise[0] + rise[1])) / 3.0
+    elevations = [middle, middle + rise[0], middle + rise[0] + rise[1]]
+    model = SegmentSpeedModel(RIDER, profile_spans(road_profiles(elevations), np.array([600.0])), np.array([600.0]),
+                              np.array([RIDER.crr]), np.zeros(1), TUNED)
+    flat_power_w = cycling_speed.wheel_power_w(RIDER)
+    first_power, power = (min(_desired_power(flat_power_w, RIDER.mass_kg * GRAVITY_M_S2 * max(grade, 0.0)),
+                              flat_power_w * TUNING["speed.max_climb_power_ratio"]) for grade in (first_grade, second_grade))
+    entering, settled = _speed(RIDER, first_grade), _speed(RIDER, second_grade)
+
+    seconds, pushing = _integrated_ride(entering, flat_power_w if entering > settled else power, second_grade, 300.0, settled)
+    ride = model.ride(np.zeros(1), np.zeros(1), _standard(1), 0.0)
+
+    assert float(ride.seconds[0]) == pytest.approx(300.0 / entering + seconds, rel=0.005)
+    assert float(ride.gravity_extra_j[0]) == pytest.approx(
+        (first_power - flat_power_w) * 300.0 / entering + (power - flat_power_w) * pushing, rel=0.02)
 
 
 def test_a_road_without_elevation_runs_the_slopes_of_the_whole_network():

@@ -18,14 +18,14 @@
 速度の逆算は`v`の3次方程式になるため二分法で解く（`SegmentSpeedModel`、区間の断面の点の間ごとのループをnumbaでJITする）。
 探索中には呼ばず、コスト配列を合成するときに区間ごと（風は時刻ビンごと）へ事前計算する。
 
-**1本の区間の中では勢いを持ち越す**（Martin ら 1998 の運動エネルギーの変化の項 ½m(v_f² − v_i²)）。区間の入口は、最初の
-点の間の釣り合いの速さで、2つ目の点の間から走る順に速さを進める（`_carried_spans`）。今の速さがその点の間の釣り合いの速さ
-（上の式で解いた、坂・風・路面で踏み増したときの速さ）より速い間は平地の出力のまま踏み増さず、釣り合いの速さまで落ちたら
-踏み増してその速さを保つ——長い坂は釣り合いの速さと体力のまま、短い上り下りは勢いで越えて踏み増さない。持ち越さないと、
-上りの点の間の踏み増しだけが体力に積まれ、下りでは戻らないので、標高の小さな揺れや堤防・陸橋の短い上り下りを重く数える。
-区間をまたいでは持ち越さない（探索は区間ごとに費用を前もって持つ）。入口を平地の巡航の速さにすると、点の間が1つしかない短い坂の
-区間にも勢いが効くが、ほとんどの区間（間引いたあとの点が2つ）で勢いを解くことになり、所要時間の計算が約2倍になる（#1634）。
-分布で埋める道（標高の無い所）は位置を持たないので、釣り合いの速さで走る。
+**1本の区間の中では勢いを持ち越す**（Martin ら 1998 の運動エネルギーの変化の項 ½m(v_f² − v_i²)）。点の間を走る順に速さを
+進め（`_carried_spans`）、今の速さがその点の間の釣り合いの速さ（上の式で解いた、坂・風・路面で踏み増したときの速さ）より速い
+間は平地の出力のまま踏み増さず、釣り合いの速さまで落ちたら踏み増してその速さを保つ——長い坂は釣り合いの速さと体力のまま、
+区間の中の短い上り下りは勢いで越えて踏み増さない。持ち越さないと、上りの点の間の踏み増しだけが体力に積まれ、下りでは戻らない
+ので、標高の小さな揺れや区間の中の短い上り下りを重く数える。
+勢いを引き継がない点の間（`ProfileSpans.carries`が偽。どれがそうかは`domain/elevation_profile.py: flatten_spans`が決める）は、
+釣り合いの速さで走り、そこから先の勢いをその速さで始める。区間の最初の点の間は引き継がないので、区間をまたいでは持ち越さない
+（探索は区間ごとに費用を前もって持つ）。
 """
 
 from dataclasses import dataclass
@@ -261,6 +261,9 @@ def _span_speeds(span_row: np.ndarray, constant_force: np.ndarray, static_extra:
 #: 釣り合いの速さに着いたとみなす差（m/s）。速さが釣り合いの速さへ近づくのは漸近なので、この差まで近づいたら着いたとし、
 #: 点の間の残りを釣り合いの速さで走る。二分法が詰める幅（約0.003m/s）より広くとり、着く手前で力の符号が変わらないようにする。
 _CARRY_SETTLED_MS = 0.01
+#: 力を運動エネルギーの1次式とみなして解く1つの刻みで、速さを変える幅の上限（m/s）。出力÷速さの項は速さの変わり方が大きいほど
+#: 1次式から外れるので、速さの差が大きい所（急な下りから登りへ・押して歩く速さからの加速）はこの幅ずつに刻んで解く。
+_CARRY_SPEED_STEP_MS = 1.0
 
 
 @njit(cache=True, nogil=True)
@@ -271,71 +274,84 @@ def _net_force(speed: float, power: float, constant_force: float, headwind: floa
 
 
 @njit(cache=True, nogil=True)
-def _carried_spans(span_row: np.ndarray, span_length: np.ndarray, carried: np.ndarray, constant_force: np.ndarray,
+def _carry_piece(speed: float, target: float, length: float, power: float, constant_force: float, headwind: float,
+                 cross_squared: float, drag: float, mass_kg: float) -> tuple[float, float, float]:
+    """出力`power`で、速さ`speed`から`target`へ向かって最長`length`進む。`(進んだ道のり, かかった秒, 終わりの速さ)`。
+
+    運動エネルギー e = ½v² の道のりあたりの変化 m·de/ds = 正味の力 を、2つの速さで力を e の1次式とみなして解く。1次式なら力は
+    道のりに沿って指数で変わり（f(s) = f0·exp(k·s/m)）、`target`に着く道のりは対数で出る。秒は、始まり・中ほど・終わりの速さの
+    逆数をシンプソンの式で積む（中ほどの指数は、終わりの指数の平方根）。ライブラリの数値積分（scipy の`solve_ivp`等）は JIT の
+    ループの中で点の間ごとに呼べないので、閉じた形で解く。"""
+    e0 = 0.5 * speed * speed
+    et = 0.5 * target * target
+    f0 = _net_force(speed, power, constant_force, headwind, cross_squared, drag)
+    ft = _net_force(target, power, constant_force, headwind, cross_squared, drag)
+    ratio = ft / f0
+    slope = (ft - f0) / (et - e0)
+    if 0.0 < ratio < 1.0:
+        growth = np.exp(slope * length / mass_kg)
+        if growth <= ratio:  # `length`の中で`target`に着く
+            run = mass_kg / slope * np.log(ratio)
+            growth = ratio
+            end = target
+        else:
+            run = length
+            end = np.sqrt(max(2.0 * (e0 + f0 * (growth - 1.0) / slope), 1e-6))
+        middle = np.sqrt(max(2.0 * (e0 + f0 * (np.sqrt(growth) - 1.0) / slope), 1e-6))
+    else:
+        # 2つの速さで力の大きさが減らない（1次式の指数が減る向きにならない）ときは、始まりの力のまま等加速で進む。
+        run = min(length, mass_kg * (et - e0) / f0)
+        end = target if run < length else np.sqrt(max(2.0 * (e0 + f0 * run / mass_kg), 1e-6))
+        middle = np.sqrt(max(2.0 * (e0 + f0 * 0.5 * run / mass_kg), 1e-6))
+    return run, run / 6.0 * (1.0 / speed + 4.0 / middle + 1.0 / end), end
+
+
+@njit(cache=True, nogil=True)
+def _carried_spans(span_row: np.ndarray, span_length: np.ndarray, carries: np.ndarray, constant_force: np.ndarray,
                    speeds: np.ndarray, powers: np.ndarray, headwind_ms: np.ndarray, crosswind_ms: np.ndarray,
                    drag: np.ndarray, rider: np.ndarray, rows: int) -> tuple[np.ndarray, np.ndarray]:
-    """`(区間の行ごとの走った秒, 点の間ごとの踏み増して走った秒)`（float64）。行の中の値のある点の間（`carried`）は走る順に
-    勢いを持ち越す。
+    """`(区間の行ごとの走った秒, 点の間ごとの踏み増して走った秒)`（float64）。
 
-    行の入口の速さは、行の最初の点の間の釣り合いの速さ（最初の点の間は釣り合いの速さで走る）。点の間ごとに、今の速さが釣り合いの速さ
-    `speeds`より速ければ平地の出力で、遅ければその点の間の出力`powers`で、釣り合いの速さへ向かって進み、着いたら残りを
-    釣り合いの速さで走る。踏み増して走った秒は、その点の間の出力で走った秒（平地の出力より踏むのは、出力が平地の出力を
-    越える点の間だけ）。分布で埋める道は、勢いを変えずに釣り合いの速さで走る。
-
-    進み方: 運動エネルギー e = ½v² の道のりあたりの変化 m·de/ds = 正味の力 を、今の速さと目指す速さの2点で力を e の1次式と
-    みなして解く。1次式なら力は道のりに沿って指数で変わり（f(s) = f0·exp(k·s/m)）、目指す速さに着く道のりは対数で出る。
-    秒は、始まり・中ほど・終わりの速さの逆数をシンプソンの式で積む（中ほどの指数は、終わりの指数の平方根）。ライブラリの
-    数値積分（scipy の`solve_ivp`等）は JIT のループの中で点の間ごとに呼べないので、閉じた形で解く。"""
-    count = len(span_row)
+    勢いを引き継がない点の間（`carries`が偽）は釣り合いの速さ`speeds`で走り、そこから先の勢いをその速さで始める。引き継ぐ点の間は、
+    今の速さが釣り合いの速さより速ければ平地の出力で、遅ければその点の間の出力`powers`で、釣り合いの速さへ向かって速さの幅
+    `_CARRY_SPEED_STEP_MS`ずつ進み（`_carry_piece`）、着いたら残りを釣り合いの速さで走る。踏み増して走った秒は、その点の間の出力で
+    走った秒（平地の出力より踏むのは、出力が平地の出力を越える点の間だけ）。"""
     seconds = np.zeros(rows)
-    pushed = np.empty(count)
+    pushed = np.empty(len(span_row))
     mass = np.float64(rider[_RIDER_WEIGHT]) / _GRAVITY_M_S2
     flat_power = np.float64(rider[_RIDER_FLAT_POWER])
-    previous_row = -1
     speed = 0.0
-    for i in range(count):
+    for i in range(len(span_row)):
         row = span_row[i]
-        if row != previous_row:
-            speed = np.float64(speeds[i])
-            previous_row = row
         length = np.float64(span_length[i])
         settled = np.float64(speeds[i])
-        if not carried[i] or abs(speed - settled) <= _CARRY_SETTLED_MS:
+        if not carries[i] or abs(speed - settled) <= _CARRY_SETTLED_MS:
             pushed[i] = length / settled
             seconds[row] += pushed[i]
-            if carried[i]:
-                speed = settled
+            speed = settled
             continue
         headwind = np.float64(headwind_ms[row])
         cross_squared = np.float64(crosswind_ms[row]) ** 2
         row_drag = np.float64(drag[row])
-        coasting = speed > settled
-        target = settled + _CARRY_SETTLED_MS if coasting else settled - _CARRY_SETTLED_MS
-        power = flat_power if coasting else np.float64(powers[i])
         force = np.float64(constant_force[i])
-        e0 = 0.5 * speed * speed
-        f0 = _net_force(speed, power, force, headwind, cross_squared, row_drag)
-        ft = _net_force(target, power, force, headwind, cross_squared, row_drag)
-        ratio = ft / f0
-        slope = (ft - f0) / (0.5 * target * target - e0)
-        if 0.0 < ratio < 1.0:
-            growth = np.exp(slope * length / mass)
-            if growth <= ratio:  # 点の間の中で目指す速さに着く
-                run = mass / slope * np.log(ratio)
-                growth = ratio
-                end = target
-            else:
-                run = length
-                end = np.sqrt(max(2.0 * (e0 + f0 * (growth - 1.0) / slope), 1e-6))
-            middle = np.sqrt(max(2.0 * (e0 + f0 * (np.sqrt(growth) - 1.0) / slope), 1e-6))
+        coasting = speed > settled
+        power = flat_power if coasting else np.float64(powers[i])
+        final = settled + _CARRY_SETTLED_MS if coasting else settled - _CARRY_SETTLED_MS
+        left = length
+        moving = 0.0
+        while True:
+            target = final if abs(speed - final) <= _CARRY_SPEED_STEP_MS else (
+                speed - _CARRY_SPEED_STEP_MS if coasting else speed + _CARRY_SPEED_STEP_MS)
+            run, spent, speed = _carry_piece(speed, target, left, power, force, headwind, cross_squared, row_drag, mass)
+            moving += spent
+            left -= run
+            if left <= 0.0 or target == final and speed == final:
+                break
+        if left > 0.0:  # 釣り合いの速さに着いた。残りを釣り合いの速さで走る
+            speed = settled
+            rest = left / settled
         else:
-            # 力が1次式とみなせない（2点で力の向きが変わる・大きさが増える）ときは、始まりの力のまま等加速で進む。
-            run = min(length, mass * (0.5 * target * target - e0) / f0)
-            end = target if run < length else np.sqrt(max(2.0 * (e0 + f0 * run / mass), 1e-6))
-            middle = np.sqrt(max(2.0 * (e0 + f0 * 0.5 * run / mass), 1e-6))
-        moving = run / 6.0 * (1.0 / speed + 4.0 / middle + 1.0 / end)
-        rest = (length - run) / settled
-        speed = settled if run < length else end
+            rest = 0.0
         seconds[row] += moving + rest
         pushed[i] = rest if coasting else moving + rest
     return seconds, pushed
@@ -411,7 +427,7 @@ class SegmentSpeedModel:
         self.distance_m = distance
         #: 区間の行ごとの標高の無い長さ（m）。全体の分布で埋めて走る（所要時間の欠けの割合が読む）。
         self.unknown_m = np.asarray(spans.unknown_m, dtype=np.float64)
-        span_row, span_length, span_grade, carried = spans.flat()
+        span_row, span_length, span_grade, carries = spans.flat()
         crr = kernel_array(crr, np.float32)
         # 区間の行の気圧は、断面の値のある点の標高の平均から出す。値のある点が無い行は海面（0m）とする。
         row_elevation = np.asarray(spans.mean_elevation_m, dtype=np.float64)
@@ -440,7 +456,7 @@ class SegmentSpeedModel:
         rider[_RIDER_CRUISE] = profile.cruise_speed_ms
         self._rider = rider
         constant_force, static_extra = _span_static(span_row, span_grade, crr, rider)
-        self._spans = _Spans(span_row, span_length, span_grade, carried, constant_force, static_extra, crr,
+        self._spans = _Spans(span_row, span_length, span_grade, carries, constant_force, static_extra, crr,
                              np.asarray(kickoffs, dtype=np.float64), pressure_kpa, len(distance_m))
 
     def travel_seconds(self, headwind_ms: np.ndarray, crosswind_ms: np.ndarray, temperature_c: np.ndarray) -> np.ndarray:
@@ -474,7 +490,7 @@ class SegmentSpeedModel:
         counts = np.searchsorted(spans.row, rows, side="right") - first
         position = np.repeat(np.arange(len(rows), dtype=np.int32), counts)
         taken = range_positions(first, counts)
-        return _Spans(position, spans.length[taken], spans.grade[taken], spans.carried[taken], spans.constant_force[taken],
+        return _Spans(position, spans.length[taken], spans.grade[taken], spans.carries[taken], spans.constant_force[taken],
                       spans.static_extra[taken], spans.crr[rows], spans.kickoffs[rows], spans.pressure_kpa[rows], len(rows))
 
     def kickoff_effort_j(self, weight_exponent: float) -> float:
@@ -498,7 +514,7 @@ class SegmentSpeedModel:
         air_extra_n = kernel_array(drag * drag_increases_m2_s2(headwind, cross, self._rider[_RIDER_CRUISE]), np.float32)
         speeds, powers = _span_speeds(spans.row, spans.constant_force, spans.static_extra, air_extra_n, headwind, cross,
                                       drag, self._rider)
-        seconds, pushed = _carried_spans(spans.row, spans.length, spans.carried, spans.constant_force, speeds, powers,
+        seconds, pushed = _carried_spans(spans.row, spans.length, spans.carries, spans.constant_force, speeds, powers,
                                          headwind, cross, drag, self._rider, spans.rows)
         return seconds, pushed, powers, air_extra_n
 
@@ -510,7 +526,7 @@ class _Spans:
     row: np.ndarray
     length: np.ndarray
     grade: np.ndarray
-    carried: np.ndarray  # bool、勢いを持ち越す点の間か（値のある点の間。分布で埋める道は偽）
+    carries: np.ndarray  # bool、前の点の間から勢いを引き継ぐか（`ProfileSpans.carries`）
     constant_force: np.ndarray
     static_extra: np.ndarray
     crr: np.ndarray
