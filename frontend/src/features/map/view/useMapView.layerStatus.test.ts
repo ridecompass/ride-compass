@@ -7,7 +7,8 @@
 import { act, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { TILE_ZOOM_TOO_WIDE_NOTICE } from "@/features/map/layers/mapLayers";
+import { THIN_ROADS_OMITTED_NOTICE, TILE_ZOOM_TOO_WIDE_NOTICE } from "@/features/map/layers/mapLayers";
+import { ROAD_SURFACE_ALL_WAYS_MIN_ZOOM } from "@/features/map/regionApi";
 import { chip, renderMapView, serve, VIEWPORT } from "@/testing/mapViewHook";
 
 afterEach(() => {
@@ -36,5 +37,20 @@ describe("useMapView のチップの取得の状態", () => {
     act(() => result.current.look.onViewportChange({ ...VIEWPORT, zoom: 8 }));
 
     await waitFor(() => expect(result.current.roadTabMap.notice).toBe(TILE_ZOOM_TOO_WIDE_NOTICE));
+  });
+
+  it("細い道を描かない引いた地図では、道の線の層と道路タブに、拡大すると細い道に色が付くことを出す", async () => {
+    serve();
+    const { result } = renderMapView({ roadTabShown: true });
+    await waitFor(() => expect(chip(result, "surface")).toBeDefined());
+    act(() => result.current.overlayControls.onToggle("surface", true));
+
+    const shown = (zoom: number) => {
+      act(() => result.current.look.onViewportChange({ ...VIEWPORT, zoom }));
+      return [chip(result, "surface")?.caveat, result.current.roadTabMap.notice];
+    };
+
+    expect(shown(ROAD_SURFACE_ALL_WAYS_MIN_ZOOM - 0.1)).toEqual([THIN_ROADS_OMITTED_NOTICE, THIN_ROADS_OMITTED_NOTICE]);
+    expect(shown(ROAD_SURFACE_ALL_WAYS_MIN_ZOOM)).toEqual([undefined, null]);
   });
 });

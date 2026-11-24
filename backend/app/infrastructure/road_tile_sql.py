@@ -6,7 +6,8 @@
 from sqlalchemy import text
 
 from app.domain.graph import edge_feature_key_sql
-from app.domain.region import EDGE_UNIT_MIN_ZOOM, ROAD_TILE_MIN_ZOOM
+from app.domain.material_sql import sql_literals
+from app.domain.region import EDGE_UNIT_MIN_ZOOM, ROAD_SURFACE_TILE_HIGHWAYS, ROAD_TILE_MIN_ZOOM
 from app.infrastructure.cache_identity import shape_digest
 from app.infrastructure.source_models import COVERAGE_SQL, WAYS_SOURCE_SQL, ways_lookup_sql
 from app.infrastructure.vector_tile import ROAD_FEATURE_PROPERTIES, TILE_BUFFER
@@ -14,6 +15,13 @@ from app.infrastructure.vector_tile import ROAD_FEATURE_PROPERTIES, TILE_BUFFER
 def edgeless_way_sql(way: str) -> str:
     """道の表の別名`way`の行が、区間を1本も持たない道（同じ位置に点が重なり長さ0の区間しか作れない道等）である条件。"""
     return f"NOT EXISTS (SELECT 1 FROM road_edges re_of_way WHERE re_of_way.osm_way_id = {way}.osm_way_id)"
+
+
+#: 道1本で焼くズームの道（別名`w2`）が、ズーム`:z`で描く道の種別（`domain/region.py: ROAD_SURFACE_TILE_HIGHWAYS`）に当たる条件。
+#: 表は文へそのまま埋めるので、表を変えると路面タイルの持ちの鍵（形の署名）も変わる。
+_DRAWN_HIGHWAY_SQL = "CASE :z " + " ".join(
+    f"WHEN {zoom} THEN w2.highway IN ({sql_literals(highways)})"
+    for zoom, highways in ROAD_SURFACE_TILE_HIGHWAYS.items()) + " ELSE true END"
 
 
 #: どちらの単位も`feature_key`という同じ名前で出し、受け取る側は中身がway_idか区間の鍵かを知らなくてよい。
@@ -30,6 +38,7 @@ _TILE_FEATURE_SOURCE_SQL = f"""
     FROM {WAYS_SOURCE_SQL} w2
     WHERE :z < {EDGE_UNIT_MIN_ZOOM}
       AND ST_Intersects(w2.geom, ST_MakeEnvelope(:xmin, :ymin, :xmax, :ymax, 4326))
+      AND {_DRAWN_HIGHWAY_SQL}
     UNION ALL
     SELECT
         re.geom,

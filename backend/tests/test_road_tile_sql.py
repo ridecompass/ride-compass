@@ -92,3 +92,20 @@ async def test_below_the_keyed_zoom_roads_with_the_same_values_are_one_feature_w
     tile = await _tile(road_graph_repository, ROAD_TILE_MIN_ZOOM - 1, {"1": {"layer_a": "class_a"}, "2": way_2_values})
 
     assert sorted(tile, key=lambda properties: properties["layer_a"]) == expected
+
+
+async def test_a_zoomed_out_tile_draws_only_the_main_roads_and_cycleways(road_graph_repository):
+    """引いた地図は、細い道まで焼くと持ちに当たらない1枚に数秒かかる。z10は国道・主な県道と自転車道、z11はそれに地域の道を
+    足した道だけを描き、z12からは全部の道を描く。"""
+    highways = {1: "primary", 2: "cycleway", 3: "tertiary", 4: "residential"}
+    await ingest_records("osm_way", [parallel_way_record(way, {"highway": kind}) for way, kind in highways.items()])
+    layer_values = {str(way): {"layer_a": kind} for way, kind in highways.items()}
+
+    async def drawn(z: int) -> set[str]:
+        return {properties["layer_a"] for properties in await _tile(road_graph_repository, z, layer_values)}
+
+    assert [await drawn(z) for z in (10, 11, 12)] == [
+        {"primary", "cycleway"},
+        {"primary", "cycleway", "tertiary"},
+        {"primary", "cycleway", "tertiary", "residential"},
+    ]

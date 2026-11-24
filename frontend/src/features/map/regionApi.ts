@@ -30,6 +30,8 @@ export function landcoverTileUrl(): string {
 // 道のタイルを要求するズーム範囲。正はbackendで、生成物で受け取る。点のタイルと道ごとの値（レンズ・押した所の道）は
 // `ROAD_TILE_MIN_ZOOM`から、路面タイル（道の線）だけは道ごとの鍵を持たずに`ROAD_SURFACE_TILE_MIN_ZOOM`から。
 export const ROAD_SURFACE_TILE_MIN_ZOOM = regionTileConfig.road_surface_tile_min_zoom;
+/** 路面タイルが細い道まで全部描く、いちばん引いたズーム。 */
+export const ROAD_SURFACE_ALL_WAYS_MIN_ZOOM = regionTileConfig.road_surface_all_ways_min_zoom;
 export const ROAD_TILE_MIN_ZOOM = regionTileConfig.road_tile_min_zoom;
 export const ROAD_TILE_MAX_ZOOM = regionTileConfig.road_tile_max_zoom;
 

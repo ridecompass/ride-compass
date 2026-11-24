@@ -528,6 +528,11 @@ OSMは中央分離帯のある道路の上下線を別々のwayとして持ち�
 `domain/region.py: ROAD_SURFACE_TILE_MIN_ZOOM`からは層の値が同じ道を1つの地物につなぎ、鍵を持たない。道路名・材料の列は焼かない
 （押した道の小窓は`POST /api/region/roads-at`から読む）。
 
+`domain/region.py: ROAD_SURFACE_TILE_HIGHWAYS`に載るズームは、そこに書いた道の種別だけを描き（`infrastructure/road_tile_sql.py: _DRAWN_HIGHWAY_SQL`）、
+表に無いズーム（`domain/region.py: ROAD_SURFACE_ALL_WAYS_MIN_ZOOM`から）は全部の道を描く。引いた地図で細い道は見分けられないのに、
+都心のz10ではフィーチャーの大半（住宅地の道・名の無い道で約4分の3）を占め、持ちに当たらないタイルを焼く時間を決める。
+種別の選び方はフィーチャーの鍵の読み出しと共通（`_TILE_FEATURE_SOURCE_SQL`）なので、地図の線の層の値もその道だけを引く。
+
 引く縮尺の下限は実測で決めた（本番・都心のタイル1枚・gzip後。全部の道を層の値でつないだもの）: z11で約0.3MB、z10で約0.9MB、
 z9で約3MB（28万本・167万点）。z9より引くと1画面で数十MBになり、描画も重い。層の値は材料に今の道の区分を当てたものなので、
 管理画面で区分を書き換えると捨てて焼き直す（上の「捨てる」）。

@@ -13,6 +13,7 @@ import {
   deriveFetchLayerStatus,
   ROAD_LINE_MIN_ZOOM,
   TILE_ZOOM_TOO_WIDE_NOTICE,
+  THIN_ROADS_OMITTED_NOTICE,
   tileZoomTooWideLayerIds,
   type LayerDataStatusByLayer,
   type MapLayerVisibility,
@@ -33,7 +34,7 @@ import { useStoredState } from "@/hooks/useStoredState";
 import type { Coordinates, RoadAvoidanceOverride } from "@/types/route";
 import { avoidanceChoiceOf, type RoadTabMap } from "@/lib/roadAvoidance";
 import type { MapTheme } from "@/lib/mapTheme";
-import type { RideConditions } from "@/features/map/regionApi";
+import { ROAD_SURFACE_ALL_WAYS_MIN_ZOOM, type RideConditions } from "@/features/map/regionApi";
 import { snapDeg } from "@/lib/cardinalLabel";
 import { countsAxis, DISABLED_LABEL, STANDARD_COST_FACTOR } from "@/lib/costPreference";
 import type { WayValueCondition } from "@/lib/mapDisplay/mapLens";
@@ -189,11 +190,18 @@ export function useMapView({
     () => avoidanceChoiceOf(config.roadClasses.avoidance, roadAvoidance, mapTheme),
     [config.roadClasses.avoidance, roadAvoidance, mapTheme],
   );
-  // 道路タブで塗っている間は、拡大が足りず塗れないことを道路タブに出す（道の層を出していないと、地図の上の行の状態の印が無い）。
+  // 引いた地図では、路面タイルが細い道を描かない（地図に出ない道を「区分の外」と読ませない）。
+  const thinRoadsOmitted = viewport !== null && viewport.zoom < ROAD_SURFACE_ALL_WAYS_MIN_ZOOM;
+  // 道路タブで塗っている間は、拡大が足りず塗れないこと・細い道を塗らないことを道路タブに出す（道の層を出していないと、地図の上の
+  // 行の状態の印が無い）。
   const roadTabMapNotice =
-    roadAvoidanceShown && viewport !== null && ROAD_LINE_MIN_ZOOM !== undefined && viewport.zoom < ROAD_LINE_MIN_ZOOM
-      ? TILE_ZOOM_TOO_WIDE_NOTICE
-      : null;
+    !roadAvoidanceShown || viewport === null
+      ? null
+      : ROAD_LINE_MIN_ZOOM !== undefined && viewport.zoom < ROAD_LINE_MIN_ZOOM
+        ? TILE_ZOOM_TOO_WIDE_NOTICE
+        : thinRoadsOmitted
+          ? THIN_ROADS_OMITTED_NOTICE
+          : null;
   // 式の木の条件の名前（`bearing_deg`・`speed_kmh`）で地図へ渡す。速度が数でない間は値の無いことにする。
   const formulaConditions = useMemo(
     () => ({ bearing_deg: bearingDeg, ...(Number.isFinite(speedKmh) ? { speed_kmh: speedKmh } : {}) }),
@@ -245,7 +253,12 @@ export function useMapView({
     visibility: layerVisibility,
     hidden,
     dataStatus: { ...mapLayerStatus, ...weather.dynamicWeatherDataStatus },
-    caveats: weather.dynamicWeatherNotices,
+    caveats: {
+      ...(thinRoadsOmitted
+        ? Object.fromEntries(mapCatalog.roadLayers.map((layer) => [layer.id, THIN_ROADS_OMITTED_NOTICE]))
+        : {}),
+      ...weather.dynamicWeatherNotices,
+    },
     zoomTooWideLayerIds: viewport ? tileZoomTooWideLayerIds(mapCatalog.layers, viewport.zoom) : [],
   });
   const setShown = (id: string, on: boolean) => setLayerVisibility((prev) => ({ ...prev, [id]: on }));
