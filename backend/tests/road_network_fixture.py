@@ -14,6 +14,7 @@ from app.domain.attributes import CategoricalColumn
 from app.domain.geo import bearings_between, haversine_distance_km_pairs
 from app.domain.material_catalog import GRADIENT_PERCENT
 from app.domain.road_network import RoadNetwork
+from tests.profile_fixture import MAX_GRADE, STEEPEST_MIN_INTERVAL_M
 from app.domain.road_network_build import EdgelessWays, NetworkRegulations, build_road_network, regulation_arrays
 from app.domain.traffic import highway_rank
 
@@ -79,7 +80,8 @@ def road_network(
     classes = {name: CategoricalColumn.encode(values(rows)) for name, values in (categorical or {}).items()}
 
     return build_road_network(
-        revision=revision, node_osm_id=node_ids, node_lat=lat, node_lon=lon,
+        revision=revision, node_osm_id=node_ids, node_lat=lat, node_lon=lon, max_grade=MAX_GRADE,
+        steepest_min_interval_m=STEEPEST_MIN_INTERVAL_M,
         # 信号の頂点は、それぞれ別の信号の交差点に入る。
         node_signal_place=np.where(np.isin(node_ids, list(signal_nodes)), np.arange(len(node_ids)), -1).astype(np.int32),
         node_branch_count=np.bincount(

@@ -15,15 +15,16 @@ from functools import partial
 from app.domain.attributes import elevation_profile_sql
 from app.domain.elevation_profile import (
     FLAT,
-    MAX_PLAUSIBLE_GRADE_PERCENT,
-    STEEPEST_MIN_INTERVAL_M,
     along_fractions,
     flatten_spans,
 )
 import numpy as np
 import pytest
 from sqlalchemy import text
-from tests.profile_fixture import profiles, summarize_profile
+from tests.profile_fixture import MAX_GRADE, STEEPEST_MIN_INTERVAL_M, profiles, summarize_profile
+
+#: テストの較正値の、公道としてありうる勾配の上限（%）。
+MAX_PLAUSIBLE_GRADE_PERCENT = MAX_GRADE * 100.0
 
 
 pytestmark = pytest.mark.asyncio(loop_scope="module")
@@ -236,7 +237,7 @@ async def test_the_summary_counts_the_same_steps_as_the_travel_time(road_graph_s
     kept = row["elevation_profile_m"]
     built = profiles(kept, positions=[list(along_fractions(np.array(row["elevation_profile_along_m"]), len(kept)))])
     _, lengths, grades = flatten_spans(built.start, built.points, built.forward, built.elevation_m, built.position,
-                                       np.array([length_m]), np.zeros(1), FLAT.grade, FLAT.share)
+                                       np.array([length_m]), np.zeros(1), FLAT.grade, FLAT.share, MAX_GRADE)
     rises = lengths.astype(np.float64) * grades
     summary = summarize_profile(kept, row["elevation_profile_along_m"])
 

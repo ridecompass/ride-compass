@@ -152,6 +152,9 @@ PLACE_HERITAGE_MERGE_ID = "place.heritage_merge_radius_m"
 #: 橋・トンネルの端の地面の探し方のid（`batch/derive_elevation.py`）。
 STRUCTURE_GROUND_SEARCH_ID = "elevation.structure_ground_search_m"
 STRUCTURE_SLOPE_FLOOR_ID = "elevation.structure_slope_floor"
+#: 道路網の配列を作るとき、断面から勾配と要約を出すのに読む較正値のid（`domain/elevation_profile.py`）。
+MAX_PLAUSIBLE_GRADE_ID = "elevation.max_plausible_grade_percent"
+STEEPEST_MIN_INTERVAL_ID = "elevation.steepest_min_interval_m"
 
 
 def place_contact_merge_id(group: str) -> str:
@@ -296,6 +299,18 @@ TUNING_PARAMETERS: tuple[TuningParameter, ...] = (
         STRUCTURE_SLOPE_FLOOR_ID, "橋・トンネルの端を直して許す勾配", "割合", TuningEffect.DERIVE_REBUILD,
         "端を直して構造物の区間の勾配が増えても、この割合までは許す。両端が同じ誤った標高を返す平らな橋を両端そろって直すと、"
         "小さな本当の勾配が出るため（GraphHopper の`STRUCTURE_SLOPE_FLOOR`と同じ値から始める）。",
+    ),
+    TuningParameter(
+        MAX_PLAUSIBLE_GRADE_ID, "公道としてありうる勾配の上限", "%", TuningEffect.DERIVE_REBUILD,
+        "断面の点の間の勾配がこれを超えたら、道の起伏ではなく標高データの読み違い（両端が路面でない地物を指した等）として、その間を"
+        "勾配に数えない（標高の無い間として走る）。世界でも最急の公道が35%前後。0次ハードフィルタは値の無い区間を除外しないので、"
+        "誤った値で黙って経路から外すより安全側になる。",
+    ),
+    TuningParameter(
+        STEEPEST_MIN_INTERVAL_ID, "一番急な勾配を測る最短の長さ", "m", TuningEffect.DERIVE_REBUILD,
+        "1つ前の点の間がこの長さ以下なら、その点では一番急な勾配を測らない。数える間の途切れない続きの長さがこれより短ければ、その"
+        "続きの両端でも測らない。短い間ほど標高データの揺れが勾配を大きく揺らす（GraphHopper の`SlopeCalculator`の`MIN_LENGTH`と"
+        "同じ値と理由から始める）。獲得標高・平均勾配と所要時間は、短い間も数える。",
     ),
     # --- 走行モデル ---
     TuningParameter(

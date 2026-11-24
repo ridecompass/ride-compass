@@ -34,7 +34,7 @@ from app.domain.region import BoundingBox, RoadAt
 from app.domain.road_network_build import NetworkRegulations
 from app.domain.search_graph import EDGE_VALUE_DTYPE
 from app.domain.traffic_regulation import SLOT_FIELDS, RegulationSlot
-from app.domain.tuning import TURN_BEARING_DISTANCE_ID, require_tuning
+from app.domain.tuning import MAX_PLAUSIBLE_GRADE_ID, STEEPEST_MIN_INTERVAL_ID, TURN_BEARING_DISTANCE_ID, require_tuning
 from app.infrastructure import derived_data_meta
 from app.infrastructure.material_joins import material_from_clause
 from app.infrastructure.orm_base import declared_metadata
@@ -168,7 +168,7 @@ ORDER BY re.osm_way_id, re.segment_index
 
 
 #: 道路網全体の配列を作る読み出しが読む較正値。値は作り直しに使った値（`get_recorded_tuning`）で、文へ引数で渡る。
-NETWORK_TUNING = (TURN_BEARING_DISTANCE_ID,)
+NETWORK_TUNING = (TURN_BEARING_DISTANCE_ID, MAX_PLAUSIBLE_GRADE_ID, STEEPEST_MIN_INTERVAL_ID)
 
 #: 区間の端点全件（`road_edges`の端点は`road_nodes`に行を持つ）と、入る信号の交差点（入らなければ-1）。
 #: 座標はノードの生データから読み、生データが無いノードは現れない。

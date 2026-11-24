@@ -18,7 +18,6 @@ from typing import Any
 import numpy as np
 
 from app.domain.elevation_profile import (
-    STEEPEST_MIN_INTERVAL_M,
     SUMMARY_COLUMNS,
     ElevationProfiles,
     grade_distribution,
@@ -100,7 +99,7 @@ def build_road_network(
     edge_shape_points: np.ndarray, shape_lon: np.ndarray, shape_lat: np.ndarray, numeric_ids: tuple[str, ...],
     numeric_values: np.ndarray, categorical_codes: np.ndarray, distance_m: np.ndarray, edge_profile_start: np.ndarray,
     edge_profile_points: np.ndarray, profile_elevation_m: np.ndarray, profile_position: np.ndarray,
-    edgeless: EdgelessWays | None = None, **facts: Any,
+    max_grade: float, steepest_min_interval_m: float, edgeless: EdgelessWays | None = None, **facts: Any,
 ) -> RoadNetwork:
     """道の事実から`RoadNetwork`を組む。区間は有向の行（`RoadNetwork`の行順）で、端のそばの向きは形から決まらない区間がNaN。
     形と断面の点は、区間ごとに道の順方向に1回だけ、区間の行の順に隙間なく並べ、両向きの行が同じ点を指す。材料の行列`numeric_values`の
@@ -123,12 +122,12 @@ def build_road_network(
     elevation = np.asarray(profile_elevation_m, dtype=np.float32)
     position = np.asarray(profile_position, dtype=np.float32)
     distribution = grade_distribution(profile_start[first_of_edge], profile_points[first_of_edge], elevation, position,
-                                      distance[first_of_edge])
+                                      distance[first_of_edge], max_grade)
     spans = profile_spans(ElevationProfiles(profile_start, profile_points, np.asarray(edge_forward, dtype=bool),
-                                            elevation, position, distribution), distance)
+                                            elevation, position, distribution, max_grade), distance)
     summaries = dict(zip(SUMMARY_COLUMNS, profile_summaries(
         profile_start, profile_points.astype(np.int64), np.asarray(edge_forward, dtype=np.bool_), elevation, position,
-        distance, STEEPEST_MIN_INTERVAL_M).T, strict=True))
+        distance, steepest_min_interval_m, max_grade).T, strict=True))
 
     # 材料の行列は取込範囲全体で道路網の配列の大半を占めるので、写さずに断面から決まる列だけを埋める。
     values = np.asarray(numeric_values, dtype=EDGE_VALUE_DTYPE)

@@ -41,7 +41,7 @@ from app.domain.material_catalog import MaterialSpec
 from app.domain.model_settings import ModelSettings
 from app.domain.road_classes import material_spec
 from app.domain.route import STOP_COUNT_DECIMALS, WIND_MS_DECIMALS, AxisFact
-from app.domain.elevation_profile import FLAT, ElevationProfiles, ProfileSpans, along_fractions, profile_spans
+from app.domain.elevation_profile import FLAT, NO_GRADE_LIMIT, ElevationProfiles, ProfileSpans, along_fractions, profile_spans
 from app.domain.search_materials import SearchMaterials
 from app.domain.ledger_costs import LedgerCosts, LedgerParameters
 from app.domain.road_network import MaterialFills
@@ -338,7 +338,7 @@ def compile_leg_cost_kernels(tuning: Tuning) -> None:
     """費用の組み立てのJIT（走行モデルとビンの仕上げ）を、本番と同じ引数の型で1回ずつ呼んでコンパイルする
     （`domain/search_kernels.py: compile_search_kernels`がイメージの組み立てで呼ぶ）。"""
     flat = ElevationProfiles(np.zeros(1, dtype=np.int64), np.full(1, 2, dtype=np.int32), np.ones(1, dtype=bool),
-                             np.zeros(2, dtype=np.float32), along_fractions((), 2), FLAT)
+                             np.zeros(2, dtype=np.float32), along_fractions((), 2), FLAT, NO_GRADE_LIMIT)
     model = SegmentSpeedModel(RiderProfile.standard(20.0, tuning), profile_spans(flat, np.ones(1)), np.ones(1),
                               np.zeros(1), np.zeros(1), tuning)
     seconds = model.travel_seconds(np.zeros(1), np.zeros(1), np.full(1, STANDARD_TEMPERATURE_C))

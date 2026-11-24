@@ -39,6 +39,8 @@ TUNING = {
     'place.heritage_merge_radius_m': 1000.0,
     'elevation.structure_ground_search_m': 50.0,
     'elevation.structure_slope_floor': 0.015,
+    'elevation.max_plausible_grade_percent': 40.0,
+    'elevation.steepest_min_interval_m': 2.0,
     'stop.cluster_distance_m': 40.0,
     'turn.bearing_distance_m': 20.0,
     'elevation.profile_step_m': 50.0,
