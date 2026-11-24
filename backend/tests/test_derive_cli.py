@@ -135,7 +135,7 @@ async def test_readers_see_the_previous_tables_until_the_swap_and_the_rebuilt_on
     準備済みの文も作り直した表を読み、世代が1つ進み、その世代の道路網は作り直した表から作られている。
     前の表で焼いた地図のタイルは配らない。"""
     structure_before = await derived_before.fetch(_STRUCTURE_SQL, list(DERIVED))
-    baked = region_tile_key("road_surface", MVT_TILE_GENERATIONS["road_surface"], 14, 1, 1, "pbf")
+    baked = region_tile_key("road_surface", MVT_TILE_GENERATIONS["road_surface"], 14, 1, 1, "pbf", "")
     tile_cache.set(baked, b"baked-from-the-previous-tables", "application/x-protobuf")
     await _ingest_ways(derived_before, ONEWAY)
     async with raw_connection() as reader:

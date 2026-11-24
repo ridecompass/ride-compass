@@ -42,7 +42,7 @@ def _antiparallel_sql(row: str, bearing_tolerance_deg: float) -> str:
 
 
 def divided_sql(row: str, candidates: str, named_gap_m: float, geometric_gap_m: float, bearing_tolerance_deg: float) -> str:
-    """道の行`row`が上下線の分かれた道の片側かのSQL式。距離と向きの差は較正値（`domain/tuning.py: DIVIDED_*`）。
+    """道の行`row`が上下線の分かれた道の片側かのSQL式。距離と向きの差は較正値（`domain/tuning.py`の`divided.*`）。
 
     `row`と相方の候補の関係`candidates`は、どちらも`osm_way_id`・`geom`・`direction`・`highway`と
     `facts_sql`の列を持つ。

@@ -555,7 +555,7 @@ class LegCostComposer:
             return 1
         return int(min(MAX_TIME_BINS, max(1, math.ceil(duration_hours / TIME_BIN_HOURS))))
 
-    def values_at_rows(self, rows: np.ndarray, time: BinTime, judgement: RegulationJudgement | None = None) -> LegValues:
+    def values_at_rows(self, rows: np.ndarray, time: BinTime, judgement: RegulationJudgement | None) -> LegValues:
         """経路上の行`rows`（切り出した区間の順の行番号）だけを、時刻ビンの時刻`time`（`LegCostArrays.bin_times`の1つ）と
         レグの交通規制の判定`judgement`（`LegCostArrays.judgement`）で合成し直した表示の値。"""
         avoidance = judgement.masks if judgement is not None else self._avoidance

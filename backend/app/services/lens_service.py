@@ -1,7 +1,7 @@
 """地図のレンズの道ごとの値の配信（ルートを出す前の地図の道と道の窓）。
 
-タイルに入るフィーチャーは路面タイルと同じ選び方でDBから鍵だけを読み（`RoadGraphRepository.get_tile_features`）、その値を
-取込範囲全体の道の網（`infrastructure/road_network_store.py: current`）から探索と同じ部品で求める（`domain/lens_values.py`）。
+タイルに入るフィーチャーは路面タイルと同じ選び方で取込範囲全体の道の網（`infrastructure/road_network_store.py: current`）から選び
+（`domain/road_features.py: map_features_in`）、その値を探索と同じ部品で求める（`domain/lens_values.py`）。
 地図の応答はJSONのバイト列のままプロセスの中で持ち、鍵には値を変える入力だけを入れる（`_response_inputs`）。
 """
 
@@ -12,7 +12,6 @@ from datetime import datetime, timedelta
 
 import numpy as np
 from cachetools import LRUCache
-from sqlalchemy import Row
 
 from app.domain.cost_preference import CostPreference
 from app.domain.wind_context import WindContext
@@ -34,6 +33,7 @@ from app.domain.lens_values import (
     painted_direction,
 )
 from app.domain.region import BoundingBox, tile_bounds_lonlat
+from app.domain.road_features import map_features_in
 from app.domain.road_network import MaterialFills, material_arrays_of, slice_rows
 from app.domain.attributes import EdgeMaterialColumns
 from app.domain.time_zone import JST, as_series_time
@@ -42,7 +42,6 @@ from app.infrastructure import road_network_store
 from app.infrastructure.cache_identity import canonical_json, dynamic_tile_key, model_settings_signature
 from app.infrastructure.debug_log import log_external_call
 from app.infrastructure.msm_client import MsmUnavailableError, forecast_version
-from app.infrastructure.road_graph_repository import RoadGraphRepository
 from app.services.graph_service import network_burden_fills, network_classes
 from app.services.weather_service import WeatherService
 
@@ -65,15 +64,11 @@ class _TileLens:
     table: LensTable
     facts: LensFactInputs
     wind_previous_run_from: datetime | None
-    #: タイルの全部のフィーチャーの鍵（道の網に行の無いものも含む）。
-    feature_keys: tuple[str, ...]
 
 
 class LensService:
-    def __init__(self, weather_service: WeatherService, repository: RoadGraphRepository,
-                 responses: LRUCache[str, bytes]):
+    def __init__(self, weather_service: WeatherService, responses: LRUCache[str, bytes]):
         self._weather_service = weather_service
-        self._repository = repository
         self._responses = responses
 
     async def way_materials(self, lens_id: str, z: int, x: int, y: int, at: datetime | None,
@@ -119,15 +114,14 @@ class LensService:
                     only: str | None = None) -> _TileLens | None:
         """タイルのレンズの値。`only`を渡すとそのフィーチャーだけで求める（無ければNone）。`wind`が偽なら風を読まずに求める
         （風に依るレンズの値は無風のものになる）。"""
-        tile = await self._repository.get_tile_features(z, x, y, tile_bounds_lonlat(z, x, y))
-        prepared = await asyncio.to_thread(_prepare, tile, settings, only)
+        prepared = await asyncio.to_thread(_prepare, z, tile_bounds_lonlat(z, x, y), settings, only)
         if prepared is None:
             return None
         features, materials, fills, burden_fills, elevation_gain_m = prepared
         fields["features"] = len(features)
         weather = await self._wind(z, x, y, at, materials.mid_lat, materials.mid_lon) if wind else None
         return await asyncio.to_thread(_tile_lens, features, materials, settings, fills, burden_fills, speed_kmh,
-                                       preference, weather, elevation_gain_m, tuple(row.feature_key for row in tile))
+                                       preference, weather, elevation_gain_m)
 
     async def _wind(self, z: int, x: int, y: int, at: datetime | None, mid_lat: np.ndarray, mid_lon: np.ndarray,
 ) -> tuple[WindForecastSeries, datetime] | None:
@@ -147,14 +141,14 @@ class LensService:
         return series, target
 
 
-def _prepare(tile: Sequence[Row], settings: ModelSettings, only: str | None
+def _prepare(z: int, bounds: BoundingBox, settings: ModelSettings, only: str | None
              ) -> tuple[LensFeatures, EdgeMaterialColumns, MaterialFills, Mapping[str, float], np.ndarray] | None:
-    """タイルのフィーチャー（`RoadGraphRepository.get_tile_features`の行）の、風に依らない入力（フィーチャーと行・材料・欠けを
+    """ズーム`z`・範囲`bounds`のタイルのフィーチャー（`map_features_in`）の、風に依らない入力（フィーチャーと行・材料・欠けを
     埋める材料の平均と道のストレスの重さの平均・行の向きの登り）。道路網を読むのと、道路網ごとの初回に取込範囲全体の区分の列と
     平均を求めるのを含むので、イベントループの外で呼ぶ。"""
     network = road_network_store.current()
-    in_tile = lens_features(network, [row.feature_key for row in tile], [row.osm_way_id for row in tile],
-                            [row.segment_index for row in tile])
+    tile = map_features_in(network, z, bounds.min_longitude, bounds.min_latitude, bounds.max_longitude, bounds.max_latitude)
+    in_tile = lens_features(network, tile.keys, tile.way_ids, tile.segment_indexes)
     features = in_tile if only is None else in_tile.only(only)
     if features is None:
         return None
@@ -166,8 +160,7 @@ def _prepare(tile: Sequence[Row], settings: ModelSettings, only: str | None
 
 def _tile_lens(features: LensFeatures, materials: EdgeMaterialColumns, settings: ModelSettings, fills: MaterialFills,
                burden_fills: Mapping[str, float], speed_kmh: float, preference: CostPreference,
-               wind: tuple[WindForecastSeries, datetime] | None, elevation_gain_m: np.ndarray,
-               feature_keys: tuple[str, ...]) -> _TileLens:
+               wind: tuple[WindForecastSeries, datetime] | None, elevation_gain_m: np.ndarray) -> _TileLens:
     components = previous_run_from = None
     if wind is not None:
         series, target = wind
@@ -176,14 +169,14 @@ def _tile_lens(features: LensFeatures, materials: EdgeMaterialColumns, settings:
     return _TileLens(*lens_table(features, materials.columns, materials.distance_m, materials.elevation_spans, settings,
                                  ledger_parameters(preference, settings.tuning), speed_kmh, fills, burden_fills, components,
                                  elevation_gain_m),
-                     previous_run_from, feature_keys)
+                     previous_run_from)
 
 
 def _way_materials(tile: _TileLens, values: np.ndarray) -> dict[str, dict[str, float]]:
     """レンズの値`values`の、フィーチャーごとの道の向き・逆向きに辿った値と道の向き（値の無い材料は載せない）。タイルの
     フィーチャーは値が無くても空の材料で載せる（届いたタイルの値の無い道と、まだ届いていない道を、受け取る側が見分けられる）。"""
     features = tile.table.features
-    result: dict[str, dict[str, float]] = {key: {} for key in tile.feature_keys}
+    result: dict[str, dict[str, float]] = {key: {} for key in features.keys}
     for key, (along, against), bearing in zip(features.keys, values.tolist(), features.bearing_deg.tolist()):
         # NaN（辿れない向き・方位の無い道）は自分と等しくない。
         leaves = {name: value for name, value in ((LENS_ALONG_LEAF, along), (LENS_AGAINST_LEAF, against),

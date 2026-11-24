@@ -59,7 +59,7 @@ async def client(road_graph_session, app_on_test_database, admin_credentials):
 
 async def test_written_definitions_are_read_back_and_served(client):
     """書いた全体がそのまま読み戻り、公開した分け方が画面の設定に出る。前の区分の色で焼いた路面タイルは配らない。"""
-    baked = region_tile_key("road_surface", MVT_TILE_GENERATIONS["road_surface"], 14, 1, 1, "pbf")
+    baked = region_tile_key("road_surface", MVT_TILE_GENERATIONS["road_surface"], 14, 1, 1, "pbf", "")
     tile_cache.set(baked, b"baked-with-the-previous-classes", "application/x-protobuf")
 
     assert (await client.put(PATH, json=DEFINITIONS, headers=AUTH_HEADERS)).status_code == 200

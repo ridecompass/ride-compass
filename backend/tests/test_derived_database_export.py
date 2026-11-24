@@ -16,6 +16,7 @@ import re
 import zipfile
 
 import pytest
+import shapely
 from fastapi.testclient import TestClient
 
 from app.batch import derive_cli
@@ -100,7 +101,8 @@ async def test_the_export_hands_every_segment_with_its_values_under_the_odbl_not
     assert by_key[("100", "1")]["surface"] == "asphalt"
     assert by_key[("200", "0")]["highway"] == "primary"
     assert by_key[("200", "0")]["ref"] == "1"
-    assert by_key[("100", "0")]["geometry_wkt"].startswith("LINESTRING(")
+    assert shapely.get_coordinates(shapely.from_wkt(by_key[("100", "0")]["geometry_wkt"])).tolist() == [
+        list(_NODES[1]), list(_NODES[2])]
     assert float(by_key[("100", "0")]["length_m"]) > 0
     assert [path.name for path in export_root.iterdir()] == [derived_database_export.latest().name]
 

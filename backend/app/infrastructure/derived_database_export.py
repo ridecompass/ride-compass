@@ -11,28 +11,32 @@
 import asyncio
 import csv
 import html
+import inspect
 import io
 import logging
 import re
 import shutil
 import time
 import zipfile
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from pathlib import Path
 
+import numpy as np
+import shapely
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domain.attributes import CategoricalColumn
 from app.domain.feature_materials import FeatureMaterials
 from app.domain.map_display import DERIVED_DATABASE_ATTRIBUTIONS
 from app.domain.material_catalog import MATERIAL_CATALOG, material_array_columns
-from app.domain.road_features import feature_materials, feature_rows
+from app.domain.region import EDGE_UNIT_MIN_ZOOM
+from app.domain.road_features import MapFeatures, feature_lines, feature_materials, feature_rows, map_features
 from app.domain.road_network import RoadNetwork
 from app.infrastructure import road_network_store
 from app.infrastructure.cache_identity import shape_digest
 from app.infrastructure.data_paths import DATA_DIR
 from app.infrastructure.road_graph_repository import RoadGraphRepository
-from app.infrastructure.road_tile_sql import DERIVED_DATABASE_ROWS_SQL
+from app.infrastructure.road_tile_sql import WAY_NAMES_SQL
 
 logger = logging.getLogger("ridecompass.derived_database")
 
@@ -40,7 +44,8 @@ logger = logging.getLogger("ridecompass.derived_database")
 #: （testing.md「確かめる高さ」の (c)）。
 ROOT = DATA_DIR / "derived_database"
 
-#: 書き出す材料（道路網の配列が持つ全材料。値は道路網の配列のフィーチャーの値で、地図とルートが読むのと同じ）。
+#: 書き出す材料（道路網の配列が持つ全材料。値は道路網の配列のフィーチャーの値で、地図とルートが読むのと同じ）。行は区間で塗る
+#: ズームの地図のフィーチャー（`domain/road_features.py: map_features`）で、地図と同じ単位・形にする。
 DERIVED_DATABASE_MATERIAL_IDS = tuple(sorted(material_id for ids in material_array_columns() for material_id in ids))
 COLUMNS = ("osm_way_id", "segment_index", "length_m", "name", "ref", *DERIVED_DATABASE_MATERIAL_IDS, "geometry_wkt")
 DATA_FILE = "roads.csv"
@@ -75,9 +80,9 @@ following sources, which were processed by RideCompass:
 These processed values are not made by, and are not endorsed by, the original providers.
 加工した値は、元データの提供元が作成したものではありません。
 
-{DATA_FILE}: one row per road segment (a way that has no segment is one row for the whole way).
+{DATA_FILE}: one row per road segment.
 Coordinates are EPSG:4326 (WKT). Columns:
-- osm_way_id, segment_index: the OSM way and the segment along it (empty for a whole way)
+- osm_way_id, segment_index: the OSM way and the segment along it
 - length_m: length in metres
 - name, ref: OSM name / ref
 - geometry_wkt: shape of the segment
@@ -85,9 +90,6 @@ Coordinates are EPSG:4326 (WKT). Columns:
 {chr(10).join(_material_line(material_id) for material_id in DERIVED_DATABASE_MATERIAL_IDS)}
 Weather values (wind, rain) and human-set calibration values are not included.
 """
-
-#: 置き場の名前の形の署名。列・値式・表示を変えたコードは、同じ世代でも別の名前に書く。
-EXPORT_SHAPE = shape_digest(DERIVED_DATABASE_ROWS_SQL, road_network_store.NETWORK_SHAPE, COLUMNS, README)
 
 _FILE_PATTERN = re.compile(r"^ridecompass-derived-database-(?P<shape>[0-9a-f]+)-r(?P<derived>\d+|x)-i(?P<imported>\d+)\.zip$")
 _STREAM_CHUNK = 20_000
@@ -147,12 +149,12 @@ async def _write_zip(repository: RoadGraphRepository, path: Path, check_space: C
                 io.TextIOWrapper(raw, encoding="utf-8", newline="") as data:
             writer = csv.writer(data)
             writer.writerow(COLUMNS)
-            async for chunk in repository.stream_derived_database_rows(_STREAM_CHUNK):
-                materials = _materials_of(network, chunk)
-                writer.writerows((*(row._mapping[column] for column in COLUMNS[:5]),
-                                  *(_cell(materials, material_id, i) for material_id in DERIVED_DATABASE_MATERIAL_IDS),
-                                  row.geometry_wkt) for i, row in enumerate(chunk))
-                rows += len(chunk)
+            first = network.edge_first_rows
+            for begin in range(0, len(first), _STREAM_CHUNK):
+                features, lines = await asyncio.to_thread(_chunk, network, first[begin:begin + _STREAM_CHUNK])
+                names = await repository.get_way_names(sorted(set(features.way_ids)))
+                writer.writerows(lines(names))
+                rows += len(features)
                 check_space()
                 now = time.perf_counter()
                 if now - last_progress >= _PROGRESS_INTERVAL_SECONDS:
@@ -161,10 +163,27 @@ async def _write_zip(repository: RoadGraphRepository, path: Path, check_space: C
     return rows
 
 
-def _materials_of(network: RoadNetwork, chunk) -> FeatureMaterials:
-    """行（区間か、区間を持たない道）ごとの、道路網の配列の材料。"""
-    edge_rows, way_rows = feature_rows(network, (row.osm_way_id for row in chunk), (row.segment_index for row in chunk))
-    return feature_materials(network, tuple("" for _ in chunk), edge_rows, way_rows)
+def _chunk(network: RoadNetwork, rows: np.ndarray
+           ) -> tuple[MapFeatures, Callable[[dict[int, tuple[str | None, str | None]]], Iterator[tuple[object, ...]]]]:
+    """区間の一番若い行`rows`の区間のフィーチャーと、道の番号→名前から書き出しの行を並べる関数。道路網を読むので、イベント
+    ループの外で呼ぶ。"""
+    features = map_features(network, EDGE_UNIT_MIN_ZOOM, rows)
+    edge_rows, way_rows = feature_rows(network, features.way_ids, features.segment_indexes)
+    materials = feature_materials(network, features.keys, edge_rows, way_rows)
+    # 座標の桁はOSMが持つ桁（小数7桁）で、丸めで形を変えない。
+    shapes = shapely.to_wkt(feature_lines(network, features), rounding_precision=7, trim=True).tolist()
+    lengths = np.asarray(network.distance_m)[features.shape_rows].tolist()
+
+    def lines(names: dict[int, tuple[str | None, str | None]]) -> Iterator[tuple[object, ...]]:
+        for i, (way_id, segment) in enumerate(zip(features.way_ids, features.segment_indexes, strict=True)):
+            yield (way_id, segment, lengths[i], *names.get(way_id, (None, None)),
+                   *(_cell(materials, material_id, i) for material_id in DERIVED_DATABASE_MATERIAL_IDS), shapes[i])
+
+    return features, lines
+
+
+#: 置き場の名前の形の署名。列・値式・表示・行の選び方を変えたコードは、同じ世代でも別の名前に書く。
+EXPORT_SHAPE = shape_digest(WAY_NAMES_SQL, road_network_store.NETWORK_SHAPE, COLUMNS, README, inspect.getsource(_chunk))
 
 
 def _cell(materials: FeatureMaterials, material_id: str, row: int) -> str | float | bool | None:

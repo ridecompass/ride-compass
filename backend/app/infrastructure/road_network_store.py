@@ -40,7 +40,7 @@ import app.domain.traffic_regulation
 from app.domain.geo import bearings_between
 from app.domain.road_network import RoadNetwork, positions_in
 from app.domain.material_catalog import MATERIAL_CATALOG, PEDESTRIAN_ROAD, material_array_columns
-from app.domain.road_network_build import EdgelessWays, build_road_network, per_km, regulation_arrays
+from app.domain.road_network_build import build_road_network, per_km, regulation_arrays
 from app.domain.traffic_regulation import PEDESTRIAN_ROAD_LABELS
 from app.domain.tuning import MAX_PLAUSIBLE_GRADE_ID, STEEPEST_MIN_INTERVAL_ID
 from app.domain.search_graph import run_starts
@@ -65,7 +65,7 @@ NETWORK_SHAPE = shape_digest(RoadNetwork, *NETWORK_SQL_SOURCES, HIGHWAY_RANK, ma
         sys.modules[__name__], app.domain.road_network_build, app.domain.elevation_profile, app.domain.traffic_regulation,
         RoadGraphRepository.get_network_regulations, bearings_between,
         highway_rank, travel_allowed, positions_in, EdgeMaterialArrays, CategoricalColumn.encode, float_array,
-        RoadGraphRepository.get_edgeless_ways, RoadGraphRepository.stream_network_nodes, RoadGraphRepository.stream_network_edges,
+        RoadGraphRepository.stream_network_nodes, RoadGraphRepository.stream_network_edges,
         RoadGraphRepository.get_network_tuning, RoadGraphRepository.get_edge_material_arrays,
         RoadGraphRepository.get_edge_elevation_profiles)))
 
@@ -277,8 +277,7 @@ async def build(repository: RoadGraphRepository, revision: int) -> RoadNetwork:
         len(nodes["node_osm_id"]), len(edges["edge_way_id"]), dropped_without_endpoint, topology_s, memory_note(),
     )
 
-    materials = await _read_materials(repository, edges["edge_way_id"], edges["edge_segment"], edges["edge_forward"],
-                                      await repository.get_edgeless_ways())
+    materials = await _read_materials(repository, edges["edge_way_id"], edges["edge_segment"], edges["edge_forward"])
     _release_freed_memory()
     read_s = time.monotonic() - started
     logger.info("道路網の材料を読みました 有向の区間=%d %.0f秒 %s", len(edges["edge_way_id"]), read_s - topology_s,
@@ -398,27 +397,17 @@ async def _read_directed_edges(
 
 
 async def _read_materials(
-    repository: RoadGraphRepository, way: np.ndarray, segment: np.ndarray, forward: np.ndarray, way_ids: list[int]
+    repository: RoadGraphRepository, way: np.ndarray, segment: np.ndarray, forward: np.ndarray
 ) -> dict[str, Any]:
-    """材料は`get_edge_material_arrays`で引く。区間を持たない道`way_ids`の材料も同じ読み出しで、区間の無い道の値として引き
-    （区間の値の表は値を持たない）、区間の材料のあとに続けて詰めてから分ける（分類の語彙を区間と1つにする）。"""
+    """材料は`get_edge_material_arrays`で引く。"""
     edge_count = len(way)
-    columns = MaterialColumns(edge_count + len(way_ids))
-    batches = [(way[start:start + _MATERIAL_BATCH].tolist(), segment[start:start + _MATERIAL_BATCH].tolist(),
-                forward[start:start + _MATERIAL_BATCH].tolist()) for start in range(0, edge_count, _MATERIAL_BATCH)]
-    batches += [(way_ids[start:start + _MATERIAL_BATCH], [-1] * len(way_ids[start:start + _MATERIAL_BATCH]),
-                 [True] * len(way_ids[start:start + _MATERIAL_BATCH])) for start in range(0, len(way_ids), _MATERIAL_BATCH)]
-    for ways, segments, forwards in batches:
-        columns.add(await repository.get_edge_material_arrays(ways, segments, forwards))
-        logger.info("材料 %d/%d", columns.filled, edge_count + len(way_ids))
-    result = columns.result()
-    numeric, codes = result.pop("numeric_values"), result.pop("categorical_codes")
-    return {
-        **{name: values[:edge_count] if isinstance(values, np.ndarray) else values for name, values in result.items()},
-        "numeric_values": numeric[:edge_count], "categorical_codes": codes[:edge_count],
-        "edgeless": EdgelessWays(np.asarray(way_ids, dtype=np.int64), numeric[edge_count:], codes[edge_count:]),
-        **await _read_profiles(repository, way, segment),
-    }
+    columns = MaterialColumns(edge_count)
+    for start in range(0, edge_count, _MATERIAL_BATCH):
+        stop = start + _MATERIAL_BATCH
+        columns.add(await repository.get_edge_material_arrays(
+            way[start:stop].tolist(), segment[start:stop].tolist(), forward[start:stop].tolist()))
+        logger.info("材料 %d/%d", columns.filled, edge_count)
+    return {**columns.result(), **await _read_profiles(repository, way, segment)}
 
 
 async def _read_profiles(repository: RoadGraphRepository, way: np.ndarray, segment: np.ndarray) -> dict[str, Any]:

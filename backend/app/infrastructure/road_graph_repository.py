@@ -18,19 +18,18 @@ from collections.abc import AsyncIterator, Mapping, Sequence
 from itertools import chain
 
 import numpy as np
-import shapely
 from sqlalchemy import Row, TextClause, select, text
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
 from app.domain.attributes import CategoricalColumn, EdgeMaterialArrays
 from app.domain.elevation_profile import along_fractions
-from app.domain.geo import bearing_sql, degrees_covering_m, midpoint_sql
+from app.domain.geo import bearing_sql, midpoint_sql
 from app.domain.material_catalog import (
     MATERIAL_CATALOG,
     material_array_columns,
     material_value_sql,
 )
-from app.domain.region import BoundingBox, RoadAt
+from app.domain.region import BoundingBox
 from app.domain.road_network_build import NetworkRegulations
 from app.domain.search_graph import EDGE_VALUE_DTYPE
 from app.domain.traffic_regulation import SLOT_FIELDS, RegulationSlot
@@ -38,16 +37,9 @@ from app.domain.tuning import MAX_PLAUSIBLE_GRADE_ID, STEEPEST_MIN_INTERVAL_ID, 
 from app.infrastructure import derived_data_meta
 from app.infrastructure.material_joins import material_from_clause
 from app.infrastructure.orm_base import declared_metadata
-from app.infrastructure.road_tile_sql import (
-    DERIVED_DATABASE_ROWS_SQL,
-    TILE_FEATURES_SQL,
-    ROAD_SURFACE_TILE_MVT_SQL,
-    ROADS_AT_SQL,
-    edgeless_way_sql,
-)
+from app.infrastructure.road_tile_sql import ROAD_SURFACE_TILE_MVT_SQL, WAY_NAMES_SQL
 from app.infrastructure.source_models import (
     INGESTED_BBOX_SQL,
-    WAYS_SOURCE_SQL,
     Source,
     latest_succeeded_run_by_column_sql,
     nodes_lookup_sql,
@@ -181,15 +173,6 @@ JOIN LATERAL {nodes_lookup_sql("rn.osm_node_id")} n ON true
 ORDER BY rn.osm_node_id
 """)
 
-#: 区間を1本も持たない道（同じ位置に点が重なり長さ0の区間しか作れない道等）。地図の区分の層は、区間で塗るズームでもこの道を
-#: 道1本で塗る。
-_EDGELESS_WAYS_SQL = text(f"""
-SELECT w.osm_way_id
-FROM {WAYS_SOURCE_SQL} w
-WHERE {edgeless_way_sql("w")}
-ORDER BY w.osm_way_id
-""")
-
 #: 取込範囲全体の道路網（`infrastructure/road_network_store.py`）を作る読み出し。置き場の
 #: 形の署名はここから導く——材料の式を変えると、作り直すべき置き場が別名になる。較正値は文に値で入れず引数で渡す：
 #: 較正値は派生の世代に結ばれ（作り直すと世代が進む）、署名に値を入れると、値を変えてから作り直すまで読み手の
@@ -199,7 +182,6 @@ NETWORK_SQL_SOURCES = (
     _NETWORK_NODES_SQL,
     _EDGE_MATERIAL_ARRAYS_SQL,
     _EDGE_ELEVATION_PROFILES_SQL,
-    _EDGELESS_WAYS_SQL,
 )
 
 def float_array(values: list) -> np.ndarray:
@@ -295,22 +277,9 @@ class RoadGraphRepository:
                 -1, len(SLOT_FIELDS)),
         )
 
-    async def get_edgeless_ways(self) -> list[int]:
-        """区間を持たない道の番号（昇順）。"""
-        return list((await self._session.execute(_EDGELESS_WAYS_SQL)).scalars())
-
-    async def get_tile_features(self, z: int, x: int, y: int, bbox: BoundingBox) -> Sequence[Row]:
-        """路面タイル`z/x/y`が焼くフィーチャーの鍵と、道・区間の番号（道1本のフィーチャーはNone）（`road_tile_sql.py: TILE_FEATURES_SQL`）。
-        路面タイルと同じ選び方で、取込範囲の外のタイルは0行。"""
-        return (await self._session.execute(TILE_FEATURES_SQL, _tile_params(z, x, y, bbox))).all()
-
     def stream_network_nodes(self, chunk_size: int) -> AsyncIterator[Sequence[Row]]:
         """区間の端点になりうるノード全件を`chunk_size`行ずつ流す（`osm_node_id`の昇順）。"""
         return self._stream(_NETWORK_NODES_SQL, chunk_size)
-
-    def stream_derived_database_rows(self, chunk_size: int) -> AsyncIterator[Sequence[Row]]:
-        """派生データベースの全行を`chunk_size`行ずつ流す（`road_tile_sql.py: DERIVED_DATABASE_ROWS_SQL`の列）。"""
-        return self._stream(DERIVED_DATABASE_ROWS_SQL, chunk_size)
 
     async def _stream(self, statement: TextClause, chunk_size: int,
                       params: dict[str, object] | None = None) -> AsyncIterator[Sequence[Row]]:
@@ -404,32 +373,20 @@ class RoadGraphRepository:
             return None
         return (row.highway, row.tags)
 
-    async def roads_at(self, lon: float, lat: float, z: int, radius_m: float,
-                       limit: int) -> list[tuple[RoadAt, int | None]]:
-        """押した所`(lon, lat)`から`radius_m`以内の道のフィーチャーと区間の番号（道1本のフィーチャーはNone）を、近い順に`limit`本
-        （`road_tile_sql.py: ROADS_AT_SQL`）。フィーチャーの単位は、ズーム`z`の路面タイルと同じ。プロパティは鍵・道・名前で、材料を
-        持たない。"""
-        reach = degrees_covering_m(radius_m)
-        rows = await self._session.execute(ROADS_AT_SQL, {
-            "lon": lon, "lat": lat, "z": z, "radius_m": radius_m, "limit": limit,
-            "xmin": lon - reach, "ymin": lat - reach, "xmax": lon + reach, "ymax": lat + reach,
-        })
-        return [
-            (RoadAt(
-                properties={column: value for column, value in row._mapping.items()
-                            if column not in ("shape", "segment_index") and value is not None},
-                shape=[(lon_, lat_) for lon_, lat_ in shapely.from_geojson(row.shape).coords],
-            ), row.segment_index)
-            for row in rows
-        ]
+    async def get_way_names(self, osm_way_ids: Sequence[int]) -> dict[int, tuple[str | None, str | None]]:
+        """道の番号→道路名・路線番号（`road_tile_sql.py: WAY_NAMES_SQL`。値の無いものはNone）。道の生データに無い道は載らない。"""
+        rows = await self._session.execute(WAY_NAMES_SQL, {"ids": list(osm_way_ids)})
+        return {row.osm_way_id: (row.name, row.ref) for row in rows}
 
     async def get_road_surface_tile_mvt(
-        self, z: int, x: int, y: int, bbox: BoundingBox, layer_values: Mapping[str, Mapping[str, str]]
+        self, z: int, x: int, y: int, bbox: BoundingBox, feature_keys: Sequence[str], shapes: Sequence[bytes],
+        layer_values: Mapping[str, Mapping[str, str]],
     ) -> bytes | None:
-        """路面レイヤーのMVTタイル1枚。`layer_values`はフィーチャーの鍵→地図の線の層のid→値（値の無い道は載せない）。契約は
-        `get_tile_mvt`と同じ。"""
-        return await self._tile_mvt(ROAD_SURFACE_TILE_MVT_SQL, ROAD_SURFACE_LAYER_NAME, z, x, y, bbox,
-                                    {"layer_values": json.dumps(layer_values, ensure_ascii=False)})
+        """路面レイヤーのMVTタイル1枚。フィーチャーは鍵`feature_keys`と、同じ並びの線の形`shapes`（経度・緯度の WKB）。
+        `layer_values`はフィーチャーの鍵→地図の線の層のid→値（値の無い道は載せない）。契約は`get_tile_mvt`と同じ。"""
+        return await self._tile_mvt(ROAD_SURFACE_TILE_MVT_SQL, ROAD_SURFACE_LAYER_NAME, z, x, y, bbox, {
+            "keys": list(feature_keys), "shapes": list(shapes),
+            "layer_values": json.dumps(layer_values, ensure_ascii=False)})
 
     async def get_tile_mvt(
         self, sql: TextClause, layer_name: str, z: int, x: int, y: int, bbox: BoundingBox

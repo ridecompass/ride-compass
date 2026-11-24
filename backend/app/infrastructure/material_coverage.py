@@ -1,19 +1,16 @@
 """材料ごとの欠損割合（カバレッジ）を集計クエリで求める読み取り専用リポジトリ。
 
-材料ごとに元データの置き場所が異なる（道の生データのタグ・区間の材料の列）ため、「どの母集団の、どの条件が成り立てば欠損か」を
-材料ごとの宣言（`MaterialSpec.coverage`）から受け取り、集計クエリで数える（Edge/Way単位の
-Pythonループは回さない）。
+材料ごとに元データの置き場所が異なる（道の生データのタグ・区間の材料の列・道路網の配列）ため、「どの母集団の、どの条件が成り立てば
+欠損か」を材料ごとの宣言（`MaterialSpec.coverage`）から受け取り、まとめて数える（Edge/Way単位のPythonループは回さない）。
 
-母集団は2種類:
+母集団は3種類:
 
-- `"way"`: 道の生データ全行（`WAYS_SOURCE_SQL`、OSMタグ由来の材料）。全材料が同じ行の
-  タグを見るため、材料ごとの`count(*) FILTER`を並べた1回の走査にまとめる。欠損判定式は
-  `domain/material_sql.py`の共有SQL断片を`road_tile_sql.py: ROAD_SURFACE_TILE_MVT_SQL`
-  （地図タイル配信）と共通で使う——両者ともRoad Graphを構築せずDBを直接引く経路のため、
-  独立に書くと片方だけ変更されるドリフトを招く。
-- `"edge"`: `road_edges`全行（Edge単位の材料）。区間の値（別名`em`）の表を区間へ結ばずに走査して値のある区間を
-  数え、総数は`road_edges`の件数とする。判定式が読む表は宣言から引き（`material_joins.py: edge_material_table`）、
+- 道の生データ全行（`WayMaterialCoverageSpec`。`WAYS_SOURCE_SQL`、OSMタグ由来の材料）。全材料が同じ行のタグを見るため、
+  材料ごとの`count(*) FILTER`を並べた1回の走査にまとめる。欠損判定式は`domain/material_sql.py`の共有SQL断片を使う。
+- `road_edges`全行（`EdgeMaterialCoverageSpec`。Edge単位の材料）。区間の値（別名`em`）の表を区間へ結ばずに走査して値のある
+  区間を数え、総数は`road_edges`の件数とする。判定式が読む表は宣言から引き（`material_joins.py: edge_material_table`）、
   way側と同じく材料ごとの`count(*) FILTER`を並べて表ごとに1回の走査にまとめる。
+- 道路網の配列の区間（`NetworkMaterialCoverageSpec`。配列を作るときに求める材料）。区間ごとに一番若い行の値が無い区間を数える。
 
 「欠損」はあくまで元データ（タグ・行）の不在を指す。その不在がデータの欠けか、タグ不在=非該当の
 ような確定値を意味するかは材料ごとに異なるため、`missing_semantics`として併記する。
@@ -22,8 +19,11 @@ Pythonループは回さない）。
 
 from dataclasses import dataclass
 
+import numpy as np
+
 from app.domain.material_catalog import material_coverage_exclusions, material_coverage_specs
-from app.domain.material_coverage_spec import EdgeMaterialCoverageSpec, WayMaterialCoverageSpec
+from app.domain.material_coverage_spec import EdgeMaterialCoverageSpec, NetworkMaterialCoverageSpec, WayMaterialCoverageSpec
+from app.domain.road_network import RoadNetwork
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -36,10 +36,11 @@ MATERIAL_COVERAGE_EXCLUSIONS = material_coverage_exclusions()
 
 @dataclass(frozen=True)
 class MaterialCoverageCounts:
-    """集計クエリの生の結果。`missing_by_material`は`MATERIAL_COVERAGE_SPECS`の全キーを持つ。"""
+    """集計の生の結果。`missing_by_material`は`MATERIAL_COVERAGE_SPECS`の全キーを持つ。`network_edge_total`は道路網の配列の区間の数。"""
 
     way_total: int
     edge_total: int
+    network_edge_total: int
     missing_by_material: dict[str, int]
 
 
@@ -52,6 +53,11 @@ _EDGE_SPECS = {
     material_id: spec
     for material_id, spec in MATERIAL_COVERAGE_SPECS.items()
     if isinstance(spec, EdgeMaterialCoverageSpec)
+}
+_NETWORK_SPECS = {
+    material_id: spec
+    for material_id, spec in MATERIAL_COVERAGE_SPECS.items()
+    if isinstance(spec, NetworkMaterialCoverageSpec)
 }
 
 
@@ -92,7 +98,8 @@ class MaterialCoverageQuery:
     def __init__(self, session: AsyncSession):
         self._session = session
 
-    async def get_material_coverage_counts(self) -> MaterialCoverageCounts:
+    async def get_material_coverage_counts(self, network: RoadNetwork) -> MaterialCoverageCounts:
+        """道の生データと区間の表をDBで数え、配列を作るときに求める材料は道路網`network`の値で数える。"""
         missing_by_material: dict[str, int] = {}
 
         way_row = (await self._session.execute(_way_coverage_sql())).mappings().one()
@@ -105,6 +112,14 @@ class MaterialCoverageQuery:
         for material_id in _EDGE_SPECS:
             missing_by_material[material_id] = edge_total - int(edge_row[material_id])
 
+        first = network.edge_first_rows
+        for material_id in _NETWORK_SPECS:
+            # 配列に無い材料（テストの道路網）は、値の無い列として数える。
+            missing_by_material[material_id] = (
+                int(np.isnan(network.numeric_values[first, network.numeric_ids.index(material_id)]).sum())
+                if material_id in network.numeric_ids else len(first))
+
         return MaterialCoverageCounts(
-            way_total=way_total, edge_total=edge_total, missing_by_material=missing_by_material
+            way_total=way_total, edge_total=edge_total, network_edge_total=len(first),
+            missing_by_material=missing_by_material,
         )

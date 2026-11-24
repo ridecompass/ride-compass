@@ -93,6 +93,7 @@ from app.domain.material_coverage_spec import (
     EdgeMaterialCoverageSpec,
     MaterialCoverage,
     MissingSemantics,
+    NetworkMaterialCoverageSpec,
     WayMaterialCoverageSpec,
 )
 from app.domain.material_value_labels import (
@@ -292,6 +293,10 @@ GRADIENT_PERCENT = "gradient_percent"
 ELEVATION_GAIN_PER_KM = "elevation_gain_m_per_km"
 
 
+#: 区間の標高の断面から求める材料の欠損（道路網の配列の値が無い区間。断面の点が足りない・急すぎて読み違いとした区間を含む）。
+_PROFILE_COVERAGE = NetworkMaterialCoverageSpec(source="道路網の配列の値（区間の標高の断面から求めた値）があるか",
+                                                missing_semantics="unknown")
+
 MATERIAL_CATALOG: dict[str, MaterialSpec] = {
     GRADIENT_PERCENT: MaterialSpec(
         material_id=GRADIENT_PERCENT,
@@ -305,12 +310,7 @@ MATERIAL_CATALOG: dict[str, MaterialSpec] = {
         tile_property=None,
         primary_attribute=ATTR_ELEVATION,
         source="profile",
-        coverage=EdgeMaterialCoverageSpec(
-                present_condition="em.elevation_profile_m IS NOT NULL",
-                # 断面はあっても勾配として数える点の間が無い区間（`domain/elevation_profile.py: profile_summaries`）は値ありに数える。
-                source="区間の標高の表（edge_elevation）に行があるか",
-                missing_semantics="unknown",
-            ),
+        coverage=_PROFILE_COVERAGE,
     ),
     # 勾配の材料と分けて持つ理由と、逆向きの区間で下りの量になることは docs/modules/backend/elevation.md「向きと標高」。
     ELEVATION_GAIN_PER_KM: MaterialSpec(
@@ -326,11 +326,7 @@ MATERIAL_CATALOG: dict[str, MaterialSpec] = {
         tile_property=None,
         primary_attribute=ATTR_ELEVATION,
         source="profile",
-        coverage=EdgeMaterialCoverageSpec(
-            present_condition="em.elevation_profile_m IS NOT NULL",
-            source="区間の標高の表（edge_elevation）に行があるか",
-            missing_semantics="unknown",
-        ),
+        coverage=_PROFILE_COVERAGE,
     ),
     # --- 土地被覆のクラス別の割合。`domain/landcover.py: LANDCOVER_CLASSES`から生成する ---
     **{
@@ -653,7 +649,7 @@ def material_value_sql() -> dict[str, str]:
     }
 
 
-def material_coverage_specs() -> dict[str, WayMaterialCoverageSpec | EdgeMaterialCoverageSpec]:
+def material_coverage_specs() -> dict[str, WayMaterialCoverageSpec | EdgeMaterialCoverageSpec | NetworkMaterialCoverageSpec]:
     """欠損率を測る材料id→測り方。カタログから導く（別の辞書を持たない）。"""
     return {
         material_id: spec.coverage

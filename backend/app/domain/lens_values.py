@@ -28,7 +28,7 @@ from app.domain.leg_costs import axis_facts, burden_weights, travel_inputs
 from app.domain.model_settings import ModelSettings
 from app.domain.msm_grid import ForecastTime
 from app.domain.road_features import feature_row_ranges
-from app.domain.road_network import MaterialFills, RoadNetwork
+from app.domain.road_network import MaterialFills, RoadNetwork, range_positions
 from app.domain.strict_model import StrictModel
 from app.domain.tuning import Tuning
 from app.domain.route import AxisFact, elevation_gain
@@ -137,8 +137,7 @@ def lens_features(network: RoadNetwork, feature_keys: Sequence[str], way_ids: Se
     keys = tuple(key for key, kept in zip(feature_keys, has_rows.tolist(), strict=True) if kept)
     start, counts = start[has_rows], (stop - start)[has_rows]
     feature = np.repeat(np.arange(len(keys), dtype=np.int64), counts)
-    # フィーチャーごとの範囲 [始まり, 終わり) をつないだ行（フィーチャーの先頭からの位置 ＋ 範囲の始まり）。
-    rows = np.arange(int(counts.sum()), dtype=np.int64) - np.repeat(np.cumsum(counts) - counts, counts) + np.repeat(start, counts)
+    rows = range_positions(start, counts)
     forward = np.asarray(network.edge_forward[rows], dtype=bool)
     # 範囲の始まりは、フィーチャーの一番若い行（区間の順方向の行は逆向きの行より前にある）。
     edge_bearing = np.asarray(network.bearing_deg[start], dtype=np.float64)

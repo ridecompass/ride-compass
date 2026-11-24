@@ -16,7 +16,7 @@ from app.domain.attributes import CategoricalColumn, MaterialColumn
 from app.domain.material_catalog import PEDESTRIAN_ROAD
 from app.domain.road_avoidance import AvoidanceLevel, RoadAvoidanceMasks, road_avoidance_masks
 from app.domain.road_classes import RoadClassDefinitions, class_columns, fact_keys, layer_columns
-from app.domain.road_network import RoadNetwork
+from app.domain.road_network import RoadNetwork, range_positions
 from app.domain.traffic_regulation import (
     BICYCLE_EXCEPTED,
     BICYCLE_PROHIBITED,
@@ -148,12 +148,11 @@ def regulation_variant(network: RoadNetwork, rows: np.ndarray, at: datetime) -> 
         return ""
     counts = np.asarray(network.edge_regulation_count, dtype=np.int64)[rows]
     starts = np.asarray(network.edge_regulation_start, dtype=np.int64)[rows]
-    positions = np.repeat(starts, counts) + (np.arange(int(counts.sum())) - np.repeat(np.cumsum(counts) - counts, counts))
+    positions = range_positions(starts, counts)
     regulations = np.unique(np.asarray(network.regulation_index, dtype=np.int64)[positions])
     slot_count = np.asarray(network.regulation_slot_count, dtype=np.int64)[regulations]
     slot_start = np.asarray(network.regulation_slot_start, dtype=np.int64)[regulations]
-    slots = np.repeat(slot_start, slot_count) + (np.arange(int(slot_count.sum()))
-                                                - np.repeat(np.cumsum(slot_count) - slot_count, slot_count))
+    slots = range_positions(slot_start, slot_count)
     active = active_slots(np.asarray(network.regulation_slot_values)[slots], at, at)
     return np.packbits(active).tobytes().hex() or "0"
 

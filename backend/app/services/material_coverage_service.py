@@ -3,6 +3,7 @@
 レポートの型は`GET /api/admin/material-catalog/coverage`の応答の型を兼ねる。
 """
 
+import asyncio
 import logging
 from datetime import datetime, timezone
 from typing import Annotated, Literal
@@ -11,8 +12,9 @@ from pydantic import Field
 
 from app.domain.stopwatch import elapsed_ms, start_timer
 from app.domain.material_catalog import MATERIAL_CATALOG, MaterialDType
-from app.domain.material_coverage_spec import MissingSemantics, Population
+from app.domain.material_coverage_spec import MissingSemantics, NetworkMaterialCoverageSpec, Population
 from app.domain.strict_model import StrictModel
+from app.infrastructure import road_network_store
 from app.infrastructure.debug_log import log_external_call
 from app.infrastructure.material_coverage import (
     MATERIAL_COVERAGE_EXCLUSIONS,
@@ -71,7 +73,10 @@ def build_material_coverage_report(counts: MaterialCoverageCounts, computed_at: 
                 )
             )
             continue
-        total = counts.way_total if coverage.population == "way" else counts.edge_total
+        if isinstance(coverage, NetworkMaterialCoverageSpec):
+            total = counts.network_edge_total
+        else:
+            total = counts.way_total if coverage.population == "way" else counts.edge_total
         missing = counts.missing_by_material[material_id]
         entries.append(
             MaterialCoverageCounted(
@@ -100,7 +105,8 @@ class MaterialCoverageService:
         空のレポートへ倒して「欠損0件」に見せるより失敗を明示する方が安全。"""
         started = start_timer()
         with log_external_call("admin:material-coverage") as fields:
-            counts = await self._repository.get_material_coverage_counts()
+            # 道路網を読むのは、イベントループの外で行う。
+            counts = await self._repository.get_material_coverage_counts(await asyncio.to_thread(road_network_store.current))
             fields["way_total"] = counts.way_total
             fields["edge_total"] = counts.edge_total
         report = build_material_coverage_report(counts, datetime.now(timezone.utc))

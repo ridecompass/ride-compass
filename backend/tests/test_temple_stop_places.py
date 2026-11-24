@@ -19,6 +19,7 @@ from app.batch.source_adapters import bunka_heritages
 from app.batch.source_profile import load_source_profile
 from app.domain.geo import km_per_degree_longitude
 from app.infrastructure.source_models import Source
+from tests.source_ingest import stage_tuning
 
 pytestmark = pytest.mark.asyncio(loop_scope="module")
 
@@ -57,7 +58,7 @@ async def _temples(conn, items: list[dict]) -> list[tuple[str, float, float]]:
     path.write_text("".join(json.dumps(item, ensure_ascii=False) + "\n" for item in items), encoding="utf-8")
     write_fetch_record(bunka_heritages.DATA_DIR)
     await ingest_source(conn, PROFILE, Source.BUNKA_HERITAGE)
-    await derive_places.derive(conn)
+    await derive_places.derive(conn, **stage_tuning("places"))
     rows = await conn.fetch(
         "SELECT name, place_group, source, confidence, ST_X(geom) AS lon, ST_Y(geom) AS lat FROM places")
     assert {(row["place_group"], row["source"], row["confidence"]) for row in rows} <= {

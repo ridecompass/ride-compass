@@ -314,11 +314,11 @@ async def test_the_network_is_built_from_the_derived_tables_with_one_row_per_dri
         np.testing.assert_array_equal(getattr(network, name), getattr(materials, name), err_msg=name)
     # 1kmあたりにする材料（`MaterialSpec.per_km`）は、読み出した区間の量を配列が区間の長さで割る。
     read = [i for i, material_id in enumerate(network.numeric_ids) if material_id not in (GRADIENT_PERCENT, ELEVATION_GAIN_PER_KM)]
-    expected = materials.numeric_values[:, read].astype(np.float64)
+    read_values = materials.numeric_values[:, read].astype(np.float64)
     for position, column in enumerate(read):
         if MATERIAL_CATALOG[network.numeric_ids[column]].per_km:
-            expected[:, position] = per_km(expected[:, position], materials.distance_m)
-    np.testing.assert_allclose(network.numeric_values[:, read], expected, rtol=1e-6)
+            read_values[:, position] = per_km(read_values[:, position], materials.distance_m)
+    np.testing.assert_allclose(network.numeric_values[:, read], read_values, rtol=1e-6)
 
 
 def _bearing(a: int, b: int) -> float:

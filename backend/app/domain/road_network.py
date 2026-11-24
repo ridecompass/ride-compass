@@ -131,8 +131,8 @@ class RoadNetwork:
     regulation_slot_count: np.ndarray  # int16、行数は規制の数
     regulation_slot_values: np.ndarray  # (組, 欄) int16
 
-    # 道1本の値（区分の層が道1本で塗るズームの値）。道は区間を持つ道と、区間を持たない道（区間の列には現れない）の全部で、
-    # `osm_way_id`の昇順。材料の列は区間の材料と同じ並びと語彙で、区間を持つ道は区間の値を集めたもの（`domain/road_network_build.py`）。
+    # 道1本の値（区分の層が道1本で塗るズームの値）。区間を持つ道の全部で、`osm_way_id`の昇順。材料の列は区間の材料と同じ並びと
+    # 語彙で、区間の値を集めたもの（`domain/road_network_build.py`）。
     way_osm_id: np.ndarray  # int64
     way_numeric_values: EdgeValues  # (道, 列), NaN=欠損
     way_categorical_codes: np.ndarray  # (道, 列) int16。0は値なし
@@ -298,10 +298,10 @@ def slice_network(
     min_lon: float, min_lat: float, max_lon: float, max_lat: float,
 ) -> RoadSlice:
     """区間の形の外接矩形が範囲に重なる区間を取り出す。範囲の外へはみ出す区間も、端点ごと含む。"""
-    return slice_rows(network, classes, _rows_in_bbox(network, min_lon, min_lat, max_lon, max_lat))
+    return slice_rows(network, classes, rows_in_bbox(network, min_lon, min_lat, max_lon, max_lat))
 
 
-def _rows_in_bbox(network: RoadNetwork, min_lon: float, min_lat: float, max_lon: float, max_lat: float) -> np.ndarray:
+def rows_in_bbox(network: RoadNetwork, min_lon: float, min_lat: float, max_lon: float, max_lat: float) -> np.ndarray:
     """区間の形の外接矩形が範囲に重なる区間の行（昇順）。"""
     overlaps = np.asarray(network.edge_max_lon) >= min_lon
     overlaps &= np.asarray(network.edge_min_lon) <= max_lon
@@ -478,4 +478,10 @@ def positions_in(sorted_keys: np.ndarray, keys: np.ndarray) -> np.ndarray:
         return np.full(len(keys), -1, dtype=np.int64)
     at = np.minimum(np.searchsorted(sorted_keys, keys), len(sorted_keys) - 1)
     return np.where(sorted_keys[at] == keys, at, -1)
+
+
+def range_positions(start: np.ndarray, counts: np.ndarray) -> np.ndarray:
+    """範囲`[start[i], start[i] + counts[i])`を順につないだ位置。"""
+    start, counts = np.asarray(start, dtype=np.int64), np.asarray(counts, dtype=np.int64)
+    return np.repeat(start - (np.cumsum(counts) - counts), counts) + np.arange(int(counts.sum()), dtype=np.int64)
 

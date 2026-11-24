@@ -492,8 +492,8 @@ OSMは中央分離帯のある道路の上下線を別々のwayとして持ち�
 
 ### 路面タイルが1フィーチャーとして焼く単位（`EDGE_UNIT_MIN_ZOOM`）
 
-**区間が読めるズームでは区間（`road_edges`）、それより引いた表示ではway丸ごと**を
-1フィーチャーにする。境界の根拠は実測——gzip後の費用は引くほど増える一方、引いた表示では交差点で切った区間が数pxにしかならず
+**区間が読めるズームでは区間、それより引いた表示ではway丸ごと**を
+1フィーチャーにする（どちらも道路網の配列から選ぶ。`domain/road_features.py: map_features`）。境界の根拠は実測——gzip後の費用は引くほど増える一方、引いた表示では交差点で切った区間が数pxにしかならず
 塗り分けても読めない。費用が跳ね上がるズームと、区間単位の情報量が消えるズームが一致する。
 
 どちらの単位でも識別子は`feature_key`という**同じ名前のプロパティ**で出す。フロントは
@@ -501,15 +501,13 @@ OSMは中央分離帯のある道路の上下線を別々のwayとして持ち�
 よい（値の配信もタイル単位のため、そのズームの鍵で返せば噛み合う）。
 
 **暗黙の前提**: 値の配信側が別のソースから鍵を組み立てると、タイルと噛み合わず色が付かない。
-鍵の一覧も勾配も同じ`_TILE_FEATURE_SOURCE_SQL`から引くこと。
-
-**暗黙の前提**: 区間を1本も持たないway（同じ位置に点が重なり長さ0の区間しか作れない等）は、区間単位の
-ズームでもway丸ごとで出す。落とすとその道は引いた表示に出ているのに拡大すると消え、データが
-無いことよりも壊れて見える。
+鍵の一覧も値も形も、同じ`domain/road_features.py: map_features`のフィーチャーから引くこと。地図が描く道は道路網の配列にある道
+（ルートが通れる道）だけで、引いた表示と拡大した表示で同じ道が出る。
 
 ### 路面タイルが焼くもの
 
-路面タイル（`infrastructure/road_tile_sql.py: ROAD_SURFACE_TILE_MVT_SQL`）は、地図が塗るものだけを焼く: 線の形と、地図の線の層の値
+路面タイル（`infrastructure/road_tile_sql.py: ROAD_SURFACE_TILE_MVT_SQL`。フィーチャーと線の形は道路網の配列から選んで渡し、DBは
+枠で切って焼くだけ）は、地図が塗るものだけを焼く: 線の形と、地図の線の層の値
 （層のid→区分の鍵か「データなし」。区分の外の道は持たない。`domain/road_features.py: road_layer_values`。材料は道路網の配列から引く）と、
 道の当たる0次ハードフィルタの名前（`domain/hard_filters.py: HARD_FILTER_PROPERTY`）。
 `domain/region.py: ROAD_TILE_MIN_ZOOM`以上は道ごとの`feature_key`も焼き（画面が道ごとの値を置く）、それより引いた
@@ -658,8 +656,8 @@ z9で約3MB（28万本・167万点）。z9より引くと1画面で数十MBに�
 
 地図のタイル・道の鍵を付けた値の配信・ルートが公に使う OSM の派生データベースを、受け取った人が取れるようにする
 （ODbL 4.6。どの値を含めるかは[データソース](../../architecture/data-sources.md)「OSM から作った値と独自の層」）。行は路面タイルと
-同じ単位（`road_tile_sql.py: DERIVED_DATABASE_ROWS_SQL`。区間の無い道は道1本で1行）で、材料の値は地図と同じく道路網の配列の
-フィーチャーの値を読む——タイルが出す値と書き出しが出す値が別の求め方にならない。人が決めた較正の値は材料の値式に入らないので、
+同じ単位（区間で塗るズームの`domain/road_features.py: map_features`。区間ごとに1行）で、形・長さ・材料の値は地図と同じく道路網の
+配列のフィーチャーの値を読む（道の名前だけDBから引く）——タイルが出す値と書き出しが出す値が別の求め方にならない。人が決めた較正の値は材料の値式に入らないので、
 書き出しにも入らない。
 
 書くのは派生の作り直しの入口（`derive_cli.py: main`）で、作り直して表を入れ替えた直後に、同じプロセスで打つ（配る書き出しが
@@ -680,7 +678,7 @@ CSV を ZIP の中へ流し込むので、書く間に一時に使うディス�
 | `GET /api/region/road-surface-tiles/{z}/{x}/{y}.pbf` | 地図の道の線のMVTタイル（下の「路面タイルが焼くもの」） |
 | `GET /api/region/point-tiles/{layer}/{z}/{x}/{y}.pbf` | 点のレイヤー（例: 停止要因・補給休憩のPOI`poi`、事故`accident`）のMVTタイル。`layer`はレジストリの名前で、無ければ404 |
 | `GET /api/region/landcover-tiles/{z}/{x}/{y}.png` | 土地被覆ラスタのPNGタイル |
-| `POST /api/region/roads-at` | 押した所に近い道のフィーチャー（近い順、上限は`domain/region.py: ROADS_AT_LIMIT`）。フィーチャーの単位と鍵はそのズームの路面タイルと同じで（`infrastructure/road_tile_sql.py: ROADS_AT_SQL`がタイルと同じ並びを使う）、プロパティは小窓が読む列（識別子・道路名・材料）、線の形はタイルで切らない全体。拾う距離は呼び手が送り、上限を`domain/region.py: ROADS_AT_MAX_RADIUS_M`が持つ。道が並ぶ所で選び直せるよう一覧で返す |
+| `POST /api/region/roads-at` | 押した所に近い道のフィーチャー（近い順、上限は`domain/region.py: ROADS_AT_LIMIT`）。フィーチャーの単位と鍵はそのズームの路面タイルと同じで（`domain/road_features.py: map_features_near`がタイルと同じ選び方を使う）、プロパティは小窓が読む列（識別子・道路名・材料）、線の形はタイルで切らない全体。拾う距離は呼び手が送り、上限を`domain/region.py: ROADS_AT_MAX_RADIUS_M`が持つ。道が並ぶ所で選び直せるよう一覧で返す |
 | `GET /api/derived-database` | OSM の派生データベース（道ごとの値）の最新の書き出し（ZIP）。認証なし。書き出しがまだ無ければ404 |
 
 MVTエンコードはPostGIS側（`ST_AsMVT`、`road_graph_repository.py`・`point_tile_layers.py`）で行う。タイル内の

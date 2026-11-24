@@ -12,13 +12,12 @@ from collections.abc import Sequence
 from dataclasses import astuple, dataclass, fields
 from datetime import date, datetime, timedelta
 from functools import cache
-from zoneinfo import ZoneInfo
 
 import holidays
 import numpy as np
 
-#: 規制の時刻を読む地域の時刻。
-JST = ZoneInfo("Asia/Tokyo")
+from app.domain.time_zone import JST
+
 MINUTES_PER_DAY = 24 * 60
 
 #: 規制曜日コードの「その他（規制内容を参照）」。曜日の条件を読めないので、対象の曜日なら毎日効くとみなし、除外の曜日なら除外は
