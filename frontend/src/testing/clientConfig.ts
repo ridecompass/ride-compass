@@ -2,7 +2,9 @@
 //
 // **既定値は型を満たすための空だけ。** 道の区分と層は管理DBが持つ任意の値なので、見たい性質は呼び出し側が書く。
 import { clientConfigFromResponse, type ClientConfig } from "@/lib/clientConfig";
-import { ROAD_SURFACE_TILE_MIN_ZOOM } from "@/features/map/regionApi";
+// 地図の口（`features/map/regionApi.ts`）を読まない——テストの準備がこの足場を先に読むので、口を読むと、口のテストのタイルの
+// オリジンの差し替え（`vi.mock`）が効かなくなる。
+import regionTileConfig from "@/types/generated/region-tile-config.json";
 import type {
   ClientConfigResponse,
   RoadAvoidanceView,
@@ -43,7 +45,7 @@ export function roadMapLayer(id: string, overrides: Partial<RoadMapLayerView> = 
     panel_hint: "",
     hide_missing_rows: false,
     has_no_data: false,
-    min_zoom: ROAD_SURFACE_TILE_MIN_ZOOM,
+    min_zoom: regionTileConfig.road_surface_tile_min_zoom,
     classes: [],
     ...overrides,
   };
