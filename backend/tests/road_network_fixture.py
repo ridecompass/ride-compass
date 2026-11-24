@@ -38,12 +38,14 @@ def road_network(
     *, oneway: Sequence[tuple[int, int]] = (), backward: Sequence[tuple[int, int]] = (), elevation_of: Mapping[tuple[int, int], tuple[float, float]] | None = None,
     numeric: Mapping[str, NumericMaterial] | None = None, categorical: Mapping[str, CategoricalMaterial] | None = None,
     signal_nodes: Sequence[int] = (), edgeless: EdgelessWays | None = None, revision: int = 1,
+    regulations: NetworkRegulations | None = None,
 ) -> RoadNetwork:
     """`coordinates`はノード（osm_node_id → (緯度, 経度)）、`segments`は区間（(道, 区間番号) → (始点, 終点)のノード）。
 
     `oneway`の区間は始点→終点の向きだけを、`backward`の区間は終点→始点の向きだけを持つ。`elevation_of`（区間 → (始点, 終点)の標高m）の区間だけ標高を持ち、
     ほかは標高も勾配の値も無い。`numeric`・`categorical`は材料のid → 行ごとの値。集まる道の本数は、区間の端として
-    現れる回数。`edgeless`は区間を持たない道（材料の列は`numeric`の順に`GRADIENT_PERCENT`を足した並びと、`categorical`の並び）。"""
+    現れる回数。`edgeless`は区間を持たない道（材料の列は`numeric`の順に`GRADIENT_PERCENT`を足した並びと、`categorical`の並び）。
+    `regulations`は区間に当たった交通規制（省くとどの区間にも当たらない）。"""
     node_ids = np.array(sorted({osm for pair in segments.values() for osm in pair}), dtype=np.int64)
     row_of = {int(osm): i for i, osm in enumerate(node_ids)}
     lat = np.array([coordinates[int(osm)][0] for osm in node_ids], dtype=np.float64)
@@ -93,8 +95,7 @@ def road_network(
         else np.zeros((len(directed), 0), dtype=np.int16),
         categorical_vocab=tuple(c.vocab for c in classes.values()),
         distance_m=distance_m, bearing_deg=bearing,
-        # 交通規制はどの区間にも当たらない。
-        **regulation_arrays(rows.way, rows.segment, NetworkRegulations.none())[0],
+        **regulation_arrays(rows.way, rows.segment, regulations or NetworkRegulations.none())[0],
         mid_lat=(lat[tail] + lat[head]) / 2, mid_lon=(lon[tail] + lon[head]) / 2,
         edge_profile_start=profile_start[owner], edge_profile_points=profile_points[owner],
         profile_elevation_m=along[profile_points > 0].ravel().astype(np.float32),

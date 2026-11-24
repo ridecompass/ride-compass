@@ -10,15 +10,18 @@ feature_rows`・`feature_materials`）と、そこから地図の線の層の値
 - 配列に材料を読み込むこと → `test_road_network_store.py`
 """
 
+from datetime import datetime
+
 import numpy as np
 import pytest
 
 from app.domain.attributes import CategoricalColumn
 from app.domain.feature_materials import FeatureMaterials
 from app.domain.hard_filters import HARD_FILTER_PROPERTY
-from app.domain.material_catalog import ELEVATION_GAIN_PER_KM, GRADIENT_PERCENT
+from app.domain.material_catalog import ELEVATION_GAIN_PER_KM, GRADIENT_PERCENT, PEDESTRIAN_ROAD
 from app.domain.road_features import feature_materials, feature_rows, road_layer_values
-from app.domain.road_network_build import EdgelessWays
+from app.domain.road_network_build import EdgelessWays, NetworkRegulations
+from app.domain.traffic_regulation import BICYCLE_PROHIBITED, JST, RegulationSlot
 from tests.road_class_fixture import classification, fact_is, map_layer, road_classes
 from tests.road_network_fixture import road_network
 
@@ -144,3 +147,23 @@ def test_the_popup_shows_the_values_by_their_tile_names_and_only_true_flags():
     })
 
     assert [materials.tile_properties(row) for row in range(2)] == [{"bridge": True, "surface": "asphalt"}, {}]
+
+
+def test_a_time_paints_the_roads_a_timed_regulation_reaches_by_the_regulations_active_then():
+    """時刻を渡すと、規制の当たる道の区分はその時刻に効く規制で決まる。道10の長い区間だけに昼の規制が当たる。区間の地物はその区間の
+    値、道1本の地物は区間の長さの和が一番長い値で塗る（配列を作るときと同じ集め方）。"""
+    daytime = RegulationSlot(True, hours_from=8 * 60, hours_to=20 * 60)
+    regulations = NetworkRegulations(
+        regulation_count=1, hit_way=np.array([10]), hit_segment=np.array([1]), hit_regulation=np.array([0]),
+        slot_regulation=np.array([0]), slot_values=np.array([daytime.as_values()], dtype=np.int16))
+    network = road_network(_COORDINATES, _SEGMENTS, regulations=regulations,
+                           categorical={PEDESTRIAN_ROAD: lambda rows: [None] * len(rows.way)})
+    definitions = road_classes({"k": classification({"closed": [fact_is(PEDESTRIAN_ROAD, BICYCLE_PROHIBITED)]})},
+                               map_layers={"k": map_layer()})
+
+    def painted(hour: int) -> dict[str, dict[str, str]]:
+        return road_layer_values(network, ["10-0", "10-1", "10"], [10, 10, 10], [0, 1, None], definitions,
+                                 datetime(2026, 11, 24, hour, tzinfo=JST))
+
+    assert painted(9) == {"10-1": {"k": "closed"}, "10": {"k": "closed"}}
+    assert painted(21) == {}

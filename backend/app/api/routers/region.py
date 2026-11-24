@@ -55,13 +55,16 @@ async def region_road_surface_tile(
     x: TileIndex,
     y: TileIndex,
     request: Request,
+    at: datetime | None = None,
     region_service: RegionService = Depends(get_region_service),
 ) -> Response:
+    """地図の道の線のタイル。時刻`at`（出発の時刻。省くと時刻で変わらない規制だけで焼く）を渡すと、`ROAD_TILE_MIN_ZOOM`以上の
+    ズームは、規制の当たる道の区分をその時刻に効く規制で焼く。"""
     check_tile_rate_limit(request, "road-tile")
     validate_tile_coords(z, x, y)
     # 上限を超えた分は429にせず待たせる。キャッシュヒットはすぐ解放するので、待ち行列を作るのはPostGIS問い合わせを伴う要求だけ。
     async with region_tile_semaphore:
-        tile = await region_service.get_road_surface_tile(z, x, y)
+        tile = await region_service.get_road_surface_tile(z, x, y, at)
     return tile_response(tile)
 
 

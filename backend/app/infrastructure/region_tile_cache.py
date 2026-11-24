@@ -71,9 +71,10 @@ async def serve_region_tile(
     external_call_name: str,
     fetch_tile: Callable[[dict], Awaitable[bytes | None]],
     source_label: str = "postgis",
+    variant: str = "",
 ) -> bytes:
     """キャッシュにあればそれを、無ければ`fetch_tile`で作ってディスクへ書いたものを返す。`fetch_tile`がNone（取込範囲の外）なら空タイル。"""
-    key = region_tile_key(kind, generation, z, x, y, extension)
+    key = region_tile_key(kind, generation, z, x, y, extension, variant)
     with log_external_call(external_call_name, z=z, x=x, y=y) as fields:
         # ディスクの読み書きは同期のI/O。地図を開くと多数のタイルが同時に来るため、イベントループの上で行うと
         # 同時に処理中の他の要求が止まる。

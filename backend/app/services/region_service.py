@@ -7,11 +7,12 @@ from functools import partial
 
 from app.domain.cost_preference import CostPreference
 from app.domain.lens_values import RoadInspection
-from app.domain.region import ROADS_AT_LIMIT, BoundingBox, RoadAt, tile_bounds_lonlat
+from app.domain.region import ROAD_TILE_MIN_ZOOM, ROADS_AT_LIMIT, BoundingBox, RoadAt, tile_bounds_lonlat
 from app.domain.registry import TileKind
 from app.domain.feature_materials import FeatureMaterials
 from app.domain.road_classes import current_road_classes
 from app.domain.road_features import feature_materials, feature_rows, road_layer_values
+from app.domain.timed_regulations import regulated_rows_within, regulation_variant
 from app.domain.tuning import REBUILT_CLIENT_TUNING_IDS
 from app.infrastructure.debug_log import log_external_call
 from app.infrastructure.point_tile_layers import PointTileLayer
@@ -51,6 +52,7 @@ class RegionService:
         empty_tile: bytes,
         external_call_name: str,
         z: int, x: int, y: int,
+        variant: str = "",
     ) -> bytes:
         async def fetch_tile(fields: dict) -> bytes | None:
             """PostGIS側（ST_AsMVT）でタイル1枚分のMVTを丸ごと生成する。
@@ -77,11 +79,23 @@ class RegionService:
             content_type=MVT_CONTENT_TYPE,
             external_call_name=external_call_name,
             fetch_tile=fetch_tile,
+            variant=variant,
         )
 
-    async def get_road_surface_tile(self, z: int, x: int, y: int) -> bytes:
-        """地図の道の線のタイル。フィーチャーごとの地図の線の層の値（`road_layer_values`）を焼く。"""
+    async def get_road_surface_tile(self, z: int, x: int, y: int, at: datetime | None = None) -> bytes:
+        """地図の道の線のタイル。フィーチャーごとの地図の線の層の値（`road_layer_values`）を焼く。時刻`at`を渡すと、道ごとの鍵を
+        焼くズーム（`ROAD_TILE_MIN_ZOOM`以上）では、規制の当たる道の区分をその時刻に効く規制で焼き、持ちはタイルの規制の効き方
+        （`domain/timed_regulations.py: regulation_variant`）で分ける。引いたズームは時刻で変わらない規制だけで焼く（地図は時刻で
+        変わる規制の層を、そのズームでは描かない）。"""
         definitions = current_road_classes()
+        timed_at = at if at is not None and z >= ROAD_TILE_MIN_ZOOM else None
+        variant = ""
+        if timed_at is not None:
+            bounds, network, moment = tile_bounds_lonlat(z, x, y), road_network_store.current(), timed_at
+            variant = await asyncio.to_thread(lambda: regulation_variant(network, regulated_rows_within(
+                network, bounds.min_longitude, bounds.min_latitude, bounds.max_longitude, bounds.max_latitude), moment))
+            if not variant:
+                timed_at = None
 
         async def read_tile(z: int, x: int, y: int, bbox: BoundingBox) -> bytes | None:
             features = await self._repository.get_tile_features(z, x, y, bbox)
@@ -89,7 +103,7 @@ class RegionService:
             layer_values = await asyncio.to_thread(
                 lambda: road_layer_values(road_network_store.current(), [row.feature_key for row in features],
                                           [row.osm_way_id for row in features], [row.segment_index for row in features],
-                                          definitions))
+                                          definitions, timed_at))
             return await self._repository.get_road_surface_tile_mvt(z, x, y, bbox, layer_values)
 
         return await self._get_tile(
@@ -97,7 +111,7 @@ class RegionService:
             kind="road_surface",
             empty_tile=encode_empty_tile(ROAD_SURFACE_LAYER_NAME),
             external_call_name="region:road-surface-tile",
-            z=z, x=x, y=y,
+            z=z, x=x, y=y, variant=variant,
         )
 
     async def get_point_tile(self, layer: PointTileLayer, z: int, x: int, y: int) -> bytes:

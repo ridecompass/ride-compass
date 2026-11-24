@@ -98,9 +98,10 @@ def region_tile_kind(key: str) -> str | None:
     return key[len(_REGION_TILE_KEY_ROOT):].split("/", 1)[0]
 
 
-def region_tile_key(kind: str, generation: str, z: int, x: int, y: int, extension: str) -> str:
-    """地域タイル1枚のディスクの鍵。"""
-    return f"{region_tile_generation_prefix(kind, generation)}{z}/{x}/{y}.{extension}"
+def region_tile_key(kind: str, generation: str, z: int, x: int, y: int, extension: str, variant: str = "") -> str:
+    """地域タイル1枚のディスクの鍵。`variant`は同じ世代の中で中身が分かれる印（時刻で変わる交通規制。空なら分かれない）。"""
+    suffix = f"-{variant}" if variant else ""
+    return f"{region_tile_generation_prefix(kind, generation)}{z}/{x}/{y}{suffix}.{extension}"
 
 
 #: 最後に署名した定義とその署名。定義は管理APIが書き換えるたびに別のオブジェクトへ差し替わる（中身を書き換えない）ので、

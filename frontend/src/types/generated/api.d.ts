@@ -1610,6 +1610,8 @@ export interface components {
             hide_missing_rows: boolean;
             /** Has No Data */
             has_no_data: boolean;
+            /** Min Zoom */
+            min_zoom: number;
             /** Classes */
             classes: components["schemas"]["RoadClassView"][];
         };
@@ -2455,7 +2457,9 @@ export interface operations {
     };
     region_road_surface_tile_api_region_road_surface_tiles__z___x___y__pbf_get: {
         parameters: {
-            query?: never;
+            query?: {
+                at?: string | null;
+            };
             header?: never;
             path: {
                 z: number;

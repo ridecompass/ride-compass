@@ -105,12 +105,17 @@ function solidFilter(layer: RoadMapLayerView, hiddenKeys: readonly string[]): Fi
 }
 
 /** 塗る段ごとの、色とその段の行に当たる道の条件（強い段から。行の無い段は無い）。どの行にも当たらない道は塗らない。 */
-function avoidanceConditions(choice: AvoidanceChoice): readonly (readonly [string, unknown])[] {
+function avoidanceConditions(
+  choice: AvoidanceChoice,
+  skipped: ReadonlySet<string> = new Set(),
+): readonly (readonly [string, unknown])[] {
   return [...choice.levels].reverse().flatMap(({ key: level, color }) => {
-    // タイルのプロパティごとに、この段にした値（プロパティ1つにつき比べ1つ）。
+    // タイルのプロパティごとに、この段にした値（プロパティ1つにつき比べ1つ）。`skipped`の見出しの行は塗らない。
     const classKeys = new Map<string, string[]>();
     for (const row of choice.rows) {
-      if (row.level === level) classKeys.set(row.section, [...(classKeys.get(row.section) ?? []), row.classKey]);
+      if (row.level === level && !skipped.has(row.section)) {
+        classKeys.set(row.section, [...(classKeys.get(row.section) ?? []), row.classKey]);
+      }
     }
     return classKeys.size === 0
       ? []
@@ -187,9 +192,12 @@ export const roadLineGroup = declareGroup<RoadLineState>((state) => {
     const hiddenKeys = state.hiddenKeys[layer.id] ?? [];
     const visible = state.visible[layer.id] === true;
     const offset = offsetOf.get(layer.id) ?? 0;
+    // 描き始めるズームは層が持つ（時刻で変わる交通規制を読む層は、タイルが時刻の値を焼くズームから描く）。
+    const minzoom = layer.min_zoom > tiles.minZoom ? { minzoom: layer.min_zoom } : {};
     return [
       {
         ...line,
+        ...minzoom,
         role: layer.id,
         paint: {
           "line-color": colorExpression(layer),
@@ -203,6 +211,7 @@ export const roadLineGroup = declareGroup<RoadLineState>((state) => {
       // データなしの道だけを、薄い破線で描く。
       {
         ...line,
+        ...minzoom,
         role: `${layer.id}-no-data`,
         paint: {
           "line-color": palette.semantic.no_data,
@@ -219,10 +228,14 @@ export const roadLineGroup = declareGroup<RoadLineState>((state) => {
 
   // 道路タブの段。道ごとの一番強い段の色で、道の線の層の上を不透明に塗る（段の色が道の層の色に混ざらない）。
   const tracksSpread = 2 * Math.max(0, ...offsets.map(Math.abs));
-  const avoided = avoidanceConditions(state.avoidance);
-  layers.push({
+  // 時刻で変わる交通規制を読む層は描き始めるズームが遅い（`RoadMapLayerView.min_zoom`）ので、その手前のズームでは、その層の
+  // 見出しの段を塗らない（塗ると、タイルの時刻で変わらない値で塗り、寄せたときと色が違う）。
+  const timed = state.layers.filter((layer) => layer.min_zoom > tiles.minZoom);
+  const timedFrom = Math.max(tiles.minZoom, ...timed.map((layer) => layer.min_zoom));
+  const avoidanceEntry = (role: string, avoided: readonly (readonly [string, unknown])[], zooms: object): SceneLayerEntry => ({
     ...line,
-    role: ROAD_AVOIDANCE_ROLE,
+    ...zooms,
+    role,
     paint: {
       // 当たる段のうち一番強いものの色（強い段から順に当てる）。描くのはどれかの段の行に当たる道だけ（下の絞り込み）。
       "line-color":
@@ -239,6 +252,18 @@ export const roadLineGroup = declareGroup<RoadLineState>((state) => {
     filter: ["any", ...avoided.map(([, condition]) => condition)] as unknown as FilterSpecification,
     visible: state.avoidanceShown,
   });
+  if (timed.length === 0) {
+    layers.push(avoidanceEntry(ROAD_AVOIDANCE_ROLE, avoidanceConditions(state.avoidance), {}));
+  } else {
+    layers.push(
+      avoidanceEntry(ROAD_AVOIDANCE_ROLE, avoidanceConditions(state.avoidance), { minzoom: timedFrom }),
+      avoidanceEntry(
+        `${ROAD_AVOIDANCE_ROLE}-untimed`,
+        avoidanceConditions(state.avoidance, new Set(timed.map((layer) => layer.id))),
+        { maxzoom: timedFrom },
+      ),
+    );
+  }
 
   layers.push(inspected);
 

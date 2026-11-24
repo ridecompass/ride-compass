@@ -53,7 +53,7 @@ class FakeRegionService:
         # 頼まれた近い道（経度、緯度、z、拾う距離）
         self.roads_request = None
 
-    async def get_road_surface_tile(self, z, x, y):
+    async def get_road_surface_tile(self, z, x, y, at=None):
         self.tile_request = (None, z, x, y)
         return self._tile_bytes
 

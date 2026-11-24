@@ -2,6 +2,7 @@
 //
 // **既定値は型を満たすための空だけ。** 道の区分と層は管理DBが持つ任意の値なので、見たい性質は呼び出し側が書く。
 import { clientConfigFromResponse, type ClientConfig } from "@/lib/clientConfig";
+import { ROAD_SURFACE_TILE_MIN_ZOOM } from "@/features/map/regionApi";
 import type {
   ClientConfigResponse,
   RoadAvoidanceView,
@@ -42,6 +43,7 @@ export function roadMapLayer(id: string, overrides: Partial<RoadMapLayerView> = 
     panel_hint: "",
     hide_missing_rows: false,
     has_no_data: false,
+    min_zoom: ROAD_SURFACE_TILE_MIN_ZOOM,
     classes: [],
     ...overrides,
   };

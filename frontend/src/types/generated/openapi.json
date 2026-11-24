@@ -734,6 +734,23 @@
               "minimum": 0,
               "title": "Y"
             }
+          },
+          {
+            "name": "at",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "At"
+            }
           }
         ],
         "responses": {
@@ -5316,6 +5333,10 @@
             "type": "boolean",
             "title": "Has No Data"
           },
+          "min_zoom": {
+            "type": "integer",
+            "title": "Min Zoom"
+          },
           "classes": {
             "items": {
               "$ref": "#/components/schemas/RoadClassView"
@@ -5335,6 +5356,7 @@
           "panel_hint",
           "hide_missing_rows",
           "has_no_data",
+          "min_zoom",
           "classes"
         ],
         "title": "RoadMapLayerView"

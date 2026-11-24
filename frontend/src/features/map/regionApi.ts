@@ -10,8 +10,11 @@ const ROAD_SURFACE_TILE_PATH = apiPath("/api/region/road-surface-tiles/{z}/{x}/{
 
 // ベクタタイルのURL。MapLibreはWeb Workerの中で取るため相対パスでは解決できず、絶対URLが要る。`window`をSSRで
 // 読まないよう、呼んだとき（クライアントだけ）に組み立てる。
-export function roadSurfaceTileUrl(): string {
-  return `${tileBaseUrl()}${ROAD_SURFACE_TILE_PATH}`;
+// 出発の時刻`at`を渡すと、時刻で変わる交通規制の道は、その時刻に効く規制で焼いたタイルになる（時刻ごとに別のURLで、
+// 時刻を変えるとタイルを引き直す）。
+export function roadSurfaceTileUrl(at?: Date): string {
+  const query = at === undefined ? "" : `?at=${encodeURIComponent(at.toISOString())}`;
+  return `${tileBaseUrl()}${ROAD_SURFACE_TILE_PATH}${query}`;
 }
 
 // 点のレイヤーはどれも同じ1つの配信で、パスのレイヤー名だけが違う。停止要因と補給の点は同じタイルを分け合う（種別の集合で分ける）。
