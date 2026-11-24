@@ -23,7 +23,7 @@
 間は平地の出力のまま踏み増さず、釣り合いの速さまで落ちたら踏み増してその速さを保つ——長い坂は釣り合いの速さと体力のまま、
 区間の中の短い上り下りは勢いで越えて踏み増さない。持ち越さないと、上りの点の間の踏み増しだけが体力に積まれ、下りでは戻らない
 ので、標高の小さな揺れや区間の中の短い上り下りを重く数える。
-勢いを引き継がない点の間（`ProfileSpans.carries`が偽。どれがそうかは`domain/elevation_profile.py: flatten_spans`が決める）は、
+勢いを引き継がない点の間（役が`SPAN_CARRY`でないもの。役は`domain/elevation_profile.py: flatten_spans`が決める）は、
 釣り合いの速さで走り、そこから先の勢いをその速さで始める。区間の最初の点の間は引き継がないので、区間をまたいでは持ち越さない
 （探索は区間ごとに費用を前もって持つ）。
 """
@@ -34,11 +34,11 @@ import numpy as np
 from numba import njit
 
 from app.domain.attributes import CategoricalColumn
-from app.domain.elevation_profile import ProfileSpans
+from app.domain.elevation_profile import SPAN_CARRY, SPAN_ENTRY, SPAN_FILL, ProfileSpans, reversed_spans
 from app.domain.road_classes import RoadClassDefinitions, class_material_id
 from app.domain.search_graph import kernel_array, range_positions
 from app.domain.traffic import stop_count_material_ids
-from app.domain.tuning import BASE_CRR_ID, Tuning, require_tuning
+from app.domain.tuning import BASE_CRR_ID, STEEPEST_MIN_INTERVAL_ID, Tuning, require_tuning
 from app.domain.wind import drag_increases_m2_s2, kmh_to_ms
 
 _GRAVITY_M_S2 = 9.80665
@@ -297,12 +297,12 @@ def _carry_piece(speed: float, target: float, length: float, power: float, const
 
 
 @njit(cache=True, nogil=True)
-def _carried_spans(span_row: np.ndarray, span_length: np.ndarray, carries: np.ndarray, constant_force: np.ndarray,
+def _carried_spans(span_row: np.ndarray, span_length: np.ndarray, role: np.ndarray, constant_force: np.ndarray,
                    speeds: np.ndarray, powers: np.ndarray, headwind_ms: np.ndarray, crosswind_ms: np.ndarray,
                    drag: np.ndarray, rider: np.ndarray, rows: int) -> tuple[np.ndarray, np.ndarray]:
     """`(区間の行ごとの走った秒, 点の間ごとの踏み増して走った秒)`（float64）。
 
-    勢いを引き継がない点の間（`carries`が偽）は釣り合いの速さ`speeds`で走り、そこから先の勢いをその速さで始める。引き継ぐ点の間は、
+    勢いを引き継がない点の間（役`role`が`SPAN_CARRY`でない）は釣り合いの速さ`speeds`で走り、そこから先の勢いをその速さで始める。引き継ぐ点の間は、
     今の速さが釣り合いの速さより速ければ平地の出力で、遅ければその点の間の出力`powers`で、釣り合いの速さへ向かって速さの幅
     `_CARRY_SPEED_STEP_MS`ずつ進み（`_carry_piece`）、着いたら残りを釣り合いの速さで走る。踏み増して走った秒は、その点の間の出力で
     走った秒（平地の出力より踏むのは、出力が平地の出力を越える点の間だけ）。"""
@@ -315,7 +315,7 @@ def _carried_spans(span_row: np.ndarray, span_length: np.ndarray, carries: np.nd
         row = span_row[i]
         length = np.float64(span_length[i])
         settled = np.float64(speeds[i])
-        if not carries[i] or abs(speed - settled) <= _CARRY_SETTLED_MS:
+        if role[i] != SPAN_CARRY or abs(speed - settled) <= _CARRY_SETTLED_MS:
             pushed[i] = length / settled
             seconds[row] += pushed[i]
             speed = settled
@@ -416,7 +416,7 @@ class SegmentSpeedModel:
         self.distance_m = distance
         #: 区間の行ごとの標高の無い長さ（m）。全体の分布で埋めて走る（所要時間の欠けの割合が読む）。
         self.unknown_m = np.asarray(spans.unknown_m, dtype=np.float64)
-        span_row, span_length, span_grade, carries = spans.flat()
+        span_row, span_length, span_grade, role = spans.flat()
         crr = kernel_array(crr, np.float32)
         # 区間の行の気圧は、断面の値のある点の標高の平均から出す。値のある点が無い行は海面（0m）とする。
         row_elevation = np.asarray(spans.mean_elevation_m, dtype=np.float64)
@@ -427,6 +427,7 @@ class SegmentSpeedModel:
         max_ratio = tuning.checked("speed.max_climb_power_ratio", lambda v: v >= 1, "1以上")
         walking_kmh = tuning.checked("speed.walking_kmh", lambda v: v > 0, "0より大きい")
         self._kickoff_extra_j = kickoff_extra_j(profile, tuning)
+        self._steepest_min_interval_m = tuning.value(STEEPEST_MIN_INTERVAL_ID)
         #: 平地・無風の巡航速度のホイール出力（W）。体力を秒へ換算する基準（`domain/ledger_costs.py`）。
         self.flat_power_w = wheel_power_w(profile)
         require_tuning({"speed.cda_m2": profile.cda_m2, BASE_CRR_ID: profile.crr, "speed.mass_kg": profile.mass_kg},
@@ -445,7 +446,7 @@ class SegmentSpeedModel:
         rider[_RIDER_CRUISE] = profile.cruise_speed_ms
         self._rider = rider
         constant_force, static_extra = _span_static(span_row, span_grade, crr, rider)
-        self._spans = _Spans(span_row, span_length, span_grade, carries, constant_force, static_extra, crr,
+        self._spans = _Spans(span_row, span_length, span_grade, role, constant_force, static_extra, crr,
                              np.asarray(kickoffs, dtype=np.float64), pressure_kpa, len(distance_m))
 
     def travel_seconds(self, headwind_ms: np.ndarray, crosswind_ms: np.ndarray, temperature_c: np.ndarray) -> np.ndarray:
@@ -479,8 +480,48 @@ class SegmentSpeedModel:
         counts = np.searchsorted(spans.row, rows, side="right") - first
         position = np.repeat(np.arange(len(rows), dtype=np.int32), counts)
         taken = range_positions(first, counts)
-        return _Spans(position, spans.length[taken], spans.grade[taken], spans.carries[taken], spans.constant_force[taken],
+        return _Spans(position, spans.length[taken], spans.grade[taken], spans.role[taken], spans.constant_force[taken],
                       spans.static_extra[taken], spans.crr[rows], spans.kickoffs[rows], spans.pressure_kpa[rows], len(rows))
+
+    def steepest_climbs(self, headwind_ms: np.ndarray, crosswind_ms: np.ndarray, temperature_c: np.ndarray,
+                        rows: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        """経路の行`rows`ごとの、踏み増した点の間（勢いで越えられず、平地の出力を越えて踏んだ間）の中で一番急な登りの勾配（小数）を、
+        `(走る向き, 逆向き)`で。逆向きは、行の点の間を逆順にし、勾配と向かい風の符号を返して同じ式で解く（一方通行の道にも逆向きの
+        行は無いので、行から作る）。踏み増した登りが無ければ0、値のある点の間（道の上の位置を持つ点の間）が無ければNaN。
+        一番急な勾配を測る最短の長さ（較正値`elevation.steepest_min_interval_m`）より短い点の間は数えない。"""
+        spans = self._spans_of(np.asarray(rows, dtype=np.int64))
+        return (self._steepest_pushed(spans, headwind_ms, crosswind_ms, temperature_c),
+                self._steepest_pushed(_reversed(spans, self._rider), -np.asarray(headwind_ms, dtype=np.float64), crosswind_ms,
+                                      temperature_c))
+
+    def _steepest_pushed(self, spans: "_Spans", headwind_ms: np.ndarray, crosswind_ms: np.ndarray,
+                         temperature_c: np.ndarray) -> np.ndarray:
+        """踏み増した点の間の一番急な登り。候補と勾配の測り方は断面の要約の一番急な登りと同じ（GraphHopper の max_slope の式。
+        `domain/elevation_profile.py: profile_summaries`）で、そのうち踏み増した登りを含むものだけを数える:
+        1つ前の点の間と続いていて前の点の間が最短の長さを越えるなら、前の点の間の真ん中から今の点の間の終わりまでの勾配（今の点の間で
+        踏み増したとき）と、途切れない値のある点の間の続きの両端の勾配（続きが最短の長さ以上で、続きの中で踏み増したとき）。"""
+        _seconds, pushed, powers, _air = self._solve(spans, headwind_ms, crosswind_ms, temperature_c)
+        positioned = spans.role != SPAN_FILL
+        length = spans.length.astype(np.float64)
+        rise = length * spans.grade.astype(np.float64)
+        pushing = positioned & (pushed > 0) & (powers > self._rider[_RIDER_FLAT_POWER]) & (spans.grade > 0)
+        before_length, before_rise = np.zeros_like(length), np.zeros_like(rise)
+        before_length[1:], before_rise[1:] = length[:-1], rise[:-1]
+        blended = (spans.role == SPAN_CARRY) & (before_length > self._steepest_min_interval_m) & pushing
+        steepest = np.zeros(spans.rows)
+        np.maximum.at(steepest, spans.row[blended],
+                      ((rise + before_rise / 2) / (length + before_length / 2))[blended])
+        # 途切れない続き: 値のある点の間で、引き継がない点の間（入り直す点の間）から始まる並び。
+        run = np.cumsum(spans.role == SPAN_ENTRY)[positioned]
+        run_rise = np.bincount(run, weights=rise[positioned])
+        run_length = np.bincount(run, weights=length[positioned])
+        run_pushing = np.bincount(run, weights=pushing[positioned].astype(np.float64)) > 0
+        run_row = np.zeros(len(run_length), dtype=np.int64)
+        run_row[run] = spans.row[positioned]
+        counted = run_pushing & (run_length >= self._steepest_min_interval_m)
+        np.maximum.at(steepest, run_row[counted], np.maximum(run_rise[counted] / run_length[counted], 0.0))
+        steepest[np.bincount(spans.row[positioned], minlength=spans.rows) == 0] = np.nan
+        return steepest
 
     def kickoff_effort_j(self, weight_exponent: float) -> float:
         """止まる出来事1回の漕ぎ出しの体力（J）に、上限の出力と平地の出力の比の`weight_exponent`乗の重みを掛けたもの（曲がる所の
@@ -503,9 +544,17 @@ class SegmentSpeedModel:
         air_extra_n = kernel_array(drag * drag_increases_m2_s2(headwind, cross, self._rider[_RIDER_CRUISE]), np.float32)
         speeds, powers = _span_speeds(spans.row, spans.constant_force, spans.static_extra, air_extra_n, headwind, cross,
                                       drag, self._rider)
-        seconds, pushed = _carried_spans(spans.row, spans.length, spans.carries, spans.constant_force, speeds, powers,
+        seconds, pushed = _carried_spans(spans.row, spans.length, spans.role, spans.constant_force, speeds, powers,
                                          headwind, cross, drag, self._rider, spans.rows)
         return seconds, pushed, powers, air_extra_n
+
+
+def _reversed(spans: "_Spans", rider: np.ndarray) -> "_Spans":
+    """`spans`を逆向きに走る点の間（並べ方と役は`domain/elevation_profile.py: reversed_spans`）。"""
+    order, grade, role = reversed_spans(spans.row, spans.grade, spans.role)
+    constant_force, static_extra = _span_static(spans.row, grade, spans.crr, rider)
+    return _Spans(spans.row[order], spans.length[order], grade[order], role[order], constant_force[order], static_extra[order],
+                  spans.crr, spans.kickoffs, spans.pressure_kpa, spans.rows)
 
 
 @dataclass(frozen=True)
@@ -515,7 +564,7 @@ class _Spans:
     row: np.ndarray
     length: np.ndarray
     grade: np.ndarray
-    carries: np.ndarray  # bool、前の点の間から勢いを引き継ぐか（`ProfileSpans.carries`）
+    role: np.ndarray  # int8、点の間の役（`ProfileSpans.role`）
     constant_force: np.ndarray
     static_extra: np.ndarray
     crr: np.ndarray

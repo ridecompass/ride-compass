@@ -101,6 +101,10 @@ class LegValues:
     avoided_seconds: np.ndarray
     # 区間ごとの、避け方の倍率を決めた行の鍵と段（`RoadAvoidanceMasks.deciding_at`。どの行にも当たらなければNone）。
     deciding_rows: list[tuple[str, AvoidanceLevel] | None]
+    # 区間ごとの、走行の模型が踏み増した点の間の一番急な登りの勾配（小数）を、走る向きと逆向きで
+    # （`domain/cycling_speed.py: SegmentSpeedModel.steepest_climbs`。踏み増しが無ければ0、値のある点の間が無ければNaN）。
+    steepest_climb: np.ndarray
+    steepest_climb_reversed: np.ndarray
 
 
 class _ComposedBin(NamedTuple):
@@ -566,9 +570,11 @@ class LegCostComposer:
         # 探索の費用（`_bin_costs`）のうち、避け方の倍率が所要時間から足し引きした分。探索と同じ式で、float64で求める。
         scaled = avoidance_seconds(avoidance.cost_scale[rows].astype(np.float64),
                                    np.asarray(travel_seconds + inputs.wait_seconds[rows], dtype=np.float64))
+        climb, climb_reversed = inputs.model.steepest_climbs(headwind, crosswind, temperature, rows)
         return LegValues(headwind_ms=headwind, penalty_by_axis=penalty_by_axis,
                          preferred_seconds=np.minimum(scaled, 0.0), avoided_seconds=np.maximum(scaled, 0.0),
-                         deciding_rows=avoidance.deciding_at(rows))
+                         deciding_rows=avoidance.deciding_at(rows), steepest_climb=climb,
+                         steepest_climb_reversed=climb_reversed)
 
     @property
     def distance_m(self) -> np.ndarray:

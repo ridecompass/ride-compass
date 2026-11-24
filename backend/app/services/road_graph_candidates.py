@@ -315,6 +315,8 @@ def _build_segment_details(
     代償の秒は値の組（`_Orientation.reads`）から読む。到達予想時刻は経路を探索と同じ規則でたどった時刻（`passages`）。
     """
     penalties = _segment_penalties(orientation)
+    climbs = _per_segment(orientation.reads, len(orientation.edges), lambda read: list(zip(
+        read.values.steepest_climb.tolist(), read.values.steepest_climb_reversed.tolist(), strict=True)))
 
     segments = []
     road_classes = SegmentClassReader.of(context.road)
@@ -341,7 +343,7 @@ def _build_segment_details(
                 end_latitude=end_lat,
                 end_longitude=end_lon,
                 distance_km=orientation.distances_km[index],
-                sustained_gradient_percent=steepest_signed_percent(elevation_attr),
+                sustained_gradient_percent=steepest_signed_percent(*climbs[index]),
                 average_gradient_percent=elevation_attr.average_grade if elevation_attr else None,
                 estimated_arrival_time=(
                     start_time + timedelta(seconds=orientation.passages[index].elapsed_seconds)).isoformat(),

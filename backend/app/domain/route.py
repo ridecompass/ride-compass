@@ -1,3 +1,4 @@
+import math
 from bisect import bisect_left, bisect_right
 from collections import defaultdict
 from dataclasses import dataclass
@@ -175,8 +176,8 @@ class RouteSegmentDetail(StrictModel):
     end_latitude: float
     end_longitude: float
     distance_km: float
-    # 区間の続く坂の斜度（%、走る向きの符号つき）。道の一番急な登りと下りから`steepest_signed_percent`が作り、ビンへは
-    # `_merge_sustained_gradients`で畳む。値が無ければNone。
+    # 区間の続く坂の斜度（%、走る向きの符号つき）。走行の模型が踏み増した坂の一番急な登りと、逆向きに走ったときのそれから
+    # `steepest_signed_percent`が作り、ビンへは`_merge_sustained_gradients`で畳む。値が無ければNone。
     sustained_gradient_percent: float | None = None
     # 区間の平均勾配（%、走る向きの符号つき）。道の平均勾配（区間の標高の表）を、ビンへは`_merge_average_gradients`で
     # 値のある道の距離で重みづけて畳む。値が無ければNone。
@@ -433,16 +434,17 @@ def _merge_road_classes(segments: list[EdgeSegment]) -> dict[str, list[RoadClass
     return merged
 
 
-def steepest_signed_percent(elevation: ElevationAttribute | None) -> float | None:
-    """道1本の続く坂の斜度（%、走る向きの符号つき）。一番急な登りがあればその値、無ければ一番急な下りを負の値で、
-    どちらも無ければ0（-0にしない）。区間の中で計算し直さず道の値（区間の標高の表）から出す。
-    値が無ければNone。"""
-    if elevation is None or elevation.steepest_gain_percent is None or elevation.steepest_loss_percent is None:
+def steepest_signed_percent(climb: float, climb_reversed: float) -> float | None:
+    """道1本の続く坂の斜度（%、走る向きの符号つき）。`climb`は走行の模型がその道を走ったときに踏み増した坂の一番急な登りの勾配
+    （小数）、`climb_reversed`は逆向きに走ったときのそれ（`domain/leg_costs.py: LegValues.steepest_climb`）。踏み増した登りがあれば
+    その値、無ければ逆向きに踏み増す登りを下りとして負の値で、どちらも無ければ0（-0にしない）。勢いで越える上り下りは入らない。
+    値が無ければ（NaN）None。"""
+    if math.isnan(climb) or math.isnan(climb_reversed):
         return None
-    if elevation.steepest_gain_percent > 0:
-        return round(elevation.steepest_gain_percent, GRADIENT_VALUE_DECIMALS)
-    if elevation.steepest_loss_percent > 0:
-        return round(-elevation.steepest_loss_percent, GRADIENT_VALUE_DECIMALS)
+    if climb > 0:
+        return round(climb * 100.0, GRADIENT_VALUE_DECIMALS)
+    if climb_reversed > 0:
+        return round(-climb_reversed * 100.0, GRADIENT_VALUE_DECIMALS)
     return 0.0
 
 

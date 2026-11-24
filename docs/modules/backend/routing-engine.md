@@ -982,8 +982,10 @@ numbaでJITする探索と、探索の中へ展開する部品を置く。JITの
   区間の線と点ごとの道のり
   （`point_distances_m`）は、境界の点を経度・緯度で比べて重ねずにつなぐ（境界の点は前後の道で標高が違いうる）。まとめた点は
   前の道の点を採り、前の道の点が標高を持たず次の道の点が持つときだけ次の道の点を採る（`domain/route.py: _merge_shared_point`）。
-  区間の続く坂の斜度（`domain/route.py: steepest_signed_percent`）は、道の一番急な登りと下り（区間の標高の表。点の拾い方と間引き方は
-  [標高](elevation.md)「断面の点の拾い方と間引き方」）から作り、ビンへは登りがあれば登りの最大、無ければ一番急な下りで畳む
+  区間の続く坂の斜度（`domain/route.py: steepest_signed_percent`）は、走行の模型がその道を走ったときに踏み増した点の間（勢いで
+  越えられず、平地の出力を越えて踏んだ間。分布で埋める道は入らない）の一番急な登りと、逆向きに走ったときのそれ（`domain/cycling_speed.py:
+  SegmentSpeedModel.steepest_climbs`。ルートの内訳と同じ風で、経路の行だけを解く）から、登りがあれば登り、無ければ逆向きの登りを下りとして
+  負の値で作る——勢いで越える標高の揺れは「最大」に出ない。踏み増すかは速さと風で決まるので、同じ道でも条件で変わる。ビンへは登りがあれば登りの最大、無ければ一番急な下りで畳む
   （`domain/route.py: _merge_sustained_gradients`）。区間の平均勾配は登って下る区間で打ち消し合うので、区間の小窓の「最大」は
   この値を読む。区間の平均勾配（`average_gradient_percent`）は道の平均勾配（区間の標高の表）で、ビンへは値のある道の距離で
   重みづけて畳む（`domain/route.py: _merge_average_gradients`）。

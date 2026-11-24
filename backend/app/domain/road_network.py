@@ -118,7 +118,7 @@ class RoadNetwork:
     edge_span_count: np.ndarray  # int32
     span_length_m: np.ndarray  # float32、行数は点の間の数
     span_grade: np.ndarray  # float32
-    span_carries: np.ndarray  # bool、前の点の間から勢いを引き継ぐか
+    span_role: np.ndarray  # int8、点の間の役（`domain/elevation_profile.py: SPAN_FILL`等）
     unknown_elevation_m: np.ndarray  # float64
     mean_elevation_m: np.ndarray  # float64
 
@@ -190,7 +190,7 @@ class RoadNetwork:
     def elevation_spans(self) -> ProfileSpans:
         """全区間の、所要時間と体力を解く点の間。"""
         return ProfileSpans(self.edge_span_start, self.edge_span_count, self.span_length_m, self.span_grade,
-                            self.span_carries, self.unknown_elevation_m, self.mean_elevation_m)
+                            self.span_role, self.unknown_elevation_m, self.mean_elevation_m)
 
     @cached_property
     def edge_first_rows(self) -> np.ndarray:

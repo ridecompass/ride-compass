@@ -28,6 +28,12 @@ from numpy.typing import ArrayLike
 #: 作った坂（標高データでない一様な坂。レンズの換算等）に渡す勾配の上限。読み違いを外す上限を当てない。
 NO_GRADE_LIMIT = float("inf")
 
+#: 点の間の役（`flatten_spans`）。分布で埋める道（標高の無い長さを全体の分布の階級ごとに分けた、道の上の位置を持たない坂）・
+#: 値のある点の間のうち前の点の間から勢いを引き継がないもの（行の最初と、標高の無い間のすぐあと）・引き継ぐもの。
+SPAN_FILL = 0
+SPAN_ENTRY = 1
+SPAN_CARRY = 2
+
 #: 勾配の分布の階級の幅と、端の階級の勾配（どちらも勾配の小数。0.01は1%）。端より急な間は端の階級に数える。
 _DISTRIBUTION_STEP = 0.01
 _DISTRIBUTION_LIMIT = 0.20
@@ -121,21 +127,21 @@ def row_elevations_m(start: np.ndarray, points: np.ndarray, elevation_m: np.ndar
 def flatten_spans(start: np.ndarray, points: np.ndarray, forward: np.ndarray, elevation_m: np.ndarray,
                    position: np.ndarray, distance_m: np.ndarray, unknown_m: np.ndarray, fill_grade: np.ndarray,
                    fill_share: np.ndarray, max_grade: float) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-    """区間の行ごとの、値のある点の間と、標高の無い長さを分布の階級ごとに分けた道を、`(行, 長さ, 走る向きの勾配,
-    前の点の間から勢いを引き継ぐか)`の平らな並びにする（風に依らないので、リクエストに1回。`domain/cycling_speed.py`が風の
+    """区間の行ごとの、値のある点の間と、標高の無い長さを分布の階級ごとに分けた道を、`(行, 長さ, 走る向きの勾配, 役)`の
+    平らな並びにする（風に依らないので、リクエストに1回。`domain/cycling_speed.py`が風の
     時刻ごとに解くループを1本の平らな並びにして、CPUがまとめて計算できるようにする）。
 
     行の中は、値のある点の間を**走る順**に並べ（逆向きの行は点を逆順にたどる。勢いを点の間の順に持ち越すため）、そのあとに
-    分布で埋める道を並べる。勢いを引き継ぐのは、走る順で1つ前の間も値のある点の間だったものだけ——行の最初の点の間と、標高の
-    無い間のすぐあとの点の間は引き継がない（間の長さは分布で埋める道で別に走るので、前後をつなげない）。分布で埋める道は道の上の
-    位置を持たないので、引き継がない。"""
+    分布で埋める道を並べる。役（`SPAN_FILL`・`SPAN_ENTRY`・`SPAN_CARRY`）: 勢いを引き継ぐのは、走る順で1つ前の間も値のある点の
+    間だったものだけ——行の最初の点の間と、標高の無い間のすぐあとの点の間は引き継がない（間の長さは分布で埋める道で別に走るので、
+    前後をつなげない）。分布で埋める道は道の上の位置を持たない。"""
     total = 0
     for row in range(len(points)):
         total += max(points[row] - 1, 0) + (len(fill_grade) if unknown_m[row] > 0 else 0)
     span_row = np.empty(total, dtype=np.int32)
     span_length = np.empty(total, dtype=np.float32)
     span_grade = np.empty(total, dtype=np.float32)
-    span_carries = np.zeros(total, dtype=np.bool_)
+    span_role = np.full(total, SPAN_FILL, dtype=np.int8)
     found = 0
     for row in range(len(points)):
         count = points[row]
@@ -152,7 +158,7 @@ def flatten_spans(start: np.ndarray, points: np.ndarray, forward: np.ndarray, el
                 span_row[found] = row
                 span_length[found] = step
                 span_grade[found] = grade if forward[row] else -grade
-                span_carries[found] = follows
+                span_role[found] = SPAN_CARRY if follows else SPAN_ENTRY
                 follows = True
                 found += 1
         if unknown_m[row] > 0:
@@ -161,7 +167,18 @@ def flatten_spans(start: np.ndarray, points: np.ndarray, forward: np.ndarray, el
                 span_length[found] = unknown_m[row] * fill_share[k]
                 span_grade[found] = fill_grade[k]
                 found += 1
-    return span_row[:found], span_length[:found], span_grade[:found], span_carries[:found]
+    return span_row[:found], span_length[:found], span_grade[:found], span_role[:found]
+
+
+def reversed_spans(span_row: np.ndarray, span_grade: np.ndarray, span_role: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """`flatten_spans`の並び（行の昇順）を、行ごとに逆向きに走る点の間にする。`(並べ替えの位置, 走る向きの勾配, 役)`で、勾配と役は
+    並べ替える前の位置の値。勾配は符号を返し、役は逆の順で決め直す: 前の向きですぐ後ろの点の間が勢いを引き継いでいた（間に標高の
+    無い間が無い）なら引き継ぎ、そうでなければ入り直す。分布で埋める道はそのまま。"""
+    count = len(span_row)
+    following_carries = np.zeros(count, dtype=bool)
+    following_carries[:-1] = (span_row[1:] == span_row[:-1]) & (span_role[1:] == SPAN_CARRY)
+    role = np.where(span_role == SPAN_FILL, SPAN_FILL, np.where(following_carries, SPAN_CARRY, SPAN_ENTRY)).astype(np.int8)
+    return np.lexsort((-np.arange(count), span_row)), (-np.asarray(span_grade)).astype(np.float32), role
 
 
 @dataclass(frozen=True)
@@ -173,23 +190,23 @@ class ProfileSpans:
     count: np.ndarray  # int32
     length_m: np.ndarray  # float32
     grade: np.ndarray  # float32、走る向きの勾配（小数）
-    carries: np.ndarray  # bool、前の点の間から勢いを引き継ぐか（`flatten_spans`）
+    role: np.ndarray  # int8、点の間の役（`SPAN_FILL`・`SPAN_ENTRY`・`SPAN_CARRY`）
     unknown_m: np.ndarray  # float64
     mean_elevation_m: np.ndarray  # float64
 
     def take(self, rows: np.ndarray) -> "ProfileSpans":
-        return ProfileSpans(np.asarray(self.start[rows]), np.asarray(self.count[rows]), self.length_m, self.grade, self.carries,
+        return ProfileSpans(np.asarray(self.start[rows]), np.asarray(self.count[rows]), self.length_m, self.grade, self.role,
                             np.asarray(self.unknown_m[rows]), np.asarray(self.mean_elevation_m[rows]))
 
     def flat(self) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-        """`(行, 長さ, 走る向きの勾配, 前の点の間から勢いを引き継ぐか)`の平らな並び（行はこの束の中の位置）。"""
+        """`(行, 長さ, 走る向きの勾配, 役)`の平らな並び（行はこの束の中の位置）。"""
         count = np.asarray(self.count, dtype=np.int64)
         # 行ごとの範囲 [始まり, 始まり＋数) をつないだ位置（行の先頭からの位置 ＋ 行の始まり）。
         offset = np.asarray(self.start, dtype=np.int64) - (np.cumsum(count) - count)
         taken = np.repeat(offset, count) + np.arange(int(count.sum()))
         return (np.repeat(np.arange(len(count), dtype=np.int32), count),
                 np.asarray(self.length_m[taken], dtype=np.float32), np.asarray(self.grade[taken], dtype=np.float32),
-                np.asarray(self.carries[taken], dtype=np.bool_))
+                np.asarray(self.role[taken], dtype=np.int8))
 
 
 def profile_spans(profiles: ElevationProfiles, distance_m: np.ndarray) -> ProfileSpans:
@@ -200,12 +217,12 @@ def profile_spans(profiles: ElevationProfiles, distance_m: np.ndarray) -> Profil
     position = np.asarray(profiles.position, dtype=np.float32)
     distance = np.asarray(distance_m, dtype=np.float64)
     unknown = unknown_lengths_m(start, points, elevation, position, distance, profiles.max_grade)
-    span_row, length, grade, carries = flatten_spans(
+    span_row, length, grade, role = flatten_spans(
         start, points, np.asarray(profiles.forward, dtype=np.bool_), elevation, position, distance, unknown,
         np.asarray(profiles.distribution.grade, dtype=np.float64), np.asarray(profiles.distribution.share, dtype=np.float64),
         profiles.max_grade)
     count = np.bincount(span_row, minlength=len(points)).astype(np.int32)
-    return ProfileSpans(np.cumsum(count, dtype=np.int64) - count, count, length, grade, carries, unknown,
+    return ProfileSpans(np.cumsum(count, dtype=np.int64) - count, count, length, grade, role, unknown,
                         row_elevations_m(start, points, elevation))
 
 

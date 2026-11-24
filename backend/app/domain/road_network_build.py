@@ -134,7 +134,7 @@ def build_road_network(
         **summaries, edge_profile_start=profile_start, edge_profile_points=profile_points,
         profile_elevation_m=elevation, profile_position=position,
         edge_span_start=spans.start, edge_span_count=spans.count, span_length_m=spans.length_m, span_grade=spans.grade,
-        span_carries=spans.carries,
+        span_role=spans.role,
         unknown_elevation_m=spans.unknown_m, mean_elevation_m=spans.mean_elevation_m,
         **facts,
     )

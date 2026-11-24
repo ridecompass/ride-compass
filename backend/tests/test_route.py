@@ -1,7 +1,7 @@
 """`domain/route.py`——区間（交差点の間）を`SEGMENT_BIN_DISTANCE_KM`ごとのビンへ束ねる`aggregate_segments_into_bins`と、
 区間の続く坂の斜度と平均勾配。
 
-入口は`aggregate_segments_into_bins`・`steepest_signed_percent`。
+入口は`aggregate_segments_into_bins`・`steepest_signed_percent`（区間の「最大」の符号の決まり。踏み増した登りの値は`test_cycling_speed.py`）。
 応答の型（`RouteCandidate`等）の検証はPydanticが持つ。
 
 ここで見ないもの:
@@ -13,7 +13,6 @@ from hypothesis import given
 from hypothesis import strategies as st
 
 from app.domain import route
-from app.domain.attributes import ElevationAttribute
 from app.domain.route import EdgeSegment, RouteSegmentDetail
 
 WIDTH = route.SEGMENT_BIN_DISTANCE_KM
@@ -81,21 +80,17 @@ def test_bins_cover_the_route_without_gaps_or_overlaps(distances):
 
 
 @pytest.mark.parametrize(
-    ("gain", "loss", "expected"),
+    ("climb", "climb_reversed", "expected"),
     [
-        pytest.param(8.0, 12.0, 8.0, id="登りがあれば下りより急でも登り"),
-        pytest.param(0.0, 4.0, -4.0, id="登りが無ければ下りを負の値で"),
-        pytest.param(0.0, 0.0, 0.0, id="平らなら0（-0にしない）"),
-        pytest.param(None, 3.0, None, id="値が無ければ値が無い"),
+        pytest.param(0.08, 0.12, 8.0, id="踏み増した登りがあれば、逆向きの登りより急でも登り"),
+        pytest.param(0.0, 0.04, -4.0, id="登りが無ければ、逆向きに踏み増す登りを下りとして負の値で"),
+        pytest.param(0.0, 0.0, 0.0, id="どちらも踏み増さなければ0（-0にしない）"),
+        pytest.param(float("nan"), 0.03, None, id="値が無ければ値が無い"),
     ],
 )
-def test_a_road_shows_its_steepest_climb_or_else_its_steepest_descent(gain, loss, expected):
-    elevation = ElevationAttribute(edge_id="1:0:f", start_elevation_m=0.0, end_elevation_m=0.0, elevation_gain_m=0.0,
-                                   elevation_loss_m=0.0, average_grade=None,
-                                   steepest_gain_percent=gain, steepest_loss_percent=loss)
-
+def test_a_road_shows_its_steepest_climb_or_else_its_steepest_descent(climb, climb_reversed, expected):
     # 文字の形まで比べる（-0.0は0.0と等しいが、画面に「-0%」と出る）。
-    assert repr(route.steepest_signed_percent(elevation)) == repr(expected)
+    assert repr(route.steepest_signed_percent(climb, climb_reversed)) == repr(expected)
 
 
 @pytest.mark.parametrize(

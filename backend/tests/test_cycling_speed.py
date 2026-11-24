@@ -22,6 +22,7 @@ from app.domain.cycling_speed import STANDARD_TEMPERATURE_C, RiderProfile, Segme
 from app.domain.elevation_profile import GradeDistribution, profile_spans
 from app.domain.route_request import MAX_ASSUMED_SPEED_KMH, MIN_ASSUMED_SPEED_KMH
 from tests.profile_fixture import profiles as road_profiles
+from tests.profile_fixture import summarize_profile
 from tests.road_class_fixture import classification, road_classes
 from tests.tuning_fixture import TUNED, TUNING
 
@@ -252,6 +253,25 @@ def test_the_momentum_is_not_carried_over_a_gap_in_the_elevation():
     ridden = [model.ride(np.zeros(1), np.zeros(1), _standard(1), 0.0) for model in (gapped, climb)]
 
     assert float(ridden[0].gravity_extra_j[0]) == pytest.approx(float(ridden[1].gravity_extra_j[0]))
+
+
+def test_the_steepest_climb_counts_only_what_the_rider_pushes_up():
+    """一番急な登り（ルートの区間の「最大」）は、断面の要約の一番急な登りと同じ式（GraphHopper の max_slope）の候補のうち、踏み増した
+    登り（勢いで越えられず、平地の出力を越えて踏んだ間）を含むものだけで測る。平地から入って約20mおきに0.3m上り下りしてから60mで
+    8%登る道は、走る向きでは登りで踏み増すので、断面の要約の一番急な登りと同じ値。逆向き（8%で下ってから上り下り）では、上り下りを
+    勢いで越えて踏み増さないので0。標高の無い道（分布で埋める道だけ）は値が無い。"""
+    road = [0.0, 0.0] + [0.3, 0.0] * 5 + [4.8]
+    along = [0.0, 20.0] + [20.0 + 20.0 * (k + 1) for k in range(10)] + [280.0]
+    mixed = GradeDistribution(np.array([-0.04, 0.10]), np.array([0.5, 0.5]))
+    built = road_profiles(road, [], distribution=mixed, positions=[[a / 280.0 for a in along], []])
+    model = SegmentSpeedModel(RIDER, profile_spans(built, np.array([280.0, 400.0])), np.array([280.0, 400.0]),
+                              np.full(2, RIDER.crr), np.zeros(2), TUNED)
+
+    climb, climb_reversed = model.steepest_climbs(np.zeros(2), np.zeros(2), _standard(2), np.array([0, 1]))
+
+    assert climb[0] == pytest.approx(summarize_profile(road, along)["steepest_gain_percent"] / 100.0, rel=1e-4)
+    assert climb_reversed[0] == 0.0
+    assert np.isnan(climb[1]) and np.isnan(climb_reversed[1])
 
 
 def _integrated_ride(speed: float, power_w: float, grade: float, length_m: float, settled: float) -> tuple[float, float]:
