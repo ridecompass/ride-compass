@@ -42,6 +42,9 @@ def test_only_a_slot_without_any_time_condition_is_time_invariant(slot, invarian
     # 時間帯の端に触れれば効く（厳しい側）。
     (DAYTIME, at(11, 24, 7, 30), at(11, 24, 8), True),
     (DAYTIME, at(11, 24, 20), at(11, 24, 21), False),
+    # ルートのレグの時刻（予報の系列の時刻の形。時刻帯を持たない）はJSTの時刻として読む（マシンの時刻帯で読まない）。
+    (DAYTIME, at(11, 24, 7, 59).replace(tzinfo=None), at(11, 24, 7, 59).replace(tzinfo=None), False),
+    (DAYTIME, at(11, 24, 8).replace(tzinfo=None), at(11, 24, 8).replace(tzinfo=None), True),
     # 日をまたぐ時間の曜日は始まる日で決める: 日曜の22:00〜6:00は、月曜の3:00に効き、月曜の23:00には効かない。
     (RegulationSlot(True, hours_from=22 * 60, hours_to=6 * 60, days=5), at(11, 23, 3), at(11, 23, 3), True),
     (RegulationSlot(True, hours_from=22 * 60, hours_to=6 * 60, days=5), at(11, 23, 23), at(11, 23, 23), False),

@@ -8,7 +8,7 @@
 **通る時刻に効くかは、この判断（`active_between`）の1つで決める。**ルート生成はレグの時間帯で、地図は時刻で、この判断を読む。
 """
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import astuple, dataclass, fields
 from datetime import date, datetime, timedelta
 from functools import cache
@@ -17,7 +17,7 @@ import holidays
 import numpy as np
 
 from app.domain.search_graph import range_positions
-from app.domain.time_zone import JST
+from app.domain.time_zone import JST, as_jst
 
 MINUTES_PER_DAY = 24 * 60
 
@@ -135,10 +135,10 @@ def _subtract(windows: list[tuple[datetime, datetime]], removed: list[tuple[date
 
 
 def active_between(slot: RegulationSlot, start: datetime, end: datetime) -> bool:
-    """組が`start`〜`end`（どちらも時刻の帯を持つ時刻。両端を含む）のどこかで効くか。"""
+    """組が`start`〜`end`（両端を含む。時刻帯の無い時刻はJSTの時刻として読む）のどこかで効くか。"""
     if slot.time_invariant:
         return True
-    start, end = start.astimezone(JST), end.astimezone(JST)
+    start, end = as_jst(start), as_jst(end)
     # 前の日に始まって日をまたぐ時間も見る。
     first, last = start.date() - timedelta(days=1), end.date()
     windows = _windows((slot.hours_from, slot.hours_to), slot.days, (slot.period_from, slot.period_to), first, last)
@@ -148,21 +148,33 @@ def active_between(slot: RegulationSlot, start: datetime, end: datetime) -> bool
     return any(window_start <= end and start < window_end for window_start, window_end in windows)
 
 
-def active_slots(slot_values: np.ndarray, start: datetime, end: datetime) -> np.ndarray:
-    """組の行（`SLOT_FIELDS`の並びの2次元の配列）ごとに、`start`〜`end`のどこかで効くか。同じ条件の組は1回だけ判断する
-    （規制の多くは、同じ時間・曜日の組を持つ）。"""
+def _judge_slots(slot_values: np.ndarray, judge: Callable[[RegulationSlot], bool]) -> np.ndarray:
+    """組の行（`SLOT_FIELDS`の並びの2次元の配列）ごとの`judge`。同じ条件の組は1回だけ判断する（規制の多くは、同じ時間・曜日の
+    組を持つ）。"""
     values = np.asarray(slot_values, dtype=np.int16).reshape(-1, len(SLOT_FIELDS))
+    if not len(values):
+        return np.zeros(0, dtype=bool)
     unique, inverse = np.unique(values, axis=0, return_inverse=True)
-    judged = np.array([active_between(RegulationSlot.from_values(row), start, end) for row in unique], dtype=bool)
-    return judged[inverse.reshape(-1)] if len(values) else np.zeros(0, dtype=bool)
+    return np.array([judge(RegulationSlot.from_values(row)) for row in unique], dtype=bool)[inverse.reshape(-1)]
+
+
+def active_slots(slot_values: np.ndarray, start: datetime, end: datetime) -> np.ndarray:
+    """組の行ごとに、`start`〜`end`のどこかで効くか。"""
+    return _judge_slots(slot_values, lambda slot: active_between(slot, start, end))
 
 
 def invariant_slots(slot_values: np.ndarray) -> np.ndarray:
     """組の行ごとに、時刻で変わらない組か（`RegulationSlot.time_invariant`）。"""
-    values = np.asarray(slot_values, dtype=np.int16).reshape(-1, len(SLOT_FIELDS))
-    unique, inverse = np.unique(values, axis=0, return_inverse=True)
-    judged = np.array([RegulationSlot.from_values(row).time_invariant for row in unique], dtype=bool)
-    return judged[inverse.reshape(-1)] if len(values) else np.zeros(0, dtype=bool)
+    return _judge_slots(slot_values, lambda slot: slot.time_invariant)
+
+
+def pedestrian_road_codes(bicycle: np.ndarray, excepted: np.ndarray, *, excepted_first: bool = False) -> np.ndarray:
+    """区間ごとの（自転車も対象の規制が効くか、自転車は除外の規制が効くか）からの、材料`pedestrian_road`の番号
+    （`PEDESTRIAN_ROAD_VOCAB`）。両方効く区間は自転車も禁止にし、`excepted_first`なら自転車は除外にする（ルートは両方を求めて
+    倍率の大きい側を採る）。"""
+    if excepted_first:
+        return np.where(excepted, EXCEPTED_CODE, np.where(bicycle, PROHIBITED_CODE, 0)).astype(np.int16)
+    return np.where(bicycle, PROHIBITED_CODE, np.where(excepted, EXCEPTED_CODE, 0)).astype(np.int16)
 
 
 def active_kinds(

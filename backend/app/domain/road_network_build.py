@@ -27,7 +27,7 @@ from app.domain.geo import bearings_between
 from app.domain.material_catalog import ELEVATION_GAIN_PER_KM, GRADIENT_PERCENT, MATERIAL_CATALOG
 from app.domain.road_network import RoadNetwork
 from app.domain.search_graph import EDGE_VALUE_DTYPE, range_positions, run_starts
-from app.domain.traffic_regulation import EXCEPTED_CODE, PROHIBITED_CODE, SLOT_FIELDS, active_kinds, invariant_slots
+from app.domain.traffic_regulation import SLOT_FIELDS, active_kinds, invariant_slots, pedestrian_road_codes
 
 
 @dataclass(frozen=True)
@@ -72,8 +72,7 @@ def regulation_arrays(edge_way_id: np.ndarray, edge_segment: np.ndarray, regulat
     bicycle, excepted = active_kinds(np.arange(len(row_key)), fields["edge_regulation_start"], count, regulation,
                                      fields["regulation_slot_start"], slot_count, regulations.slot_values,
                                      invariant_slots(regulations.slot_values), slotless_active=True)
-    codes = np.where(bicycle, PROHIBITED_CODE, np.where(excepted, EXCEPTED_CODE, 0))
-    return fields, codes.astype(np.int16)
+    return fields, pedestrian_road_codes(bicycle, excepted)
 
 
 def build_road_network(

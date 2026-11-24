@@ -17,6 +17,7 @@ from app.infrastructure.region_tile_cache import discard_region_tiles
 from app.infrastructure.point_tile_layers import POINT_TILE_LAYERS
 from app.infrastructure.vector_tile import ROAD_SURFACE_LAYER_NAME, encode_empty_tile
 from app.services.region_service import RegionService
+from app.domain.region import ROAD_TILE_MIN_ZOOM
 from app.domain.time_frames import StaleTimeFrameError
 from app.services.time_frame_service import TimeFrameService, new_frame_cache
 from tests.route_world import Weather, grid_network, serve_road_network
@@ -74,11 +75,18 @@ async def test_a_baked_tile_is_served_from_disk_until_the_region_tiles_are_disca
 
 
 async def test_a_tile_of_a_frame_outside_the_current_frames_is_refused(road_network_root):
-    """終わったコマ・作り直す前の道路網のコマの印では焼かない（前の効き方で焼いたタイルを今のものとして配らない）。"""
+    """終わったコマ・作り直す前の道路網のコマの印では焼かない（前の効き方で焼いたタイルを今のものとして配らない）。時刻を読まない
+    引いたズームのタイルは印を確かめず、時刻で変わらない規制だけで焼く（古い印でも道の線を消さない）。"""
     serve_road_network(road_network_root, grid_network())
+    service = RegionService(repository=_TileRepository(tile=b"tile"))
+    time_frames = TimeFrameService(Weather(), new_frame_cache())
+
+    def tile(z: int) -> tuple[int, int, int]:
+        return z, X >> (Z - z), Y >> (Z - z)
 
     with pytest.raises(StaleTimeFrameError):
-        await _road_surface_tile(RegionService(repository=_TileRepository(tile=b"tile")), frame="0-unknown")
+        await service.get_road_surface_tile(*tile(ROAD_TILE_MIN_ZOOM), "0-unknown", time_frames)
+    assert await service.get_road_surface_tile(*tile(ROAD_TILE_MIN_ZOOM - 1), "0-unknown", time_frames) == b"tile"
 
 
 # --- 道の窓 ---

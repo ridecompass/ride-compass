@@ -7,7 +7,8 @@
  */
 import { renderHook, waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import { frameAt, useTimeFrames } from "@/features/map/useTimeFrames";
+import { frameAt, useTimeFrames, withFreshFrames } from "@/features/map/useTimeFrames";
+import { ApiHttpError } from "@/lib/apiClient";
 import { onBackend } from "@/testing/backendServer";
 
 const FRAMES = [
@@ -38,5 +39,21 @@ describe("useTimeFrames", () => {
     const { result } = renderHook(() => useTimeFrames(new Date("2026-11-24T10:45:00+09:00")));
 
     await waitFor(() => expect(result.current).toEqual({ roadSurface: "road", lens: "b" }));
+  });
+});
+
+describe("withFreshFrames", () => {
+  it("古い印で断られた要求は、コマの一覧を読み直させる（新しい印で取り直す）", async () => {
+    let served = 0;
+    onBackend("GET", "/api/region/time-frames", () => {
+      served += 1;
+      return Response.json({ road_surface: [], lens: FRAMES });
+    });
+    renderHook(() => useTimeFrames(new Date("2026-11-24T10:45:00+09:00")));
+    await waitFor(() => expect(served).toBe(1));
+
+    await expect(withFreshFrames(Promise.reject(new ApiHttpError("古い", 409)))).rejects.toThrow("古い");
+
+    await waitFor(() => expect(served).toBe(2));
   });
 });

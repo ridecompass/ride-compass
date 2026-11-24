@@ -97,10 +97,9 @@ class RegionService:
         """地図の道の線のタイル。フィーチャーごとの地図の線の層の値（`road_layer_values`）を焼く。路面タイルのコマの印`frame`を
         渡すと、道ごとの鍵を焼くズーム（`ROAD_TILE_MIN_ZOOM`以上）では、規制の当たる道の区分をそのコマの始まりの時刻に効く規制で
         焼き、持ちはタイルの規制の効き方（`domain/timed_regulations.py: regulation_variant`）で分ける。引いたズームは時刻で変わらない
-        規制だけで焼く（地図は時刻で変わる規制の層を、そのズームでは描かない）。今の一覧に無い印は投げる。"""
-        at = await time_frames.road_surface_at(frame)
+        規制だけで焼き、印を確かめない（地図は時刻で変わる規制の層を、そのズームでは描かない）。今の一覧に無い印は投げる。"""
         definitions = current_road_classes()
-        timed_at = at if at is not None and z >= ROAD_TILE_MIN_ZOOM else None
+        timed_at = await time_frames.road_surface_at(frame) if z >= ROAD_TILE_MIN_ZOOM else None
         variant = ""
         if timed_at is not None:
             variant = await asyncio.to_thread(_regulation_variant, tile_bounds_lonlat(z, x, y), timed_at)

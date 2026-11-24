@@ -3,7 +3,12 @@
 import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
 import { fetchTimeFrames, type TimeFrame, type TimeFrames } from "@/features/map/regionApi";
+import { ApiHttpError } from "@/lib/apiClient";
 import { getQueryClient } from "@/lib/queryClient";
+
+const TIME_FRAMES_QUERY_KEY = ["time-frames"];
+/** backend が古い印（終わったコマ・版の変わる前のコマ）を断るときの HTTP の状態。 */
+const STALE_FRAME_STATUS = 409;
 
 /** コマの一覧を読み直す間隔の上限。予報が届くとレンズのコマの印が変わるので、今のコマが終わる前でもこの間隔で読み直す。 */
 const TIME_FRAMES_REFRESH_MS = 5 * 60 * 1000;
@@ -34,11 +39,31 @@ function untilCurrentFramesEnd(frames: TimeFrames | undefined, now: number): num
 export function useTimeFrames(at: Date): { roadSurface: FrameChoice; lens: FrameChoice } {
   const { data } = useQuery(
     {
-      queryKey: ["time-frames"],
+      queryKey: TIME_FRAMES_QUERY_KEY,
       queryFn: fetchTimeFrames,
       refetchInterval: (query) => untilCurrentFramesEnd(query.state.data, Date.now()),
     },
     getQueryClient(),
   );
   return useMemo(() => ({ roadSurface: frameAt(data?.road_surface, at), lens: frameAt(data?.lens, at) }), [data, at]);
+}
+
+/** コマの一覧を読み直す（古い印で断られたとき。読み直した一覧の新しい印で、載せた要求が取り直す）。 */
+function refreshTimeFrames(): void {
+  void getQueryClient().invalidateQueries({ queryKey: TIME_FRAMES_QUERY_KEY });
+}
+
+/** HTTP の状態`status`が古い印で断られたものなら、コマの一覧を読み直す。 */
+export function refreshTimeFramesIfStale(status: number | undefined): void {
+  if (status === STALE_FRAME_STATUS) refreshTimeFrames();
+}
+
+/** `request`が古い印で断られたら、コマの一覧を読み直してから失敗を返す。 */
+export async function withFreshFrames<T>(request: Promise<T>): Promise<T> {
+  try {
+    return await request;
+  } catch (error) {
+    refreshTimeFramesIfStale(error instanceof ApiHttpError ? error.status : undefined);
+    throw error;
+  }
 }

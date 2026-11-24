@@ -416,3 +416,27 @@ async def test_a_frame_of_a_replaced_forecast_is_refused(client, override_depend
                                 params={"speed_kmh": ASSUMED_SPEED_KMH, "frame": replaced})
 
     assert response.status_code == 409
+
+
+class _ReplacedWhileRead(Weather):
+    """1回目に時刻の並びを読む間だけ、予報が入れ替わる天気の代役。読んだ回数を数える。"""
+
+    def __init__(self):
+        super().__init__()
+        self.reads = 0
+
+    async def get_forecast_times(self, version):
+        self.reads += 1
+        return None if self.reads == 1 else await super().get_forecast_times(version)
+
+
+async def test_the_lens_frames_are_read_once_per_forecast_and_again_if_it_was_replaced_while_read():
+    """予報の時刻の並びは、版ごとに1回だけ読む（レンズのタイル1枚ごとに予報の置き場を読まない）。読む間に予報が入れ替わったら
+    読み直す（古い版の印に新しい予報の時刻を付けない）。"""
+    weather = _ReplacedWhileRead()
+    service = TimeFrameService(weather, new_frame_cache())
+
+    frames = (await service.frames()).lens
+    await service.lens_at(frames[0].key)
+
+    assert frames and weather.reads == 2

@@ -19,6 +19,9 @@ from app.infrastructure.debug_log import log_external_call, mark_failed
 from app.infrastructure.msm_client import MsmUnavailableError
 from app.services.weather_service import WeatherService
 
+#: 読む間に予報が入れ替わったときに読み直す回数の上限（入れ替えは数分ごとにしか起きない）。
+_FORECAST_READ_ATTEMPTS = 3
+
 #: 持つ一覧の数。値の種類ごとに今の元と今の正時の1つずつで足り、正時をまたぐ間だけ前のものが残る。
 FRAME_CACHE_SIZE = 4
 
@@ -29,7 +32,7 @@ def new_frame_cache() -> LRUCache[tuple[str, str, datetime], list[TimeFrame]]:
 
 
 class TimeFrames(StrictModel):
-    #: 路面タイル（`/api/region/road-surface-tiles`の`frame`）のコマ。時刻で変わる交通規制の効き方で変わる。
+    #: 路面タイル（`/api/region/road-surface-tiles`の`frame`）のコマ。時刻で変わる交通規制の効き方で変わる。道路網が読めなければ空。
     road_surface: list[TimeFrame]
     #: 風に依るレンズと道の窓（`/api/region/lens`・`/api/region/road-inspector`の`frame`）のコマ。予報が読めなければ空。
     lens: list[TimeFrame]
@@ -43,12 +46,17 @@ class TimeFrameService:
     async def frames(self) -> TimeFrames:
         """選べる出発時刻の範囲（`domain/time_frames.py: frame_range`）の、値の種類ごとのコマ。"""
         start, end = frame_range(datetime.now(JST))
+        # 値の種類どうしは元が違う（道路網・予報）ので、読めない種類のコマだけを空にして配る（片方が読めないために、もう片方の値まで
+        # 取れなくしない）。空の種類の要求は印を載せず、路面タイルは時刻で変わらない規制だけで、レンズは今の風で求まる。
         with log_external_call("region:time-frames") as fields:
-            road_surface = await self._road_surface(start, end)
+            try:
+                road_surface = await self._road_surface(start, end)
+            except (OSError, ValueError) as exc:
+                mark_failed(fields, exc)
+                road_surface = []
             try:
                 lens = await self._lens(start, end)
             except MsmUnavailableError as exc:
-                # 路面タイルのコマは予報によらないので、レンズのコマだけを空にして配る。
                 mark_failed(fields, exc)
                 lens = []
             fields["road_surface"], fields["lens"] = len(road_surface), len(lens)
@@ -76,9 +84,13 @@ class TimeFrameService:
         return frames
 
     async def _lens(self, start: datetime, end: datetime) -> list[TimeFrame]:
-        version, times = await self._weather_service.get_forecast_times()
-        cache_key = ("lens", version, start)
-        frames = self._cache.get(cache_key)
-        if frames is None:
-            frames = self._cache[cache_key] = wind_frames(times, version, start, end)
-        return frames
+        # 持ちは版（小さなファイルを読むだけ）で先に引き、外れたときだけ予報の時刻の並びを読む。
+        for _ in range(_FORECAST_READ_ATTEMPTS):
+            version = self._weather_service.forecast_version()
+            cache_key = ("lens", version, start)
+            if (frames := self._cache.get(cache_key)) is not None:
+                return frames
+            if (times := await self._weather_service.get_forecast_times(version)) is not None:
+                frames = self._cache[cache_key] = wind_frames(times, version, start, end)
+                return frames
+        raise MsmUnavailableError("MSMの予報が入れ替わり続け、版と時刻の並びをそろえて読めません")

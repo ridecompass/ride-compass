@@ -22,16 +22,15 @@ from app.domain.road_network import RoadNetwork
 from app.domain.time_frames import TimeFrame, frames_from
 from app.domain.time_zone import as_jst
 from app.domain.traffic_regulation import (
-    EXCEPTED_CODE,
     MINUTES_PER_DAY,
     PEDESTRIAN_ROAD_VOCAB,
-    PROHIBITED_CODE,
     SLOT_FIELDS,
     RegulationSlot,
     active_between,
     active_kinds,
     active_slots,
     invariant_slots,
+    pedestrian_road_codes,
 )
 
 
@@ -104,9 +103,8 @@ class TimedRegulations:
             active & ~invariant_slots(network.regulation_slot_values), slotless_active=False)
         variants = []
         # 両方効く区間は、変種ごとに片方の値を採る。片方だけ効く区間は、どちらの変種も同じ値になる。
-        for codes in (np.where(bicycle, PROHIBITED_CODE, np.where(excepted, EXCEPTED_CODE, 0)),
-                      np.where(excepted, EXCEPTED_CODE, np.where(bicycle, PROHIBITED_CODE, 0))):
-            facts = {**self._facts, PEDESTRIAN_ROAD: CategoricalColumn(codes.astype(np.int16), PEDESTRIAN_ROAD_VOCAB)}
+        for codes in (pedestrian_road_codes(bicycle, excepted), pedestrian_road_codes(bicycle, excepted, excepted_first=True)):
+            facts = {**self._facts, PEDESTRIAN_ROAD: CategoricalColumn(codes, PEDESTRIAN_ROAD_VOCAB)}
             classes = class_columns(self._definitions, facts, n)
             variants.append((facts, classes, road_avoidance_masks(classes, self._levels, self._multipliers, n)))
         (facts, classes, strict), (_, _, other) = variants
@@ -184,7 +182,7 @@ def pedestrian_road_codes_at(network: RoadNetwork, rows: np.ndarray, at: datetim
         network_rows, network.edge_regulation_start, network.edge_regulation_count, network.regulation_index,
         network.regulation_slot_start, network.regulation_slot_count, network.regulation_slot_values, active,
         slotless_active=True)
-    return np.where(bicycle, PROHIBITED_CODE, np.where(excepted, EXCEPTED_CODE, 0)).astype(np.int16)
+    return pedestrian_road_codes(bicycle, excepted)
 
 
 def regulation_frames(network: RoadNetwork, start: datetime, end: datetime) -> list[TimeFrame]:

@@ -10,6 +10,7 @@ import {
 } from "@/features/map/layers/dynamicWayValues";
 import type { WayMaterials } from "@/features/map/scene/groups/axisLines";
 import { tileQueryOptions } from "@/features/map/tileQueries";
+import { withFreshFrames } from "@/features/map/useTimeFrames";
 import type { MapLens } from "@/lib/mapDisplay/mapLens";
 import type { MapViewport } from "@/features/map/view/mapLook";
 import {
@@ -63,7 +64,7 @@ function lensMaterials(
   const fetch =
     frame === null
       ? () => Promise.reject(new Error("出発時刻の風の予報がありません"))
-      : (tile: TileXY) => fetchLensMaterials(lens.lensId, tile.z, tile.x, tile.y, query);
+      : (tile: TileXY) => withFreshFrames(fetchLensMaterials(lens.lensId, tile.z, tile.x, tile.y, query));
   return { query, fetch, enabled: frame !== undefined };
 }
 

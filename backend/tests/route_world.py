@@ -169,8 +169,11 @@ class Weather:
     async def get_wind_forecast_lattice(self, bbox):
         return self._series
 
-    async def get_forecast_times(self):
-        return "fake", list(self._series.times)
+    def forecast_version(self):
+        return "fake"
+
+    async def get_forecast_times(self, version):
+        return list(self._series.times)
 
 
 #: 置くたびに進める道路網の世代。置き場は世代で見分けるので、中身を変えて置くたびに世代を変える。
