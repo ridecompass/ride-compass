@@ -347,11 +347,10 @@ def _carried_spans(span_row: np.ndarray, span_length: np.ndarray, carries: np.nd
             left -= run
             if left <= 0.0 or target == final and speed == final:
                 break
+        rest = 0.0
         if left > 0.0:  # 釣り合いの速さに着いた。残りを釣り合いの速さで走る
             speed = settled
             rest = left / settled
-        else:
-            rest = 0.0
         seconds[row] += moving + rest
         pushed[i] = rest if coasting else moving + rest
     return seconds, pushed
