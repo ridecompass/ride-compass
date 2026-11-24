@@ -28,7 +28,8 @@ from app.domain.leg_costs import axis_facts, burden_weights, travel_inputs
 from app.domain.model_settings import ModelSettings
 from app.domain.msm_grid import ForecastTime
 from app.domain.road_features import feature_row_ranges
-from app.domain.road_network import MaterialFills, RoadNetwork, range_positions
+from app.domain.search_graph import range_positions
+from app.domain.road_network import MaterialFills, RoadNetwork
 from app.domain.strict_model import StrictModel
 from app.domain.tuning import Tuning
 from app.domain.route import AxisFact, elevation_gain

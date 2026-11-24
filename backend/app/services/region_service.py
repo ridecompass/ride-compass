@@ -101,9 +101,7 @@ class RegionService:
         timed_at = at if at is not None and z >= ROAD_TILE_MIN_ZOOM else None
         variant = ""
         if timed_at is not None:
-            bounds, network, moment = tile_bounds_lonlat(z, x, y), road_network_store.current(), timed_at
-            variant = await asyncio.to_thread(lambda: regulation_variant(network, regulated_rows_within(
-                network, bounds.min_longitude, bounds.min_latitude, bounds.max_longitude, bounds.max_latitude), moment))
+            variant = await asyncio.to_thread(_regulation_variant, tile_bounds_lonlat(z, x, y), timed_at)
             if not variant:
                 timed_at = None
 
@@ -192,6 +190,13 @@ class RegionService:
             if area is None:
                 logger.warning("道路の取込が成功した記録が無く、対象範囲が決まらない")
             return area
+
+
+def _regulation_variant(bounds: BoundingBox, at: datetime) -> str:
+    """範囲`bounds`の路面タイルの、時刻`at`の規制の効き方の印。道路網を読むので、イベントループの外で呼ぶ。"""
+    network = road_network_store.current()
+    return regulation_variant(network, regulated_rows_within(
+        network, bounds.min_longitude, bounds.min_latitude, bounds.max_longitude, bounds.max_latitude), at)
 
 
 def _road_surface_features(z: int, bbox: BoundingBox, definitions: RoadClassDefinitions,

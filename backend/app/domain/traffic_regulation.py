@@ -16,6 +16,7 @@ from functools import cache
 import holidays
 import numpy as np
 
+from app.domain.search_graph import range_positions
 from app.domain.time_zone import JST
 
 MINUTES_PER_DAY = 24 * 60
@@ -38,6 +39,9 @@ DAY_CODES: frozenset[int] = frozenset({*_DAY_CODES, OTHER_DAYS})
 BICYCLE_PROHIBITED = "bicycle"
 BICYCLE_EXCEPTED = "not_bicycle"
 PEDESTRIAN_ROAD_LABELS: dict[str, str] = {BICYCLE_PROHIBITED: "効いている（自転車も禁止）", BICYCLE_EXCEPTED: "効いている（自転車は除外）"}
+#: 道路網の配列が持つ材料`pedestrian_road`の語彙（0は値なし）と、自転車も禁止・自転車は除外の番号。
+PEDESTRIAN_ROAD_VOCAB: tuple[str | None, ...] = (None, *PEDESTRIAN_ROAD_LABELS)
+PROHIBITED_CODE, EXCEPTED_CODE = PEDESTRIAN_ROAD_VOCAB.index(BICYCLE_PROHIBITED), PEDESTRIAN_ROAD_VOCAB.index(BICYCLE_EXCEPTED)
 
 #: 組の値の欄の無いことを、数の配列で表す値（道路網の配列の`regulation_slot_values`）。
 _NONE = -1
@@ -164,10 +168,11 @@ def invariant_slots(slot_values: np.ndarray) -> np.ndarray:
 def active_kinds(
     rows: np.ndarray, edge_regulation_start: np.ndarray, edge_regulation_count: np.ndarray, edge_regulations: np.ndarray,
     regulation_slot_start: np.ndarray, regulation_slot_count: np.ndarray, regulation_slot_values: np.ndarray,
-    slot_active: np.ndarray,
+    slot_active: np.ndarray, slotless_active: bool,
 ) -> tuple[np.ndarray, np.ndarray]:
     """区間の行`rows`ごとの、(効いている規制に普通自転車も対象の組があるか, 普通自転車は除外の組があるか)。`slot_active`は
-    組の行ごとに効いているか。組を持たない規制は、いつでも全部の車両に効く。並びは道路網の配列の規制の欄
+    組の行ごとに効いているか。組を持たない規制（いつでも全部の車両に効く）は、`slotless_active`なら自転車も対象として数える
+    （時刻で変わる組だけを数えるときは数えない）。並びは道路網の配列の規制の欄
     （`domain/road_network.py: RoadNetwork`の`edge_regulation_*`・`regulation_slot_*`）。"""
     slot_count = np.asarray(regulation_slot_count, dtype=np.int64)
     slot_regulation = np.repeat(np.arange(len(slot_count)), slot_count)
@@ -177,13 +182,14 @@ def active_kinds(
     regulation_excepted = np.zeros(len(slot_count), dtype=bool)
     np.logical_or.at(regulation_bicycle, slot_regulation, active & bicycle)
     np.logical_or.at(regulation_excepted, slot_regulation, active & ~bicycle)
-    regulation_bicycle |= slot_count == 0
+    if slotless_active:
+        regulation_bicycle |= slot_count == 0
 
     rows = np.asarray(rows, dtype=np.int64)
     count = np.asarray(edge_regulation_count, dtype=np.int64)[rows]
     first = np.asarray(edge_regulation_start, dtype=np.int64)[rows]
     owner = np.repeat(np.arange(len(rows)), count)
-    position = np.repeat(first, count) + (np.arange(int(count.sum())) - np.repeat(np.cumsum(count) - count, count))
+    position = range_positions(first, count)
     regulation = np.asarray(edge_regulations, dtype=np.int64)[position]
     row_bicycle = np.zeros(len(rows), dtype=bool)
     row_excepted = np.zeros(len(rows), dtype=bool)

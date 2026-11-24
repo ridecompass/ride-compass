@@ -30,6 +30,7 @@ from app.domain.feature_materials import FeatureMaterials
 from app.domain.map_display import DERIVED_DATABASE_ATTRIBUTIONS
 from app.domain.material_catalog import MATERIAL_CATALOG, material_array_columns
 from app.domain.region import EDGE_UNIT_MIN_ZOOM
+from app.domain import road_features
 from app.domain.road_features import MapFeatures, feature_lines, feature_materials, feature_rows, map_features
 from app.domain.road_network import RoadNetwork
 from app.infrastructure import road_network_store
@@ -183,7 +184,8 @@ def _chunk(network: RoadNetwork, rows: np.ndarray
 
 
 #: 置き場の名前の形の署名。列・値式・表示・行の選び方を変えたコードは、同じ世代でも別の名前に書く。
-EXPORT_SHAPE = shape_digest(WAY_NAMES_SQL, road_network_store.NETWORK_SHAPE, COLUMNS, README, inspect.getsource(_chunk))
+EXPORT_SHAPE = shape_digest(WAY_NAMES_SQL, road_network_store.NETWORK_SHAPE, COLUMNS, README, inspect.getsource(_chunk),
+                            inspect.getsource(road_features))
 
 
 def _cell(materials: FeatureMaterials, material_id: str, row: int) -> str | float | bool | None:

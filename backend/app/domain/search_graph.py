@@ -37,6 +37,12 @@ def build_lazy_road_graph(edge_from: np.ndarray, edge_to: np.ndarray, node_count
     return LazyRoadGraph(node_count=node_count, edge_rows=kept, edge_from=tail[kept], edge_to=head[kept])
 
 
+def range_positions(start: np.ndarray, counts: np.ndarray) -> np.ndarray:
+    """範囲`[start[i], start[i] + counts[i])`を順につないだ位置。"""
+    start, counts = np.asarray(start, dtype=np.int64), np.asarray(counts, dtype=np.int64)
+    return np.repeat(start - (np.cumsum(counts) - counts), counts) + np.arange(int(counts.sum()), dtype=np.int64)
+
+
 def run_starts(sorted_values: np.ndarray) -> np.ndarray:
     """並べ替えた配列で、同じ値が続く並びの先頭の位置を真にした真偽配列。"""
     first = np.ones(len(sorted_values), dtype=bool)

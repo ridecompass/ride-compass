@@ -26,8 +26,8 @@ from app.domain.elevation_profile import (
 from app.domain.geo import bearings_between
 from app.domain.material_catalog import ELEVATION_GAIN_PER_KM, GRADIENT_PERCENT, MATERIAL_CATALOG
 from app.domain.road_network import RoadNetwork
-from app.domain.search_graph import EDGE_VALUE_DTYPE, run_starts
-from app.domain.traffic_regulation import SLOT_FIELDS, BICYCLE_EXCEPTED, BICYCLE_PROHIBITED, PEDESTRIAN_ROAD_LABELS, active_kinds, invariant_slots
+from app.domain.search_graph import EDGE_VALUE_DTYPE, range_positions, run_starts
+from app.domain.traffic_regulation import EXCEPTED_CODE, PROHIBITED_CODE, SLOT_FIELDS, active_kinds, invariant_slots
 
 
 @dataclass(frozen=True)
@@ -58,7 +58,7 @@ def regulation_arrays(edge_way_id: np.ndarray, edge_segment: np.ndarray, regulat
     hit_key = regulations.hit_way * 65536 + regulations.hit_segment
     low, high = np.searchsorted(row_key, hit_key, "left"), np.searchsorted(row_key, hit_key, "right")
     per_hit = high - low
-    row = np.repeat(low, per_hit) + (np.arange(int(per_hit.sum())) - np.repeat(np.cumsum(per_hit) - per_hit, per_hit))
+    row = range_positions(low, per_hit)
     order = np.argsort(row, kind="stable")
     regulation = np.repeat(regulations.hit_regulation, per_hit)[order]
     count = np.bincount(row[order], minlength=len(row_key)).astype(np.int16)
@@ -71,9 +71,8 @@ def regulation_arrays(edge_way_id: np.ndarray, edge_segment: np.ndarray, regulat
     }
     bicycle, excepted = active_kinds(np.arange(len(row_key)), fields["edge_regulation_start"], count, regulation,
                                      fields["regulation_slot_start"], slot_count, regulations.slot_values,
-                                     invariant_slots(regulations.slot_values))
-    vocab = list(PEDESTRIAN_ROAD_LABELS)
-    codes = np.where(bicycle, vocab.index(BICYCLE_PROHIBITED) + 1, np.where(excepted, vocab.index(BICYCLE_EXCEPTED) + 1, 0))
+                                     invariant_slots(regulations.slot_values), slotless_active=True)
+    codes = np.where(bicycle, PROHIBITED_CODE, np.where(excepted, EXCEPTED_CODE, 0))
     return fields, codes.astype(np.int16)
 
 

@@ -10,7 +10,8 @@ from datetime import datetime
 import numpy as np
 import pytest
 
-from app.domain.traffic_regulation import JST, OTHER_DAYS, RegulationSlot, active_between, active_kinds
+from app.domain.time_zone import JST
+from app.domain.traffic_regulation import OTHER_DAYS, RegulationSlot, active_between, active_kinds
 
 #: 8:00〜20:00に効く、自転車も対象の組。
 DAYTIME = RegulationSlot(True, hours_from=8 * 60, hours_to=20 * 60)
@@ -69,7 +70,7 @@ def test_the_kinds_of_regulations_active_on_each_edge():
     arrays = (np.array([0, 1, 2]), np.array([1, 1, 0]), np.array([0, 1]), np.array([0, 2]), np.array([2, 0]), slots)
 
     def kinds(slot_active):
-        bicycle, excepted = active_kinds(np.arange(3), *arrays, np.array(slot_active))
+        bicycle, excepted = active_kinds(np.arange(3), *arrays, np.array(slot_active), slotless_active=True)
         return list(zip(bicycle.tolist(), excepted.tolist(), strict=True))
 
     assert kinds([False, False]) == [(False, False), (True, False), (False, False)]

@@ -22,12 +22,13 @@ from app.domain.material_catalog import PEDESTRIAN_ROAD
 from app.domain.hard_filters import HARD_FILTER_PROPERTY, hard_filter_column
 from app.domain.road_classes import RoadClassDefinitions, class_columns, layer_columns
 from app.domain.region import EDGE_UNIT_MIN_ZOOM
-from app.domain.road_network import RoadNetwork, edge_key, positions_in, range_positions, rows_in_bbox
+from app.domain.search_graph import range_positions
+from app.domain.road_network import RoadNetwork, edge_key, positions_in, rows_in_bbox
 from app.domain.road_network_build import along_way
 from app.domain.search_graph import EDGE_VALUE_DTYPE
 from app.domain.search_materials import ColumnsOrEmpty
 from app.domain.timed_regulations import pedestrian_road_codes_at
-from app.domain.traffic_regulation import PEDESTRIAN_ROAD_LABELS
+from app.domain.traffic_regulation import PEDESTRIAN_ROAD_VOCAB
 
 
 @dataclass(frozen=True)
@@ -178,18 +179,21 @@ def _regulation_at(network: RoadNetwork, way_ids: Sequence[int], segment_indexes
     """フィーチャーごとの材料`pedestrian_road`の列`column`を、時刻`at`の値へ置き換えた列。区間のフィーチャーはその区間の値、
     道1本のフィーチャーは配列を作るときと同じく、値ごとの区間の長さの和が一番長い値（`domain/road_network_build.py`）。"""
     start, stop = feature_row_ranges(network, way_ids, segment_indexes)
-    counts = np.asarray(network.edge_regulation_count)
-    vocab = (None, *PEDESTRIAN_ROAD_LABELS)
+    vocab = PEDESTRIAN_ROAD_VOCAB
     codes = np.array([vocab.index(value) for value in column.vocab], dtype=np.int16)[column.codes]
-    for feature, (first, last) in enumerate(zip(start.tolist(), stop.tolist(), strict=True)):
-        if last <= first or not counts[first:last].any():
-            continue
-        rows = (np.intersect1d(np.arange(first, last), network.edge_first_rows) if segment_indexes[feature] is None
-                else np.array([first]))
-        values = pedestrian_road_codes_at(network, rows, at)
-        lengths = np.bincount(values, weights=np.asarray(network.distance_m)[rows], minlength=len(vocab))
-        lengths[0] = 0.0
-        codes[feature] = int(np.argmax(lengths)) if lengths.max() > 0 else 0
+    # フィーチャーの区間ごとの一番若い行（区間のフィーチャーは1行、道1本のフィーチャーは道の区間の数）。
+    first = network.edge_first_rows
+    low, high = np.searchsorted(first, start), np.searchsorted(first, stop)
+    rows, owner = first[range_positions(low, high - low)], np.repeat(np.arange(len(start)), high - low)
+    touched = np.unique(owner[np.asarray(network.edge_regulation_count)[rows] > 0])
+    if len(touched) == 0:
+        return CategoricalColumn(codes, vocab)
+    kept = np.isin(owner, touched)
+    rows, owner = rows[kept], owner[kept]
+    lengths = np.zeros((len(start), len(vocab)))
+    np.add.at(lengths, (owner, pedestrian_road_codes_at(network, rows, at)), np.asarray(network.distance_m)[rows])
+    lengths[:, 0] = 0.0
+    codes[touched] = np.where(lengths[touched].max(axis=1) > 0, np.argmax(lengths[touched], axis=1), 0)
     return CategoricalColumn(codes, vocab)
 
 

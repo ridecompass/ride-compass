@@ -6,6 +6,7 @@
 規制が両方効くときは、2つの値のそれぞれで避け方を求め、倍率の大きい側を採る。
 """
 
+import hashlib
 from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from datetime import datetime
@@ -16,18 +17,16 @@ from app.domain.attributes import CategoricalColumn, MaterialColumn
 from app.domain.material_catalog import PEDESTRIAN_ROAD
 from app.domain.road_avoidance import AvoidanceLevel, RoadAvoidanceMasks, road_avoidance_masks
 from app.domain.road_classes import RoadClassDefinitions, class_columns, fact_keys, layer_columns
-from app.domain.road_network import RoadNetwork, range_positions
+from app.domain.search_graph import range_positions
+from app.domain.road_network import RoadNetwork
 from app.domain.traffic_regulation import (
-    BICYCLE_EXCEPTED,
-    BICYCLE_PROHIBITED,
-    PEDESTRIAN_ROAD_LABELS,
+    EXCEPTED_CODE,
+    PEDESTRIAN_ROAD_VOCAB,
+    PROHIBITED_CODE,
     active_kinds,
     active_slots,
     invariant_slots,
 )
-
-_VOCAB = (None, *PEDESTRIAN_ROAD_LABELS)
-_PROHIBITED, _EXCEPTED = _VOCAB.index(BICYCLE_PROHIBITED), _VOCAB.index(BICYCLE_EXCEPTED)
 
 
 @dataclass(frozen=True)
@@ -90,17 +89,18 @@ class TimedRegulations:
         network = self._network
         bicycle, excepted = active_kinds(
             self._network_rows, network.edge_regulation_start, network.edge_regulation_count, network.regulation_index,
-            network.regulation_slot_start, network.regulation_slot_count, network.regulation_slot_values, active)
+            network.regulation_slot_start, network.regulation_slot_count, network.regulation_slot_values, active,
+            slotless_active=True)
         n = len(self.rows)
         timed_bicycle, timed_excepted = active_kinds(
             self._network_rows, network.edge_regulation_start, network.edge_regulation_count, network.regulation_index,
             network.regulation_slot_start, network.regulation_slot_count, network.regulation_slot_values,
-            active & ~invariant_slots(network.regulation_slot_values))
+            active & ~invariant_slots(network.regulation_slot_values), slotless_active=False)
         variants = []
         # 両方効く区間は、変種ごとに片方の値を採る。片方だけ効く区間は、どちらの変種も同じ値になる。
-        for codes in (np.where(bicycle, _PROHIBITED, np.where(excepted, _EXCEPTED, 0)),
-                      np.where(excepted, _EXCEPTED, np.where(bicycle, _PROHIBITED, 0))):
-            facts = {**self._facts, PEDESTRIAN_ROAD: CategoricalColumn(codes.astype(np.int16), _VOCAB)}
+        for codes in (np.where(bicycle, PROHIBITED_CODE, np.where(excepted, EXCEPTED_CODE, 0)),
+                      np.where(excepted, EXCEPTED_CODE, np.where(bicycle, PROHIBITED_CODE, 0))):
+            facts = {**self._facts, PEDESTRIAN_ROAD: CategoricalColumn(codes.astype(np.int16), PEDESTRIAN_ROAD_VOCAB)}
             classes = class_columns(self._definitions, facts, n)
             variants.append((facts, classes, road_avoidance_masks(classes, self._levels, self._multipliers, n)))
         (facts, classes, strict), (_, _, other) = variants
@@ -118,32 +118,44 @@ class TimedRegulations:
             timed=timed_bicycle | timed_excepted)
 
 
-#: 最後に求めた道路網と、その規制の当たった行。道路網は入れ替えのたびに別のオブジェクトになるので、同じオブジェクトなら求め直さない。
-_regulated: tuple[RoadNetwork, np.ndarray] | None = None
+#: 最後に求めた道路網と、その規制の当たった行と、行ごとのその道の全区間の外接矩形（最小の経度・緯度、最大の経度・緯度）。道路網は
+#: 入れ替えのたびに別のオブジェクトになるので、同じオブジェクトなら求め直さない。
+_regulated: tuple[RoadNetwork, np.ndarray, np.ndarray] | None = None
 
 
-def _regulated_rows(network: RoadNetwork) -> np.ndarray:
+def _regulated_rows(network: RoadNetwork) -> tuple[np.ndarray, np.ndarray]:
     global _regulated
     cached = _regulated
     if cached is not None and cached[0] is network:
-        return cached[1]
+        return cached[1], cached[2]
     rows = np.flatnonzero(np.asarray(network.edge_regulation_count) > 0)
-    _regulated = (network, rows)
-    return rows
+    way_of_row = np.asarray(network.edge_way_id)
+    ways, owner = np.unique(way_of_row[rows], return_inverse=True)
+    start = np.searchsorted(way_of_row, ways, side="left")
+    counts = np.searchsorted(way_of_row, ways, side="right") - start
+    members, offsets = range_positions(start, counts), np.cumsum(counts) - counts
+    bounds = np.zeros((len(rows), 4))
+    if len(rows):
+        bounds = np.column_stack([
+            np.minimum.reduceat(np.asarray(network.edge_min_lon)[members], offsets),
+            np.minimum.reduceat(np.asarray(network.edge_min_lat)[members], offsets),
+            np.maximum.reduceat(np.asarray(network.edge_max_lon)[members], offsets),
+            np.maximum.reduceat(np.asarray(network.edge_max_lat)[members], offsets),
+        ])[owner.reshape(-1)]
+    _regulated = (network, rows, bounds)
+    return rows, bounds
 
 
 def regulated_rows_within(network: RoadNetwork, min_lon: float, min_lat: float, max_lon: float, max_lat: float) -> np.ndarray:
-    """外接矩形が範囲に交わる、規制の当たった区間の道の、規制の当たった全部の区間の行（昇順）。道1本の値は、範囲の外の区間の
-    規制にも依る。"""
-    rows = _regulated_rows(network)
-    overlaps = ((np.asarray(network.edge_min_lon)[rows] <= max_lon) & (np.asarray(network.edge_max_lon)[rows] >= min_lon)
-                & (np.asarray(network.edge_min_lat)[rows] <= max_lat) & (np.asarray(network.edge_max_lat)[rows] >= min_lat))
-    ways = np.asarray(network.edge_way_id)[rows]
-    return rows[np.isin(ways, ways[overlaps])]
+    """道の全区間の外接矩形が範囲に交わる道の、規制の当たった全部の区間の行（昇順）。道1本の値は、範囲の外の区間の規制にも依る
+    （規制の当たった区間が範囲の外でも、ほかの区間が範囲にかかる道は、道1本でタイルに入る）。"""
+    rows, bounds = _regulated_rows(network)
+    return rows[(bounds[:, 0] <= max_lon) & (bounds[:, 2] >= min_lon) & (bounds[:, 1] <= max_lat) & (bounds[:, 3] >= min_lat)]
 
 
 def regulation_variant(network: RoadNetwork, rows: np.ndarray, at: datetime) -> str:
-    """区間の行`rows`に当たった規制の組のうち、時刻`at`に効いているものの印（同じ印なら、`rows`の区分は同じ）。行が無ければ空。"""
+    """区間の行`rows`に当たった規制の組のうち、時刻`at`に効いているものの印（同じ印なら、`rows`の区分は同じ。持ちの鍵のファイル名に
+    入るので、組の数によらず同じ長さのハッシュにする）。行が無ければ空。"""
     if len(rows) == 0:
         return ""
     counts = np.asarray(network.edge_regulation_count, dtype=np.int64)[rows]
@@ -154,7 +166,7 @@ def regulation_variant(network: RoadNetwork, rows: np.ndarray, at: datetime) -> 
     slot_start = np.asarray(network.regulation_slot_start, dtype=np.int64)[regulations]
     slots = range_positions(slot_start, slot_count)
     active = active_slots(np.asarray(network.regulation_slot_values)[slots], at, at)
-    return np.packbits(active).tobytes().hex() or "0"
+    return hashlib.sha256(np.packbits(active).tobytes()).hexdigest()[:16]
 
 
 def pedestrian_road_codes_at(network: RoadNetwork, rows: np.ndarray, at: datetime) -> np.ndarray:
@@ -164,5 +176,6 @@ def pedestrian_road_codes_at(network: RoadNetwork, rows: np.ndarray, at: datetim
     active = active_slots(network.regulation_slot_values, at, at)
     bicycle, excepted = active_kinds(
         network_rows, network.edge_regulation_start, network.edge_regulation_count, network.regulation_index,
-        network.regulation_slot_start, network.regulation_slot_count, network.regulation_slot_values, active)
-    return np.where(bicycle, _PROHIBITED, np.where(excepted, _EXCEPTED, 0)).astype(np.int16)
+        network.regulation_slot_start, network.regulation_slot_count, network.regulation_slot_values, active,
+        slotless_active=True)
+    return np.where(bicycle, PROHIBITED_CODE, np.where(excepted, EXCEPTED_CODE, 0)).astype(np.int16)

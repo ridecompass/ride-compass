@@ -479,9 +479,3 @@ def positions_in(sorted_keys: np.ndarray, keys: np.ndarray) -> np.ndarray:
     at = np.minimum(np.searchsorted(sorted_keys, keys), len(sorted_keys) - 1)
     return np.where(sorted_keys[at] == keys, at, -1)
 
-
-def range_positions(start: np.ndarray, counts: np.ndarray) -> np.ndarray:
-    """範囲`[start[i], start[i] + counts[i])`を順につないだ位置。"""
-    start, counts = np.asarray(start, dtype=np.int64), np.asarray(counts, dtype=np.int64)
-    return np.repeat(start - (np.cumsum(counts) - counts), counts) + np.arange(int(counts.sum()), dtype=np.int64)
-

@@ -87,7 +87,7 @@ class RoadGraphContext:
     # A*のヒューリスティック（(向かうノード番号, 費用の最小の倍率)→各Nodeからの費用の下界[秒]）。向かう先（置いた点・終点）は
     # 1回の生成で固定のため、向かう先と倍率（費用で探すか所要時間で探すか）ごとに初回だけ計算し、区間の探索・最速の経路・
     # 全候補の帰りの探索で共有する。
-    heuristics: dict[int, np.ndarray] = field(default_factory=dict)
+    heuristics: dict[tuple[int, float], np.ndarray] = field(default_factory=dict)
     # 評価（`road_graph_candidates.py: evaluate_routes`と候補単位へのまとめ）の段ごとの所要時間（段の名前→ミリ秒、
     # 候補をまたいだ和）。生成器が評価の時間と一緒にログの行へ出す。
     evaluate_steps_ms: dict[str, int] = field(default_factory=dict)
@@ -303,9 +303,11 @@ def learn_detour_ratio(context: RoadGraphContext, measured: float) -> float:
 def heuristic_to(context: RoadGraphContext, node: int) -> np.ndarray:
     """`node`へ向かうA*のヒューリスティック（各Nodeからの直線距離を費用の下界[秒]へ直したもの、`heuristic_seconds`。
     好む側の段の区間で費用が下がる分を`LegCostComposer.min_cost_scale`で緩め、所要時間で探すときも同じ値を使う）。"""
-    heuristic = context.heuristics.get(node)
+    # 倍率はレグの交通規制の判定で下がりうるので、下がる前に求めた見込みを使い回さない（下界でなくなる）。
+    key = (node, context.composer.min_cost_scale)
+    heuristic = context.heuristics.get(key)
     if heuristic is None:
-        heuristic = context.heuristics[node] = heuristic_seconds(
+        heuristic = context.heuristics[key] = heuristic_seconds(
             straight_distances_m(context.node_lat, context.node_lon, node), context.composer.speed_kmh,
             context.composer.min_cost_scale, context.tuning,
         )

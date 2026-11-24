@@ -21,7 +21,8 @@ from app.domain.hard_filters import HARD_FILTER_PROPERTY
 from app.domain.material_catalog import ELEVATION_GAIN_PER_KM, GRADIENT_PERCENT, PEDESTRIAN_ROAD
 from app.domain.road_features import feature_materials, feature_rows, road_layer_values
 from app.domain.road_network_build import NetworkRegulations
-from app.domain.traffic_regulation import BICYCLE_PROHIBITED, JST, RegulationSlot
+from app.domain.time_zone import JST
+from app.domain.traffic_regulation import BICYCLE_PROHIBITED, RegulationSlot
 from tests.road_class_fixture import classification, fact_is, map_layer, road_classes
 from tests.road_network_fixture import road_network
 

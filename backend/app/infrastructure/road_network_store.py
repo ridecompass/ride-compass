@@ -41,7 +41,7 @@ from app.domain.geo import bearings_between
 from app.domain.road_network import RoadNetwork, positions_in
 from app.domain.material_catalog import MATERIAL_CATALOG, PEDESTRIAN_ROAD, material_array_columns
 from app.domain.road_network_build import build_road_network, per_km, regulation_arrays
-from app.domain.traffic_regulation import PEDESTRIAN_ROAD_LABELS
+from app.domain.traffic_regulation import PEDESTRIAN_ROAD_VOCAB
 from app.domain.tuning import MAX_PLAUSIBLE_GRADE_ID, STEEPEST_MIN_INTERVAL_ID
 from app.domain.search_graph import run_starts
 from app.domain.traffic import HIGHWAY_RANK, highway_rank, travel_allowed
@@ -292,7 +292,7 @@ async def build(repository: RoadGraphRepository, revision: int) -> RoadNetwork:
     column = materials["categorical_ids"].index(PEDESTRIAN_ROAD)
     materials["categorical_codes"][:, column] = pedestrian_road
     vocab = list(materials["categorical_vocab"])
-    vocab[column] = (None, *PEDESTRIAN_ROAD_LABELS)
+    vocab[column] = PEDESTRIAN_ROAD_VOCAB
     materials["categorical_vocab"] = tuple(vocab)
     network = build_road_network(revision=revision, max_grade=tuning[MAX_PLAUSIBLE_GRADE_ID] / 100.0,
                                  steepest_min_interval_m=tuning[STEEPEST_MIN_INTERVAL_ID],
