@@ -14,15 +14,28 @@ import type { ScreenBox } from "./popupPlacement";
 // 候補を収めるときも、短い区間・近い候補でこれより寄らない。
 const FOCUS_ZOOM = 16;
 
-/** 線を見えている所に収める。`maxZoom`を渡すと、それより寄らない。 */
-function fitPaths(map: MapLibreMap, paths: readonly (readonly Position[])[], what: string, maxZoom?: number) {
+/**
+ * 線を見えている所に収める。`maxZoom`を渡すと、それより寄らない。`reserveBelowPx`を渡すと、見えている所の下の端からその高さを空けて
+ * 収める。`bearing`を渡すと、その向きで収める（渡さなければ北を上にする）。
+ */
+function fitPaths(
+  map: MapLibreMap,
+  paths: readonly (readonly Position[])[],
+  what: string,
+  { maxZoom, reserveBelowPx = 0, bearing }: { maxZoom?: number; reserveBelowPx?: number; bearing?: number } = {},
+) {
   const bounds = computePathBounds(paths);
   if (bounds === null) return;
 
   runWhenStyleReady(map, () => {
-    const padding = visiblePadding(map.getCanvas());
+    const visible = visiblePadding(map.getCanvas());
+    const padding = { ...visible, bottom: visible.bottom + reserveBelowPx };
     debugLog("map:viewport", `${what}を収める`, { padding });
-    map.fitBounds(bounds, { padding, ...(maxZoom === undefined ? {} : { maxZoom }) });
+    map.fitBounds(bounds, {
+      padding,
+      ...(maxZoom === undefined ? {} : { maxZoom }),
+      ...(bearing === undefined ? {} : { bearing }),
+    });
   });
 }
 
@@ -31,9 +44,19 @@ export function fitBoundsToRoute(map: MapLibreMap, route: RouteCandidate) {
   fitPaths(map, [route.geometry.coordinates], "ルート");
 }
 
-/** 線（選んだ区間・押した道）の形を、見えている所に収める。 */
-export function fitBoundsToSection(map: MapLibreMap, path: readonly Position[]) {
-  fitPaths(map, [path], "線", FOCUS_ZOOM);
+/**
+ * 線（選んだ区間・押した道）の形を、見えている所に収める。`reserveBelowPx`を渡すと、線の下にその高さ（線の下へ出す小窓の分）を
+ * 空けて収め、今より寄らず、地図の向きも変えない——小窓を出す所を作るだけで、見ていた縮尺と向き（走行中の進む向きを上にした地図）は
+ * 利用者のもの。
+ */
+export function fitBoundsToSection(map: MapLibreMap, path: readonly Position[], reserveBelowPx = 0) {
+  if (reserveBelowPx === 0) fitPaths(map, [path], "線", { maxZoom: FOCUS_ZOOM });
+  else
+    fitPaths(map, [path], "線の下を空けて線", {
+      maxZoom: Math.min(FOCUS_ZOOM, map.getZoom()),
+      reserveBelowPx,
+      bearing: map.getBearing(),
+    });
 }
 
 /** 地図の上に重ねた部品を避けた、見えている所（画面のpx）。 */

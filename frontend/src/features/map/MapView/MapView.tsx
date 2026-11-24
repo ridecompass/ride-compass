@@ -182,6 +182,8 @@ export default function MapView({
     routePath: side?.path ?? null,
   });
   const tapsLocked = ride?.locked ?? false;
+  // 地図で押して選んだ区間（グラフで選んだ区間と見分ける。グラフをなぞるたびに地図が跳ぶと、見ていた所を見失う）。
+  const tappedSegment = useRef<SelectedRouteSegment | null>(null);
   // 地図のイベント（初期化のeffectで一度だけ登録する）が、いまのpropsを読むための参照。
   const latestProps = {
     scene,
@@ -191,7 +193,10 @@ export default function MapView({
     tapMode,
     tapsLocked,
     onPointPlace,
-    onRouteSegmentSelect,
+    onRouteSegmentSelect: (selection: SelectedRouteSegment | null) => {
+      tappedSegment.current = selection;
+      onRouteSegmentSelect(selection);
+    },
     sidePointAlong: (lngLat: readonly [number, number]) => side?.locate(lngLat, travelledKm) ?? null,
     onSpliceStretchSelect,
     onRouteSelect,
@@ -260,6 +265,8 @@ export default function MapView({
     travelledKm,
     onBackToSegment: backToSegment,
     onFocus: focus,
+    tappedSegment,
+    onMakeRoom: focus,
   });
 
   // 住所の検索で置いた地点・取り直した現在地へ寄せる。出発地を置いたときは印のフックの位置の更新も寄せるが、このeffectが

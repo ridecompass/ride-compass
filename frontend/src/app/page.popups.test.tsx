@@ -163,30 +163,44 @@ describe("地図の小窓", () => {
     expect(mapOnScreen().sourceFeatures("road-inspected")).toEqual([]);
   });
 
-  it("区間の小窓は、上の帯に到達予想、その下に負担の合計と負担のある軸ごとの分を出し、押しただけでは地図は動かず、寄せるアイコンで区間へ寄せる", async () => {
+  it("区間の小窓は、上の帯に到達予想、その下に分へ丸めて1分以上の軸の負担だけを出し、押しただけでは地図は動かず、寄せるアイコンで区間へ寄せる", async () => {
     serveCostAxisCatalog();
     const segment = makeRouteSegment({
       estimated_arrival_time: "2026-10-05T00:30:00Z",
       penalty: {
-        axis_seconds: { ascent: 120, vibration: 0 },
+        axis_seconds: { ascent: 120, vibration: 29 },
         preferred_seconds: 0,
         avoided_seconds: 0,
         turn_penalty_seconds: 0,
-        total_seconds: 120,
+        total_seconds: 149,
       },
     });
     const { user } = renderHome();
-    jobs.respond([route("one", { segments: [segment] })], LOOP_CONDITIONS);
+    // 2つ目の区間は、どの軸も分へ丸めると1分に満たない。
+    const slight = makeRouteSegment({
+      penalty: {
+        axis_seconds: { ascent: 29, vibration: 29 },
+        preferred_seconds: 0,
+        avoided_seconds: 0,
+        turn_penalty_seconds: 0,
+        total_seconds: 58,
+      },
+    });
+    jobs.respond([route("one", { segments: [segment, slight] })], LOOP_CONDITIONS);
     await generate(user);
     await waitFor(() => expect(candidateTabs()).toHaveLength(1));
     await user.click(screen.getByRole("button", { name: "パネルを閉じる" }));
 
     const fitsBefore = mapOnScreen().fits().length;
+    clickSegment(mapOnScreen().sourceFeatures("route-segments")[1], HERE);
+    expect(await screen.findByRole("group", { name: "区間の小窓の上の帯" })).toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: "負担の内訳" })).toBeNull();
+
     clickSegment(mapOnScreen().sourceFeatures("route-segments")[0], HERE);
 
     expect(screen.getByRole("group", { name: "区間の小窓の上の帯" })).toHaveTextContent("到達予想 09:30着");
-    // 軸は絵で出し、名前は読み上げに残す。負担の無い軸は出さない。
-    expect(screen.getByRole("group", { name: "負担の内訳" })).toHaveTextContent(/^負担 \+2分登坂\+2分$/);
+    // 軸は絵で出し、名前は読み上げに残す。分へ丸めて1分に満たない軸と合計は出さない。
+    expect(screen.getByRole("group", { name: "負担の内訳" })).toHaveTextContent(/^登坂\+2分$/);
 
     expect(mapOnScreen().fits()).toHaveLength(fitsBefore);
     await user.click(screen.getByRole("button", { name: "地図をここへ寄せる" }));
