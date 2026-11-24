@@ -788,8 +788,6 @@ export interface components {
             /** Accident Years */
             accident_years: number[];
             road_classes: components["schemas"]["RoadClassCatalog"];
-            /** Travel Model Wording */
-            travel_model_wording: string;
         };
         /** Condition */
         Condition: {

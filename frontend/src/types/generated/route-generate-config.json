@@ -58,6 +58,7 @@
   "max_assumed_speed_kmh": 60.0,
   "job_wait_seconds": 10,
   "cruise_speed_label": "平地・無風で巡航する速さ",
+  "travel_model_wording": "所要時間は、区間ごとの坂・風・気温・標高・路面に合わせて速度を変えて計算します。",
   "duration_estimate_wording": "走る時間に、信号などで止まる時間と曲がる時間を足した見積もりです。",
   "candidate_order_wording": "所要時間と負担の和が小さい順[周回は1kmあたりの和が小さい順]",
   "missing_travel_data_wording": "データが欠けた所は、次の値で計算しています。\n・坂を測れない所[標高が無いか乱れている]: 地域でよくある坂\n・信号などの止まる所の数や、周りの建物・林の様子が分からない区間: 平均の値\n・標高の無い区間の空気の濃さ: 海面の高さのもの",

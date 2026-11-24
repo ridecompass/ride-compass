@@ -25,13 +25,12 @@ import { Input } from "@/components/ui/Input/Input";
 import { textVariants } from "@/components/ui/Text/Text";
 import { GuideText } from "@/components/ui/GuideText/GuideText";
 import InfoPopover from "@/components/ui/InfoPopover/InfoPopover";
-import { useClientConfigSelect } from "@/hooks/useClientConfig";
-import type { ClientConfigResponse } from "@/types/route";
 
 /** 想定速度が何の速さか（backendの走行モデルが逆算に使う条件）。 */
 const CRUISE_SPEED_LABEL = routeGenerateConfig.cruise_speed_label;
 
-const selectTravelModelWording = (response: ClientConfigResponse) => response.travel_model_wording;
+/** 区間ごとの速度の決め方（backendの走行モデルの決まり）。 */
+const TRAVEL_MODEL_WORDING = routeGenerateConfig.travel_model_wording;
 
 interface RideConditionBarProps {
   /** 出発時刻（気象レイヤーの表示時刻と同じ共有state）。 */
@@ -127,8 +126,6 @@ export default function RideConditionBar({
   linkedDeparture,
   linkedSpeed,
 }: RideConditionBarProps) {
-  // 走行モデルの決まりの文（標準値は管理画面の較正値）。届くまでは出さない。
-  const travelModelWording = useClientConfigSelect(selectTravelModelWording).data;
   // 出発時刻の文言は描いた時刻で決まる。ページはビルド時に描かれるので、サーバーとハイドレーションの描画では
   // 出さず、ハイドレーションのあとに出す（出すとビルドの時刻の文言とずれ、ハイドレーションが不一致で失敗する）。
   const hydrated = useSyncExternalStore(
@@ -238,11 +235,9 @@ export default function RideConditionBar({
             <p className={textVariants({ variant: "hint" })}>{CRUISE_SPEED_LABEL}</p>
             <InfoPopover triggerAriaLabel="想定速度の説明">
               <p>{`${CRUISE_SPEED_LABEL}です。信号待ちや坂を含めた普段の平均速度ではありません。`}</p>
-              {travelModelWording && (
-                <p>
-                  <GuideText text={travelModelWording} />
-                </p>
-              )}
+              <p>
+                <GuideText text={TRAVEL_MODEL_WORDING} />
+              </p>
             </InfoPopover>
           </div>
         </PopoverContent>

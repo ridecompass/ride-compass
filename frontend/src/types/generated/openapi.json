@@ -2721,10 +2721,6 @@
           },
           "road_classes": {
             "$ref": "#/components/schemas/RoadClassCatalog"
-          },
-          "travel_model_wording": {
-            "type": "string",
-            "title": "Travel Model Wording"
           }
         },
         "additionalProperties": false,
@@ -2732,8 +2728,7 @@
         "required": [
           "client_tuning",
           "accident_years",
-          "road_classes",
-          "travel_model_wording"
+          "road_classes"
         ],
         "title": "ClientConfigResponse"
       },
