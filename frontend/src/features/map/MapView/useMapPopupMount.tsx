@@ -9,8 +9,9 @@ import { POPUP_HANDLE_ATTRIBUTE } from "@/components/MapPopup/MapPopupParts";
 import { visiblePadding } from "@/lib/routeFit";
 import { visibleScreenBox } from "@/features/map/MapView/mapCamera";
 import MapPopupContent, { type MapPopupContentProps } from "@/features/map/MapView/MapPopupContent";
-import { popupInsideVisible, type ScreenBox } from "@/features/map/MapView/popupPlacement";
+import { popupBesideLine, popupInsideVisible, type ScreenBox } from "@/features/map/MapView/popupPlacement";
 import type { MapPopup, MapPopupControls, PopupTarget, Shape } from "@/features/map/MapView/useMapPopups";
+import type { SelectedRouteSegment } from "@/types/route";
 
 /** 押した物と小窓の間を空ける幅（px）。 */
 const POPUP_GAP_PX = 8;
@@ -32,6 +33,10 @@ type MapPopupMountOptions = Omit<MapPopupContentProps, "popup" | "target"> & {
   controls: MapPopupControls;
   /** 選んでいる区間の形。形が引けなければnull。 */
   segmentPath: Shape | null;
+  /** 地図で押して選び、まだ小窓を置いていない区間。区間の小窓を置いて入るかを決めたら、ここがnullにする。 */
+  tappedSegment: RefObject<SelectedRouteSegment | null>;
+  /** 区間の小窓が区間の上にも下にも入らないとき、区間の形の下に小窓の高さを空けて地図を動かす。 */
+  onMakeRoom: (shape: Shape, reserveBelowPx: number) => void;
 };
 
 function targetOf(popup: MapPopup, segmentPath: Shape | null): PopupTarget {
@@ -55,6 +60,8 @@ export function useMapPopupMount(
     travelledKm,
     onBackToSegment,
     onFocus,
+    tappedSegment,
+    onMakeRoom,
   }: MapPopupMountOptions,
 ): ReactNode {
   const onMap = shown !== null && (shown.kind !== "segment" || segmentDetail !== null) ? shown : null;
@@ -63,12 +70,12 @@ export function useMapPopupMount(
   const mountKey: MapPopup | "segment" | null = onMap === null ? null : onMap.kind === "segment" ? "segment" : onMap;
   const [mount, setMount] = useState<{ key: MapPopup | "segment"; container: HTMLDivElement } | null>(null);
   // 器を作ったあとに変わる値（区間の選び・区間の形）は、置き直すときに読む。
-  const latest = useRef({ onMap, segmentPath });
+  const latest = useRef({ onMap, segmentPath, onMakeRoom });
   const placeRef = useRef<(() => void) | null>(null);
   useEffect(() => {
-    latest.current = { onMap, segmentPath };
+    latest.current = { onMap, segmentPath, onMakeRoom };
     placeRef.current?.();
-  }, [onMap, segmentPath]);
+  }, [onMap, segmentPath, onMakeRoom]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -113,29 +120,62 @@ export function useMapPopupMount(
       popup.setOffset(offset);
     }
 
-    // 小窓は押した所を指し、ずらすまでは向き（上下左右）をMapLibreが地図の枠に収まる側から選ぶ。ずらした後は、指す地点からのずれを
+    /**
+     * 区間の小窓を区間に重ねない付け方（付ける点と向き）。区間の下か上に入らなければnull。地図で押した直後の置き直し（中身を描いた
+     * あとの最初の1回）で入らなければ、入る所を作るよう地図を動かす（動き終えると置き直す）。押したあとに利用者が動かした地図は戻さない。
+     */
+    function besideSegment(
+      current: Extract<MapPopup, { kind: "segment" }>,
+      tapped: [number, number],
+      visible: ScreenBox,
+    ): { lngLat: [number, number]; anchor: "top" | "bottom" } | null {
+      const path = latest.current.segmentPath;
+      if (path === null) return null;
+      // 下へ出す形（矢印が縦に出る）にしてから測る。ずらした形・左右へ出した形のままでは、矢印の分だけ低く測る。
+      popup.removeClassName(FREE_POPUP_CLASS);
+      popup.options.anchor = "top";
+      popup.setOffset(POPUP_GAP_PX);
+      popup.setLngLat(tapped);
+      const height = element.getBoundingClientRect().height;
+      const beside = popupBesideLine(
+        path.map((point) => shownMap.project(point)),
+        height,
+        visible,
+        POPUP_GAP_PX,
+      );
+      // 中身を描く前（器を作った直後）の高さでは、入るかを決めない。
+      const justTapped = container.firstChild !== null && current.segment === tappedSegment.current;
+      if (justTapped) tappedSegment.current = null;
+      if (beside !== null) return { lngLat: path[beside.index], anchor: beside.anchor };
+      // 小窓が見えている所より高ければ、地図を動かしても入らない。
+      const reserve = height + POPUP_GAP_PX * 2;
+      if (justTapped && visible.bottom - visible.top > reserve) latest.current.onMakeRoom(path, reserve);
+      return null;
+    }
+
+    // 小窓は押した所を指し、ずらすまでは向き（上下左右）をMapLibreが地図の枠に収まる側から選ぶ。区間の小窓は、区間に重ねないよう区間の
+    // 一番下か一番上の点を指し、その外側へ出す（MapLibreの小窓は点を指すだけで、線を避けない）。ずらした後は、押した所からのずれを
     // 保つ（地図を動かすと一緒に動く）。ずらす前は、見えている所からはみ出す分を内側へ押し込める——MapLibreは向きを選ぶだけで中へは
     // ずらさないので、上にも下にも収まらない背の高い小窓や、端の近くで開いた小窓が画面の外へ出る。ずらした後は、上の帯の一部が
     // 見えている所に残る分だけ押し込める——全体を押し込めると、地図の幅いっぱいの小窓は横へずらせない。
     function place() {
       const current = latest.current.onMap;
       if (current === null) return;
-      const { lngLat } = targetOf(current, latest.current.segmentPath);
+      let { lngLat } = targetOf(current, latest.current.segmentPath);
       // 地図の上に重ねた部品（シート等）は開いた後に大きさが変わるので、置き直すたびに測り直す。
       const padding = visiblePadding(shownMap.getCanvas());
       popup.options.padding = padding;
+      const visible = visibleScreenBox(shownMap, padding);
       if (moved === null) {
-        popup.options.anchor = undefined;
+        const beside = current.kind === "segment" ? besideSegment(current, lngLat, visible) : null;
+        popup.options.anchor = beside?.anchor;
+        if (beside !== null) lngLat = beside.lngLat;
         popup.removeClassName(FREE_POPUP_CLASS);
         popup.setOffset(POPUP_GAP_PX);
       } else placeFree(moved);
       popup.setLngLat(lngLat);
       const box = popupBox();
-      const inside = popupInsideVisible(
-        box,
-        visibleScreenBox(shownMap, padding),
-        moved === null ? undefined : DRAGGED_POPUP_KEEP_PX,
-      );
+      const inside = popupInsideVisible(box, visible, moved === null ? undefined : DRAGGED_POPUP_KEEP_PX);
       if (inside === null || (inside.left === box.left && inside.top === box.top)) return;
       const at = shownMap.project(lngLat);
       placeFree([inside.left - at.x, inside.top - at.y]);
@@ -143,9 +183,12 @@ export function useMapPopupMount(
     placeRef.current = place;
     place();
 
-    /** 今の小窓の左上の、指す地点からのずれ。 */
+    /** 今の小窓の左上の、押した所からのずれ（区間の小窓はずらすまで区間の端を指すので、指す地点ではなく押した所から測る）。 */
     function currentOffset(): [number, number] {
-      const at = shownMap.project(popup.getLngLat());
+      const current = latest.current.onMap;
+      const at = shownMap.project(
+        current === null ? popup.getLngLat() : targetOf(current, latest.current.segmentPath).lngLat,
+      );
       const box = popupBox();
       return [box.left - at.x, box.top - at.y];
     }

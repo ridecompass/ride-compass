@@ -67,7 +67,7 @@
 | `features/route/ErrorText/ErrorText.tsx` | 操作した箇所の直下に出すエラー文言（`role=alert`）。ルート結果と区間の乗り換えの面が使う |
 | `features/route/WarningText/WarningText.tsx` | 表示中の結果について注意を促す1行（条件のずれ・目的地の補正・前に出た風の予報で作ったこと・所要時間の前提の崩れ）。ルート結果と候補の中身が使う |
 | `features/route/GenerationNotice/GenerationNotice.tsx` | 押した「生成」が候補を出せなかった理由（入力の誤りか失敗・候補0件の理由）を知らせる窓。`app/page.tsx`がデスクトップとモバイルの両方に1つ置き、閉じると案内を消す |
-| `features/route/SegmentDetail/SegmentDetail.tsx` | 選んだ区間の地図の小窓の中身（道のりのグラフの表示の断面。下記「区間クリック詳細」）。上の帯に到達予想、その下に地図のルートの両脇の線（好む・避けるにした道を通る区間）の理由（`features/route/SegmentDetail/RailReason.tsx`。応答の`avoidance_stretches`の行ごとに、線と同じ印・道の名前・足し引きした秒と、小さい字のまとまり・長さ・段の2行。名前は道路タブと同じ画面の設定から引き、スマホの幅に収める）、その下にグラフで選んでいる層の区間の値（線の層は平均と最大の勾配、帯の層は区間に占める区分の割合の行。負担の内訳と同じ1行ずつの形で、札にして横へ並べない——小窓の幅が札の行で決まって広がる）と、区間の負担の内訳（`components/MapPopup/PenaltyBreakdown.tsx: PenaltyBreakdown`）を出す（閉じる・寄せる操作は小窓が持つ）。到達予想の書き方（`features/route/SegmentDetail/SegmentDetail.tsx: formatSegmentArrivalTime`）と、グラフの右上の「区間を地図で見る」（`features/route/SegmentDetail/SegmentDetail.tsx: SectionOnMapButton`）もここが持つ |
+| `features/route/SegmentDetail/SegmentDetail.tsx` | 選んだ区間の地図の小窓の中身（道のりのグラフの表示の断面。下記「区間クリック詳細」）。上の帯に到達予想、その下に地図のルートの両脇の線（好む・避けるにした道を通る区間）の理由（`features/route/SegmentDetail/RailReason.tsx`。応答の`avoidance_stretches`の行ごとに、線と同じ印・道の名前・足し引きした秒と、小さい字のまとまり・長さ・段の2行。名前は道路タブと同じ画面の設定から引き、スマホの幅に収める）、その下にグラフで選んでいる層の区間の値（線の層は平均と最大の勾配、帯の層は区間に占める区分の割合の行。負担の内訳と同じ1行ずつの形で、札にして横へ並べない——小窓の幅が札の行で決まって広がる）と、分に丸めて1分以上になる軸の負担（`components/MapPopup/PenaltyBreakdown.tsx: PenaltyBreakdown`。合計は出さない）を出す（閉じる・寄せる操作は小窓が持つ）。到達予想の書き方（`features/route/SegmentDetail/SegmentDetail.tsx: formatSegmentArrivalTime`）と、グラフの右上の「区間を地図で見る」（`features/route/SegmentDetail/SegmentDetail.tsx: SectionOnMapButton`）もここが持つ |
 | `features/route/pointNames.ts` | 地点の呼び名・名前（探して置いた候補の名前・辺り・「地図で選んだ地点」・「現在地」・「未設定」）と、候補を選ぶとその地点に何が起きるかの文、保存した地点の呼び出しの置ける先と文言（`features/route/pointNames.ts: newPlacings`）。探して・名前のある点を押して置いた地点の名前は、その地点が候補の位置にある間だけ出す（下記「地点の指定」） |
 | `features/route/RouteSplicePanel/RouteSplicePanel.tsx` | 区間の乗り換えの結果面（「ルート結果」が編集モードのときの中身）。**選ぶのは地図、パネルは結果だけ**——地図の破線が「いまの道から乗り換えられる先」・太い実線が「いま作っているルート」で、タップすると乗り換わり、その先の分かれ道が次の破線になる（次に選べる区間は`features/route/routeSplice.ts: buildSplicedShape`が組む「いまの組み合わせ」との差として求めるため、乗り換え先の道の上の分岐もそのまま現れる。候補どうしが同じ地点を通るかはbackendが返すNode id［`node_ids`］で判定し、**当てると一度通った地点へ戻る代替は選択肢に出さない**——backendは連結性しか見ず、折り返しも走れはするため落とさない）。パネルは元と編集後の指標の表（`SpliceMetricGrid.tsx`）と、軸別の負担の差の棒（`SpliceDeltaBar.tsx`）を出す。棒に出すのは差が下限に届いた軸だけで、差の大きい順に並べる。戻すのは見出し行の「1つ戻す」「全部戻す」で、巻き戻せるのは直前の1手ずつ（適用済みの範囲はその時点の経路に対する位置のため、途中だけは外せない）。評価した組み合わせが既にある候補と同じ道なら、その候補の一覧での名前で同じ道だと出し、見出し行の作成を外してその行に「「◯」に切り替える」を置く（押しても新しく足さずにその候補を選ぶので、押す前にそれと分かるようにする。押すと作成と同じく編集を閉じてその候補を選ぶ）。差分を見たのにどの軸の差も棒に出す下限に届かなければ、「差分を見る」を押す案内を残さず、どの軸もほぼ変わらないと出す（押しても何も変わらない案内にしない）。`edge_ids`が空の候補では「差が無い」と「そもそも出せない」を区別して伝える。使い方は画面へ書かず見出し脇の(i)の奥に置き、見出し行の操作（1つ戻す・全部戻す・差分を見る・作成）はパネルの他の操作と同じアイコンだけの形 |
 | `features/route/RouteSplicePanel/SpliceMetricGrid.tsx` | 編集面の指標の表。ルート結果と同じ指標（`features/route/routeEditDiff.ts: metricDifferences`。距離・所要・負担）で元と編集後を並べる（1セルに「元→編集後 差」を収め、列見出しを持たない） |
@@ -178,7 +178,7 @@
 ## PenaltyBreakdown.tsx（区間と道の負担の内訳）
 
 区間の小窓と道の小窓が出す、負担の内訳。負担の合計（太字）と、軸ごとの絵と値を1行に並べ（軸の名前は読み上げにだけ出す）、
-合計の文・出す軸・値の文は呼ぶ側が決める（区間は分で0の軸を外す。道は秒で0の軸を外すか、「換算前」なら事実のある軸の事実）。並びと色は上の「積む負担の一覧」と同じ`penaltyRows`から作る。絵の色は軸ごとの色
+合計の文・出す軸・値の文は呼ぶ側が決める（区間は合計を出さず、分に丸めて1分に満たない軸を外す——1分に満たない負担は、区間を避けるかの判断を変えない。道は秒で0の軸を外すか、「換算前」なら事実のある軸の事実）。並びと色は上の「積む負担の一覧」と同じ`penaltyRows`から作る。絵の色は軸ごとの色
 （`hooks/useCostAxisCatalog.ts: CostAxisCatalog.axisColors`）で、道のりのグラフの負担の面と編集面の差の棒も同じ色で塗る。
 割合の帯は持たない（長さがいつも全幅で、区間の重さが読めない）。行は小窓の幅を決めず、上の行が決めた幅の中で軸のまとまりごとに折り返す。
 
@@ -191,8 +191,8 @@
 地図上でルート線の区間を押すか、道のりのグラフをなぞって地点を選ぶと、`useRouteResults.ts: selectedRouteSegment` state
 （`{ segment: RouteSegmentDetail, latitude, longitude }`。押した所に最も近い区間の上の点）が入る。地図で区間を押して選べるのは、押した物の
 小窓を開く間（「ルート設定」の間と乗り換えを選んでいる間のほか。[地図: 静的レイヤー・道路表示](static-map-layers.md)「地図を押したときと地図の小窓」）。
-地図側はその区間の範囲を縁取りで示し（下記）、地図の小窓を選んだ点に置いて区間の中身（`features/route/SegmentDetail/SegmentDetail.tsx`）
-を出す。区間の中身は地図の小窓だけが出し、道のりのグラフの下には出さない（グラフを低く保つ）。区間の中の1点を指す印は立てない——
+地図側はその区間の範囲を縁取りで示し（下記）、区間に重ならない地図の小窓に区間の中身（`features/route/SegmentDetail/SegmentDetail.tsx`）
+を出す（置き方は[地図: 静的レイヤー・道路表示](static-map-layers.md)「地図を押したときと地図の小窓」）。区間の中身は地図の小窓だけが出し、道のりのグラフの下には出さない（グラフを低く保つ）。区間の中の1点を指す印は立てない——
 小窓の中身はどれも区間の値で、押した点の値を出さないので、指す点に意味が無い。
 
 縁取りは、地図で押してもグラフで選んでも、結果でも走行中でも同じに出し、選択を外すと消す。
@@ -210,9 +210,9 @@
 〔`features/route/RouteProfile/profileLayers.ts: segmentGrades`〕、帯の層は区間の区分の付く道に占める割合の多い順の行
 〔`profileLayers.ts: segmentBandShares`〕。どの分類にも入らない行〔`lib/mapDisplay/roadTracks.ts: isUnclassifiedRow`〕は割合にも数えず、
 整数の%に丸めて0%になる区分も出さない）、
-区間の負担の内訳（区間の`penalty`を`PenaltyBreakdown`で）。
+分に丸めて1分以上になる軸の負担（区間の`penalty`の軸ごとの秒を`PenaltyBreakdown`で。そういう軸が無ければ行ごと出さない）。
 風の値は出さない（風の効きは負担の内訳に入っている）。
-区間を選んでも（地図で押してもグラフで選んでも）地図は動かさない——グラフをなぞるたびに地図が跳ぶと、見ていた所を見失う。
+区間を選んでも（地図で押してもグラフで選んでも）地図は動かさない——グラフをなぞるたびに地図が跳ぶと、見ていた所を見失う。例外は、地図で押した区間の小窓が区間の上にも下にも入らないときで、入る所を作るよう地図を区間へ寄せる。
 道のりのグラフの右上の「区間を地図で見る」（虫めがね）と、区間の小窓の寄せるアイコンを押したときだけ、地図をその区間へ寄せる
 （`features/map/MapView/useSectionFocus.ts: useSectionFocus`）。
 区間が地図の見えている所（地図の上に重ねた部品の陰を除く）の外にある間は、グラフの虫めがねを強調の色にして、読み上げにも外にあることを添える。
