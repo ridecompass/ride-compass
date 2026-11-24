@@ -11,7 +11,11 @@
 import { mapDisplay } from "@/types/generated/mapDisplay";
 import palette from "@/types/generated/palette.json";
 
-import type { MapSceneFeatureStates, MapSceneGlobalState } from "@/features/map/scene/mapScene";
+import type {
+  MapSceneFeatureStates,
+  MapSceneFeatureStateValue,
+  MapSceneGlobalState,
+} from "@/features/map/scene/mapScene";
 import { declareGroup, type SceneLayerEntry, type SceneSourceEntry } from "@/features/map/scene/mapSceneGroups";
 import { featureStatesByName } from "@/features/map/scene/sceneBuilders";
 import { LENS_LAYER_MIN_ZOOM } from "@/features/map/layers/mapLayers";
@@ -35,10 +39,8 @@ export type AxisLineState = {
     readonly bands: readonly ValueBand[];
     /** 道の値を求める式の木。 */
     readonly formula: WayValueFormula;
-    /** 今の範囲の材料。 */
+    /** 今の範囲の材料。届いたタイルの道は、値が無くても鍵を持つ（値の無い道は空の材料）。 */
     readonly materials: WayMaterials;
-    /** 今の範囲の材料を取りに行っている間か。 */
-    readonly loading: boolean;
   }[];
   readonly conditions: WayConditions;
   readonly sourceLayer: string;
@@ -52,6 +54,24 @@ function materialStateKey(axisId: string, name: string): string {
   return `${axisId}:${name}`;
 }
 
+/** 材料が届いた道の印の feature-state のキー。取得中かを地図全体の1つの印で持つと、どれか1枚のタイルを取るたびに
+ * 画面じゅうの値の無い道が「データなし」と「取得中」の間で切り替わるので、道ごとに持つ。 */
+function fetchedStateKey(axisId: string): string {
+  return `${axisId}#fetched`;
+}
+
+const fetchedByMaterials = new WeakMap<WayMaterials, ReadonlyMap<string, boolean>>();
+
+/** 材料が届いた道ごとの印。同じ材料からは同じ参照を返す（当てる側は参照が同じなら道ごとに比べ直さない）。 */
+function fetchedStates(materials: WayMaterials): ReadonlyMap<string, boolean> {
+  let states = fetchedByMaterials.get(materials);
+  if (states === undefined) {
+    states = new Map([...materials.keys()].map((featureId) => [featureId, true]));
+    fetchedByMaterials.set(materials, states);
+  }
+  return states;
+}
+
 /** 走る条件は地図全体で1つなので、木の条件の名前をそのまま global-state の名前にする。 */
 const conditionStateKey = (name: string): string => name;
 
@@ -63,9 +83,9 @@ function expressionsOf(axis: AxisLine) {
   });
 }
 
-/** 値の無い道を破線の線が描くか。取得中は取得中の色を見せる。 */
-function dashesMissing(axis: AxisLine): boolean {
-  return !axis.loading;
+/** 道の材料がもう届いたか。 */
+function fetchedExpression(axis: AxisLine): unknown {
+  return ["boolean", ["feature-state", fetchedStateKey(axis.axisId)], false];
 }
 
 /** 道の値を `let` で束ね、向きで決まらない道・値の無い道・それ以外の順に場合分けする。値の無い道を先に分けるので、
@@ -90,24 +110,25 @@ function colorExpression(axis: AxisLine): unknown {
   // 値の無い道は破線の線が描くので、実線の側は透明にする（重ねると破線が実線に埋もれる）。
   return byWayValue(axis, (value) => ({
     undetermined: UNDETERMINED_LEGEND_BAND.color,
-    missing: axis.loading ? palette.semantic.loading : palette.semantic.hidden,
+    missing: ["case", fetchedExpression(axis), palette.semantic.hidden, palette.semantic.loading],
     otherwise: bandStep(axis.bands, value, (band) => band.color),
   }));
 }
 
-/** 値の無い道だけを見せる濃さ。 */
+/** 値の無い道のうち、材料が届いた道だけを見せる濃さ（まだ来ていない道は取得中の色の実線が描く）。 */
 function noDataOpacityExpression(axis: AxisLine): unknown {
   return byWayValue(axis, () => ({
     undetermined: 0,
-    missing: mapDisplay.road.unknownOpacity,
+    missing: ["case", fetchedExpression(axis), mapDisplay.road.unknownOpacity, 0],
     otherwise: 0,
   }));
 }
 
 function featureStatesFor(state: AxisLineState): MapSceneFeatureStates {
   return new Map(
-    state.axes.flatMap((axis) => [
+    state.axes.flatMap((axis): [string, ReadonlyMap<string, MapSceneFeatureStateValue>][] => [
       ...featureStatesByName(axis.materials, (name) => materialStateKey(axis.axisId, name)),
+      [fetchedStateKey(axis.axisId), fetchedStates(axis.materials)],
     ]),
   );
 }
@@ -151,7 +172,7 @@ export const axisLineGroup = declareGroup<AxisLineState>((state) => {
         "line-opacity": noDataOpacityExpression(axis),
         "line-dasharray": ["literal", [...mapDisplay.noDataDash]],
       },
-      visible: axis.visible && dashesMissing(axis),
+      visible: axis.visible,
     },
   ]);
 

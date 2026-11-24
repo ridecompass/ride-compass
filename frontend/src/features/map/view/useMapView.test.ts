@@ -55,10 +55,7 @@ describe("useMapView", () => {
 
     expect(result.current.lensConditions).toEqual(["at", "speed_kmh"]);
     // 表示範囲は間引いてから取るので、そのレンズの結果が出て取り終えるまで待つ。
-    await waitFor(() => expect(result.current.look.wayMaterials.get("ascent")?.loading).toBe(false), {
-      timeout: 3000,
-    });
-    expect(result.current.lensControl.dataStatus).toBe("error");
+    await waitFor(() => expect(result.current.lensControl.dataStatus).toBe("error"), { timeout: 3000 });
   });
 
   it.each([
@@ -74,9 +71,7 @@ describe("useMapView", () => {
 
     act(() => result.current.lensControl.onLensChange("ascent"));
     act(() => result.current.look.onViewportChange(VIEWPORT));
-    await waitFor(() => expect(result.current.look.wayMaterials.get("ascent")?.loading).toBe(false), {
-      timeout: 3000,
-    });
+    await waitFor(() => expect(result.current.lensControl.dataStatus).toBe("empty"), { timeout: 3000 });
     if (notice === null) expect(result.current.lensControl.caveat).toBeNull();
     else expect(result.current.lensControl.caveat).toContain(notice);
   });

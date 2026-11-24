@@ -6,9 +6,14 @@
 
 import dataclasses
 import hashlib
+import json
+from collections.abc import Sequence
 from pathlib import Path
 
+from pydantic import BaseModel
+
 from app.domain.landcover import LANDCOVER_CLASSES
+from app.domain.model_settings import ModelSettings
 
 # 土地被覆ラスタタイル。同じ配色のまま、元のGeoTIFFを別の年次・別の版へ差し替えたときと、
 # ラスタの読み方・描き方（`landcover_raster.py`）を変えたときに上げる（画素が変わるのに
@@ -28,6 +33,10 @@ def _bound_values(source: object) -> list[tuple[str, str]]:
     )
 
 
+def _digest(text: str) -> str:
+    return hashlib.sha1(text.encode()).hexdigest()[:12]
+
+
 def shape_digest(*sources: object) -> str:
     """形の署名。dataclassは列名の並び、それ以外は文字列化した内容とバインド済みの値で決まる。
 
@@ -42,7 +51,7 @@ def shape_digest(*sources: object) -> str:
             continue
         parts.append(str(source))
         parts.append(repr(_bound_values(source)))
-    return hashlib.sha1("\x1f".join(parts).encode()).hexdigest()[:12]
+    return _digest("\x1f".join(parts))
 
 
 def cache_identity(revision: str, *shape_sources: object) -> str:
@@ -92,3 +101,31 @@ def region_tile_kind(key: str) -> str | None:
 def region_tile_key(kind: str, generation: str, z: int, x: int, y: int, extension: str) -> str:
     """地域タイル1枚のディスクの鍵。"""
     return f"{region_tile_generation_prefix(kind, generation)}{z}/{x}/{y}.{extension}"
+
+
+#: 最後に署名した定義とその署名。定義は管理APIが書き換えるたびに別のオブジェクトへ差し替わる（中身を書き換えない）ので、
+#: 同じオブジェクトなら署名し直さない。オブジェクトを参照で持つので、同じidが別のオブジェクトに使い回されることはない。
+_definitions_digest: tuple[BaseModel, BaseModel, str] | None = None
+
+
+def model_settings_signature(settings: ModelSettings) -> str:
+    """較正値・道の区分・費用の軸の定義の束の署名。管理APIが書き換えると変わる。"""
+    global _definitions_digest
+    road_classes, cost_axes = settings.road_classes, settings.cost_axes
+    cached = _definitions_digest
+    if cached is None or cached[0] is not road_classes or cached[1] is not cost_axes:
+        cached = road_classes, cost_axes, _digest(road_classes.model_dump_json() + cost_axes.model_dump_json())
+        _definitions_digest = cached
+    return f"{_digest(repr(sorted(settings.tuning.values.items())))}{cached[2]}"
+
+
+def canonical_json(value: BaseModel) -> str:
+    """利用者の値等の、同じ中身なら同じになる文字列（辞書の鍵の並びに依らない）。"""
+    return json.dumps(value.model_dump(mode="json"), sort_keys=True, separators=(",", ":"))
+
+
+def dynamic_tile_key(kind: str, network_generation: str, settings_signature: str, item_id: str, z: int, x: int, y: int,
+                     inputs: Sequence[str]) -> str:
+    """要求の入力で値が変わるタイル1枚（地図のレンズ等）の、プロセスの中の持ちの鍵。道路網の世代と設定の署名を頭に持つので、
+    どちらかが変われば古い鍵は読まれない。`inputs`は値を変える入力だけを並べる（同じ値になる要求どうしは同じ鍵になる）。"""
+    return "/".join((kind, network_generation, settings_signature, item_id, f"{z}/{x}/{y}", *inputs))

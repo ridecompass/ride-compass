@@ -34,13 +34,15 @@ const MATERIALS: AxisLine["materials"] = new Map<string, Record<string, number>>
   ["perpendicular", { base: 15, flag: 1 }],
   ["along", { base: 15 }],
   ["onBoundary", { base: 20 }],
+  // 届いたタイルにあるが、値の無い道。
+  ["noValue", {}],
 ]);
 
 type AxisLine = AxisLineState["axes"][number];
 
 /** レンズ1つだけを出している線の宣言。 */
 function groupFor(
-  { materials = MATERIALS, loading = false }: Partial<AxisLine> = {},
+  { materials = MATERIALS }: Partial<AxisLine> = {},
   conditions: AxisLineState["conditions"] = { bearing_deg: 0 },
 ) {
   return axisLineGroup.build({
@@ -52,7 +54,6 @@ function groupFor(
         bands: THREE_BANDS,
         formula: FORMULA,
         materials,
-        loading,
       },
     ],
     conditions,
@@ -94,20 +95,18 @@ describe("段の色", () => {
 });
 
 describe("値の無い道", () => {
-  it("段の色では塗らず、薄い破線で描く", () => {
-    const absent = lookOf("absent");
+  it("届いたタイルにあれば、段の色では塗らず、薄い破線で描く", () => {
+    const noValue = lookOf("noValue");
 
-    expect(absent.color).toBe(TRANSPARENT);
-    expect(absent.dashOpacity).toBe(mapDisplay.road.unknownOpacity);
+    expect(noValue.color).toBe(TRANSPARENT);
+    expect(noValue.dashOpacity).toBe(mapDisplay.road.unknownOpacity);
     expect(lookOf("along").dashOpacity).toBe(0);
   });
 
-  it("取得中は取得中の色で濃く塗り、破線にしない", () => {
+  it("まだ届いていない道は取得中の色で濃く塗り、破線にしない", () => {
     // 薄くすると「まだ来ていない」と「対象外」が見分けられない。
-    const loading = lookOf("absent", { materials: new Map(), loading: true });
-
-    expect(loading).toEqual({ color: palette.semantic.loading, dashOpacity: null });
-    expect(groupFor({ loading: true }).layers[0].paint["line-opacity"]).toBe(mapDisplay.road.knownOpacity);
+    expect(lookOf("notYetFetched")).toEqual({ color: palette.semantic.loading, dashOpacity: 0 });
+    expect(groupFor().layers[0].paint["line-opacity"]).toBe(mapDisplay.road.knownOpacity);
   });
 });
 

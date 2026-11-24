@@ -44,7 +44,7 @@ SQLと式の木の材料では作れない体力（走行の模型）を、backe
 - **フィーチャー**: 路面タイルと同じ選び方でDBからタイルのフィーチャーの鍵を読み（`RoadGraphRepository.get_tile_features`。区間で
   塗るズームは区間、引いたズームは道）、その鍵で網の区間の行を束ねる（`domain/lens_values.py: lens_features`）。道1本で塗るズームでは、
   タイルの外の区間も含めた道の全区間で1つの値にする（どのタイルから見ても同じ値）。区間を1本も持たない道（路面タイルは道丸ごとで焼く）
-  と網に行の無いフィーチャーは値を持たない。
+  と網に行の無いフィーチャーは値を持たない（空の材料で載る）。
 - **向き**: 地図の向きでどちらを塗るかは式の木（`domain/lens_values.py: lens_way_formula`）が選ぶ。地図を回しても取り直さない。
   一方通行の逆向きは値を載せない。
 - **条件**: レンズごとに、値が変わる走る条件だけを配る（`domain/lens_values.py: lens_conditions`。体力の軸は費目の式が読む入力で決め、
@@ -58,10 +58,17 @@ SQLと式の木の材料では作れない体力（走行の模型）を、backe
   境目を置いた段（境目は標準の人・標準の利用者の値・無風の1kmの道の秒、名前は数で言える事実の値の範囲だけで、区分の軸と総合には付けない。地図は色で大小を見せ、色の理由を文で言わない）を配る。事実の値の道を同じ費用の式へ
   通して秒を求める——別の換算の式を持たない。物差しを書く前の定義は、定義の段のまま配る。レンズの量の名前と単位
   （`domain/cost_axes.py: LENS_QUANTITY_LABEL`・`domain/cost_axes.py: LENS_UNIT`）は、生成物`route-generate-config.json`で画面へ配る。
-- **キャッシュしない**: 値は風の時刻・想定速度で変わり、タイル1枚の区間で走行の模型を1回解くだけ。欠けを埋める道のストレスの
-  重さの平均だけは全区間を数えるので、道の網・区分の列・道のストレスの軸の費目の組ごとにプロセスに1つ持つ
-  （`services/graph_service.py: network_burden_fills`）。段の目安は
+- **応答はプロセスの中で持つ**（`services/lens_service.py: new_response_cache`）: 応答のJSONのバイト列を、バイト数の上限つき
+  （`services/lens_service.py: RESPONSE_CACHE_BYTES`。道路網の配列のためにとっておくメモリの内側）で持ち、使われていないものから
+  押し出す。鍵は`infrastructure/cache_identity.py: dynamic_tile_key`が組み、道路網の世代（`road_network_store.py: current_generation`）・
+  較正値と費用の軸・道の区分の定義の署名（`cache_identity.py: model_settings_signature`。管理APIで差し替えると変わる）・レンズ・タイル・
+  値を変える入力（利用者の値と、レンズが依るときだけ想定速度と風）を入れる。風は予報のファイルの版（`msm_client.py: forecast_version`）と、
+  時刻に最も近い予報の1時間のコマと、今の正時（予報を読む範囲の始まり。範囲の外へ出た時刻に前の持ちを返さない）で表す。
+  形（コードの版）は鍵に入れない——持ちはデプロイで空になる。欠けを埋める道のストレスの重さの平均は全区間を数えるので、道の網・
+  区分の列・道のストレスの軸の費目の組ごとにプロセスに1つ持つ（`services/graph_service.py: network_burden_fills`）。段の目安は
   利用者の値（つまみと倍率）で変わるので、要求ごとに求める。
+- **タイルのどのフィーチャーも名指す**: 値の無いフィーチャー（網に行の無いもの・どちらの向きにも値の無いもの）も空の材料で載せ、
+  届いたタイルの値の無い道と、まだ届いていない道を受け取る側が見分けられるようにする。
 
 ## 道の窓（`services/region_service.py: RoadInspectorService`）
 

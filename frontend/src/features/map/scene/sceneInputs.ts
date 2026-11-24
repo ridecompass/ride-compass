@@ -75,7 +75,7 @@ export interface SceneLook {
   /** 道路タブを地図で見ているか。 */
   readonly roadAvoidanceShown: boolean;
   /** 軸ごとの、今の範囲の道ごとの材料の取得結果。 */
-  readonly wayMaterials: ReadonlyMap<string, { materials: WayMaterials; loading: boolean }>;
+  readonly wayMaterials: ReadonlyMap<string, { materials: WayMaterials }>;
   /** 道の値の式が読む走る条件。 */
   readonly wayConditions: WayConditions;
   readonly hiddenLegendKeys: HiddenLegendKeys;
@@ -173,7 +173,6 @@ function axisStateFrom(props: SceneWiringProps, sourceLayer: string): AxisLineSt
       bands: valueBands(lens.display),
       formula: lens.formula,
       materials: fetched?.materials ?? NO_MATERIALS,
-      loading: fetched?.loading === true,
     };
   });
   return { axes, conditions: look.wayConditions, sourceLayer };

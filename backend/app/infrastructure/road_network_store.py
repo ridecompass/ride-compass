@@ -204,6 +204,11 @@ def current() -> RoadNetwork:
     return _loaded[1]
 
 
+def current_generation() -> str:
+    """今の置き場（`current`が読むもの）の名前。道路網を作り直すと変わる。"""
+    return _latest_directory().name
+
+
 def _as_tuples(value: object) -> object:
     """JSONの配列をtupleへ戻す（`RoadNetwork`の語彙・列の並びはtupleで持つ）。"""
     if isinstance(value, list):
