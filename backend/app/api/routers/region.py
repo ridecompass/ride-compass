@@ -1,5 +1,4 @@
 import asyncio
-from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import Field, model_validator
@@ -10,6 +9,7 @@ from app.api.dependencies import (
     get_landcover_tile_reader,
     get_lens_service,
     get_region_service,
+    get_time_frame_service,
 )
 from app.api.rate_limit import enforce_rate_limit
 from app.api.routers._tile_http import (
@@ -36,7 +36,9 @@ from app.domain.region import (
 )
 from app.infrastructure.media_types import PNG_CONTENT_TYPE
 from app.infrastructure.point_tile_layers import POINT_TILE_LAYERS
+from app.domain.time_frames import TimeFrameKey
 from app.services.lens_service import LensService
+from app.services.time_frame_service import TimeFrames, TimeFrameService
 from app.services.region_service import RegionService, RoadInspectorService
 from app.domain.strict_model import StrictModel
 
@@ -55,13 +57,18 @@ async def region_road_surface_tile(
     x: TileIndex,
     y: TileIndex,
     request: Request,
+    frame: TimeFrameKey | None = None,
     region_service: RegionService = Depends(get_region_service),
+    time_frames: TimeFrameService = Depends(get_time_frame_service),
 ) -> Response:
+    """地図の道の線のタイル。出発の時刻を含む路面タイルのコマの印`frame`（`/api/region/time-frames`の`road_surface`。省くと
+    時刻で変わらない規制だけで焼く）を渡すと、`ROAD_TILE_MIN_ZOOM`以上のズームは、規制の当たる道の区分をそのコマに効く規制で
+    焼く。今の一覧に無い印は409。"""
     check_tile_rate_limit(request, "road-tile")
     validate_tile_coords(z, x, y)
     # 上限を超えた分は429にせず待たせる。キャッシュヒットはすぐ解放するので、待ち行列を作るのはPostGIS問い合わせを伴う要求だけ。
     async with region_tile_semaphore:
-        tile = await region_service.get_road_surface_tile(z, x, y)
+        tile = await region_service.get_road_surface_tile(z, x, y, frame, time_frames)
     return tile_response(tile)
 
 
@@ -107,7 +114,7 @@ async def region_landcover_tile(
     return tile_response(tile, PNG_CONTENT_TYPE)
 
 
-@router.get("/api/region/lens/{lens_id}/{z}/{x}/{y}")
+@router.get("/api/region/lens/{lens_id}/{z}/{x}/{y}", response_model=LensMaterials)
 async def region_lens(
     lens_id: str,
     z: RoadTileZoom,
@@ -115,14 +122,14 @@ async def region_lens(
     y: TileIndex,
     request: Request,
     speed_kmh: AssumedSpeedKmh = ASSUMED_SPEED_KMH,
-    at: datetime | None = None,
+    frame: TimeFrameKey | None = None,
     preference: CostPreference = Depends(cost_preference_query),
     service: LensService = Depends(get_lens_service),
-) -> LensMaterials:
+) -> Response:
     """ルートを出す前の地図がレンズ`lens_id`（総合`total`か費用の軸のid。`domain/lens_values.py`）で道を塗る、指定タイルの
     フィーチャーごとの道ごとの材料: 道の向きに辿った・逆向きに辿った1kmあたりの代償の秒（辿れない向きは載せない）と、
-    道の向き。どちらの向きを塗るかは、`/api/cost-axes`のレンズの`map_lens.formula`が走行方位で選ぶ。値は時刻`at`（省略すると今。
-    風）と想定速度`speed_kmh`（省略すると画面の既定の速度。どちらもレンズの`map_lens.material_conditions`に無ければ値を変えない）と利用者の値（つまみ`strength`と、軸id→倍率のJSONの`multipliers`と、無効の軸idのJSONの
+    道の向き。どちらの向きを塗るかは、`/api/cost-axes`のレンズの`map_lens.formula`が走行方位で選ぶ。値は出発の時刻を含むレンズの
+    コマの印`frame`（`/api/region/time-frames`の`lens`。省略すると今。風。今の一覧に無い印は409）と想定速度`speed_kmh`（省略すると画面の既定の速度。どちらもレンズの`map_lens.material_conditions`に無ければ値を変えない）と利用者の値（つまみ`strength`と、軸id→倍率のJSONの`multipliers`と、無効の軸idのJSONの
     `disabled_axes`。ルート生成と同じ値）で決まり、探索と同じ部品で求める。前に出た風の予報を引いたなら、その素性も返す。
 
     鍵は路面タイル（`/api/region/road-surface-tiles`）の同じz/x/yのフィーチャーの鍵。知らないレンズと、無効にした軸のレンズは404。
@@ -130,10 +137,10 @@ async def region_lens(
     check_tile_rate_limit(request, "lens")
     validate_tile_coords(z, x, y)
     async with region_tile_semaphore:
-        materials = await service.way_materials(lens_id, z, x, y, at, speed_kmh, preference)
-    if materials is None:
+        body = await service.way_materials(lens_id, z, x, y, frame, speed_kmh, preference)
+    if body is None:
         raise HTTPException(status_code=404, detail="この負担の種類の値はありません。")
-    return materials
+    return Response(body, media_type="application/json")
 
 
 class RoadInspectorRequest(StrictModel):
@@ -144,10 +151,10 @@ class RoadInspectorRequest(StrictModel):
     z: RoadTileZoom
     x: TileIndex
     y: TileIndex
-    # レンズの値は向き・時刻（風）・速さで決まる。地図のレンズの要求と同じ値を送る（省いた時刻は今）。**1本の道は往復
-    # 2方向で値が違う**ので、両方の向きを返し、地図がいまの走行方位で塗っている向きを示す。
+    # レンズの値は向き・時刻（風）・速さで決まる。地図のレンズの要求と同じ値を送る（時刻はレンズのコマの印。省くと今）。
+    # **1本の道は往復2方向で値が違う**ので、両方の向きを返し、地図がいまの走行方位で塗っている向きを示す。
     bearing_deg: BearingDeg
-    at: datetime | None = None
+    frame: TimeFrameKey | None = None
     speed_kmh: AssumedSpeedKmh
     # 利用者の値。ルート生成へ送るのと同じ形・同じ検証。地図のレンズの要求と同じ値を送る。
     cost_preference: RequestedCostPreference = Field(default_factory=CostPreference)
@@ -165,6 +172,13 @@ class RoadsAtRequest(StrictModel):
     z: RoadTileZoom
     # 拾う距離。地図が指の幅を今の倍率で m に直して送る。
     radius_m: RoadsAtRadiusM
+
+
+@router.get("/api/region/time-frames")
+async def region_time_frames(time_frames: TimeFrameService = Depends(get_time_frame_service)) -> TimeFrames:
+    """時刻で変わる値（路面タイル・風に依るレンズと道の窓）の、選べる出発時刻の範囲のコマの一覧。画面は出発の時刻を含むコマの
+    印だけを要求に載せ、今のコマが終わったときと一定の間隔で読み直す。"""
+    return await time_frames.frames()
 
 
 @router.post("/api/region/roads-at")
@@ -192,6 +206,6 @@ async def region_road_inspector(
     # 道を押すたびの単発リクエストなので、タイル向けの上限を流用せず専用の上限を使う。
     enforce_rate_limit(http_request, "road-inspector", settings.road_inspector_rate_limit_per_minute)
     return await road_inspector.inspect(
-        body.osm_way_id, body.feature_key, (body.z, body.x, body.y), body.bearing_deg, body.at, body.speed_kmh,
+        body.osm_way_id, body.feature_key, (body.z, body.x, body.y), body.bearing_deg, body.frame, body.speed_kmh,
         body.cost_preference,
     )

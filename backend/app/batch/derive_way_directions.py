@@ -36,20 +36,24 @@ JOIN ({direction_sql(_SOURCE_WAYS)}) d ON d.id = r.osm_way_id
 JOIN {WAYS_SOURCE_SQL} w ON w.osm_way_id = r.osm_way_id
 """
 
-_INSERT = f"""
+def _insert_sql(named_gap_m: float, geometric_gap_m: float, bearing_tolerance_deg: float) -> str:
+    return f"""
 INSERT INTO way_directions (osm_way_id, direction, divided)
-SELECT t.osm_way_id, t.direction, {dc.divided_sql("t", "_way_facts")}
+SELECT t.osm_way_id, t.direction, {dc.divided_sql("t", "_way_facts", named_gap_m, geometric_gap_m, bearing_tolerance_deg)}
 FROM _way_facts t
 """
 
 
-async def derive(conn: asyncpg.Connection) -> None:
+async def derive(conn: asyncpg.Connection, *, named_gap_m: float, geometric_gap_m: float,
+                 bearing_tolerance_deg: float) -> None:
+    """上下線の相方は、同じ路線番号・名前なら`named_gap_m`、形だけなら`geometric_gap_m`以内で、向きの差が
+    `bearing_tolerance_deg`以内の逆向きの一方通行（較正値`divided.*`）。"""
     async with conn.transaction():
         await conn.execute("TRUNCATE way_directions")
         await conn.execute(_WAY_FACTS)
         await conn.execute("CREATE INDEX ON _way_facts USING GIST (geom)")
         await conn.execute("ANALYZE _way_facts")
         started = time.perf_counter()
-        count = affected_rows(await conn.execute(_INSERT))
+        count = affected_rows(await conn.execute(_insert_sql(named_gap_m, geometric_gap_m, bearing_tolerance_deg)))
         divided = await conn.fetchval("SELECT count(*) FROM way_directions WHERE divided")
         logger.info("通行方向を決めた: %d本（上下線の片側 %d本） / %.1f秒", count, divided, time.perf_counter() - started)

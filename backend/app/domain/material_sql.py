@@ -121,14 +121,9 @@ SHARED_PEDESTRIAN_PATH_SQL = (
 SHARED_PEDESTRIAN_PATH_NOTE = f"{tag_note('highway', *_SHARED_PATH_HIGHWAYS)} かつ {tag_note('bicycle', *_SHARED_PATH_BICYCLE)}"
 
 
-def per_km_value_sql(count: str) -> str:
-    """区間の件数の式`count`を区間の長さ1kmあたりにする。件数がNULLなら欠損のまま。"""
-    return f"{count} / (re.distance_m / 1000.0)"
-
-
-def poi_density_value_sql(kind: str) -> str:
-    """停止要因POIの種別別密度。列がNULLなら値が無い＝欠損。"""
-    return per_km_value_sql(f"em.{poi_count_column(kind)}")
+def poi_count_value_sql(kind: str) -> str:
+    """停止要因POIの種別別の区間の件数（材料は1kmあたりにして持つ。`MaterialSpec.per_km`）。列がNULLなら値が無い＝欠損。"""
+    return f"em.{poi_count_column(kind)}"
 
 
 def landcover_value_sql(key: str) -> str:

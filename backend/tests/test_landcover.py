@@ -17,6 +17,11 @@ import pytest
 from sqlalchemy import text
 
 from app.domain import landcover
+from app.domain.tuning import LANDCOVER_MIN_VALID_PIXELS_ID
+from tests.tuning_fixture import TUNING
+
+#: 割合を出す有効な画素の下限（テストの較正値）。
+MIN_VALID_PIXELS = TUNING[LANDCOVER_MIN_VALID_PIXELS_ID]
 
 
 
@@ -39,7 +44,7 @@ async def percentages(session, counts: list[tuple[int, int, int, int]]) -> list[
     """`(osm_way_id, segment_index, cls, n)`の行を関係として渡し、返った行を辞書で返す。"""
     rows = ", ".join(f"({way}, {segment}, {cls}, {n})" for way, segment, cls, n in counts)
     relation = f"SELECT * FROM (VALUES {rows}) AS c(osm_way_id, segment_index, cls, n)"
-    result = await session.execute(text(landcover.class_percentages_sql(relation)))
+    result = await session.execute(text(landcover.class_percentages_sql(relation, MIN_VALID_PIXELS)))
     return [dict(row._mapping) for row in result]
 
 
@@ -55,7 +60,7 @@ async def test_no_data_and_clouds_are_left_out_of_the_denominator(road_graph_ses
 
 @on_postgis
 async def test_a_segment_with_too_few_valid_pixels_has_no_row(road_graph_session):
-    enough = landcover.MIN_VALID_PIXELS
+    enough = MIN_VALID_PIXELS
     rows = await percentages(
         road_graph_session,
         [

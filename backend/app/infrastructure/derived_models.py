@@ -48,11 +48,11 @@ from app.domain.landcover import PERCENT_CLASSES, landcover_key
 from app.domain.material_sql import sql_literals
 from app.domain.stop_place import BRAND_CHAIN_PREFIX, StopPlaceGroup
 from app.domain.traffic import DIRECTIONS, NODE_KINDS, POI_COUNT_KINDS, poi_count_column
-from app.domain.traffic_regulation import REGULATION_HOURS
+from app.domain.traffic_regulation import DAY_CODES, MINUTES_PER_DAY
 
 #: 数えた値は負にならない。0は数えた結果の「1つも無い」。
 #: 件数は小数を持つ——区間の端に乗るものは前後の区間が0.5ずつ持つ（`batch/derive_counts.py`）。
-_COUNT_COLUMNS = ("accident_count", "intersection_count") + tuple(
+_COUNT_COLUMNS = ("intersection_count",) + tuple(
     poi_count_column(kind) for kind in sorted(POI_COUNT_KINDS))
 
 #: 土地被覆の割合の列。クラスが1つ増えてもここは変わらない。
@@ -65,16 +65,15 @@ _PERCENT_SUM_TOLERANCE = 0.1
 
 
 def _count_checks(table: str) -> tuple[CheckConstraint, ...]:
-    """数の表（区間・道）の「値が不整合になりえない」制約。読み出し側が毎回この条件を書かずに済むように、入れられない側で止める。"""
+    """数の表の「値が不整合になりえない」制約。読み出し側が毎回この条件を書かずに済むように、入れられない側で止める。"""
     return tuple(CheckConstraint(f"{column} >= 0", name=f"{table}_{column}_not_negative")
                  for column in _COUNT_COLUMNS)
 
 
 def _landcover_checks(table: str) -> tuple[CheckConstraint, ...]:
-    """土地被覆の表（区間・道）の制約。有効画素は正で、割合は全部あって合計が100。"""
+    """土地被覆の表の制約。割合は全部あって合計が100。"""
     total = " + ".join(_LANDCOVER_COLUMNS)
     return (
-        CheckConstraint("lc_valid_pixels > 0", name=f"{table}_lc_valid_pixels_positive"),
         *(CheckConstraint(f"{column} BETWEEN 0 AND 100", name=f"{table}_{column}_is_percent")
           for column in _LANDCOVER_COLUMNS),
         CheckConstraint(f"abs(({total}) - 100) <= {_PERCENT_SUM_TOLERANCE}", name=f"{table}_landcover_shares_sum_to_100"),
@@ -113,7 +112,6 @@ class _WayKey:
 
 
 class _Counts:
-    accident_count: Mapped[float] = mapped_column(REAL, nullable=False)
     intersection_count: Mapped[float] = mapped_column(REAL, nullable=False)
     poi_signal: Mapped[float] = mapped_column(REAL, nullable=False)
     poi_crossing: Mapped[float] = mapped_column(REAL, nullable=False)
@@ -123,7 +121,6 @@ class _Counts:
 
 
 class _Landcover:
-    lc_valid_pixels: Mapped[int] = mapped_column(Integer, nullable=False)
     lc_water: Mapped[float] = mapped_column(REAL, nullable=False)
     lc_trees: Mapped[float] = mapped_column(REAL, nullable=False)
     lc_flooded_veg: Mapped[float] = mapped_column(REAL, nullable=False)
@@ -137,10 +134,8 @@ class _Landcover:
 class RoadEdgeRow(Base):
     """道を交差点で切った区間1本。**向きでは分けない**。
 
-    向きが持つ情報はいずれも導ける——方位は両向きぶんを列で持ち（+180°の単純反転に
-    しない。地球の丸みを近似しないため）、勾配は符号を反転し、通行の可否は道の属性
-    （一方通行）から決まる。有向グラフは探索がメモリ上で組む実行時の構成物で、表が
-    両向きの行を持つ必要はない。
+    向きが持つ情報はいずれも導ける——逆向きの方位は順方向の方位に180°を足し、勾配は符号を反転し、通行の可否は道の属性
+    （一方通行）から決まる。有向グラフは探索がメモリ上で組む実行時の構成物で、表が両向きの行を持つ必要はない。
     """
 
     __tablename__ = "road_edges"
@@ -149,7 +144,7 @@ class RoadEdgeRow(Base):
         CheckConstraint("distance_m > 0", name="road_edges_distance_m_positive"),
         CheckConstraint("NOT ST_IsEmpty(geom) AND ST_NumPoints(geom) >= 2",
                         name="road_edges_geom_has_two_points"),
-        # 区間単位のズームの路面タイル・道路網の切り出し・事故の帰属は、区間を形の範囲で
+        # 区間単位のズームの路面タイル・道路網の切り出しは、区間を形の範囲で
         # 直接絞る。無いと区間の全件を総なめにする。
         Index("idx_road_edges_geom", "geom", postgresql_using="gist"),
         {"info": DERIVED},
@@ -161,8 +156,8 @@ class RoadEdgeRow(Base):
     #: 道の何番目の区間か。
     segment_index: Mapped[int] = mapped_column(SmallInteger, primary_key=True)
 
-    #: 区間の端点。**必ず`road_nodes`に行がある**——頂点の値（`NodeTurnRow`）は`road_nodes`の全行に付くので、探索が
-    #: 端点の値を欠かさずに読める。親子の向きがそのままなので外部キーで縛れる（`derive_topology`がノードを先に入れる）。
+    #: 区間の端点。**必ず`road_nodes`に行がある**——道路網の配列の頂点は`road_nodes`から読むので、探索が端点を欠かさずに読める。
+    #: 親子の向きがそのままなので外部キーで縛れる（`derive_topology`がノードを先に入れる）。
     from_node_id: Mapped[int] = mapped_column(
         BigInteger, ForeignKey("road_nodes.osm_node_id"), nullable=False)
     to_node_id: Mapped[int] = mapped_column(
@@ -172,12 +167,8 @@ class RoadEdgeRow(Base):
         Geometry("LINESTRING", srid=4326, spatial_index=False), nullable=False)
     #: 長さは丸めない。4.8 cmの区間が実在し、0へ落とすと読み出し側が除算を守る羽目になる。
     distance_m: Mapped[float] = mapped_column(REAL, nullable=False)
-    #: 順方向の方位。
+    #: 順方向の方位（始点から終点を見た向き）。
     bearing_deg: Mapped[float] = mapped_column(REAL, nullable=False)
-    #: 逆向きの方位。**+180°ではない**（球面上では往路と復路の方位はちょうど反対を
-    #: 向かない）ため、形状の終点→始点から測った値を持つ。読むたびに`ST_Azimuth`で
-    #: 求め直すとグラフ読み込みが目に見えて遅くなるため、列として持つ。
-    reverse_bearing_deg: Mapped[float] = mapped_column(REAL, nullable=False)
 
 
 class RoadWayRow(Base):
@@ -205,32 +196,29 @@ class RoadNodeRow(Base):
 
 
 class EdgeElevationRow(_EdgeKey, Base):
-    """区間の標高と勾配。値の出た区間だけが行を持つ。
+    """区間の標高の断面（揺れを間引いた点の標高と位置）。値のある点が2つ以上の区間だけが行を持つ。
 
-    標高は順方向の値だけ持つ。逆向きは読み出し時に入れ替えと符号反転で導く
-    （始点↔終点、上り↔下り、平均勾配は符号反転）。
+    点は順方向の並びだけ持ち、逆向きは読む側が点を逆に辿る。両端の標高・獲得/喪失・勾配の要約は、道路網の配列を作るときに
+    この点から出す（`domain/elevation_profile.py: profile_summaries`）。
     """
 
     __tablename__ = "edge_elevation"
-    __table_args__ = (_edge_key("edge_elevation"), {"info": DERIVED})
+    __table_args__ = (
+        _edge_key("edge_elevation"),
+        CheckConstraint("cardinality(elevation_profile_m) = cardinality(elevation_profile_along_m)",
+                        name="edge_elevation_profile_lengths_match"),
+        CheckConstraint("cardinality(array_remove(elevation_profile_m, NULL)) >= 2",
+                        name="edge_elevation_profile_has_two_values"),
+        CheckConstraint("array_position(elevation_profile_along_m, NULL) IS NULL",
+                        name="edge_elevation_profile_along_has_no_null"),
+        {"info": DERIVED},
+    )
 
-    start_elevation_m: Mapped[float] = mapped_column(REAL, nullable=False)
-    end_elevation_m: Mapped[float] = mapped_column(REAL, nullable=False)
-    elevation_gain_m: Mapped[float] = mapped_column(REAL, nullable=False)
-    elevation_loss_m: Mapped[float] = mapped_column(REAL, nullable=False)
-    # 標高が付いた区間でも、勾配として数える点の間が無い区間は平均勾配を持たない
-    # （`domain/attributes.py: elevation_values_sql`）。
-    average_grade: Mapped[float | None] = mapped_column(REAL, nullable=True)
-    #: 順方向に走ったときの一番急な登りと下りの勾配（%、どちらも0以上）。測れない区間は持たない（測り方は
-    #: `domain/attributes.py: elevation_values_sql`）。逆向きは2列を入れ替えて読む。
-    steepest_gain_percent: Mapped[float | None] = mapped_column(REAL, nullable=True)
-    steepest_loss_percent: Mapped[float | None] = mapped_column(REAL, nullable=True)
-    #: 順方向に並べた断面の点の標高（m）。点の位置は`elevation_profile_along_m`が持つ。値の無い点はNULL。上の要約の列は、どれもこの点から出す（`domain/attributes.py: elevation_values_sql`）。作り直す前の行は持たない
-    #: （空を許すのは、行の入った本番の表へ列を足せるようにするため）。
-    elevation_profile_m: Mapped[list[float | None] | None] = mapped_column(ARRAY(REAL), nullable=True)
+    #: 順方向に並べた断面の点の標高（m）。点の位置は`elevation_profile_along_m`が持つ。値の無い点はNULL。
+    elevation_profile_m: Mapped[list[float | None]] = mapped_column(ARRAY(REAL), nullable=False)
     #: 断面の点ごとの、区間の始まりから道に沿って測った位置（m）。`elevation_profile_m`と同じ並び。点は揺れを間引いた
-    #: あとの点なので間隔はそろわない。作り直す前の行は持たない。
-    elevation_profile_along_m: Mapped[list[float] | None] = mapped_column(ARRAY(REAL), nullable=True)
+    #: あとの点なので間隔はそろわない。
+    elevation_profile_along_m: Mapped[list[float]] = mapped_column(ARRAY(REAL), nullable=False)
 
 
 class EdgeLandcoverRow(_EdgeKey, _Landcover, Base):
@@ -241,35 +229,79 @@ class EdgeLandcoverRow(_EdgeKey, _Landcover, Base):
 
 
 class EdgeCountsRow(_EdgeKey, _Counts, Base):
-    """区間に付く数（事故・交差点・停止要因）。全区間が行を持つ。"""
+    """区間に付く数（交差点・停止要因）。全区間が行を持つ。"""
 
     __tablename__ = "edge_counts"
     __table_args__ = (_edge_key("edge_counts"), *_count_checks("edge_counts"), {"info": DERIVED})
 
 
-def _not_stronger_check(table: str, weaker: str, stronger: str) -> CheckConstraint:
-    """時間帯の列`weaker`が列`stronger`より強くならない制約（強さは`REGULATION_HOURS`の並び）。どちらかがNULLなら通す。"""
-    order = f"ARRAY[{sql_literals(REGULATION_HOURS)}]"
-    return CheckConstraint(f"array_position({order}, {weaker}) >= array_position({order}, {stronger})",
-                           name=f"{table}_{weaker}_not_stronger")
+def _minutes_check(table: str, start: str, end: str) -> CheckConstraint:
+    """時間の欄（0:00からの分）の制約。両端がそろい、始まりは0〜1439、終わりは1〜1440で、両端が同じでない。"""
+    return CheckConstraint(
+        f"({start} IS NULL) = ({end} IS NULL) AND {start} BETWEEN 0 AND {MINUTES_PER_DAY - 1}"
+        f" AND {end} BETWEEN 1 AND {MINUTES_PER_DAY} AND {start} <> {end}", name=f"{table}_{start}_minutes")
 
 
-class EdgeTrafficRegulationRow(_EdgeKey, Base):
-    """区間に当たった交通規制が効く時間帯。規制が当たった区間だけが行を持つ。"""
+def _month_day_check(table: str, start: str, end: str) -> CheckConstraint:
+    """期間の欄（月日の数。MMDD）の制約。両端がそろい、どちらもある月日（2月は29日まで）。"""
+    def valid(column: str) -> str:
+        return (f"{column} / 100 BETWEEN 1 AND 12 AND {column} % 100 BETWEEN 1 AND"
+                f" (ARRAY[31,29,31,30,31,30,31,31,30,31,30,31])[{column} / 100]")
+    return CheckConstraint(f"({start} IS NULL) = ({end} IS NULL) AND {valid(start)} AND {valid(end)}",
+                           name=f"{table}_{start}_month_day")
 
-    __tablename__ = "edge_traffic_regulations"
+
+class TrafficRegulationRow(Base):
+    """区間に当てた交通規制（歩行者用道路）1件。条件の組は`TrafficRegulationSlotRow`が持ち、組を持たない規制は毎日いつでも
+    全部の車両に効く（`domain/traffic_regulation.py`）。"""
+
+    __tablename__ = "traffic_regulations"
+    __table_args__ = ({"info": DERIVED},)
+
+    regulation_id: Mapped[str] = mapped_column(String, primary_key=True)
+
+
+class TrafficRegulationSlotRow(Base):
+    """交通規制の条件の組1つ（`domain/traffic_regulation.py: RegulationSlot`の欄）。欄の無いものはNULL。"""
+
+    __tablename__ = "traffic_regulation_slots"
     __table_args__ = (
-        _edge_key(__tablename__),
-        _vocabulary_check(__tablename__, "pedestrian_road", frozenset(REGULATION_HOURS)),
-        _vocabulary_check(__tablename__, "pedestrian_road_bicycle", frozenset(REGULATION_HOURS)),
-        _not_stronger_check(__tablename__, "pedestrian_road_bicycle", "pedestrian_road"),
+        CheckConstraint("slot BETWEEN 1 AND 5", name="traffic_regulation_slots_slot_range"),
+        _minutes_check(__tablename__, "hours_from", "hours_to"),
+        _minutes_check(__tablename__, "except_hours_from", "except_hours_to"),
+        _month_day_check(__tablename__, "period_from", "period_to"),
+        _month_day_check(__tablename__, "except_period_from", "except_period_to"),
+        CheckConstraint(f"days IN ({', '.join(map(str, sorted(DAY_CODES)))})", name="traffic_regulation_slots_days_known"),
+        CheckConstraint(f"except_days IN ({', '.join(map(str, sorted(DAY_CODES)))})",
+                        name="traffic_regulation_slots_except_days_known"),
         {"info": DERIVED},
     )
 
-    #: 歩行者用道路の規制が効く時間帯。
-    pedestrian_road: Mapped[str] = mapped_column(String, nullable=False)
-    #: 普通自転車も対象の歩行者用道路の規制が効く時間帯。自転車が対象の規制が当たらない区間はNULL。
-    pedestrian_road_bicycle: Mapped[str | None] = mapped_column(String, nullable=True)
+    regulation_id: Mapped[str] = mapped_column(
+        String, ForeignKey("traffic_regulations.regulation_id", ondelete="CASCADE"), primary_key=True)
+    #: 配布の組の番号。
+    slot: Mapped[int] = mapped_column(SmallInteger, primary_key=True, autoincrement=False)
+    applies_to_bicycles: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    hours_from: Mapped[int | None] = mapped_column(SmallInteger, nullable=True)
+    hours_to: Mapped[int | None] = mapped_column(SmallInteger, nullable=True)
+    days: Mapped[int | None] = mapped_column(SmallInteger, nullable=True)
+    period_from: Mapped[int | None] = mapped_column(SmallInteger, nullable=True)
+    period_to: Mapped[int | None] = mapped_column(SmallInteger, nullable=True)
+    except_hours_from: Mapped[int | None] = mapped_column(SmallInteger, nullable=True)
+    except_hours_to: Mapped[int | None] = mapped_column(SmallInteger, nullable=True)
+    except_days: Mapped[int | None] = mapped_column(SmallInteger, nullable=True)
+    except_period_from: Mapped[int | None] = mapped_column(SmallInteger, nullable=True)
+    except_period_to: Mapped[int | None] = mapped_column(SmallInteger, nullable=True)
+
+
+class EdgeTrafficRegulationRow(_EdgeKey, Base):
+    """区間に当たった交通規制。区間と規制の組ごとに1行で、規制が当たった区間だけが行を持つ。"""
+
+    __tablename__ = "edge_traffic_regulations"
+    __table_args__ = (_edge_key(__tablename__), {"info": DERIVED})
+
+    regulation_id: Mapped[str] = mapped_column(
+        String, ForeignKey("traffic_regulations.regulation_id", ondelete="CASCADE"), primary_key=True)
 
 
 class WayDirectionRow(_WayKey, Base):
@@ -286,24 +318,6 @@ class WayDirectionRow(_WayKey, Base):
     divided: Mapped[bool] = mapped_column(Boolean, nullable=False)
 
 
-class WayLandcoverRow(_WayKey, _Landcover, Base):
-    """道1本の土地被覆の割合（区間の値の長さで重み付けた平均）。割合を持つ区間がある道だけが行を持つ。
-
-    区間の値を道にも持つのは、低ズームのタイルが道1本を1フィーチャーとして塗るため（数も同じ）。区間から集約して作ると
-    都心のz12で実測1.2秒かかり、タイル生成が倍になる。
-    """
-
-    __tablename__ = "way_landcover"
-    __table_args__ = (*_landcover_checks("way_landcover"), {"info": DERIVED})
-
-
-class WayCountsRow(_WayKey, _Counts, Base):
-    """道1本の数（区間の和）。全部の道が行を持つ。"""
-
-    __tablename__ = "way_counts"
-    __table_args__ = (*_count_checks("way_counts"), {"info": DERIVED})
-
-
 class NodeKindRow(Base):
     """種別（信号・横断歩道・車止め・コンビニ等）の付いたノード。グラフの頂点でない点も持つ。"""
 
@@ -313,22 +327,32 @@ class NodeKindRow(Base):
     osm_node_id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=False)
     #: 分類器が付けた種別。
     kind: Mapped[str] = mapped_column(String, nullable=False)
-    #: 近くに信号があるか。交差点の段が頂点の値（`NodeTurnRow`）と1回の探索から書き、種別の信号の読み替え
-    #: （`domain/traffic.py: stop_kind_sql`）が読む。
-    has_traffic_signals: Mapped[bool] = mapped_column(Boolean, nullable=False)
 
 
-class NodeTurnRow(Base):
-    """グラフの頂点の、曲がる費用が読む値。`road_nodes`の全行が行を持つ。"""
+class SignalPlaceRow(Base):
+    """信号の交差点（信号の点を較正値`stop.cluster_distance_m`でまとめた場所）。交差点の段（`batch/derive_nodes.py`）が書く。"""
 
-    __tablename__ = "node_turns"
+    __tablename__ = "signal_places"
     __table_args__ = ({"info": DERIVED},)
 
-    osm_node_id: Mapped[int] = mapped_column(
-        BigInteger, ForeignKey("road_nodes.osm_node_id", ondelete="CASCADE"), primary_key=True, autoincrement=False)
-    has_traffic_signals: Mapped[bool] = mapped_column(Boolean, nullable=False)
-    #: そこに集まる道の最大階級。
-    max_highway_rank: Mapped[int] = mapped_column(SmallInteger, nullable=False)
+    place_id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=False)
+    #: 場所の信号の点の重心。地図の信号の点はここに出す。
+    geom: Mapped[object] = mapped_column(Geometry("POINT", srid=4326, spatial_index=False), nullable=False)
+
+
+class SignalPlaceNodeRow(Base):
+    """信号の交差点に入る点（グラフの頂点も、種別の付いた点も）。点ごとに1行。
+
+    場所の信号の点から較正値`signal.match_radius_m`以内の点で、2つの場所に入る点は一番近い信号の点の場所に入る。曲がる所の信号
+    （道路網の配列の頂点）・種別の信号の読み替え（`domain/traffic.py: stop_kind_sql`）・数の段の信号の止まる場所が読む。
+    """
+
+    __tablename__ = "signal_place_nodes"
+    __table_args__ = ({"info": DERIVED},)
+
+    osm_node_id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=False)
+    place_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("signal_places.place_id", ondelete="CASCADE"), nullable=False)
 
 
 class AddressAreaRow(Base):
@@ -352,8 +376,6 @@ class AddressAreaRow(Base):
     level: Mapped[str] = mapped_column(String, nullable=False)
     #: 自分の段の名前だけ（「西新宿」「二丁目」）。
     name: Mapped[str] = mapped_column(String, nullable=False)
-    #: 郡に属す町村の行だけが持つ郡の名前。
-    county_name: Mapped[str | None] = mapped_column(String, nullable=True)
     #: 代表点。大字自身の行の無い大字は子の代表点の重心。
     geom: Mapped[object] = mapped_column(Geometry("POINT", srid=4326, spatial_index=False), nullable=False)
 

@@ -12,18 +12,13 @@
 import asyncpg
 import pytest
 import pytest_asyncio
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.batch import derive_cli
-from app.domain.accident import PartyType
-from app.domain.material_catalog import ACCIDENT_COUNT_PER_KM_YEAR
 from app.domain.tuning import TUNING_PARAMETERS, TuningEffect
 from app.infrastructure import road_network_store, tile_cache
 from app.infrastructure.region_tile_cache import MVT_TILE_GENERATIONS
 from app.infrastructure.cache_identity import region_tile_key
 from app.infrastructure.orm_base import derived_tables
-from app.infrastructure.road_graph_repository import RoadGraphRepository
-from app.infrastructure.source_models import PARTY_TYPE_CODES
 from tests.conftest import (
     empty_ingested_tables,
     override_tuning,
@@ -34,7 +29,6 @@ from tests.conftest import (
 from tests.tuning_fixture import TUNING
 from tests.source_ingest import (
     abr_prefecture_record,
-    accident_record,
     ingest_records,
     interrupted,
     point_record,
@@ -141,7 +135,7 @@ async def test_readers_see_the_previous_tables_until_the_swap_and_the_rebuilt_on
     準備済みの文も作り直した表を読み、世代が1つ進み、その世代の道路網は作り直した表から作られている。
     前の表で焼いた地図のタイルは配らない。"""
     structure_before = await derived_before.fetch(_STRUCTURE_SQL, list(DERIVED))
-    baked = region_tile_key("road_surface", MVT_TILE_GENERATIONS["road_surface"], 14, 1, 1, "pbf")
+    baked = region_tile_key("road_surface", MVT_TILE_GENERATIONS["road_surface"], 14, 1, 1, "pbf", "")
     tile_cache.set(baked, b"baked-from-the-previous-tables", "application/x-protobuf")
     await _ingest_ways(derived_before, ONEWAY)
     async with raw_connection() as reader:
@@ -214,9 +208,8 @@ async def test_rerunning_after_a_crash_between_the_swap_and_the_publish_places_t
 
 
 async def _nodes_with_signal(conn: asyncpg.Connection) -> set[int]:
-    return {r["osm_node_id"] for r in await conn.fetch(
-        "SELECT osm_node_id FROM node_turns WHERE has_traffic_signals"
-        " UNION SELECT osm_node_id FROM node_kinds WHERE has_traffic_signals")}
+    """信号の交差点に入る点。"""
+    return {r["osm_node_id"] for r in await conn.fetch("SELECT osm_node_id FROM signal_place_nodes")}
 
 
 async def test_the_signal_radius_set_on_the_admin_screen_decides_which_nodes_get_the_signal(derived_before):
@@ -244,46 +237,6 @@ async def test_every_value_that_waits_for_a_rebuild_is_read_by_the_rebuild():
     読まれない値は変えても何にも効かず、記録に残らない値は、派生の外の読み手が読めない。"""
     assert set(derive_cli.TUNING_USERS) == {
         param.id for param in TUNING_PARAMETERS if param.effect is TuningEffect.DERIVE_REBUILD}
-
-
-async def test_the_accident_density_is_divided_by_the_years_of_the_import_that_was_counted(
-        derived_before, road_graph_engine, monkeypatch):
-    """事故密度の分母（収録年数）は、今の表を作った事故の取込の年から読む。取り込み直しても、作り直しが
-    入れ替わるまでは前の取込の年のまま（数も前のまま）で、入れ替えた後は新しい取込の年になり、その世代の
-    道路網も新しい年数で割っている。"""
-
-    async def accident_years() -> list[int]:
-        async with AsyncSession(road_graph_engine) as session:
-            return await RoadGraphRepository(session).get_accident_years()
-
-    def density_on_way_100() -> float:
-        network = road_network_store.current()
-        column = network.numeric_ids.index(ACCIDENT_COUNT_PER_KM_YEAR)
-        return float(network.numeric_values[network.edge_way_id == 100, column].max())
-
-    # 道100の途中のノード2の上で、自転車の関わった事故が1件。
-    accident = accident_record("on-way-100", *zigzag_point(2), party_a=PARTY_TYPE_CODES[PartyType.BICYCLE],
-                               party_b="59")
-    await ingest_records("accident", [accident], conn=derived_before, origin={"years": [2024]})
-    assert await derive_cli.run(postgis_database_url()) == 0
-    one_year = density_on_way_100()
-
-    await ingest_records("accident", [accident], conn=derived_before, origin={"years": [2023, 2024]})
-    seen_while_rebuilding: list[list[int]] = []
-
-    async def observe():
-        seen_while_rebuilding.append(await accident_years())
-
-    _observe_after("counts", monkeypatch, observe)
-    years_before_rebuild = await accident_years()
-
-    assert await derive_cli.run(postgis_database_url()) == 0
-
-    # 前提: 1年で割った密度が出ている。
-    assert one_year > 0
-    assert (years_before_rebuild, seen_while_rebuilding) == ([2024], [[2024]])
-    assert await accident_years() == [2023, 2024]
-    assert density_on_way_100() == pytest.approx(one_year / 2)
 
 
 async def test_a_rebuild_records_the_latest_succeeded_import_of_every_source(derived_before):

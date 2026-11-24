@@ -30,7 +30,7 @@ def _segments(distances: list[float], **fields_per_segment) -> list[EdgeSegment]
             **({"geometry": None, "point_distances_m": None, "sustained_gradient_percent": None,
                 "average_gradient_percent": None, "estimated_arrival_time": "2026-09-22T08:10:00+09:00",
                 "axis_seconds": {}, "preferred_seconds": 0.0, "avoided_seconds": 0.0, "deciding_row": None,
-                "road_classes": {}}
+                "road_classes": {}, "regulation_margin": False}
                | {name: values[i] for name, values in fields_per_segment.items()}),
         ))
     return segments

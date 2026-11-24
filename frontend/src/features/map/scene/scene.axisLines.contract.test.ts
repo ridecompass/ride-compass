@@ -13,12 +13,7 @@ import { buildMapScene } from "@/features/map/scene/buildScene";
 
 describe("レンズの線", () => {
   const fetched = (byLens: Record<string, Record<string, Record<string, number>>>) =>
-    new Map(
-      Object.entries(byLens).map(([lensId, byWay]) => [
-        lensId,
-        { materials: new Map(Object.entries(byWay)), loading: false },
-      ]),
-    );
+    new Map(Object.entries(byLens).map(([lensId, byWay]) => [lensId, { materials: new Map(Object.entries(byWay)) }]));
   const MATERIALS = fetched({ ascent: { w1: { lens_along: 3 } }, vibration: { w1: { lens_along: 7 } } });
 
   it("取った材料は道路のソースの地物へレンズごとに載り、塗っているレンズの線が見える", () => {
@@ -27,7 +22,9 @@ describe("レンズの線", () => {
 
     expect(handle.featureState(ROAD_LINE_SOURCE_ID, "w1")).toEqual({
       "ascent:lens_along": 3,
+      "ascent#fetched": true,
       "vibration:lens_along": 7,
+      "vibration#fetched": true,
     });
     expect(handle.layer(roadLayerId("ascent"))?.visibility).toBe("visible");
     expect(handle.layer(roadLayerId("vibration"))?.visibility).toBe("none");

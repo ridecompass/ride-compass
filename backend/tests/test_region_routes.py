@@ -3,7 +3,8 @@
 確かめるのは、経路ごとの受け渡し（要求のどの値がサービスへ渡り、サービスの結果が応答のどこへ出るか）と、この口が
 使う判断: 量ごとの値の範囲（タイル座標・走行方位・想定速度。範囲そのものは domain の型と`domain/region.py:
 check_tile_index`が持ち、ここでは入口ごとにそれを使っていることを見る。土地被覆は自分のズーム範囲）、一時的に取れなかった
-タイルをキャッシュさせないこと（`_tile_http.py: tile_response`）、宣言に無い点のレイヤーの404、種類ごとに別に数えるレート制限。
+タイルをキャッシュさせないこと（`_tile_http.py: tile_response`）、宣言に無い点のレイヤーの404、種類ごとに別に数えるレート制限、
+要求に載ったコマの印をサービスへ渡すこと。
 
 差し替えるのは、注入されるサービス（`RegionService`・道の窓）・土地被覆のタイルの取得・レート制限の記録だけ。
 
@@ -15,7 +16,6 @@ check_tile_index`が持ち、ここでは入口ごとにそれを使っている
 - 同時実行の上限（semaphore）。待たせるだけで、応答には現れない
 """
 
-from datetime import datetime, timezone
 
 import pytest
 from fastapi.testclient import TestClient
@@ -53,8 +53,9 @@ class FakeRegionService:
         # 頼まれた近い道（経度、緯度、z、拾う距離）
         self.roads_request = None
 
-    async def get_road_surface_tile(self, z, x, y):
+    async def get_road_surface_tile(self, z, x, y, frame, time_frames):
         self.tile_request = (None, z, x, y)
+        self.tile_frame = frame
         return self._tile_bytes
 
     async def get_point_tile(self, layer, z, x, y):
@@ -173,6 +174,17 @@ def test_each_kind_of_region_request_is_counted_on_its_own(override_dependency):
     assert others == [200] * len(others)
 
 
+def test_the_road_tile_hands_the_frame_of_the_departure_over(override_dependency):
+    """路面タイルの要求に載った、出発の時刻を含むコマの印がサービスへ渡る（届かないと、時刻で変わる規制を今の時刻で塗る）。"""
+    fake = FakeRegionService()
+    override_dependency(get_region_service, lambda: fake)
+
+    response = client.get("/api/region/road-surface-tiles/14/14551/6447.pbf", params={"frame": "7-abc"})
+
+    assert response.status_code == 200
+    assert fake.tile_frame == "7-abc"
+
+
 def test_region_road_inspector_hands_the_pressed_feature_and_the_maps_conditions_over(override_dependency):
     """押した道・フィーチャー・タイルと、地図が指定している走行方位・時刻・想定速度・利用者の値がサービスへ渡り、その結果が
     応答になる。
@@ -186,13 +198,13 @@ def test_region_road_inspector_hands_the_pressed_feature_and_the_maps_conditions
     override_dependency(get_road_inspector_service, lambda: fake)
     response = client.post(
         "/api/region/road-inspector",
-        json={**INSPECTED, "at": "2026-09-21T09:00:00+00:00", "cost_preference": {"strength": 2.0}},
+        json={**INSPECTED, "frame": "v1-2026092109", "cost_preference": {"strength": 2.0}},
     )
 
     assert response.status_code == 200
     assert response.json() == result.model_dump()
     assert fake.request == (
-        12345, "12345-0", (14, 14551, 6447), 90.0, datetime(2026, 9, 21, 9, 0, tzinfo=timezone.utc), 20.0,
+        12345, "12345-0", (14, 14551, 6447), 90.0, "v1-2026092109", 20.0,
         CostPreference(strength=2.0),
     )
 

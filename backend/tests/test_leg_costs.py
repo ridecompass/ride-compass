@@ -131,7 +131,7 @@ def _shown(matrix, **kwargs) -> tuple[LegCostArrays, LegValues]:
     """`_snapshot`のレグと、その全区間の表示の値（区間の表示と同じく、レグのビンの時刻で合成し直したもの）。"""
     composer = _composer(matrix, **kwargs)
     leg = composer.compose("leg", 0.0, +1)
-    return leg, composer.values_at_rows(np.arange(len(matrix.distance_m)), leg.bin_times[0])
+    return leg, composer.values_at_rows(np.arange(len(matrix.distance_m)), leg.bin_times[0], None)
 
 
 # --- 所要時間 -------------------------------------------------------------
@@ -211,7 +211,7 @@ def test_the_fact_of_a_numeric_axis_is_the_value_of_the_road_that_has_it_and_wei
     composer = _composer(matrix, axes=cost_axes(BAD_MATERIAL), parameters=STRENGTH, burden_fills={BAD_AXIS: 2.0})
     leg = composer.compose("leg", 0.0, +1)
     rows = np.arange(2)
-    shown = composer.values_at_rows(rows, leg.bin_times[0])
+    shown = composer.values_at_rows(rows, leg.bin_times[0], None)
     assert shown.penalty_by_axis[BAD_AXIS][0] > shown.penalty_by_axis[BAD_AXIS][1]  # 材料の無い区間のほうが重い
 
     facts = composer.axis_facts(rows, shown.penalty_by_axis, None, shown.headwind_ms, 0.0)
@@ -323,8 +323,8 @@ def test_values_recomposed_for_the_rows_on_the_route_match_the_composition_used_
     composer = _composer(matrix, parameters=STRENGTH, series=_series([0.0, 6.0]))
     leg = composer.compose("leg", 1.0, +1)
 
-    values = composer.values_at_rows(np.array([2, 0]), leg.bin_times[0])
-    whole = composer.values_at_rows(np.arange(3), leg.bin_times[0])
+    values = composer.values_at_rows(np.array([2, 0]), leg.bin_times[0], None)
+    whole = composer.values_at_rows(np.arange(3), leg.bin_times[0], None)
 
     penalty = sum(values.penalty_by_axis.values(), np.zeros(2))
     assert leg.cost_lazy[[2, 0]] == pytest.approx(leg.travel_seconds_lazy[[2, 0]] + penalty, rel=1e-6)

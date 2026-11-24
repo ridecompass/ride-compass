@@ -118,6 +118,20 @@ EMPTY_ROAD_CLASSES = RoadClassDefinitions(
     avoidance_classifications={},
 )
 
+def fact_keys(definitions: RoadClassDefinitions) -> list[str]:
+    """区分の条件と地図の線の層の「データなし」が読む事実の材料のid（区分の列と層の値を作るのに要る列）。"""
+    keys = {fact for classification in definitions.classifications.values() for road_class in classification.classes.values()
+            for condition in road_class.conditions for fact in condition}
+    keys |= {layer.no_data_fact_key for layer in definitions.map_layers.values() if layer.no_data_fact_key is not None}
+    return sorted(keys)
+
+
+def reads_timed_facts(classification: RoadClassification) -> bool:
+    """分け方の条件が、時刻で変わる事実（出どころが`regulation`の材料）を読むか。読む分け方の区分は時刻で決まる。"""
+    return any(MATERIAL_CATALOG[fact].source == "regulation" for road_class in classification.classes.values()
+               for condition in road_class.conditions for fact in condition if fact in MATERIAL_CATALOG)
+
+
 def undeclared_references(definitions: RoadClassDefinitions) -> list[str]:
     """コードの宣言を名指す値のうち、宣言に無いもの（運用者が読む文）。空なら全部が宣言にある。書く側（管理APIの入れ替え）は
     これで断り、起動時の読み込みはこれで止まるので、読む側は宣言に無い値を受け取らない。"""

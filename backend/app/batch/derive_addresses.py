@@ -53,13 +53,13 @@ logger = logging.getLogger("ridecompass.derive_addresses")
 
 _AREAS = """
 CREATE TEMP TABLE _address_areas (
-    area_id text, parent_id text, level text, name text, county_name text, lon float8, lat float8
+    area_id text, parent_id text, level text, name text, lon float8, lat float8
 ) ON COMMIT DROP
 """
 
 _INSERT_AREAS = """
-INSERT INTO address_areas (area_id, parent_id, level, name, county_name, geom)
-SELECT area_id, parent_id, level, name, county_name, ST_SetSRID(ST_MakePoint(lon, lat), 4326) FROM _address_areas
+INSERT INTO address_areas (area_id, parent_id, level, name, geom)
+SELECT area_id, parent_id, level, name, ST_SetSRID(ST_MakePoint(lon, lat), 4326) FROM _address_areas
 """
 
 #: 住居表示の区域の街区を、町字の鍵で区画に結んで入れる。
@@ -261,7 +261,7 @@ async def derive(conn: asyncpg.Connection) -> None:
         await conn.execute("TRUNCATE address_blocks, address_search_keys, address_areas")
         await conn.execute(_AREAS)
         await conn.copy_records_to_table("_address_areas", records=[
-            (a.area_id, a.parent_id, a.level, a.name, a.county_name, *a.point) for a in areas])
+            (a.area_id, a.parent_id, a.level, a.name, *a.point) for a in areas])
         await conn.execute(_INSERT_AREAS)
         await conn.copy_records_to_table("address_search_keys", records=keys,
                                          columns=["key", "area_id", "continuable"])

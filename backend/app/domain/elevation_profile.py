@@ -3,7 +3,7 @@
 断面の点は、区間に沿って拾った標高を揺れの閾値で間引いた点（`infrastructure/derived_models.py: EdgeElevationRow.elevation_profile_m`）で、
 点の間隔はそろわない。道路網の配列は全区間の点を順方向に並べてつないだ1本の標高の配列と、点ごとの位置（区間の長さに対する
 割合。始まりが0、終わりが1）の配列と、向きつきの行ごとの始まりの位置・点の数・順方向かで持つ（区間の両向きの行は同じ点を指し、
-逆向きの行は勾配の符号を返して読む）。点の間の長さは、区間の長さ×（隣の点との位置の差）。
+逆向きの行は点を逆順にたどって勾配の符号を返して読む）。点の間の長さは、区間の長さ×（隣の点との位置の差）。
 
 **点の間は、道路網の配列を作るときに1回だけJITで平らな並びに詰める**（`profile_spans`。区間の行ごとの範囲で持ち、探索は
 範囲の区間の行の分を写すだけ）。所要時間は探索の範囲の全区間について風の時刻ごとに解くため、numpyで点の間（区間の数倍）の
@@ -25,18 +25,8 @@ import numpy as np
 from numba import njit
 from numpy.typing import ArrayLike
 
-#: 舗装された公道としてありうる勾配の上限（%）。世界でも最急の公道が35%前後のため、これを超える値は道の起伏ではなく
-#: 標高データの読み違い（両端が路面でない地物を指した等）である。点の間の勾配がこれを超えたら、その間を勾配として
-#: 数えない——0次ハードフィルタは値の無い区間を除外しない（`domain/hard_filters.py`）ので、誤った値で黙って経路から
-#: 外すより安全側になる。
-MAX_PLAUSIBLE_GRADE_PERCENT = 40.0
-_MAX_PLAUSIBLE_GRADE = MAX_PLAUSIBLE_GRADE_PERCENT / 100.0
-
-#: 一番急な勾配を測る最短の長さ（m）。1つ前の点の間がこれ以下なら、その点で測らない。数える間の途切れない続きの長さが
-#: これより短ければ、その続きの両端では測らない。短い間ほど標高データの揺れが勾配を大きく揺らす（GraphHopper の
-#: https://github.com/graphhopper/graphhopper/blob/master/core/src/main/java/com/graphhopper/routing/util/SlopeCalculator.java
-#: の`MIN_LENGTH`と同じ値と理由）。獲得標高・平均勾配と所要時間は、短い間も数える。
-STEEPEST_MIN_INTERVAL_M = 2.0
+#: 作った坂（標高データでない一様な坂。レンズの換算等）に渡す勾配の上限。読み違いを外す上限を当てない。
+NO_GRADE_LIMIT = float("inf")
 
 #: 勾配の分布の階級の幅と、端の階級の勾配（どちらも勾配の小数。0.01は1%）。端より急な間は端の階級に数える。
 _DISTRIBUTION_STEP = 0.01
@@ -57,8 +47,8 @@ FLAT = GradeDistribution(np.zeros(1), np.ones(1))
 
 @dataclass(frozen=True)
 class ElevationProfiles:
-    """区間の行ごとの断面の点（全行が共有する`elevation_m`の`start`から`points`個。`forward`が偽の行は勾配の符号を返して
-    読む）と、標高の無い所を埋める分布。"""
+    """区間の行ごとの断面の点（全行が共有する`elevation_m`の`start`から`points`個。`forward`が偽の行は点を逆順にたどって
+    勾配の符号を返して読む）と、標高の無い所を埋める分布。"""
 
     start: np.ndarray  # int64
     points: np.ndarray  # int32
@@ -66,6 +56,8 @@ class ElevationProfiles:
     elevation_m: np.ndarray  # float32、値の無い点はNaN
     position: np.ndarray  # float32、点ごとの位置（区間の長さに対する割合）
     distribution: GradeDistribution
+    #: 点の間の勾配（小数）の上限（`interval_grade`）。標高データの断面は較正値`elevation.max_plausible_grade_percent`÷100。
+    max_grade: float
 
 
 def along_fractions(along_m: ArrayLike, points: int) -> np.ndarray:
@@ -78,21 +70,22 @@ def along_fractions(along_m: ArrayLike, points: int) -> np.ndarray:
 
 
 @njit(cache=True, nogil=True)
-def interval_grade(lower_m: float, upper_m: float, length_m: float) -> float:
-    """点の間の、順方向に読んだ勾配（小数）。どちらかの端に値が無いか、公道としてありえない勾配ならNaN（標高の無い間）。
+def interval_grade(lower_m: float, upper_m: float, length_m: float, max_grade: float) -> float:
+    """点の間の、順方向に読んだ勾配（小数）。どちらかの端に値が無いか、公道としてありえない勾配（`max_grade`を超える。標高データの
+    読み違い）ならNaN（標高の無い間）。
     長さ0の間（長さ0の区間）も勾配を持たない——走る長さが無いので、所要時間にも標高の無い長さにも効かない。
     所要時間・標高の無い長さ・区間の要約（`profile_summaries`）は、どれもこの判定で数える間を決める。"""
     if not length_m > 0:
         return np.nan
     grade = (upper_m - lower_m) / length_m
-    if not abs(grade) <= _MAX_PLAUSIBLE_GRADE:  # NaNもここで外れる
+    if not abs(grade) <= max_grade:  # NaNもここで外れる
         return np.nan
     return grade
 
 
 @njit(cache=True, nogil=True)
 def unknown_lengths_m(start: np.ndarray, points: np.ndarray, elevation_m: np.ndarray, position: np.ndarray,
-                      distance_m: np.ndarray) -> np.ndarray:
+                      distance_m: np.ndarray, max_grade: float) -> np.ndarray:
     """区間の行ごとの、標高の無い長さ（m）の和。点が2つ未満の区間は区間全体。"""
     unknown = np.zeros(len(points))
     for row in range(len(points)):
@@ -103,7 +96,7 @@ def unknown_lengths_m(start: np.ndarray, points: np.ndarray, elevation_m: np.nda
         first = start[row]
         for i in range(count - 1):
             step = distance_m[row] * (position[first + i + 1] - position[first + i])
-            if np.isnan(interval_grade(elevation_m[first + i], elevation_m[first + i + 1], step)):
+            if np.isnan(interval_grade(elevation_m[first + i], elevation_m[first + i + 1], step, max_grade)):
                 unknown[row] += step
     return unknown
 
@@ -127,37 +120,48 @@ def row_elevations_m(start: np.ndarray, points: np.ndarray, elevation_m: np.ndar
 @njit(cache=True, nogil=True)
 def flatten_spans(start: np.ndarray, points: np.ndarray, forward: np.ndarray, elevation_m: np.ndarray,
                    position: np.ndarray, distance_m: np.ndarray, unknown_m: np.ndarray, fill_grade: np.ndarray,
-                   fill_share: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """区間の行ごとの、値のある点の間と、標高の無い長さを分布の階級ごとに分けた道を、`(行, 長さ, 走る向きの勾配)`の
-    平らな並びにする（風に依らないので、リクエストに1回。`domain/cycling_speed.py`が風の時刻ごとに解くループを1本の平らな
-    並びにして、CPUがまとめて計算できるようにする）。"""
+                   fill_share: np.ndarray, max_grade: float) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """区間の行ごとの、値のある点の間と、標高の無い長さを分布の階級ごとに分けた道を、`(行, 長さ, 走る向きの勾配,
+    前の点の間から勢いを引き継ぐか)`の平らな並びにする（風に依らないので、リクエストに1回。`domain/cycling_speed.py`が風の
+    時刻ごとに解くループを1本の平らな並びにして、CPUがまとめて計算できるようにする）。
+
+    行の中は、値のある点の間を**走る順**に並べ（逆向きの行は点を逆順にたどる。勢いを点の間の順に持ち越すため）、そのあとに
+    分布で埋める道を並べる。勢いを引き継ぐのは、走る順で1つ前の間も値のある点の間だったものだけ——行の最初の点の間と、標高の
+    無い間のすぐあとの点の間は引き継がない（間の長さは分布で埋める道で別に走るので、前後をつなげない）。分布で埋める道は道の上の
+    位置を持たないので、引き継がない。"""
     total = 0
     for row in range(len(points)):
         total += max(points[row] - 1, 0) + (len(fill_grade) if unknown_m[row] > 0 else 0)
     span_row = np.empty(total, dtype=np.int32)
     span_length = np.empty(total, dtype=np.float32)
     span_grade = np.empty(total, dtype=np.float32)
+    span_carries = np.zeros(total, dtype=np.bool_)
     found = 0
     for row in range(len(points)):
         count = points[row]
         if count >= 2:
-            sign = 1.0 if forward[row] else -1.0
             first = start[row]
-            for i in range(count - 1):
+            follows = False
+            for k in range(count - 1):
+                i = k if forward[row] else count - 2 - k
                 step = distance_m[row] * (position[first + i + 1] - position[first + i])
-                grade = interval_grade(elevation_m[first + i], elevation_m[first + i + 1], step)
-                if not np.isnan(grade):
-                    span_row[found] = row
-                    span_length[found] = step
-                    span_grade[found] = sign * grade
-                    found += 1
+                grade = interval_grade(elevation_m[first + i], elevation_m[first + i + 1], step, max_grade)
+                if np.isnan(grade):
+                    follows = False
+                    continue
+                span_row[found] = row
+                span_length[found] = step
+                span_grade[found] = grade if forward[row] else -grade
+                span_carries[found] = follows
+                follows = True
+                found += 1
         if unknown_m[row] > 0:
             for k in range(len(fill_grade)):
                 span_row[found] = row
                 span_length[found] = unknown_m[row] * fill_share[k]
                 span_grade[found] = fill_grade[k]
                 found += 1
-    return span_row[:found], span_length[:found], span_grade[:found]
+    return span_row[:found], span_length[:found], span_grade[:found], span_carries[:found]
 
 
 @dataclass(frozen=True)
@@ -169,21 +173,23 @@ class ProfileSpans:
     count: np.ndarray  # int32
     length_m: np.ndarray  # float32
     grade: np.ndarray  # float32、走る向きの勾配（小数）
+    carries: np.ndarray  # bool、前の点の間から勢いを引き継ぐか（`flatten_spans`）
     unknown_m: np.ndarray  # float64
     mean_elevation_m: np.ndarray  # float64
 
     def take(self, rows: np.ndarray) -> "ProfileSpans":
-        return ProfileSpans(np.asarray(self.start[rows]), np.asarray(self.count[rows]), self.length_m, self.grade,
+        return ProfileSpans(np.asarray(self.start[rows]), np.asarray(self.count[rows]), self.length_m, self.grade, self.carries,
                             np.asarray(self.unknown_m[rows]), np.asarray(self.mean_elevation_m[rows]))
 
-    def flat(self) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-        """`(行, 長さ, 走る向きの勾配)`の平らな並び（行はこの束の中の位置）。"""
+    def flat(self) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+        """`(行, 長さ, 走る向きの勾配, 前の点の間から勢いを引き継ぐか)`の平らな並び（行はこの束の中の位置）。"""
         count = np.asarray(self.count, dtype=np.int64)
         # 行ごとの範囲 [始まり, 始まり＋数) をつないだ位置（行の先頭からの位置 ＋ 行の始まり）。
         offset = np.asarray(self.start, dtype=np.int64) - (np.cumsum(count) - count)
         taken = np.repeat(offset, count) + np.arange(int(count.sum()))
         return (np.repeat(np.arange(len(count), dtype=np.int32), count),
-                np.asarray(self.length_m[taken], dtype=np.float32), np.asarray(self.grade[taken], dtype=np.float32))
+                np.asarray(self.length_m[taken], dtype=np.float32), np.asarray(self.grade[taken], dtype=np.float32),
+                np.asarray(self.carries[taken], dtype=np.bool_))
 
 
 def profile_spans(profiles: ElevationProfiles, distance_m: np.ndarray) -> ProfileSpans:
@@ -193,12 +199,13 @@ def profile_spans(profiles: ElevationProfiles, distance_m: np.ndarray) -> Profil
     elevation = np.asarray(profiles.elevation_m, dtype=np.float32)
     position = np.asarray(profiles.position, dtype=np.float32)
     distance = np.asarray(distance_m, dtype=np.float64)
-    unknown = unknown_lengths_m(start, points, elevation, position, distance)
-    span_row, length, grade = flatten_spans(
+    unknown = unknown_lengths_m(start, points, elevation, position, distance, profiles.max_grade)
+    span_row, length, grade, carries = flatten_spans(
         start, points, np.asarray(profiles.forward, dtype=np.bool_), elevation, position, distance, unknown,
-        np.asarray(profiles.distribution.grade, dtype=np.float64), np.asarray(profiles.distribution.share, dtype=np.float64))
+        np.asarray(profiles.distribution.grade, dtype=np.float64), np.asarray(profiles.distribution.share, dtype=np.float64),
+        profiles.max_grade)
     count = np.bincount(span_row, minlength=len(points)).astype(np.int32)
-    return ProfileSpans(np.cumsum(count, dtype=np.int64) - count, count, length, grade, unknown,
+    return ProfileSpans(np.cumsum(count, dtype=np.int64) - count, count, length, grade, carries, unknown,
                         row_elevations_m(start, points, elevation))
 
 
@@ -208,7 +215,7 @@ SUMMARY_COLUMNS = ("start_elevation_m", "end_elevation_m", "elevation_gain_m", "
 
 
 @njit(cache=True, nogil=True)
-def _steepest_climb(elevation: np.ndarray, along: np.ndarray, min_interval_m: float) -> float:
+def _steepest_climb(elevation: np.ndarray, along: np.ndarray, min_interval_m: float, max_grade: float) -> float:
     """点を並べた向きに走ったときの一番急な登り（%、0以上）。測れる候補が無ければNaN。
 
     GraphHopper の`SlopeCalculator`の max_slope の式（https://github.com/graphhopper/graphhopper/blob/master/core/src/main/java/com/graphhopper/routing/util/SlopeCalculator.java）:
@@ -223,7 +230,7 @@ def _steepest_climb(elevation: np.ndarray, along: np.ndarray, min_interval_m: fl
         counted = False
         if k < len(elevation):
             step = along[k] - along[k - 1]
-            counted = not np.isnan(interval_grade(elevation[k - 1], elevation[k], step))
+            counted = not np.isnan(interval_grade(elevation[k - 1], elevation[k], step, max_grade))
         if counted:
             rise = elevation[k] - elevation[k - 1]
             if previous_counted and along[k - 1] - along[k - 2] > min_interval_m:
@@ -244,7 +251,7 @@ def _steepest_climb(elevation: np.ndarray, along: np.ndarray, min_interval_m: fl
 
 @njit(cache=True, nogil=True)
 def profile_summaries(start: np.ndarray, points: np.ndarray, forward: np.ndarray, elevation_m: np.ndarray,
-                      position: np.ndarray, distance_m: np.ndarray, min_interval_m: float) -> np.ndarray:
+                      position: np.ndarray, distance_m: np.ndarray, min_interval_m: float, max_grade: float) -> np.ndarray:
     """区間の行ごとの、走る向きに見た要約（`(行, SUMMARY_COLUMNS)`の float64）。値のある点が2つ未満の行はどれもNaN。
 
     要約は、隣り合う2点の間のうち勾配として数える間（`interval_grade`）だけから出す。獲得・喪失は数える間の登りと下りの和
@@ -268,7 +275,7 @@ def profile_summaries(start: np.ndarray, points: np.ndarray, forward: np.ndarray
         counted_m = 0.0
         for k in range(1, count):
             step = along[k] - along[k - 1]
-            if not np.isnan(interval_grade(elevation[k - 1], elevation[k], step)):
+            if not np.isnan(interval_grade(elevation[k - 1], elevation[k], step, max_grade)):
                 rise = elevation[k] - elevation[k - 1]
                 gain += max(rise, 0.0)
                 loss += max(-rise, 0.0)
@@ -279,14 +286,14 @@ def profile_summaries(start: np.ndarray, points: np.ndarray, forward: np.ndarray
         summaries[row, 3] = loss
         if counted_m > 0:
             summaries[row, 4] = (gain - loss) / counted_m * 100.0
-        summaries[row, 5] = _steepest_climb(elevation, along, min_interval_m)
-        summaries[row, 6] = _steepest_climb(elevation[::-1].copy(), along[-1] - along[::-1], min_interval_m)
+        summaries[row, 5] = _steepest_climb(elevation, along, min_interval_m, max_grade)
+        summaries[row, 6] = _steepest_climb(elevation[::-1].copy(), along[-1] - along[::-1], min_interval_m, max_grade)
     return summaries
 
 
 @njit(cache=True, nogil=True)
 def _known_grades(start: np.ndarray, points: np.ndarray, elevation_m: np.ndarray, position: np.ndarray,
-                  distance_m: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+                  distance_m: np.ndarray, max_grade: float) -> tuple[np.ndarray, np.ndarray]:
     """値のある点の間の`(順方向に読んだ勾配, 長さ)`。"""
     total = 0
     for row in range(len(points)):
@@ -301,7 +308,7 @@ def _known_grades(start: np.ndarray, points: np.ndarray, elevation_m: np.ndarray
         first = start[row]
         for i in range(count - 1):
             step = distance_m[row] * (position[first + i + 1] - position[first + i])
-            grade = interval_grade(elevation_m[first + i], elevation_m[first + i + 1], step)
+            grade = interval_grade(elevation_m[first + i], elevation_m[first + i + 1], step, max_grade)
             if not np.isnan(grade):
                 grades[found] = grade
                 lengths[found] = step
@@ -310,12 +317,12 @@ def _known_grades(start: np.ndarray, points: np.ndarray, elevation_m: np.ndarray
 
 
 def grade_distribution(start: np.ndarray, points: np.ndarray, elevation_m: np.ndarray, position: np.ndarray,
-                       distance_m: np.ndarray) -> GradeDistribution:
+                       distance_m: np.ndarray, max_grade: float) -> GradeDistribution:
     """区間ごとに1行で渡した点の間の勾配の分布（道のりの重み）。どの向きにも走るので、順方向に読んだ勾配と、その逆向き
     （符号を返した勾配）を半分ずつ数える。値のある間が1つも無ければ、平地だけの分布。"""
     grades, lengths = _known_grades(np.asarray(start, dtype=np.int64), np.asarray(points, dtype=np.int64),
                                     np.asarray(elevation_m, dtype=np.float32), np.asarray(position, dtype=np.float32),
-                                    np.asarray(distance_m, dtype=np.float64))
+                                    np.asarray(distance_m, dtype=np.float64), max_grade)
     if len(grades) == 0:
         return FLAT
     centers = np.arange(-_DISTRIBUTION_LIMIT, _DISTRIBUTION_LIMIT + _DISTRIBUTION_STEP / 2, _DISTRIBUTION_STEP)

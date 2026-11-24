@@ -100,28 +100,28 @@ async def test_a_signal_is_a_signal_node_or_a_crossing_controlled_by_signals(roa
     assert await _is_signal(road_graph_engine, tags) is expected
 
 
-async def _read_kinds(engine, expression, kind: str, has_traffic_signals: bool):
+async def _read_kinds(engine, expression, kind: str, in_signal_place: bool):
     async with engine.connect() as conn:
         return (await conn.execute(
-            text(f"SELECT {expression('nm')} FROM (VALUES (CAST(:kind AS text), CAST(:signals AS boolean)))"
-                 " AS nm(kind, has_traffic_signals)"),
-            {"kind": kind, "signals": has_traffic_signals},
+            text(f"SELECT {expression('nm', 'nm.place')} FROM (VALUES (CAST(:kind AS text), CAST(:place AS integer)))"
+                 " AS nm(kind, place)"),
+            {"kind": kind, "place": 1 if in_signal_place else None},
         )).scalar_one()
 
 
 @pytest.mark.parametrize(
-    ("kind", "has_traffic_signals", "on_map", "counted_as"),
+    ("kind", "in_signal_place", "on_map", "counted_as"),
     [
-        # 信号のある交差点の横断歩道は、利用者から見れば信号で、信号として1回数える。
+        # 信号の交差点に入る横断歩道は、利用者から見れば信号で、信号として1回数える。
         ("crossing", True, "traffic_signals", "signal"),
         ("crossing", False, "crossing", "crossing"),
-        # 読み替えるのは信号と横断歩道だけ。近くに信号があっても一時停止は一時停止。
+        # 読み替えるのは信号と横断歩道だけ。信号の交差点に入っても一時停止は一時停止。
         ("stop", True, "stop", "stop"),
         # 補給・休憩は地図には出るが、停止の回数には入らない。
         ("toilets", True, "toilets", None),
     ],
 )
-async def test_the_map_and_the_count_read_the_same_signal(road_graph_engine, kind, has_traffic_signals, on_map, counted_as):
+async def test_the_map_and_the_count_read_the_same_signal(road_graph_engine, kind, in_signal_place, on_map, counted_as):
     """地図へ出す種別と数える種別は同じ読み替えから導く。別々だと、見えている信号の数と停止の回数が合わない。"""
-    assert await _read_kinds(road_graph_engine, traffic.stop_kind_sql, kind, has_traffic_signals) == on_map
-    assert await _read_kinds(road_graph_engine, traffic.count_kind_sql, kind, has_traffic_signals) == counted_as
+    assert await _read_kinds(road_graph_engine, traffic.stop_kind_sql, kind, in_signal_place) == on_map
+    assert await _read_kinds(road_graph_engine, traffic.count_kind_sql, kind, in_signal_place) == counted_as

@@ -1,8 +1,7 @@
-"""区間と道に付く数の値（`batch/derive_counts.py`）が、意図した区間へ数を付けること。
+"""区間に付く数の値（`batch/derive_counts.py`）が、意図した区間へ数を付けること。
 
-見るもの: 事故を付ける区間（等距離のタイ・地上の距離・帰属の距離の両側・自転車の関わらない事故・死亡の重み）、
-道路網に乗らない停止要因、信号の近くの横断歩道を信号として数える呼び出し、流し直しで数が0へ戻ること（区間と道の和）、
-数えるものの無い区間・道も0の行を持つこと。
+見るもの: 道路網に乗らない停止要因、信号の近くの横断歩道を信号として数える呼び出し、流し直しで数が0へ戻ること、
+数えるものの無い区間も0の行を持つこと。
 見ないもの: 停止要因と交差点の数え方（場所1つを経路の上で1回） → `test_derive_stop_counts.py`。タグから
 種別・数える種別への読み替えの両側 → `test_tag_classification.py`。生データから消えた道の行が残らないことは
 `derive_topology`が表を空にして入れ直すことで、外すと主キーの重複で作り直しが落ちる。
@@ -13,37 +12,28 @@ import pytest
 import pytest_asyncio
 
 from app.batch import derive_topology
-from app.domain.accident import PartyType
-from app.domain.geo import KM_PER_DEGREE_LATITUDE, km_per_degree_longitude
+from app.domain.geo import KM_PER_DEGREE_LATITUDE
 from app.domain.traffic import POI_COUNT_KINDS, poi_count_column
-from app.domain.tuning import ACCIDENT_MATCH_DISTANCE_ID
-from app.infrastructure.source_models import ACCIDENTS_SOURCE_SQL, PARTY_TYPE_CODES
 from tests.conftest import empty_ingested_tables
 from tests.source_ingest import (
     WAY_ORIGIN,
     WAY_STEP,
-    accident_record,
     derive_counts_at_default_tuning,
     derive_nodes_at_default_radius,
     ingest_records,
     point_record,
-    way_record,
     zigzag_point,
     zigzag_way_record,
 )
-from tests.tuning_fixture import TUNING
 
 # moduleスコープのroad_graph_engine（conftest.py）の上のDBを使うため、.claude/rules/testing-backend.mdのパターン2どおり
 # loop_scope="module"が必須。
 pytestmark = pytest.mark.asyncio(loop_scope="module")
 
 BASE_LON, BASE_LAT = WAY_ORIGIN
-ACCIDENT_MATCH_DISTANCE_M = TUNING[ACCIDENT_MATCH_DISTANCE_ID]
-ACCIDENT_FATAL_WEIGHT = TUNING["accident.fatal_weight"]
 
 
-#: (wayのid, 参照ノードid列)。3本ともノード3で接する。ノード3の上で起きた事故は
-#: 3区間のどれからも距離0になる。
+#: (wayのid, 参照ノードid列)。3本ともノード3で接する。
 WAYS: tuple[tuple[int, list[int]], ...] = (
     (300, [1, 3]),
     (200, [3, 4]),
@@ -53,9 +43,6 @@ TIED_NODE = 3
 #: 道300（ノード1から3へ東西に延びる）の中ほど。ほかの道はここから約90m以上離れる。
 BESIDE_WAY = (BASE_LON + WAY_STEP * 2, BASE_LAT + WAY_STEP)
 
-#: 自転車の当事者種別と、自転車ではない軽車両（その他）の当事者種別。
-BICYCLE_PARTY = PARTY_TYPE_CODES[PartyType.BICYCLE]
-OTHER_PARTY = "59"
 CROSSING = {"highway": "crossing"}
 
 
@@ -63,25 +50,6 @@ def _north_of_way(meters: float) -> tuple[float, float]:
     """道300の中ほどから北へ`meters`離れた点。"""
     lon, lat = BESIDE_WAY
     return (lon, lat + meters / (KM_PER_DEGREE_LATITUDE * 1000.0))
-
-
-def _accident(key: str, position: tuple[float, float], *, bicycle: bool = True, fatal: bool = False):
-    """当事者Aが自転車（`bicycle`が偽なら自転車ではない軽車両）で、当事者Bが自転車ではない事故の1件。"""
-    return accident_record(key, *position, party_a=BICYCLE_PARTY if bicycle else OTHER_PARTY, party_b=OTHER_PARTY,
-                           fatal=fatal)
-
-
-async def _ingest_accidents(conn: asyncpg.Connection, *accidents) -> None:
-    """ノード3の上の事故に`accidents`を加えて、事故を取り込み直す。"""
-    await ingest_records("accident", [_accident("tied", zigzag_point(TIED_NODE)), *accidents], conn=conn)
-
-
-async def _accidents(conn: asyncpg.Connection) -> dict[tuple[int, int], float]:
-    """事故の付いた区間ごとの数。"""
-    rows = await conn.fetch(
-        "SELECT osm_way_id, segment_index, accident_count FROM edge_counts"
-        " WHERE accident_count > 0")
-    return {(r["osm_way_id"], r["segment_index"]): r["accident_count"] for r in rows}
 
 
 async def _derive_with_nodes(conn: asyncpg.Connection,
@@ -97,7 +65,8 @@ async def _stop_counts(conn: asyncpg.Connection) -> dict[int, dict[str, float]]:
     """道ごとの、停止要因の集計キーごとの数（0は省く）。"""
     columns = {kind: poi_count_column(kind) for kind in sorted(POI_COUNT_KINDS)}
     rows = await conn.fetch(
-        "SELECT osm_way_id, " + ", ".join(columns.values()) + " FROM way_counts")
+        "SELECT osm_way_id, " + ", ".join(f"sum({c}) AS {c}" for c in columns.values())
+        + " FROM edge_counts GROUP BY osm_way_id")
     return {r["osm_way_id"]: {kind: r[c] for kind, c in columns.items() if r[c]} for r in rows}
 
 
@@ -106,23 +75,9 @@ async def counts_conn(derive_conn):
     """テストごとに同じ生データから作り直す。どのテストも生データと派生の表を書き換えるため。"""
     await empty_ingested_tables(derive_conn)
     await ingest_records("osm_way", [zigzag_way_record(*way) for way in WAYS], conn=derive_conn)
-    await _ingest_accidents(derive_conn)
     await derive_topology.derive(derive_conn)
     await derive_counts_at_default_tuning(derive_conn)
     return derive_conn
-
-
-async def test_equidistant_accident_goes_to_exactly_one_existing_segment(counts_conn):
-    """等距離のタイでも事故は1件のまま、実在する1区間へ付く。区間の鍵が小さい方が取る。
-
-    鍵の2列を別々の探索で取ると、タイのときに片方ずつ別の区間を指し、どの区間にも
-    付かない（存在しない組へ集計される）ことがある。
-    """
-    assert await _accidents(counts_conn) == {(100, 0): 1.0}
-    distances = await counts_conn.fetch(
-        f"SELECT DISTINCT e.geom <-> a.geom AS d FROM road_edges e, {ACCIDENTS_SOURCE_SQL} a")
-    # 前提: 3区間とも本当に等距離（タイを作れている）。
-    assert [r["d"] for r in distances] == [0.0]
 
 
 async def test_a_crossing_near_a_signal_is_counted_as_a_signal(counts_conn):
@@ -143,88 +98,26 @@ async def test_a_crossing_near_a_signal_is_counted_as_a_signal(counts_conn):
 
 
 async def test_rerun_on_changed_input_keeps_no_count_the_input_no_longer_supports(counts_conn):
-    """入力を変えて流し直すと、停止要因も事故も無くなった区間・道の数は0へ戻る。道の数は区間の和。"""
-    columns = ("accident_count", *(poi_count_column(k) for k in sorted(POI_COUNT_KINDS)))
+    """入力を変えて流し直すと、停止要因が無くなった区間の数は0へ戻る。"""
+    columns = [poi_count_column(k) for k in sorted(POI_COUNT_KINDS)]
     total = " + ".join(f"sum({c})" for c in columns)
 
-    async def counted() -> tuple[float, float]:
-        """(区間の数の総和, 道の数の総和)。"""
-        return (await counts_conn.fetchval(f"SELECT {total} FROM edge_counts"),
-                await counts_conn.fetchval(f"SELECT {total} FROM way_counts"))
+    async def counted() -> float:
+        """区間の数の総和。"""
+        return await counts_conn.fetchval(f"SELECT {total} FROM edge_counts")
 
     await _derive_with_nodes(counts_conn, {TIED_NODE: (zigzag_point(TIED_NODE), CROSSING)})
     before = await counted()
-    await ingest_records("accident", [], conn=counts_conn)
     await _derive_with_nodes(counts_conn, {TIED_NODE: (zigzag_point(TIED_NODE), {})})
     after = await counted()
 
-    assert before[0] > 0 and before[1] == before[0]
-    assert after == (0, 0)
-
-
-async def test_every_segment_and_way_has_a_row_even_without_anything_to_count(counts_conn):
-    """数えるものの無い区間・道も0の行を持つ。行が無いと、その区間は材料の欠損に数えられ、地図では値の無い道に塗られる。"""
-    edges = await counts_conn.fetch("SELECT e.osm_way_id, c.accident_count FROM road_edges e"
-                                    " LEFT JOIN edge_counts c USING (osm_way_id, segment_index)")
-    ways = await counts_conn.fetch("SELECT w.osm_way_id, c.accident_count FROM road_ways w"
-                                   " LEFT JOIN way_counts c USING (osm_way_id)")
-
-    assert {r["osm_way_id"]: r["accident_count"] for r in edges} == {300: 0.0, 200: 0.0, 100: 1.0}
-    assert {r["osm_way_id"]: r["accident_count"] for r in ways} == {300: 0.0, 200: 0.0, 100: 1.0}
-
-
-async def test_an_accident_without_a_bicycle_is_not_counted(counts_conn):
-    """自転車の関わらない事故は数えない（自転車の事故はノード3の事故）。"""
-    await _ingest_accidents(counts_conn, _accident("car", _north_of_way(5.0), bicycle=False))
-
-    await derive_counts_at_default_tuning(counts_conn)
-
-    assert await _accidents(counts_conn) == {(100, 0): 1.0}
-
-
-async def test_an_accident_farther_than_the_match_distance_is_not_counted(counts_conn):
-    """道から帰属の距離より遠い事故は、最も近い道にも付けない。距離の内側の事故は付ける。"""
-    await _ingest_accidents(counts_conn,
-                            _accident("near", _north_of_way(ACCIDENT_MATCH_DISTANCE_M - 10)),
-                            _accident("far", _north_of_way(ACCIDENT_MATCH_DISTANCE_M + 10)))
-
-    await derive_counts_at_default_tuning(counts_conn)
-
-    assert await _accidents(counts_conn) == {(100, 0): 1.0, (300, 0): 1.0}
-
-
-async def test_an_accident_goes_to_the_segment_nearest_on_the_ground(counts_conn):
-    """事故は地上の距離（m）で最も近い区間へ付く。
-
-    道300から北へ11.5m・南北に延びる道400から西へ10mの点は、道400の方が近い。緯度経度の度の
-    まま比べると、東西の10mは南北の11.5mより大きな度になる（経度1度が緯度1度より短い）。
-    """
-    lon, lat = _north_of_way(11.5)
-    east = lon + 10.0 / (km_per_degree_longitude(lat) * 1000.0)
-    south, north = _north_of_way(6.5)[1], _north_of_way(40.0)[1]
-    await ingest_records("osm_way", [*(zigzag_way_record(*way) for way in WAYS),
-                                     way_record(400, [(east, south), (east, north)], [7, 8])], conn=counts_conn)
-    await _ingest_accidents(counts_conn, _accident("between", (lon, lat)))
-
-    await derive_topology.derive(counts_conn)
-    await derive_counts_at_default_tuning(counts_conn)
-
-    assert await _accidents(counts_conn) == {(100, 0): 1.0, (400, 0): 1.0}
-
-
-async def test_the_stage_counts_accidents_with_the_values_it_is_run_with(counts_conn):
-    """付ける距離と死亡の重みは、段へ渡した較正値で効く（管理画面で較正した値が、作り直した事故の数に届く）。"""
-    await _ingest_accidents(counts_conn,
-                            _accident("fatal", _north_of_way(ACCIDENT_MATCH_DISTANCE_M + 10), fatal=True))
-
-    await derive_counts_at_default_tuning(counts_conn, accident_match_distance_m=ACCIDENT_MATCH_DISTANCE_M + 20,
-                         accident_fatal_weight=ACCIDENT_FATAL_WEIGHT + 2)
-
-    assert await _accidents(counts_conn) == {(100, 0): 1.0, (300, 0): ACCIDENT_FATAL_WEIGHT + 2}
+    assert before > 0
+    assert after == 0
 
 
 async def test_a_stop_point_on_no_segment_is_not_counted(counts_conn):
-    """どの区間にも乗らない停止要因の点（取り込んでいない道の上の点等）は、すぐ隣の道にも数えない。"""
+    """どの区間にも乗らない停止要因の点（取り込んでいない道の上の点等）は、すぐ隣の道にも数えない。数えるものの無い区間も0の行を
+    持つ（行が無いと、その区間は材料の欠損に数えられ、地図では値の無い道に塗られる。どの道も区間は1本）。"""
     await _derive_with_nodes(counts_conn, {9: (_north_of_way(5.0), {"highway": "stop"})})
 
     assert await _stop_counts(counts_conn) == {100: {}, 200: {}, 300: {}}

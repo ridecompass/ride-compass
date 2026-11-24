@@ -56,6 +56,12 @@ export default function RailReason({ segment }: { segment: RouteSegmentDetail })
           </li>
         );
       })}
+      {segment.regulation_margin && (
+        // ルートは通る見込みの時間帯を前後に広げて交通規制を見込むので、地図（出発の時刻そのもので塗る）では規制の外に見える道もある。
+        <li className={textVariants({ variant: "hint" })}>
+          通る見込みの時間帯（前後に幅を持たせたもの）に、時間で変わる交通規制が効くとみなしました
+        </li>
+      )}
     </ul>
   );
 }

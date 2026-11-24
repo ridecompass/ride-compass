@@ -10,8 +10,11 @@ const ROAD_SURFACE_TILE_PATH = apiPath("/api/region/road-surface-tiles/{z}/{x}/{
 
 // ベクタタイルのURL。MapLibreはWeb Workerの中で取るため相対パスでは解決できず、絶対URLが要る。`window`をSSRで
 // 読まないよう、呼んだとき（クライアントだけ）に組み立てる。
-export function roadSurfaceTileUrl(): string {
-  return `${tileBaseUrl()}${ROAD_SURFACE_TILE_PATH}`;
+// 出発の時刻を含む路面タイルのコマの印`frame`（`useTimeFrames`）を渡すと、時刻で変わる交通規制の道は、そのコマに効く規制で
+// 焼いたタイルになる（コマごとに別のURLで、コマが変わったときだけタイルを引き直す）。
+export function roadSurfaceTileUrl(frame?: string | null): string {
+  const query = frame ? `?frame=${encodeURIComponent(frame)}` : "";
+  return `${tileBaseUrl()}${ROAD_SURFACE_TILE_PATH}${query}`;
 }
 
 // 点のレイヤーはどれも同じ1つの配信で、パスのレイヤー名だけが違う。停止要因と補給の点は同じタイルを分け合う（種別の集合で分ける）。
@@ -34,10 +37,11 @@ export const ROAD_TILE_MIN_ZOOM = regionTileConfig.road_tile_min_zoom;
 export const ROAD_TILE_MAX_ZOOM = regionTileConfig.road_tile_max_zoom;
 
 /** 地図が今指定している走行の条件。風・勾配のレンズが地図を塗るのに使うものと同じ値で、
- * これを送らないと**1本の道が往復2方向で違う値を持つ**軸を算出できない。 */
+ * これを送らないと**1本の道が往復2方向で違う値を持つ**軸を算出できない。時刻は、出発の時刻を含むレンズのコマの印
+ * （`useTimeFrames`。一覧がまだ届いていなければundefined、その時刻のコマが無ければnull）。 */
 export interface RideConditions {
   bearingDeg: number;
-  at: Date;
+  lensFrame: string | null | undefined;
   speedKmh: number;
 }
 
@@ -85,7 +89,7 @@ export async function fetchRoadInspection(
     x: conditions.x,
     y: conditions.y,
     bearing_deg: conditions.bearingDeg,
-    at: conditions.at.toISOString(),
+    ...(conditions.lensFrame ? { frame: conditions.lensFrame } : {}),
     speed_kmh: conditions.speedKmh,
   };
   return requestApi((init) => backendApi.POST("/api/region/road-inspector", { body, ...init }), {
@@ -93,6 +97,18 @@ export async function fetchRoadInspection(
     messages: { failure: "道の窓の取得に失敗しました", parseFailure: "道の窓の取得に失敗しました" },
     requestMeta: { body },
     successMeta: (data) => ({ found: data !== null }),
+  });
+}
+
+export type TimeFrames = components["schemas"]["TimeFrames"];
+export type TimeFrame = components["schemas"]["TimeFrame"];
+
+/** 時刻で変わる値の、選べる出発時刻の範囲のコマの一覧。 */
+export async function fetchTimeFrames(): Promise<TimeFrames> {
+  return requestApi((init) => backendApi.GET("/api/region/time-frames", init), {
+    category: "api:time-frames",
+    messages: { failure: "時刻のコマの取得に失敗しました", parseFailure: "時刻のコマの解析に失敗しました" },
+    successMeta: (data) => ({ roadSurface: data.road_surface.length, lens: data.lens.length }),
   });
 }
 

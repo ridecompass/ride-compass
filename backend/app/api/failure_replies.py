@@ -12,6 +12,7 @@ import httpx
 from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse
 
+from app.domain.time_frames import StaleTimeFrameError
 from app.domain.tuning import TuningValueError
 from app.infrastructure.database import DB_UNAVAILABLE_ERRORS
 from app.infrastructure.debug_log import error_type_label
@@ -33,6 +34,9 @@ def failure_reply(exc: BaseException) -> tuple[int, str] | None:
         return status.HTTP_503_SERVICE_UNAVAILABLE, str(exc)
     if isinstance(exc, TuningValueError):
         return status.HTTP_503_SERVICE_UNAVAILABLE, str(exc)
+    if isinstance(exc, StaleTimeFrameError):
+        # 画面はコマの一覧を読み直してから求め直す。
+        return status.HTTP_409_CONFLICT, "時刻のコマが古くなりました"
     if isinstance(exc, DB_UNAVAILABLE_ERRORS):
         return status.HTTP_503_SERVICE_UNAVAILABLE, "DBへのアクセスに失敗しました[DB接続と、テーブルが作られているかを確認してください]"
     return None
@@ -48,5 +52,6 @@ async def _reply(request: Request, exc: Exception) -> JSONResponse:
 
 
 def install_failure_replies(app: FastAPI) -> None:
-    for error_type in (*UPSTREAM_ERRORS, MsmUnavailableError, AmedasUnavailableError, TuningValueError, *DB_UNAVAILABLE_ERRORS):
+    for error_type in (*UPSTREAM_ERRORS, MsmUnavailableError, AmedasUnavailableError, TuningValueError, StaleTimeFrameError,
+                       *DB_UNAVAILABLE_ERRORS):
         app.add_exception_handler(error_type, _reply)

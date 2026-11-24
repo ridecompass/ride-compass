@@ -18,34 +18,30 @@ from collections.abc import AsyncIterator, Mapping, Sequence
 from itertools import chain
 
 import numpy as np
-import shapely
 from sqlalchemy import Row, TextClause, select, text
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
 from app.domain.attributes import CategoricalColumn, EdgeMaterialArrays
 from app.domain.elevation_profile import along_fractions
-from app.domain.geo import bearing_sql, degrees_covering_m, midpoint_sql
+from app.domain.geo import bearing_sql, midpoint_sql
 from app.domain.material_catalog import (
+    MATERIAL_CATALOG,
     material_array_columns,
     material_value_sql,
 )
-from app.domain.region import BoundingBox, RoadAt
+from app.domain.region import BoundingBox
+from app.domain.road_network_build import NetworkRegulations
 from app.domain.search_graph import EDGE_VALUE_DTYPE
-from app.domain.tuning import STOP_CLUSTER_DISTANCE_ID, TURN_BEARING_DISTANCE_ID, require_tuning
+from app.domain.traffic_regulation import SLOT_FIELDS, RegulationSlot
+from app.domain.tuning import MAX_PLAUSIBLE_GRADE_ID, STEEPEST_MIN_INTERVAL_ID, TURN_BEARING_DISTANCE_ID, require_tuning
 from app.infrastructure import derived_data_meta
 from app.infrastructure.material_joins import material_from_clause
 from app.infrastructure.orm_base import declared_metadata
-from app.infrastructure.road_tile_sql import (
-    DERIVED_DATABASE_ROWS_SQL,
-    TILE_FEATURES_SQL,
-    ROAD_SURFACE_TILE_MVT_SQL,
-    ROADS_AT_SQL,
-    edgeless_way_sql,
-)
+from app.infrastructure.road_tile_sql import ROAD_SURFACE_TILE_MVT_SQL, WAY_NAMES_SQL
 from app.infrastructure.source_models import (
     INGESTED_BBOX_SQL,
-    WAYS_SOURCE_SQL,
     Source,
+    latest_succeeded_run_by_column_sql,
     nodes_lookup_sql,
     ways_lookup_sql,
 )
@@ -92,13 +88,14 @@ async def create_tables(engine: AsyncEngine) -> None:
 #: 材料ではないが、材料と同じ1回のクエリで求まるため一緒に受け取る列。
 _EXTRA_MATERIAL_ARRAY_COLUMNS: dict[str, str] = {
     "distance_m": "re.distance_m",
-    # 逆向きの方位は+180°ではない。両向きぶんを列で持つ（`road_edges`）。
-    "bearing_deg": "CASE WHEN ids.forward THEN re.bearing_deg ELSE re.reverse_bearing_deg END",
+    # 逆向きの方位は、順方向の方位に180°を足したもの（`road_edges`は順方向だけを持つ）。
+    "bearing_deg": "CASE WHEN ids.forward THEN re.bearing_deg"
+                   " ELSE re.bearing_deg + CASE WHEN re.bearing_deg >= 180 THEN -180 ELSE 180 END END",
     **dict(zip(("mid_lat", "mid_lon"), midpoint_sql("nf.geom", "nt.geom"), strict=True)),
 }
 
 #: 列の並びは渡した3つ組の位置で固定する。**road_edgesへLEFT JOINする**——行が無い区間で
-#: 配列が短くなると、以降の列と静かにずれる。`em`は向きを解いた値で、材料の式は向きを知らずに済む。
+#: 配列が短くなると、以降の列と静かにずれる。
 _EDGE_MATERIAL_ARRAYS_FROM = f"""
 FROM unnest(CAST(:way_ids AS bigint[]), CAST(:segment_indexes AS int[]),
             CAST(:forwards AS boolean[]))
@@ -107,7 +104,7 @@ LEFT JOIN road_edges re
        ON re.osm_way_id = ids.osm_way_id AND re.segment_index = ids.segment_index
 LEFT JOIN LATERAL {ways_lookup_sql('ids.osm_way_id')} w ON true
 {material_from_clause([*material_value_sql().values(), *_EXTRA_MATERIAL_ARRAY_COLUMNS.values()],
-                      'ids.osm_way_id', 'ids.segment_index', forward='ids.forward')}
+                      'ids.osm_way_id', 'ids.segment_index')}
 LEFT JOIN LATERAL {nodes_lookup_sql('re.from_node_id')} nf ON true
 LEFT JOIN LATERAL {nodes_lookup_sql('re.to_node_id')} nt ON true
 """
@@ -163,26 +160,17 @@ ORDER BY re.osm_way_id, re.segment_index
 
 
 #: 道路網全体の配列を作る読み出しが読む較正値。値は作り直しに使った値（`get_recorded_tuning`）で、文へ引数で渡る。
-NETWORK_TUNING = (TURN_BEARING_DISTANCE_ID, STOP_CLUSTER_DISTANCE_ID)
+NETWORK_TUNING = (TURN_BEARING_DISTANCE_ID, MAX_PLAUSIBLE_GRADE_ID, STEEPEST_MIN_INTERVAL_ID)
 
-#: 区間の端点全件（`road_edges`の端点は`road_nodes`に行を持ち、`road_nodes`の全行が`node_turns`に行を持つ）。
+#: 区間の端点全件（`road_edges`の端点は`road_nodes`に行を持つ）と、入る信号の交差点（入らなければ-1）。
 #: 座標はノードの生データから読み、生データが無いノードは現れない。
 _NETWORK_NODES_SQL = text(f"""
-SELECT nm.osm_node_id, ST_X(n.geom) AS longitude, ST_Y(n.geom) AS latitude,
-       nm.has_traffic_signals, rn.branch_count
-FROM node_turns nm
-JOIN road_nodes rn ON rn.osm_node_id = nm.osm_node_id
-JOIN LATERAL {nodes_lookup_sql("nm.osm_node_id")} n ON true
-ORDER BY nm.osm_node_id
-""")
-
-#: 区間を1本も持たない道（同じ位置に点が重なり長さ0の区間しか作れない道等）。地図の区分の層は、区間で塗るズームでもこの道を
-#: 道1本で塗る。
-_EDGELESS_WAYS_SQL = text(f"""
-SELECT w.osm_way_id
-FROM {WAYS_SOURCE_SQL} w
-WHERE {edgeless_way_sql("w")}
-ORDER BY w.osm_way_id
+SELECT rn.osm_node_id, ST_X(n.geom) AS longitude, ST_Y(n.geom) AS latitude,
+       coalesce(sp.place_id, -1) AS signal_place, rn.branch_count
+FROM road_nodes rn
+LEFT JOIN signal_place_nodes sp ON sp.osm_node_id = rn.osm_node_id
+JOIN LATERAL {nodes_lookup_sql("rn.osm_node_id")} n ON true
+ORDER BY rn.osm_node_id
 """)
 
 #: 取込範囲全体の道路網（`infrastructure/road_network_store.py`）を作る読み出し。置き場の
@@ -194,7 +182,6 @@ NETWORK_SQL_SOURCES = (
     _NETWORK_NODES_SQL,
     _EDGE_MATERIAL_ARRAYS_SQL,
     _EDGE_ELEVATION_PROFILES_SQL,
-    _EDGELESS_WAYS_SQL,
 )
 
 def float_array(values: list) -> np.ndarray:
@@ -228,24 +215,17 @@ class RoadGraphRepository:
     async def get_accident_years(self) -> list[int]:
         """事故データの収録年。
 
-        今の派生の表を作った事故の取込（`derived_data_meta.py: DerivedSourceRunRow`）が読んだ年（素性の`years`）を
-        そのまま返す。最新の取込を読むと、取り込み直してから派生の作り直しが入れ替わるまでの間、
-        古い数を新しい年数で割る。実データの発生年を数えると、事故が1件も無かった年が落ちる。
-        年数は`accident_count_per_km_year`の分母に、年そのものは地図の説明文に使う。どちらもここが
+        事故の点の地図が読む取込（成功した最新の取込。点のタイルは生データを都度読む）が読んだ年（素性の`years`）を
+        そのまま返す。実データの発生年を数えると、事故が1件も無かった年が落ちる。地図の説明文に使い、ここが
         正本で、**表示側は年を自分で持たない**。
         """
         row = await self._session.execute(text(
-            "SELECT r.origin->'years' AS years"
-            f" FROM {derived_data_meta.DerivedSourceRunRow.__tablename__} d"
-            " JOIN source_runs r ON r.run_id = d.run_id WHERE d.source = :source"), {"source": Source.ACCIDENT})
+            f"SELECT r.origin->'years' AS years FROM {latest_succeeded_run_by_column_sql(':source')} r"),
+            {"source": Source.ACCIDENT})
         value = row.scalar()
         if not isinstance(value, list):
             return []
         return sorted(int(year) for year in value)
-
-    async def get_accident_years_covered(self) -> int:
-        """事故データの収録年数。`accident_count_per_km_year`の分母。"""
-        return len(await self.get_accident_years())
 
     async def get_ingested_area(self) -> BoundingBox | None:
         """取り込んだ範囲（成功した最新の道路の取込が宣言した範囲）。道路をまだ取り込んでいなければNone。"""
@@ -277,22 +257,29 @@ class RoadGraphRepository:
         require_tuning({TURN_BEARING_DISTANCE_ID: bearing_distance_m}, bearing_distance_m >= 0, "0以上")
         return self._stream(_NETWORK_EDGES_SQL.bindparams(bearing_distance_m=bearing_distance_m), chunk_size)
 
-    async def get_edgeless_ways(self) -> list[int]:
-        """区間を持たない道の番号（昇順）。"""
-        return list((await self._session.execute(_EDGELESS_WAYS_SQL)).scalars())
-
-    async def get_tile_features(self, z: int, x: int, y: int, bbox: BoundingBox) -> Sequence[Row]:
-        """路面タイル`z/x/y`が焼くフィーチャーの鍵と、道・区間の番号（道1本のフィーチャーはNone）（`road_tile_sql.py: TILE_FEATURES_SQL`）。
-        路面タイルと同じ選び方で、取込範囲の外のタイルは0行。"""
-        return (await self._session.execute(TILE_FEATURES_SQL, _tile_params(z, x, y, bbox))).all()
+    async def get_network_regulations(self) -> NetworkRegulations:
+        """区間に当たった交通規制と、規制ごとの条件の組（道路網の配列の規制の欄の元）。"""
+        ids: list[str] = list((await self._session.execute(text(
+            "SELECT regulation_id FROM traffic_regulations ORDER BY regulation_id"))).scalars())
+        index = {regulation_id: i for i, regulation_id in enumerate(ids)}
+        hits = (await self._session.execute(text(
+            "SELECT osm_way_id, segment_index, regulation_id FROM edge_traffic_regulations"
+            " ORDER BY osm_way_id, segment_index, regulation_id"))).all()
+        slots = (await self._session.execute(text(
+            f"SELECT regulation_id, {', '.join(SLOT_FIELDS)} FROM traffic_regulation_slots ORDER BY regulation_id, slot"))).all()
+        return NetworkRegulations(
+            regulation_count=len(ids),
+            hit_way=np.array([row.osm_way_id for row in hits], dtype=np.int64),
+            hit_segment=np.array([row.segment_index for row in hits], dtype=np.int64),
+            hit_regulation=np.array([index[row.regulation_id] for row in hits], dtype=np.int64),
+            slot_regulation=np.array([index[row.regulation_id] for row in slots], dtype=np.int64),
+            slot_values=np.array([RegulationSlot(*row[1:]).as_values() for row in slots], dtype=np.int16).reshape(
+                -1, len(SLOT_FIELDS)),
+        )
 
     def stream_network_nodes(self, chunk_size: int) -> AsyncIterator[Sequence[Row]]:
         """区間の端点になりうるノード全件を`chunk_size`行ずつ流す（`osm_node_id`の昇順）。"""
         return self._stream(_NETWORK_NODES_SQL, chunk_size)
-
-    def stream_derived_database_rows(self, chunk_size: int) -> AsyncIterator[Sequence[Row]]:
-        """派生データベースの全行を`chunk_size`行ずつ流す（`road_tile_sql.py: DERIVED_DATABASE_ROWS_SQL`の列）。"""
-        return self._stream(DERIVED_DATABASE_ROWS_SQL, chunk_size)
 
     async def _stream(self, statement: TextClause, chunk_size: int,
                       params: dict[str, object] | None = None) -> AsyncIterator[Sequence[Row]]:
@@ -303,7 +290,7 @@ class RoadGraphRepository:
     # --- 材料 ----------------------------------------------------------------
 
     async def get_edge_material_arrays(
-        self, way_ids: list[int], segment_indexes: list[int], forwards: list[bool], accident_years_covered: int
+        self, way_ids: list[int], segment_indexes: list[int], forwards: list[bool]
     ) -> EdgeMaterialArrays:
         """有向の区間（`(osm_way_id, segment_index, forward)`を位置で揃えた3本の列）の材料を、
         **DB側で導出し、数値の行列と分類の列として**受け取る。
@@ -319,7 +306,7 @@ class RoadGraphRepository:
             stop = start + ID_CHUNK_SIZE
             row = (await self._session.execute(_EDGE_MATERIAL_ARRAYS_SQL, {
                 "way_ids": way_ids[start:stop], "segment_indexes": segment_indexes[start:stop],
-                "forwards": forwards[start:stop], "accident_years": accident_years_covered,
+                "forwards": forwards[start:stop],
             })).one()
             for name in raw:
                 raw[name].extend(getattr(row, f"c_{name}") or [])
@@ -333,7 +320,11 @@ class RoadGraphRepository:
         return EdgeMaterialArrays(
             numeric_ids=numeric_ids, numeric_values=numeric_values,
             categorical_ids=categorical_ids,
-            categorical_columns=tuple(CategoricalColumn.encode(raw[material_id]) for material_id in categorical_ids),
+            # 値式を持たない分類の材料（出どころが`regulation`）は、宣言の語彙の値なしの列で返す（配列を作るときに埋める）。
+            categorical_columns=tuple(
+                CategoricalColumn.encode(raw[material_id]) if material_id in raw
+                else CategoricalColumn(np.zeros(n, dtype=np.int16), (None, *MATERIAL_CATALOG[material_id].value_labels))
+                for material_id in categorical_ids),
             **{name: float_array(raw[name]) for name in _EXTRA_MATERIAL_ARRAY_COLUMNS},
         )
 
@@ -341,9 +332,8 @@ class RoadGraphRepository:
         self, way_ids: list[int], segment_indexes: list[int]
     ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         """区間（位置で揃えた2本の列）ごとの断面の点の数（int32）と、点を区間の順に隙間なく並べた標高（m、float32、値の無い点は
-        NaN）と位置（区間の長さに対する割合、float32）。点は区間ごとに順方向に並ぶ。標高の行が無い区間は点を持たない。位置を
-        持たない行（作り直す前の行）と長さ0の区間は、点を等しい間隔に置く——作り直す前の行の点は等しい道のりに刻んだ点なので、
-        そのとおりに読む。区間ごとの小さな配列は作らない（区間が多いと、その入れ物だけで点の配列の何倍ものメモリになる）。"""
+        NaN）と位置（区間の長さに対する割合、float32）。点は区間ごとに順方向に並ぶ。標高の行が無い区間は点を持たない。長さ0の
+        区間は、点を等しい間隔に置く。区間ごとの小さな配列は作らない（区間が多いと、その入れ物だけで点の配列の何倍ものメモリになる）。"""
         counts: list[np.ndarray] = []
         elevations: list[np.ndarray] = []
         positions: list[np.ndarray] = []
@@ -383,32 +373,20 @@ class RoadGraphRepository:
             return None
         return (row.highway, row.tags)
 
-    async def roads_at(self, lon: float, lat: float, z: int, radius_m: float,
-                       limit: int) -> list[tuple[RoadAt, int | None]]:
-        """押した所`(lon, lat)`から`radius_m`以内の道のフィーチャーと区間の番号（道1本のフィーチャーはNone）を、近い順に`limit`本
-        （`road_tile_sql.py: ROADS_AT_SQL`）。フィーチャーの単位は、ズーム`z`の路面タイルと同じ。プロパティは鍵・道・名前で、材料を
-        持たない。"""
-        reach = degrees_covering_m(radius_m)
-        rows = await self._session.execute(ROADS_AT_SQL, {
-            "lon": lon, "lat": lat, "z": z, "radius_m": radius_m, "limit": limit,
-            "xmin": lon - reach, "ymin": lat - reach, "xmax": lon + reach, "ymax": lat + reach,
-        })
-        return [
-            (RoadAt(
-                properties={column: value for column, value in row._mapping.items()
-                            if column not in ("shape", "segment_index") and value is not None},
-                shape=[(lon_, lat_) for lon_, lat_ in shapely.from_geojson(row.shape).coords],
-            ), row.segment_index)
-            for row in rows
-        ]
+    async def get_way_names(self, osm_way_ids: Sequence[int]) -> dict[int, tuple[str | None, str | None]]:
+        """道の番号→道路名・路線番号（`road_tile_sql.py: WAY_NAMES_SQL`。値の無いものはNone）。道の生データに無い道は載らない。"""
+        rows = await self._session.execute(WAY_NAMES_SQL, {"ids": list(osm_way_ids)})
+        return {row.osm_way_id: (row.name, row.ref) for row in rows}
 
     async def get_road_surface_tile_mvt(
-        self, z: int, x: int, y: int, bbox: BoundingBox, layer_values: Mapping[str, Mapping[str, str]]
+        self, z: int, x: int, y: int, bbox: BoundingBox, feature_keys: Sequence[str], shapes: Sequence[bytes],
+        layer_values: Mapping[str, Mapping[str, str]],
     ) -> bytes | None:
-        """路面レイヤーのMVTタイル1枚。`layer_values`はフィーチャーの鍵→地図の線の層のid→値（値の無い道は載せない）。契約は
-        `get_tile_mvt`と同じ。"""
-        return await self._tile_mvt(ROAD_SURFACE_TILE_MVT_SQL, ROAD_SURFACE_LAYER_NAME, z, x, y, bbox,
-                                    {"layer_values": json.dumps(layer_values, ensure_ascii=False)})
+        """路面レイヤーのMVTタイル1枚。フィーチャーは鍵`feature_keys`と、同じ並びの線の形`shapes`（経度・緯度の WKB）。
+        `layer_values`はフィーチャーの鍵→地図の線の層のid→値（値の無い道は載せない）。契約は`get_tile_mvt`と同じ。"""
+        return await self._tile_mvt(ROAD_SURFACE_TILE_MVT_SQL, ROAD_SURFACE_LAYER_NAME, z, x, y, bbox, {
+            "keys": list(feature_keys), "shapes": list(shapes),
+            "layer_values": json.dumps(layer_values, ensure_ascii=False)})
 
     async def get_tile_mvt(
         self, sql: TextClause, layer_name: str, z: int, x: int, y: int, bbox: BoundingBox

@@ -48,6 +48,7 @@ from tests.source_ingest import (
     estat_small_area_record,
     ingest_records,
     isj_block_record,
+    stage_tuning,
     overture_place_record,
 )
 
@@ -83,7 +84,7 @@ async def _ingest_facilities(records: list[object]) -> None:
     """Overture の地点を取り込み、地点の表を作る派生の段を流す。"""
     async with raw_connection() as conn:
         await ingest_records("overture_place", records, conn=conn)
-        await derive_places.derive(conn)
+        await derive_places.derive(conn, **stage_tuning("places"))
 
 
 async def _ingest_addresses(records: list[SourceRecord], parcels: list[SourceRecord] | None = None) -> None:

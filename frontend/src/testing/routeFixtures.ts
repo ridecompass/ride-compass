@@ -133,6 +133,7 @@ export function makeRouteSegment(overrides: Partial<RouteSegmentDetail> = {}): R
     sustained_gradient_percent: null,
     road_classes: {},
     avoidance_stretches: [],
+    regulation_margin: false,
     ...overrides,
   };
 }

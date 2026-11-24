@@ -10,14 +10,12 @@ from datetime import datetime, timedelta
 import shutil
 from dataclasses import replace
 from pathlib import Path
-from types import SimpleNamespace
 
 import numpy as np
 
 from app.services.route_generation_setup import assemble_route_generation_setup
 from app.domain.geo import haversine_distance_km
-from app.domain.graph import edge_feature_key, edge_key, node_key, parse_edge_key
-from app.domain.region import EDGE_UNIT_MIN_ZOOM
+from app.domain.graph import edge_key, node_key, parse_edge_key
 from app.domain.landcover import LANDCOVER_CLASSES
 from app.domain.traffic import stop_count_material_ids
 from app.domain.cost_preference import CostPreference
@@ -40,7 +38,7 @@ NO_POINTS = FixedPoints(waypoints=[], destination=None)
 
 #: 避けたい道の材料（値1の道）。道のストレスの軸（`tests/cost_axes_fixture.py: cost_axes`）が読む。本番の軸と同じく宣言のある
 #: 数の材料を使う（軸の事実は、その宣言の名前と単位で出す）。
-BAD_MATERIAL = "accident_count_per_km_year"
+BAD_MATERIAL = "intersection_count_per_km"
 BASE_LAT, BASE_LON = 35.60, 139.60
 LAT_STEP, LON_STEP = 0.009, 0.011  # 緯度・経度とも約1km
 
@@ -169,21 +167,11 @@ class Weather:
     async def get_wind_forecast_lattice(self, bbox):
         return self._series
 
+    def forecast_version(self):
+        return "fake"
 
-class TileFeatures:
-    """`RoadGraphRepository.get_tile_features`の代役。置き場から配っている道路網の、形の外接矩形がタイルに重なる区間の
-    フィーチャー（区間で塗るズームは区間、道1本で塗るズームは道）を返す（格子の道は直線なので、DBが道の形で選ぶのと同じ）。"""
-
-    async def get_tile_features(self, z, x, y, bbox):
-        network = road_network_store.current()
-        hit = np.flatnonzero((network.edge_max_lon >= bbox.min_longitude) & (network.edge_min_lon <= bbox.max_longitude)
-                             & (network.edge_max_lat >= bbox.min_latitude) & (network.edge_min_lat <= bbox.max_latitude))
-        edges = sorted({(int(network.edge_way_id[row]), int(network.edge_segment[row])) for row in hit})
-        if z >= EDGE_UNIT_MIN_ZOOM:
-            return [SimpleNamespace(feature_key=edge_feature_key(way, segment), osm_way_id=way, segment_index=segment)
-                    for way, segment in edges]
-        return [SimpleNamespace(feature_key=str(way), osm_way_id=way, segment_index=None)
-                for way in sorted({way for way, _ in edges})]
+    async def get_forecast_times(self, version):
+        return list(self._series.times)
 
 
 #: 置くたびに進める道路網の世代。置き場は世代で見分けるので、中身を変えて置くたびに世代を変える。

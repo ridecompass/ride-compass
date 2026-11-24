@@ -1,3 +1,5 @@
+from datetime import datetime
+
 import numpy as np
 
 from app.domain.msm import wind_speed_and_direction
@@ -21,6 +23,16 @@ from app.infrastructure.msm_client import MsmUnavailableError
 
 class WeatherService:
     """風の予報を気象庁MSMから読む。"""
+
+    def forecast_version(self) -> str:
+        """置き場の予報の版（同期が予報を入れ替えると変わる）。"""
+        return msm_client.forecast_version()
+
+    async def get_forecast_times(self, version: str) -> list[datetime] | None:
+        """予報の版が`version`のままの間に読んだ、今の正時から読める予報の時刻（系列の時刻の形）。読む間に同期が予報を入れ替えたら
+        None（版と時刻の並びが別の予報になる）。読めなければ投げる。"""
+        times = await msm_client.forecast_times()
+        return times if msm_client.forecast_version() == version else None
 
     async def get_grid_point_today(self, point: Coordinates) -> GridPointToday:
         """`point`に最も近いMSMの格子点の、今日の1時間ごとの値（格子点の値のまま）。読めなければ投げる。"""

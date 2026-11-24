@@ -12,6 +12,7 @@ Open-MeteoがAWS Open Data経由で公開している前処理済みMSM（CC-BY-
 """
 
 import asyncio
+import hashlib
 import json
 import logging
 import re
@@ -118,6 +119,18 @@ def _load_json(path: Path) -> dict:
         return json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return {}
+
+
+def forecast_version() -> str:
+    """置き場の予報の版。同期が予報を入れ替えると変わる（入れ替えの最後に書くメタ情報とETagの中身から決める）。"""
+    digest = hashlib.sha1()
+    for name in (_META_FILE_NAME, _ETAGS_FILE_NAME):
+        try:
+            digest.update((MSM_DIR / name).read_bytes())
+        except FileNotFoundError:
+            pass
+        digest.update(b"\x1f")
+    return digest.hexdigest()[:12]
 
 
 #: 配信元のメタ情報がrun更新間隔を持たない（使えない値の）ときに使う間隔。
@@ -483,6 +496,17 @@ async def read_grid_points(latitudes: np.ndarray, longitudes: np.ndarray) -> Msm
         lambda grid: grid.nearest_points(latitudes, longitudes), MsmGridPoints.values, tuple(FORECAST_VARIABLES),
     )
     return MsmGridPointWeatherSeries(times=times, points=points, latest_run_end=latest_run_end, **values)
+
+
+async def forecast_times() -> list[datetime]:
+    """今の正時から読める予報の時刻（系列の時刻の形）。読む時刻の並びは格子のどの点でも同じなので、格子の真ん中の1点で決める。
+    読めなければ`MsmUnavailableError`。"""
+    _, times, _, _ = await _read(
+        lambda grid: grid.nearest_points(grid.latitude_of(np.array([grid.n_lat // 2])),
+                                         grid.longitude_of(np.array([grid.n_lon // 2]))),
+        MsmGridPoints.values, _WIND_VARIABLES,
+    )
+    return times
 
 
 async def read_grid_block(south: float, west: float, north: float, east: float) -> MsmGridPointSeries:
