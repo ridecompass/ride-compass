@@ -35,7 +35,6 @@ from app.domain.tuning import (
 from app.domain.traffic_regulation import REGULATION_HOURS_LABELS
 from app.domain.primary_attributes import (
     PRIMARY_ATTRIBUTES,
-    ATTR_ACCIDENT_POINT,
     ATTR_CYCLEWAY,
     ATTR_ELEVATION,
     ATTR_HIGHWAY,
@@ -307,7 +306,6 @@ def _pedestrian_road_material(column: str, label: str, subject: str) -> Material
 #: ずれたときに読む側が材料を見つけられず、黙って欠損として扱う。
 GRADIENT_PERCENT = "gradient_percent"
 ELEVATION_GAIN_PER_KM = "elevation_gain_m_per_km"
-ACCIDENT_COUNT_PER_KM_YEAR = "accident_count_per_km_year"
 
 
 MATERIAL_CATALOG: dict[str, MaterialSpec] = {
@@ -373,17 +371,6 @@ MATERIAL_CATALOG: dict[str, MaterialSpec] = {
         tile_property=None,
         primary_attribute=ATTR_INTERSECTION,
         value_sql=per_km_value_sql("em.intersection_count"),
-        coverage=_EDGE_COUNTS_COVERAGE,
-    ),
-    ACCIDENT_COUNT_PER_KM_YEAR: MaterialSpec(
-        material_id=ACCIDENT_COUNT_PER_KM_YEAR,
-        label="事故密度",
-        description="警察庁の事故データに基づく、1kmあたり・1年あたりの人身事故件数。",
-        dtype="numeric",
-        unit="件/(km・年)",
-        tile_property=None,
-        primary_attribute=ATTR_ACCIDENT_POINT,
-        value_sql=f"CASE WHEN :accident_years > 0 THEN {per_km_value_sql('em.accident_count')} / :accident_years END",
         coverage=_EDGE_COUNTS_COVERAGE,
     ),
     "lit": MaterialSpec(

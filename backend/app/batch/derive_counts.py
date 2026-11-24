@@ -1,4 +1,4 @@
-"""区間に付く「数」の値（事故・停止要因・交差点）を埋める（`edge_counts`）。
+"""区間に付く「数」の値（停止要因・交差点）を埋める（`edge_counts`）。
 
 **停止要因は、まとまり1つを道路網の上の1つの場所として数える。**場所に端から入る区間と
 出る区間が0.5ずつ持ち、場所を通り抜ける区間が1を持つので、経路上ではどう通っても合計1回に
@@ -10,11 +10,8 @@ import time
 
 import asyncpg
 
-from app.domain.accident import BICYCLE_SQL, FATAL_SQL
-from app.domain.geo import degrees_covering_m
 from app.domain.tuning import STOP_CLUSTER_DISTANCE_ID, require_tuning
 from app.infrastructure.source_models import (
-    ACCIDENTS_SOURCE_SQL,
     WAYS_SOURCE_SQL,
     nodes_lookup_sql,
 )
@@ -105,11 +102,11 @@ FROM (
 WHERE p.osm_way_id = m.osm_way_id AND p.segment_index = m.segment_index
 """
 
-#: 全区間の行を0で作ってから数える。停止要因・事故が1つも無い区間は0のまま残る。
+#: 全区間の行を0で作ってから数える。停止要因が1つも無い区間は0のまま残る。
 _EDGE_ROWS = f"""
-INSERT INTO edge_counts (osm_way_id, segment_index, accident_count, intersection_count,
+INSERT INTO edge_counts (osm_way_id, segment_index, intersection_count,
                          {", ".join(_STOP_COLUMNS.values())})
-SELECT osm_way_id, segment_index, 0, 0, {", ".join("0" for _ in _STOP_COLUMNS)} FROM road_edges
+SELECT osm_way_id, segment_index, 0, {", ".join("0" for _ in _STOP_COLUMNS)} FROM road_edges
 """
 
 #: 交差点のノードも、停止要因の場所と同じく端を持つ区間が分け持つ（経路上で1回になる）。
@@ -125,36 +122,11 @@ FROM (
 WHERE c.osm_way_id = m.osm_way_id AND c.segment_index = m.segment_index
 """
 
-#: 自転車の関わった事故を、帰属の距離（`$3`、地上のm。`$2`はそれを覆う度で、前置フィルタの箱）の内で最も近い区間へ1件だけ付ける。
-#: 等距離なら鍵の小さい方。鍵の2列は同じ1回の探索から取る——別々に探すと、等距離のタイで実在しない組を指しうる。
-_EDGE_ACCIDENTS = f"""
-WITH nearest AS (
-    SELECT CASE WHEN {FATAL_SQL} THEN $1 ELSE 1.0 END AS weight, n.osm_way_id, n.segment_index
-    FROM {ACCIDENTS_SOURCE_SQL} a
-    CROSS JOIN LATERAL (
-        SELECT e.osm_way_id, e.segment_index FROM road_edges e
-        WHERE e.geom && ST_Expand(a.geom, $2)
-          AND ST_DWithin(e.geom::geography, a.geom::geography, $3)
-        ORDER BY ST_Distance(e.geom::geography, a.geom::geography), e.osm_way_id, e.segment_index
-        LIMIT 1) n
-    WHERE {BICYCLE_SQL}
-)
-UPDATE edge_counts m SET accident_count = COALESCE(s.total, 0)
-FROM (
-    SELECT osm_way_id, segment_index, sum(weight) AS total
-    FROM nearest GROUP BY osm_way_id, segment_index
-) s
-WHERE s.osm_way_id = m.osm_way_id AND s.segment_index = m.segment_index
-"""
-
-
-async def derive(conn: asyncpg.Connection, *, cluster_distance_m: float, accident_fatal_weight: float,
-                 accident_match_distance_m: float) -> None:
+async def derive(conn: asyncpg.Connection, *, cluster_distance_m: float) -> None:
     require_tuning({STOP_CLUSTER_DISTANCE_ID: cluster_distance_m}, cluster_distance_m >= 0, "0以上")
     started = time.perf_counter()
 
-    # 事故の行と、それを入れた取込を同じ時点から読む（間に取込が入れ替えても食い違わない）。
-    async with conn.transaction(isolation="repeatable_read"):
+    async with conn.transaction():
         await conn.execute(_CLUSTER_SQL, cluster_distance_m)
         await conn.execute("ANALYZE _stop_nodes")
         await conn.execute(_STOP_TOUCHES_SQL)
@@ -168,8 +140,6 @@ async def derive(conn: asyncpg.Connection, *, cluster_distance_m: float, acciden
         await conn.execute("ANALYZE edge_counts")
         await conn.execute(_EDGE_STOP_COUNTS)
         await conn.execute(_EDGE_INTERSECTIONS, INTERSECTION_DEGREE_THRESHOLD)
-        await conn.execute(_EDGE_ACCIDENTS, accident_fatal_weight, degrees_covering_m(accident_match_distance_m),
-                           accident_match_distance_m)
 
     logger.info("数の値を埋めた: 停止要因 %d点（まとまり %d・区間に乗る点 %d） / %.1f秒",
                 stops["points"], stops["clusters"], stops["on_network"],

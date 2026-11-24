@@ -131,7 +131,6 @@ PRIMARY_ATTRIBUTES: tuple[PrimaryAttributeSpec, ...] = (
                 hue_slot=0,
                 tone="light",
                 categories=(
-                    # 自転車関連だけが事故密度の材料になる。
                     DisplayCategorySpec(
                         key="bicycle",
                         label="自転車関連",

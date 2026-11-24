@@ -183,14 +183,13 @@ int32の0.01m単位、土地被覆はuint8）で持つ。位置・画素の大�
 **作り直しに使った較正値も記録する**（`derived_data_meta.py: DerivedTuningRow`、表`derived_tuning`）。較正値ごとに、それを読む段
 （道路網の配列を含む。配列は毎回作る）が流れたら今の値を、そうでなければ前回の記録を、取込の記録と同じく作業用のスキーマで書いて
 派生の表と一緒に入れ替える（記録に共通の決まりは`derive_cli.py: _carried_over`）。派生の外で同じ値を読む所（地図の停止の点の
-まとめ方・ルートの印の事故の付け方と点のまとめ方・道路網の配列の曲がりの向き）は、管理画面の今の値ではなくこの記録を
+まとめ方・ルートの印の点のまとめ方・道路網の配列の曲がりの向き）は、管理画面の今の値ではなくこの記録を
 読む——値を変えてから作り直すまでの間も、派生の表と食い違わない。
 
 **どの取込から作ったかを、作り直しごとに記録する**（`derived_data_meta.py: DerivedSourceRunRow`、
 表`derived_source_runs`）。ソースを読む段が全部流れたら「作り直しを始めた時点の成功した最新の取込」（`source_models.py:
 LATEST_SUCCEEDED_RUNS_SQL`）を、そうでなければ前回の記録を、段を流す前に作業用のスキーマの記録の表へ書き、
-派生の表と一緒に入れ替える——
-入れ替えの前に作業用のスキーマから作る道路網の配列も、事故密度の分母（「事故の帰属」）をこの記録から読む。
+派生の表と一緒に入れ替える。
 段が読んだ生データがいつも記録と一致するよう、2つを守らせる:
 
 - **取込と作り直しは同時に走らない。** 両方が同じadvisory lock（`common.py: SOURCE_DATA_LOCK`）を、作り直しは
@@ -368,32 +367,20 @@ OpenStreetMapの寺社の分類は、伝統的な寺社と新しい宗教団体�
 チェーン（`chain`）はチェーンが分からない、分類の道筋（`categories`）は分類を持たない出どころ（文化財の寺社）、住所（`address`）は
 使える住所が無い、辺り（`area`）は位置を含む名前のある境界が無い。
 
-### 事故の帰属
+### 事故の点
 
-事故点はOSMの要素ではないため、信号のように「wayの構成ノードか」では帰属を決められない。
-距離だけで数えると1つの事故が半径内の**すべての**道路へ計上され、静かな裏道が隣の幹線で
-起きた事故を相続する。最も近い1本の区間へ1件だけ付け、死亡事故は重みを掛ける
-（帰属の距離と重みは較正値の`accident.match_max_distance_m`・`accident.fatal_weight`）。帰属の距離より
-遠い事故は、最も近い区間にも付けない（取り込んでいない道の上の事故を、隣の道が相続しないように）。
-近さは地上の距離（m）で比べる——緯度経度の度のまま比べると、経度1度が緯度1度より短いぶん東西に
-近い区間を遠く見る。
-等距離の区間が複数あるとき（交差点のノードの真上の事故等）は、区間の鍵（道id・区間番号）が
-小さい方へ付ける——流し直すたびに付く先が変わらないようにするため。
-
-**数えるのは自転車が関与した事故だけ**（`domain/accident.py: BICYCLE_SQL`）。自転車ルート案内で自動車
-どうしの事故まで数えると、避けるべき場所がずれる。密度は収録年数で割って「件/(km・年)」
-へ正規化する——年次を1つ足したときに全区間の値が一斉に増えないようにするため。
+事故はルート生成に使わず、地図の点のタイルにだけ出す。点のタイルは生データ（成功した最新の取込）を都度読み
+（`point_tile_layers.py`）、自転車が関与した事故か・死亡事故かも生データの列から都度判定する
+（`domain/accident.py: BICYCLE_SQL`・`FATAL_SQL`）。
 
 **本票CSVの年はファイルの年で、発生年ではない**。各年のファイルは発生日時が前年の事故を約2%含む
 （大半が前年12月）が、前年のファイルには入っていない（2019〜2024年の全ファイルを発生日時・地点・
 警察署で突き合わせ、重なったのは負傷から死亡へ計上し直された1件だけ）。そのためファイルを重複の
-除去なしに足し、ファイルの数（数えた取込が読んだ年数）で割る。
+除去なしに足す。本票番号は年ごとに採番し直され、年をまたいで同じ番号が大量にある（隣の年どうしで約27万〜29万件）ので、
+生データの鍵にはファイルの年を入れる。地図の点は全年を出す（点の説明に発生年が出る）。
 
-**分母の年は、今の派生の表を作った取込から読む**（作った取込の記録`derived_source_runs`の事故の行。
-数と一緒に入れ替わる。「派生」）。最新の取込から読むと、取り込み直してから作り直しが入れ替わるまで（本番で
-1時間を超える）、古い数を新しい年数で割る。本票番号は年ごとに採番し直され、年を
-またいで同じ番号が大量にある（隣の年どうしで約27万〜29万件）ので、生データの鍵にはファイルの年を入れる。
-地図の点も、数えるのと同じ全年を出す（点の説明に発生年が出る）。
+**地図の説明の収録年は、点のタイルが読むのと同じ取込が読んだ年**（成功した最新の事故の取込の素性の`years`。
+`road_graph_repository.py: get_accident_years`）。実データの発生年を数えると、事故が1件も無かった年が落ちる。
 
 ### 通行方向の解決（`domain/traffic.py: direction_sql`）
 
@@ -571,7 +558,7 @@ z9で約3MB（28万本・167万点）。z9より引くと1画面で数十MBに�
   からの空間マッチ最近傍だと、交差点付近で実際にクリックされたフィーチャーとは別の道路を拾いうるため採用しない）、
   一次属性（`highway`・タグ）を返す。レンズの値は同じファイルの`RoadInspectorService.inspect`が地図のレンズと同じ口から足す
   （[レンズ・道ごとの値の配信](dynamic-way-values.md)「道の窓」）。部品を束ねるのは`api/dependencies.py: get_road_inspector_service`。
-- `get_accident_years()`: 事故データの収録年（今の派生の表を作った事故の取込が読んだ年。「事故の帰属」）。
+- `get_accident_years()`: 事故データの収録年（成功した最新の事故の取込が読んだ年。「事故の点」）。
   `GET /api/client-config`がそのまま地図の説明文へ配る。
 - DB障害は空へ倒さず投げ、503になる（[横断インフラ](cross-cutting-infrastructure.md)「DB障害として扱う例外」節）。
 
@@ -715,7 +702,7 @@ PBF取込時にしか変わらないため、再訪時の同一タイル再取�
 |---|---|
 | `attributes.py` | `attributes.py: ElevationAttribute`（同じ地形を逆方向に走った値も自分で導く`attributes.py: reversed_as`）・DBと道路網の置き場が運ぶ材料の配列（`attributes.py: EdgeMaterialArrays`）と、静的スコア行列を組む入力（`attributes.py: EdgeMaterialColumns`）と標高計算のSQL（[elevation.md](elevation.md)が主に扱う） |
 | `stop_place.py` | 立ち寄り先の群（`stop_place.py: StopPlaceGroup`。点のタイルの属性`stop_place.py: group`の値）・文化財の所有者から寺社を見分ける語と式・寺社をまとめる距離（`stop_place.py: TEMPLE_SHRINE_SUFFIXES`・`stop_place.py: temple_shrine_owner_sql`・`stop_place.py: HERITAGE_MERGE_RADIUS_M`等）・Overtureの分類の語から群への表と式（`stop_place.py: OVERTURE_GROUP_WORDS`・`stop_place.py: overture_group_sql`）・同じ店をまとめる距離とチェーンの見分け方（`stop_place.py: MERGE_RADIUS_M`・`stop_place.py: CHAIN_WORDS`・`stop_place.py: chain_text_sql`・`stop_place.py: chain_sql`）・群の決め直し（`stop_place.py: CONVENIENCE_CHAINS`・`stop_place.py: BIKE_SHARE_CHAINS`・`stop_place.py: place_group_sql`）・言語違いの同じ場所を連絡先で寄せる群と距離・日本語の名前か・連絡先の比べる形（`stop_place.py: CONTACT_MERGE_RADIUS_M`・`stop_place.py: japanese_name_sql`・`stop_place.py: contacts_sql`）・ATMの地点の名前の直し（`stop_place.py: store_name_sql`）・外の地図へ渡す住所（`stop_place.py: address_sql`）・名前の揃え方（`stop_place.py: normalized_sql`）・地点の検索で打った語を群・チェーンとして読む語と判断と、検索に出さない分類（`stop_place.py: PLACE_GROUP_WORDS`・`stop_place.py: queried_group`・`stop_place.py: queried_chain`・`stop_place.py: SEARCH_EXCLUDED_CATEGORIES`。使い方は[地点の検索](place-search.md)「引き方」）。配布の列と JSON の読み替え（分類の道筋・連絡先の配列・住所の最初の1件）は`infrastructure/source_models.py: OVERTURE_PLACES_SOURCE_SQL`・`BUNKA_HERITAGES_SOURCE_SQL`が持つ |
-| `accident.py` | 警察庁の事故を道路へ帰属させ数えるときの判断。生データの列から判定を組み立てるSQL断片・自転車とみなす当事者種別・帰属の距離・重み付けの定数（本票の度分秒の読み取りは取込のアダプタ`npa_honhyo.py`が、本票の列名と当事者種別のコードの読み替えは`infrastructure/source_models.py`の事故の副問い合わせ（全件の`infrastructure/source_models.py: ACCIDENTS_SOURCE_SQL`と範囲で絞る`infrastructure/source_models.py: accidents_within_sql`が共有する）が持つ） |
+| `accident.py` | 警察庁の事故を地図の点に出すときの判断。生データの列から判定を組み立てるSQL断片・自転車とみなす当事者種別（本票の度分秒の読み取りは取込のアダプタ`npa_honhyo.py`が、本票の列名と当事者種別のコードの読み替えは`infrastructure/source_models.py`の事故の副問い合わせ（全件の`infrastructure/source_models.py: ACCIDENTS_SOURCE_SQL`と範囲で絞る`infrastructure/source_models.py: accidents_within_sql`が共有する）が持つ） |
 | `traffic.py` | OSMタグの解釈。停止要因POI・補給休憩POIの種別の引き当て（`traffic.py: TAG_KIND_RULES`・`traffic.py: tag_kind_sql`）、信号の判定（`traffic.py: TRAFFIC_SIGNAL_SQL`）、取込が道の頂点でなくても採る補給・休憩のタグ（`traffic.py: SUPPLY_POI_TAGS`・`traffic.py: has_supply_poi_tag`）、停止要因の数える種別への畳み方と信号の読み替え（`traffic.py: COUNT_KIND_OF`・`traffic.py: count_kind_sql`・`traffic.py: stop_kind_sql`・`traffic.py: kinds_shown_as`）、通行方向の解決（`traffic.py: DIRECTION_RULES`・`traffic.py: direction_sql`）と片方向にだけ通れるかの式（`traffic.py: one_way_sql`）・道の形の向きと逆向きのそれぞれに通れるか（`traffic.py: travel_allowed`）、交差点判定の次数しきい値、停止要因の場所・交差点を端で分け持つ割合（`traffic.py: PLACE_SHARE_PER_END`・`traffic.py: place_count_sql`）、停止要因の点のまとめ方（`traffic.py: stop_cluster_sql`）、交差点の階級（`traffic.py: HIGHWAY_RANK`）。取込のタグ（取込のアダプタが1件ずつ当てる）を除き、派生バッチへSQLとして渡す表と式で、タグを読むためだけに行を取り出さない |
 | `stop_events.py` | 止まる出来事（停止要因と曲がる所）の種類の宣言（`stop_events.py: STOP_EVENT_KINDS`）。種類ごとの置き場・名前・止まるか減速するだけか・待ちの較正値の説明を持つ。曲がる所の待ちの表の鍵（`stop_events.py: SIGNALS`・`SIZES`・`STANDINGS`・`MOVEMENTS`）と、そこから導く升（`stop_events.py: WAIT_PASSAGES`。基準の通り方`REFERENCE_PASSAGES`は升を持たない）も持つ（使い方は[探索](routing-engine.md)「探索の状態」）。較正値のidの綴り（`stop_events.py: event_share_parameter_id`・`event_seconds_parameter_id`）も持つ |
 | `divided_carriageway.py` | 上下線が分かれた道の片側かのしきい値と判定のSQL式（`divided_carriageway.py: divided_sql`）。材料`oneway`の値式（`divided_carriageway.py: oneway_material_sql`。地図の一方通行と評価が同じ式を読む）は、片方向にだけ通れる道（`traffic.py: one_way_sql`）から上下線の片側を外す |

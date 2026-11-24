@@ -20,7 +20,7 @@ router = APIRouter()
 class ClientConfigResponse(StrictModel):
     # フロントが使う較正値（id → いま効いている値、`domain/tuning.py`が宣言。作り直しで効く値は作り直しに使った値）。
     client_tuning: dict[str, float]
-    # 事故データの収録年（今の事故の数を数えた取込の宣言そのもの）。地図の説明文が範囲を書くために使う。表示側に文字列で
+    # 事故データの収録年（地図の点が読む取込の宣言そのもの）。地図の説明文が範囲を書くために使う。表示側に文字列で
     # 持つと、取り込み直したときに黙って食い違う。
     accident_years: list[int]
     # 道の区分（`domain/road_class_catalog.py: road_class_catalog`）。

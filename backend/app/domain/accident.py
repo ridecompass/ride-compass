@@ -1,4 +1,4 @@
-"""警察庁交通事故統計オープンデータの事故を道路へ帰属させ、数えるときの判断。
+"""警察庁交通事故統計オープンデータの事故を、地図の点に出すときの判断。
 
 本票CSV（honhyo_YYYY.csv）の列名とコードの読み替えは、`infrastructure/source_models.py`の事故の生データを読む
 副問い合わせ（全件と範囲で絞ったものが読み替えを共有する）が持ち、ここへは読み替えた列で届く。
@@ -26,7 +26,7 @@ _BICYCLE_PARTY_TYPES: frozenset[PartyType] = frozenset({PartyType.BICYCLE, Party
 
 # --- 生データの列から判定する式 -----------------------------------------------
 #
-# 判定の規則をここだけが持つ。読む側は都度これを使う——同じ判定をタイルと集計で別々に書くとずれる。
+# 判定の規則をここだけが持つ。読む側は都度これを使う。
 # 別名`a`は事故の生データの行（`infrastructure/source_models.py: ACCIDENTS_SOURCE_SQL`か、範囲で絞った
 # `infrastructure/source_models.py: accidents_within_sql`。列は同じ）を指す。
 

@@ -109,7 +109,7 @@ async def test_a_rebuild_stops_naming_a_value_its_sql_cannot_run_with(road_graph
     """派生の作り直しは較正値を引数で受ける。"""
     async with raw_connection() as conn:
         with pytest.raises(TuningValueError, match=STOP_CLUSTER_DISTANCE_ID):
-            await derive_counts.derive(conn, cluster_distance_m=-1.0, accident_fatal_weight=1.0, accident_match_distance_m=1.0)
+            await derive_counts.derive(conn, cluster_distance_m=-1.0)
         with pytest.raises(TuningValueError, match=ELEVATION_PROFILE_STEP_ID):
             await derive_elevation.derive(conn, profile_step_m=0.0, profile_tolerance_m=0.3)
         with pytest.raises(TuningValueError, match=ELEVATION_PROFILE_TOLERANCE_ID):

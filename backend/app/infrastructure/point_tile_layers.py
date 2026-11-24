@@ -173,7 +173,7 @@ _POI_TILE_MVT_SQL = text(
 )
 
 # 事故。表示に使う値（死亡事故か・自転車が絡むか・発生年）は生データの列から都度導く。判定の
-# 規則は`domain/accident.py`が持ち、集計（`derive_counts.py`）と同じものを使う。束ねた代表点は、一番新しい事故の発生年を持つ。
+# 規則は`domain/accident.py`が持つ。束ねた代表点は、一番新しい事故の発生年を持つ。
 _ACCIDENT_POINTS_SQL = f"""
     SELECT a.geom, NULL::text AS name, {BICYCLE_SQL} AS involves_bicycle, {FATAL_SQL} AS fatal, a.occurred_year
     FROM {accidents_within_sql("ST_MakeEnvelope(:xmin, :ymin, :xmax, :ymax, 4326)")} a

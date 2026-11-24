@@ -141,7 +141,7 @@ class RegionService:
         """事故データの収録年。地図の説明文へ配る。
 
         表示側が年を文字列で持つと、取り込み直したときに黙って食い違う。年の正本は
-        今の事故の数を数えた取込の宣言（`source_runs.profile`）だけにする。
+        地図の点が読む取込の素性（`source_runs.origin`）だけにする。
         """
         with log_external_call("region:accident-years-covered") as fields:
             years = await self._repository.get_accident_years()

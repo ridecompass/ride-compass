@@ -30,7 +30,6 @@ from app.domain.address_area import standardize_address
 from app.batch.source_profile import NoFields, SourceProfile, SourceSpec, Target, load_source_profile
 from app.domain.region import BoundingBox, tile_bounds_lonlat, tiles_covering_bbox
 from app.domain.tuning import (
-    ACCIDENT_MATCH_DISTANCE_ID,
     ELEVATION_PROFILE_STEP_ID,
     ELEVATION_PROFILE_TOLERANCE_ID,
     STOP_CLUSTER_DISTANCE_ID,
@@ -231,8 +230,6 @@ async def derive_counts_at_default_tuning(conn: asyncpg.Connection, **tuning: fl
     """数の派生の段を、テストの較正値（`tuning`で渡したものはその値）で流す。"""
     await derive_counts.derive(conn, **{
         "cluster_distance_m": TUNING[STOP_CLUSTER_DISTANCE_ID],
-        "accident_fatal_weight": TUNING["accident.fatal_weight"],
-        "accident_match_distance_m": TUNING[ACCIDENT_MATCH_DISTANCE_ID],
         **tuning,
     })
 

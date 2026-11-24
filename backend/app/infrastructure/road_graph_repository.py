@@ -46,6 +46,7 @@ from app.infrastructure.source_models import (
     INGESTED_BBOX_SQL,
     WAYS_SOURCE_SQL,
     Source,
+    latest_succeeded_run_by_column_sql,
     nodes_lookup_sql,
     ways_lookup_sql,
 )
@@ -229,24 +230,17 @@ class RoadGraphRepository:
     async def get_accident_years(self) -> list[int]:
         """事故データの収録年。
 
-        今の派生の表を作った事故の取込（`derived_data_meta.py: DerivedSourceRunRow`）が読んだ年（素性の`years`）を
-        そのまま返す。最新の取込を読むと、取り込み直してから派生の作り直しが入れ替わるまでの間、
-        古い数を新しい年数で割る。実データの発生年を数えると、事故が1件も無かった年が落ちる。
-        年数は`accident_count_per_km_year`の分母に、年そのものは地図の説明文に使う。どちらもここが
+        事故の点の地図が読む取込（成功した最新の取込。点のタイルは生データを都度読む）が読んだ年（素性の`years`）を
+        そのまま返す。実データの発生年を数えると、事故が1件も無かった年が落ちる。地図の説明文に使い、ここが
         正本で、**表示側は年を自分で持たない**。
         """
         row = await self._session.execute(text(
-            "SELECT r.origin->'years' AS years"
-            f" FROM {derived_data_meta.DerivedSourceRunRow.__tablename__} d"
-            " JOIN source_runs r ON r.run_id = d.run_id WHERE d.source = :source"), {"source": Source.ACCIDENT})
+            f"SELECT r.origin->'years' AS years FROM {latest_succeeded_run_by_column_sql(':source')} r"),
+            {"source": Source.ACCIDENT})
         value = row.scalar()
         if not isinstance(value, list):
             return []
         return sorted(int(year) for year in value)
-
-    async def get_accident_years_covered(self) -> int:
-        """事故データの収録年数。`accident_count_per_km_year`の分母。"""
-        return len(await self.get_accident_years())
 
     async def get_ingested_area(self) -> BoundingBox | None:
         """取り込んだ範囲（成功した最新の道路の取込が宣言した範囲）。道路をまだ取り込んでいなければNone。"""
@@ -304,7 +298,7 @@ class RoadGraphRepository:
     # --- 材料 ----------------------------------------------------------------
 
     async def get_edge_material_arrays(
-        self, way_ids: list[int], segment_indexes: list[int], forwards: list[bool], accident_years_covered: int
+        self, way_ids: list[int], segment_indexes: list[int], forwards: list[bool]
     ) -> EdgeMaterialArrays:
         """有向の区間（`(osm_way_id, segment_index, forward)`を位置で揃えた3本の列）の材料を、
         **DB側で導出し、数値の行列と分類の列として**受け取る。
@@ -320,7 +314,7 @@ class RoadGraphRepository:
             stop = start + ID_CHUNK_SIZE
             row = (await self._session.execute(_EDGE_MATERIAL_ARRAYS_SQL, {
                 "way_ids": way_ids[start:stop], "segment_indexes": segment_indexes[start:stop],
-                "forwards": forwards[start:stop], "accident_years": accident_years_covered,
+                "forwards": forwards[start:stop],
             })).one()
             for name in raw:
                 raw[name].extend(getattr(row, f"c_{name}") or [])

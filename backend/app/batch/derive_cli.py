@@ -35,7 +35,7 @@
 
 **作り直しの記録（作った取込・使った較正値。`derived_data_meta.py`）は、鍵（取込のソース・較正値）ごとに、
 それを使う段が全部流れたときだけ今の値にし、ほかは前回の記録を残す**（`_carried_over`）——流さなかった段の表は前回の取込・
-較正値で作ったままなので、今の値を書くと記録を読む所（事故密度の分母・地図の点のタイル等）が表と食い違う。
+較正値で作ったままなので、今の値を書くと記録を読む所（地図の点のタイル等）が表と食い違う。
 道路網の配列が読む較正値は、配列（`NETWORK`）が毎回流れるので毎回今の値になる。
 """
 
@@ -73,8 +73,6 @@ from app.batch.common import (
 from app.infrastructure.tuning_overrides import load_tuning_values
 from app.infrastructure import derived_data_meta, derived_database_export, region_tile_cache, road_network_store
 from app.domain.tuning import (
-    ACCIDENT_FATAL_WEIGHT_ID,
-    ACCIDENT_MATCH_DISTANCE_ID,
     ELEVATION_PROFILE_STEP_ID,
     ELEVATION_PROFILE_TOLERANCE_ID,
     LANDCOVER_RING_INNER_ID,
@@ -118,10 +116,9 @@ STAGES: tuple[DeriveStage, ...] = (
     DeriveStage("topology", derive_topology, frozenset({Source.OSM_WAY}), (), ("road_edges", "road_ways", "road_nodes")),
     DeriveStage("nodes", derive_nodes, frozenset({Source.OSM_NODE, Source.OSM_WAY}), ("topology",),
                 ("node_kinds", "node_turns"), {"signal_radius_m": SIGNAL_MATCH_RADIUS_ID}),
-    DeriveStage("counts", derive_counts, frozenset({Source.OSM_NODE, Source.OSM_WAY, Source.ACCIDENT}),
+    DeriveStage("counts", derive_counts, frozenset({Source.OSM_NODE, Source.OSM_WAY}),
                 ("topology", "nodes"), ("edge_counts",),
-                {"cluster_distance_m": STOP_CLUSTER_DISTANCE_ID, "accident_fatal_weight": ACCIDENT_FATAL_WEIGHT_ID,
-                 "accident_match_distance_m": ACCIDENT_MATCH_DISTANCE_ID}),
+                {"cluster_distance_m": STOP_CLUSTER_DISTANCE_ID}),
     # 標高の段は、道から区間が橋かトンネルかだけを読み、その値を区間ごとに表へ残す。
     DeriveStage("elevation", derive_elevation, frozenset({Source.OSM_WAY, Source.DEM}), ("topology",), ("edge_elevation",),
                 {"profile_step_m": ELEVATION_PROFILE_STEP_ID, "profile_tolerance_m": ELEVATION_PROFILE_TOLERANCE_ID}),
@@ -300,8 +297,8 @@ async def run(database_url: str, stages: Sequence[str] | None = None) -> int:
     try:
         runs = {row["source"]: row["run_id"] for row in await conn.fetch(LATEST_SUCCEEDED_RUNS_SQL)}
         previous = await derived_data_meta.read_records(conn)
-        # 作った取込・較正値の記録も作業用のスキーマで書く——事故密度の分母が取込の記録から読まれ、作業用の
-        # スキーマから作る道路網の配列も数と同じ取込の年で割り、記録した較正値で読むため。どの記録も派生の表と一緒に入れ替わる。
+        # 作った取込・較正値の記録も作業用のスキーマで書く——作業用のスキーマから作る道路網の配列も、記録した較正値で読むため。
+        # どの記録も派生の表と一緒に入れ替わる。
         tables = [*(table for stage in ran for table in stage.tables), *derived_data_meta.RECORD_TABLES]
         await _create_work_tables(conn, tables)
         done = [stage.name for stage in ran]

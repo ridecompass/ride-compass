@@ -299,8 +299,7 @@ async def test_the_network_is_built_from_the_derived_tables_with_one_row_per_dri
 
         # 材料は、同じ有向の区間をリポジトリから引いた値と行ごとに揃う。
         materials = await repository.get_edge_material_arrays(
-            network.edge_way_id.tolist(), network.edge_segment.tolist(), network.edge_forward.tolist(),
-            await repository.get_accident_years_covered())
+            network.edge_way_id.tolist(), network.edge_segment.tolist(), network.edge_forward.tolist())
     assert network.categorical_ids == materials.categorical_ids
     assert materials.categorical_columns
     for column, (expected, vocab) in enumerate(zip(materials.categorical_columns, network.categorical_vocab)):

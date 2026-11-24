@@ -127,10 +127,8 @@ _LOOP_RATIO_MAX_ID = "search.loop_to_outbound_ratio_max"
 _DISTANCE_TOLERANCE_ID = "search.distance_tolerance_ratio"
 #: 派生の段だけが読む較正値のid。
 SIGNAL_MATCH_RADIUS_ID = "signal.match_radius_m"
-ACCIDENT_FATAL_WEIGHT_ID = "accident.fatal_weight"
 #: 派生の外（地図の点のタイル・近くの点の読み出し）も作り直しに使った値を読む較正値のid。
 STOP_CLUSTER_DISTANCE_ID = "stop.cluster_distance_m"
-ACCIDENT_MATCH_DISTANCE_ID = "accident.match_max_distance_m"
 #: 道路網の配列を作る読み出しが、作り直しに使った値を読む較正値のid。
 TURN_BEARING_DISTANCE_ID = "turn.bearing_distance_m"
 #: 土地被覆を数える帯の外・内の幅のid。外の幅は地図の説明の文にも出る。
@@ -179,18 +177,6 @@ TUNING_PARAMETERS: tuple[TuningParameter, ...] = (
         TURN_BEARING_DISTANCE_ID,
         "曲がりの向きを測る長さ", "m", TuningEffect.DERIVE_REBUILD,
         "交差点での曲がり（直進・左・右）を、区間の端からこの道のりの点までの向きで測る。区間がこれより短ければ端から端を見る。",
-    ),
-    # --- 事故 ---
-    TuningParameter(
-        ACCIDENT_MATCH_DISTANCE_ID,
-        "事故を道に付ける距離", "m", TuningEffect.DERIVE_REBUILD,
-        "事故の点を、この距離以内で最も近い道に付ける。事故の数とルートの印が同じ値で付ける。",
-    ),
-    TuningParameter(
-        ACCIDENT_FATAL_WEIGHT_ID,
-        "死亡事故の重み", "件", TuningEffect.DERIVE_REBUILD,
-        "死亡事故1件を何件分の事故として数えるか。単純に数えると死亡事故が軽い事故と同じ1件になり、最も避けたい重大な事故の"
-        "危険が薄まる。",
     ),
     # --- 標高 ---
     TuningParameter(

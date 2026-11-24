@@ -51,7 +51,7 @@ from app.domain.traffic_regulation import REGULATION_HOURS
 
 #: 数えた値は負にならない。0は数えた結果の「1つも無い」。
 #: 件数は小数を持つ——区間の端に乗るものは前後の区間が0.5ずつ持つ（`batch/derive_counts.py`）。
-_COUNT_COLUMNS = ("accident_count", "intersection_count") + tuple(
+_COUNT_COLUMNS = ("intersection_count",) + tuple(
     poi_count_column(kind) for kind in sorted(POI_COUNT_KINDS))
 
 #: 土地被覆の割合の列。クラスが1つ増えてもここは変わらない。
@@ -111,7 +111,6 @@ class _WayKey:
 
 
 class _Counts:
-    accident_count: Mapped[float] = mapped_column(REAL, nullable=False)
     intersection_count: Mapped[float] = mapped_column(REAL, nullable=False)
     poi_signal: Mapped[float] = mapped_column(REAL, nullable=False)
     poi_crossing: Mapped[float] = mapped_column(REAL, nullable=False)
@@ -144,7 +143,7 @@ class RoadEdgeRow(Base):
         CheckConstraint("distance_m > 0", name="road_edges_distance_m_positive"),
         CheckConstraint("NOT ST_IsEmpty(geom) AND ST_NumPoints(geom) >= 2",
                         name="road_edges_geom_has_two_points"),
-        # 区間単位のズームの路面タイル・道路網の切り出し・事故の帰属は、区間を形の範囲で
+        # 区間単位のズームの路面タイル・道路網の切り出しは、区間を形の範囲で
         # 直接絞る。無いと区間の全件を総なめにする。
         Index("idx_road_edges_geom", "geom", postgresql_using="gist"),
         {"info": DERIVED},

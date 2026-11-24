@@ -28,8 +28,6 @@ TUNING = {
     'signal.match_radius_m': 25.0,
     'stop.cluster_distance_m': 40.0,
     'turn.bearing_distance_m': 20.0,
-    'accident.match_max_distance_m': 30.0,
-    'accident.fatal_weight': 3.0,
     'elevation.profile_step_m': 50.0,
     'elevation.profile_tolerance_m': 0.3,
     'landcover.ring_outer_m': 100.0,

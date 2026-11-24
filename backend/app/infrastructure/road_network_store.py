@@ -381,14 +381,13 @@ async def _read_materials(
     """材料は`get_edge_material_arrays`で引く。区間を持たない道`way_ids`の材料も同じ読み出しで、区間の無い道の値として引き
     （区間の値の表は値を持たない）、区間の材料のあとに続けて詰めてから分ける（分類の語彙を区間と1つにする）。"""
     edge_count = len(way)
-    accident_years_covered = await repository.get_accident_years_covered()
     columns = MaterialColumns(edge_count + len(way_ids))
     batches = [(way[start:start + _MATERIAL_BATCH].tolist(), segment[start:start + _MATERIAL_BATCH].tolist(),
                 forward[start:start + _MATERIAL_BATCH].tolist()) for start in range(0, edge_count, _MATERIAL_BATCH)]
     batches += [(way_ids[start:start + _MATERIAL_BATCH], [-1] * len(way_ids[start:start + _MATERIAL_BATCH]),
                  [True] * len(way_ids[start:start + _MATERIAL_BATCH])) for start in range(0, len(way_ids), _MATERIAL_BATCH)]
     for ways, segments, forwards in batches:
-        columns.add(await repository.get_edge_material_arrays(ways, segments, forwards, accident_years_covered))
+        columns.add(await repository.get_edge_material_arrays(ways, segments, forwards))
         logger.info("材料 %d/%d", columns.filled, edge_count + len(way_ids))
     result = columns.result()
     numeric, codes = result.pop("numeric_values"), result.pop("categorical_codes")

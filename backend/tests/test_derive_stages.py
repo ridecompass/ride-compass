@@ -22,13 +22,12 @@ from app.batch import derive_cli
 from app.domain.gsi_tiles import PRODUCT_PRIORITY
 from app.batch.ingest import SourceRecord
 from app.batch.source_adapters.raster_wkb import tile_raster_wkb
-from app.domain.accident import PartyType
 from app.domain.landcover import PERCENT_CLASSES
 from app.domain.region import BoundingBox
 from app.domain.tuning import LANDCOVER_RING_OUTER_ID
 from app.infrastructure import derived_data_meta, road_network_store
 from app.infrastructure.orm_base import derived_tables
-from app.infrastructure.source_models import PARTY_TYPE_CODES, PEDESTRIAN_ROAD_KIND, Source
+from app.infrastructure.source_models import PEDESTRIAN_ROAD_KIND, Source
 from tests.conftest import (
     empty_ingested_tables,
     override_tuning,
@@ -39,7 +38,6 @@ from tests.conftest import (
 from tests.tuning_fixture import TUNING
 from tests.source_ingest import (
     abr_block_record,
-    accident_record,
     abr_city_record,
     abr_prefecture_record,
     abr_town_record,
@@ -78,15 +76,9 @@ async def _ingest_ways(conn: asyncpg.Connection) -> None:
         for way_id, nodes in WAYS], conn=conn)
 
 
-async def _ingest_nodes(conn: asyncpg.Connection) -> None:
-    await ingest_records("osm_node", [point_record(n, *_point(n), {"highway": "traffic_signals"} if n == 2 else None)
+async def _ingest_nodes(conn: asyncpg.Connection) -> int:
+    return await ingest_records("osm_node", [point_record(n, *_point(n), {"highway": "traffic_signals"} if n == 2 else None)
                                       for n in range(1, 5)], conn=conn)
-
-
-async def _ingest_accidents(conn: asyncpg.Connection) -> int:
-    return await ingest_records("accident", [
-        accident_record("on-way-100", *_point(2), party_a=PARTY_TYPE_CODES[PartyType.BICYCLE], party_b="59")],
-        conn=conn, origin={"years": [2024]})
 
 
 @functools.cache
@@ -136,7 +128,6 @@ async def world(road_graph_engine, road_network_root):
         try:
             await _ingest_ways(conn)
             await _ingest_nodes(conn)
-            await _ingest_accidents(conn)
             await _ingest_elevations(conn)
             await _ingest_landcover(conn)
             await _ingest_addresses(conn)
@@ -235,11 +226,11 @@ RECORDS = set(derived_data_meta.RECORD_TABLES)
 async def test_a_partial_rebuild_runs_only_the_chosen_stages_and_records_only_what_they_read(world, ran):
     """交差点の段を選ぶと、それを読む数の段と一緒に流し、作業用のスキーマにはその表と記録の表だけを作る。流さなかった段の表は
     前の値のまま残り、道路網の配列は世代を進めて作る。記録は、使う段が全部流れた取込・較正値だけを今の値にする——取り直した
-    事故（数の段が読む）と変えた信号の半径（交差点の段）は入り、取り直した土地被覆と変えた帯の幅（土地被覆の段）は前回のまま
-    （流さなかった段の表は前回の取込と較正値で作ったままで、記録を読む所（事故密度の分母等）が表と食い違わない）。"""
+    ノード（交差点と数の段が読む）と変えた信号の半径（交差点の段）は入り、取り直した土地被覆と変えた帯の幅（土地被覆の段）は
+    前回のまま（流さなかった段の表は前回の取込と較正値で作ったままで、記録が表と食い違わない）。"""
     values, revision = await _values(world), await _revision(world)
     before = await derived_data_meta.read_records(world)
-    accident = await _ingest_accidents(world)
+    nodes = await _ingest_nodes(world)
     await _ingest_landcover(world)
     await override_tuning(SIGNAL_RADIUS, 150.0)
     await override_tuning(LANDCOVER_RING_OUTER_ID, 50.0)
@@ -254,7 +245,7 @@ async def test_a_partial_rebuild_runs_only_the_chosen_stages_and_records_only_wh
         table: values[table] for table in values if table not in written}
     assert road_network_store.current().revision == revision + 1
     records = await derived_data_meta.read_records(world)
-    assert (records.runs[Source.ACCIDENT], records.tuning[SIGNAL_RADIUS]) == (accident, 150.0)
+    assert (records.runs[Source.OSM_NODE], records.tuning[SIGNAL_RADIUS]) == (nodes, 150.0)
     assert (records.runs[Source.LULC], records.tuning[LANDCOVER_RING_OUTER_ID]) == (
         before.runs[Source.LULC], before.tuning[LANDCOVER_RING_OUTER_ID])
 

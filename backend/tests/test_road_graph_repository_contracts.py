@@ -136,7 +136,7 @@ async def test_material_values_land_in_the_matrix_of_their_dtype():
     repo, _ = _repo([_arrays_row(3, {numeric: [1.5, None, None], boolean: [True, False, None],
                                      categorical: ["value_a", None, None]})])
 
-    arrays = await repo.get_edge_material_arrays([1, 1, 1], [0, 1, 2], [True, True, True], 5)
+    arrays = await repo.get_edge_material_arrays([1, 1, 1], [0, 1, 2], [True, True, True])
 
     numbers = arrays.numeric_values[:, [arrays.numeric_ids.index(numeric), arrays.numeric_ids.index(boolean)]].T
     assert numbers[0][0] == 1.5
@@ -169,7 +169,7 @@ async def test_rows_keep_the_order_of_the_given_edges_across_chunks():
     forwards = [i % 2 == 0 for i in way_ids]
 
     arrays = await RoadGraphRepository(_EchoingArraysSession()).get_edge_material_arrays(
-        way_ids, segment_indexes, forwards, 1)
+        way_ids, segment_indexes, forwards)
 
     assert arrays.distance_m.tolist() == way_ids
     assert arrays.bearing_deg.tolist() == segment_indexes
@@ -215,7 +215,7 @@ async def test_unknown_way_has_no_tags():
 
 @pytest.mark.parametrize(("read", "years"), [([2023, 2021, 2022], [2021, 2022, 2023]), (None, [])])
 async def test_accident_years_are_the_years_the_run_read(read, years):
-    """実データの発生年を数えない——事故が1件も無かった年が落ちて、密度の分母がずれる。"""
+    """実データの発生年を数えない——事故が1件も無かった年が落ちて、地図の説明の年が欠ける。"""
     repo, _ = _repo([_Row(years=read)])
 
     assert await repo.get_accident_years() == years
