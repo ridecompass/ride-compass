@@ -40,7 +40,7 @@ import app.domain.traffic_regulation
 from app.domain.geo import bearings_between
 from app.domain.road_network import RoadNetwork, positions_in
 from app.domain.material_catalog import MATERIAL_CATALOG, PEDESTRIAN_ROAD, material_array_columns
-from app.domain.road_network_build import EdgelessWays, build_road_network, regulation_arrays
+from app.domain.road_network_build import EdgelessWays, build_road_network, per_km, regulation_arrays
 from app.domain.traffic_regulation import PEDESTRIAN_ROAD_LABELS
 from app.domain.tuning import MAX_PLAUSIBLE_GRADE_ID, STEEPEST_MIN_INTERVAL_ID
 from app.domain.search_graph import run_starts
@@ -283,6 +283,11 @@ async def build(repository: RoadGraphRepository, revision: int) -> RoadNetwork:
     read_s = time.monotonic() - started
     logger.info("道路網の材料を読みました 有向の区間=%d %.0f秒 %s", len(edges["edge_way_id"]), read_s - topology_s,
                 memory_note())
+    # 材料の値式は区間の量を返すので、1kmあたりにする材料（`MaterialSpec.per_km`）はここで区間の長さで割る（割り算は
+    # `domain/road_network_build.py: per_km`の1か所）。
+    for column, material_id in enumerate(materials["numeric_ids"]):
+        if MATERIAL_CATALOG[material_id].per_km:
+            materials["numeric_values"][:, column] = per_km(materials["numeric_values"][:, column], materials["distance_m"])
     regulation_fields, pedestrian_road = regulation_arrays(
         edges["edge_way_id"], edges["edge_segment"], await repository.get_network_regulations())
     column = materials["categorical_ids"].index(PEDESTRIAN_ROAD)
