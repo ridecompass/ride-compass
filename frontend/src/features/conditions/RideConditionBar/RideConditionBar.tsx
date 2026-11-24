@@ -234,7 +234,9 @@ export default function RideConditionBar({
           <div className="flex items-center gap-1">
             <p className={textVariants({ variant: "hint" })}>{CRUISE_SPEED_LABEL}</p>
             <InfoPopover triggerAriaLabel="想定速度の説明">
-              <p>{`${CRUISE_SPEED_LABEL}です。信号待ちや坂を含めた普段の平均速度ではありません。`}</p>
+              <p>
+                <GuideText text={`${CRUISE_SPEED_LABEL}です。信号待ちや坂を含めた普段の平均速度ではありません。`} />
+              </p>
               <p>
                 <GuideText text={TRAVEL_MODEL_WORDING} />
               </p>
