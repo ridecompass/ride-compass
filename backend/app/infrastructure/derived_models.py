@@ -346,8 +346,6 @@ class AddressAreaRow(Base):
     level: Mapped[str] = mapped_column(String, nullable=False)
     #: 自分の段の名前だけ（「西新宿」「二丁目」）。
     name: Mapped[str] = mapped_column(String, nullable=False)
-    #: 郡に属す町村の行だけが持つ郡の名前。
-    county_name: Mapped[str | None] = mapped_column(String, nullable=True)
     #: 代表点。大字自身の行の無い大字は子の代表点の重心。
     geom: Mapped[object] = mapped_column(Geometry("POINT", srid=4326, spatial_index=False), nullable=False)
 
