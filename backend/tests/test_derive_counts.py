@@ -115,16 +115,9 @@ async def test_rerun_on_changed_input_keeps_no_count_the_input_no_longer_support
     assert after == 0
 
 
-async def test_every_segment_has_a_row_even_without_anything_to_count(counts_conn):
-    """数えるものの無い区間も0の行を持つ。行が無いと、その区間は材料の欠損に数えられ、地図では値の無い道に塗られる。"""
-    edges = await counts_conn.fetch("SELECT e.osm_way_id, c.poi_signal FROM road_edges e"
-                                    " LEFT JOIN edge_counts c USING (osm_way_id, segment_index)")
-
-    assert {r["osm_way_id"]: r["poi_signal"] for r in edges} == {300: 0.0, 200: 0.0, 100: 0.0}
-
-
 async def test_a_stop_point_on_no_segment_is_not_counted(counts_conn):
-    """どの区間にも乗らない停止要因の点（取り込んでいない道の上の点等）は、すぐ隣の道にも数えない。"""
+    """どの区間にも乗らない停止要因の点（取り込んでいない道の上の点等）は、すぐ隣の道にも数えない。数えるものの無い区間も0の行を
+    持つ（行が無いと、その区間は材料の欠損に数えられ、地図では値の無い道に塗られる。どの道も区間は1本）。"""
     await _derive_with_nodes(counts_conn, {9: (_north_of_way(5.0), {"highway": "stop"})})
 
     assert await _stop_counts(counts_conn) == {100: {}, 200: {}, 300: {}}

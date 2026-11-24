@@ -94,14 +94,6 @@ async def test_a_segment_with_fewer_than_two_known_vertices_has_no_row(road_grap
     assert set(rows) == {(3, 0)}
 
 
-async def test_grades_are_measured_along_the_road(summarize):
-    """距離は点の道のりの位置の差で測る。曲がって戻る道は直線では近いが、勾配は走る長さで割る（直線で割ると大きく出る）。"""
-    row = await one(summarize, [100.0, 100.0 + rise(3, 3)], along=[0.0, 3 * STEP_M])
-
-    assert row["average_grade"] == pytest.approx(3.0, abs=0.005)
-    assert row["steepest_gain_percent"] == pytest.approx(3.0, abs=0.005)
-
-
 @pytest.mark.parametrize(("length_m", "steepest"), [(STEEPEST_MIN_INTERVAL_M * 0.5, None), (STEEPEST_MIN_INTERVAL_M, 10.0)])
 async def test_an_interval_shorter_than_the_minimum_is_not_the_steepest(summarize, length_m, steepest):
     """一番急な勾配は、最短の長さより短い間を数えない（標高データの揺れが短い間の勾配を大きく揺らす）。平均勾配と獲得標高は
@@ -112,18 +104,16 @@ async def test_an_interval_shorter_than_the_minimum_is_not_the_steepest(summariz
     assert row["average_grade"] == pytest.approx(10.0, abs=0.005)
 
 
-async def test_fluctuations_within_the_tolerance_are_removed(road_graph_session):
-    """閾値以下の上下は揺れとして消え、残す点に入らない。"""
-    row = await one(partial(values, road_graph_session, tolerance_m=0.3), [10.0, 10.2, 9.9, 10.1, 10.0])
+@pytest.mark.parametrize(("elevations", "kept_along"), [
+    ([10.0, 10.2, 9.9, 10.1, 10.0], [0.0, 4 * STEP_M]),
+    ([10.0, 10.0, 10.0 + rise(12), 10.0 + rise(12), 10.0 + rise(12)], [0.0, STEP_M, 2 * STEP_M, 4 * STEP_M]),
+], ids=["閾値以下の揺れ", "閾値を越える短い急坂"])
+async def test_points_are_simplified_within_the_tolerance(road_graph_session, elevations, kept_along):
+    """閾値以下の上下は揺れとして消え、残す点に入らない。閾値を越える短い急坂は、間引いたあとも坂の上下の点が残る（平らな前後に
+    均されない）。"""
+    row = await one(partial(values, road_graph_session, tolerance_m=0.3), elevations)
 
-    assert row["elevation_profile_along_m"] == [0.0, 4 * STEP_M]
-
-
-async def test_a_short_steep_rise_beyond_the_tolerance_keeps_its_points(road_graph_session):
-    """閾値を越える短い急坂は、間引いたあとも坂の上下の点が残る（平らな前後に均されない）。"""
-    row = await one(partial(values, road_graph_session, tolerance_m=0.3), [10.0, 10.0, 10.0 + rise(12), 10.0 + rise(12), 10.0 + rise(12)])
-
-    assert row["elevation_profile_along_m"] == [0.0, STEP_M, 2 * STEP_M, 4 * STEP_M]
+    assert row["elevation_profile_along_m"] == kept_along
 
 
 async def test_a_missing_point_is_kept_and_not_simplified_across(road_graph_session):
@@ -134,19 +124,13 @@ async def test_a_missing_point_is_kept_and_not_simplified_across(road_graph_sess
     assert row["elevation_profile_along_m"] == [0.0, 2 * STEP_M, 3 * STEP_M, 4 * STEP_M, 6 * STEP_M]
 
 
-@pytest.mark.parametrize(
-    ("percent", "kept"),
-    [
-        (MAX_PLAUSIBLE_GRADE_PERCENT - 0.5, True),
-        (MAX_PLAUSIBLE_GRADE_PERCENT + 0.5, False),
-    ],
-)
-async def test_an_implausible_step_is_not_counted(summarize, percent, kept):
-    """公道としてありえない勾配の間は、標高データの読み違いとして平均勾配にも獲得にも数えない。"""
-    row = await one(summarize, [0.0, rise(percent)])
+async def test_an_implausible_step_is_not_counted(summarize):
+    """公道としてありえない勾配の間は、標高データの読み違いとして平均勾配にも獲得にも数えない（上限の両側は
+    `test_elevation_profile.py`が持ち、ここは要約がその判断に寄せていることを見る）。"""
+    row = await one(summarize, [0.0, rise(MAX_PLAUSIBLE_GRADE_PERCENT + 0.5)])
 
-    assert (row["average_grade"] is not None) is kept
-    assert row["elevation_gain_m"] == pytest.approx(rise(percent) if kept else 0.0, abs=0.05)
+    assert row["average_grade"] is None
+    assert row["elevation_gain_m"] == pytest.approx(0.0, abs=0.05)
 
 
 async def test_a_road_is_graded_at_its_own_point_spacing(summarize):

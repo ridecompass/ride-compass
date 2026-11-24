@@ -1,5 +1,5 @@
 """時刻で変わる値のコマ（`domain/time_frames.py`）と、値の種類ごとのコマの作り方（`domain/timed_regulations.py: regulation_frames`・
-`domain/wind.py: wind_frames`）。
+`domain/wind.py: wind_frames`）と、コマの一覧の持ち方（`services/time_frame_service.py: TimeFrameService`）。
 
 ここで見ないもの:
 - 組が時刻に効くかの判断 → `test_traffic_regulation.py`
@@ -17,7 +17,9 @@ from app.domain.time_zone import JST
 from app.domain.timed_regulations import regulation_frames
 from app.domain.traffic_regulation import SLOT_FIELDS, RegulationSlot
 from app.domain.wind import wind_frames
+from app.services.time_frame_service import TimeFrameService, new_frame_cache
 from tests.road_network_fixture import road_network
+from tests.route_world import Weather
 
 DAY = datetime(2026, 11, 24, tzinfo=JST)
 #: 毎日8:00〜20:00に効く組。
@@ -74,3 +76,26 @@ def test_a_key_outside_the_current_frames_is_refused():
     assert frame_start(frames, "v2-2026112410") == datetime(2026, 11, 24, 9, 30, tzinfo=JST)
     with pytest.raises(StaleTimeFrameError):
         frame_start(frames, "v1-2026112410")
+
+class _ReplacedWhileRead(Weather):
+    """1回目に時刻の並びを読む間だけ、予報が入れ替わる天気の代役。読んだ回数を数える。"""
+
+    def __init__(self):
+        super().__init__()
+        self.reads = 0
+
+    async def get_forecast_times(self, version):
+        self.reads += 1
+        return None if self.reads == 1 else await super().get_forecast_times(version)
+
+
+async def test_the_lens_frames_are_read_once_per_forecast_and_again_if_it_was_replaced_while_read():
+    """予報の時刻の並びは、版ごとに1回だけ読む（レンズのタイル1枚ごとに予報の置き場を読まない）。読む間に予報が入れ替わったら
+    読み直す（古い版の印に新しい予報の時刻を付けない）。"""
+    weather = _ReplacedWhileRead()
+    service = TimeFrameService(weather, new_frame_cache())
+
+    frames = (await service.frames()).lens
+    await service.lens_at(frames[0].key)
+
+    assert frames and weather.reads == 2
