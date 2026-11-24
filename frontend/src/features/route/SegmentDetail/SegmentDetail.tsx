@@ -17,7 +17,7 @@ import {
 import PenaltyBreakdown from "@/components/MapPopup/PenaltyBreakdown";
 import { useCostAxisCatalog } from "@/hooks/useCostAxisCatalog";
 import { cn } from "@/lib/cn";
-import { roundedMinutes } from "@/lib/duration";
+import { reachesMinute } from "@/lib/duration";
 import { formatPenalty, penaltyRows } from "@/lib/routePenalty";
 import type { RoadTrackRow } from "@/lib/mapDisplay/roadTracks";
 import { formatJstHourMinute } from "@/lib/time";
@@ -131,7 +131,7 @@ export default function SegmentDetail({
       <PenaltyBreakdown
         total={null}
         items={penaltyRows(segment.penalty.axis_seconds, costCatalog).flatMap((row) =>
-          roundedMinutes(Math.abs(row.seconds)) < 1 ? [] : [{ row, text: formatPenalty(row.seconds) }],
+          reachesMinute(row.seconds) ? [{ row, text: formatPenalty(row.seconds) }] : [],
         )}
       />
     </div>

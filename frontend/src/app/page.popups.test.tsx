@@ -207,7 +207,7 @@ describe("地図の小窓", () => {
     await waitFor(() => expect(mapOnScreen().fits()).toHaveLength(fitsBefore + 1));
   });
 
-  it("ルートの脇の線のある区間の小窓は、避け方の倍率を決めた道ごとに、線と同じ印で道の名前と増えた・減った分、まとまり・長さ・段を出す", async () => {
+  it("ルートの脇の線のある区間の小窓は、避け方の倍率を決めた道ごとに、線と同じ印で道の名前と分に丸めて1分以上の増えた・減った分、まとまり・長さ・段を出す", async () => {
     serveClientConfig(
       clientConfigResponse({
         road_classes: roadClassCatalog({
@@ -226,14 +226,14 @@ describe("地図の小窓", () => {
     const segment = makeRouteSegment({
       avoidance_stretches: [
         { row_key: "highway.primary", level: "slight_avoid", distance_km: 0.3, seconds: 60 },
-        { row_key: "highway.cycleway", level: "slight_prefer", distance_km: 0.1, seconds: -60 },
+        { row_key: "highway.cycleway", level: "slight_prefer", distance_km: 0.1, seconds: -29 },
       ],
       penalty: {
         axis_seconds: {},
-        preferred_seconds: -60,
+        preferred_seconds: -29,
         avoided_seconds: 60,
         turn_penalty_seconds: 0,
-        total_seconds: 0,
+        total_seconds: 31,
       },
     });
     const { user } = renderHome();
@@ -246,7 +246,7 @@ describe("地図の小窓", () => {
 
     // 行・まとまり・段の名前は道路タブと同じ画面の設定から引き、並びは応答のまま。
     expect(await screen.findByRole("list", { name: "ルートの脇の線の理由" })).toHaveTextContent(
-      /^主要地方道\+1分道路の種類・300m・×1\.4自転車の道−1分道路の種類・100m・×0\.7$/,
+      /^主要地方道\+1分道路の種類・300m・×1\.4自転車の道好んだ道道路の種類・100m・×0\.7$/,
     );
   });
 
