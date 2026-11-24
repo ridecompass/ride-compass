@@ -131,6 +131,9 @@ def build_road_network(
 
     # 材料の行列は取込範囲全体で道路網の配列の大半を占めるので、写さずに断面から決まる列だけを埋める。
     values = np.asarray(numeric_values, dtype=EDGE_VALUE_DTYPE)
+    for material_column, material_id in enumerate(numeric_ids):
+        if (spec := MATERIAL_CATALOG.get(material_id)) is not None and spec.per_km:
+            values[:, material_column] = per_km(values[:, material_column], distance)
     gain_per_km = per_km(summaries["elevation_gain_m"], distance)
     for material_id, column in ((GRADIENT_PERCENT, summaries.pop("average_grade")), (ELEVATION_GAIN_PER_KM, gain_per_km)):
         if material_id in numeric_ids:

@@ -68,8 +68,7 @@ from app.domain.material_sql import (
     TRACKTYPE_NORMALIZED_SQL,
     cycleway_has_value_sql,
     landcover_value_sql,
-    per_km_value_sql,
-    poi_density_value_sql,
+    poi_count_value_sql,
     BRIDGE_NORMALIZED_SQL,
     CYCLEWAY_TAG_NAMES,
     HIGHWAY_SQL,
@@ -185,6 +184,9 @@ class MaterialSpec(StrictModel):
     # **材料の値の求め方をここ以外へ書かない**
     # （設計原則 構造仕様8。別の辞書へ分けると、材料を増やしたとき片方が取り残される）。
     value_sql: str | None = None
+    # 値式の値（区間の量）を、区間の長さ1kmあたりにして持つか。割り算は道路網の配列を作るときの1か所
+    # （`domain/road_network_build.py: per_km`）だけが持ち、SQLへ写さない。
+    per_km: bool = False
     # 欠損率の測り方（`/admin`の材料タブ）。`CoverageExcluded`を含む3択で、**どれかを必ず
     # 持つ**——「どちらの一覧にも載っていない材料」を型として作れなくする。中身は
     # `value_sql`から導けない（「値がいくつか」と「元データがあるか」は別の問い。
@@ -225,6 +227,8 @@ class MaterialSpec(StrictModel):
         都度の値と二重になり、値式を持たないのにDBとした材料は行列に列が無く、どの軸でも黙って欠損になる。"""
         if (self.source == "db") != (self.value_sql is not None):
             raise ValueError(f"{self.material_id}: 値式（value_sql）は出どころがdbの材料だけが持つ")
+        if self.per_km and not (self.source == "db" and self.dtype == "numeric"):
+            raise ValueError(f"{self.material_id}: 1kmあたりにする（per_km）のは、値式を持つ数値の材料だけ")
         if self.source == "road_class" and not isinstance(self.coverage, CoverageExcluded):
             # 欠損率はDBの元データを数えるので、道の区分から作る材料には数える相手が無い（断面から求める材料は、断面の表を数える）。
             raise ValueError(f"{self.material_id}: 道の区分から作る材料は欠損率を測らない（CoverageExcluded）")
@@ -351,7 +355,8 @@ MATERIAL_CATALOG: dict[str, MaterialSpec] = {
         unit="回/km",
         tile_property=None,
         primary_attribute=ATTR_INTERSECTION,
-        value_sql=per_km_value_sql("em.intersection_count"),
+        value_sql="em.intersection_count",
+        per_km=True,
         coverage=_EDGE_COUNTS_COVERAGE,
     ),
     "lit": MaterialSpec(
@@ -596,7 +601,8 @@ MATERIAL_CATALOG: dict[str, MaterialSpec] = {
             dtype="numeric",
             unit="回/km",
             tile_property=None,
-            value_sql=poi_density_value_sql(kind),
+            value_sql=poi_count_value_sql(kind),
+            per_km=True,
             # 行があれば載っていないキーは0件と確定できる（欠損は行そのものの不在だけ）。
             coverage=_EDGE_COUNTS_COVERAGE,
             primary_attribute=ATTR_STOP_POI,

@@ -33,7 +33,8 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 from app.batch import derive_cli
 from app.domain import elevation_profile, road_network_build
 from app.domain.attributes import CategoricalColumn, EdgeMaterialArrays
-from app.domain.material_catalog import ELEVATION_GAIN_PER_KM, GRADIENT_PERCENT
+from app.domain.material_catalog import ELEVATION_GAIN_PER_KM, GRADIENT_PERCENT, MATERIAL_CATALOG
+from app.domain.road_network_build import per_km
 from app.domain.road_network import RoadNetwork, edge_shape
 from app.domain.traffic import highway_rank
 from app.infrastructure import road_network_store
@@ -311,8 +312,13 @@ async def test_the_network_is_built_from_the_derived_tables_with_one_row_per_dri
     assert copied
     for name in copied:
         np.testing.assert_array_equal(getattr(network, name), getattr(materials, name), err_msg=name)
+    # 1kmあたりにする材料（`MaterialSpec.per_km`）は、読み出した区間の量を配列が区間の長さで割る。
     read = [i for i, material_id in enumerate(network.numeric_ids) if material_id not in (GRADIENT_PERCENT, ELEVATION_GAIN_PER_KM)]
-    np.testing.assert_array_equal(network.numeric_values[:, read], materials.numeric_values[:, read])
+    expected = materials.numeric_values[:, read].astype(np.float64)
+    for position, column in enumerate(read):
+        if MATERIAL_CATALOG[network.numeric_ids[column]].per_km:
+            expected[:, position] = per_km(expected[:, position], materials.distance_m)
+    np.testing.assert_allclose(network.numeric_values[:, read], expected, rtol=1e-6)
 
 
 def _bearing(a: int, b: int) -> float:
