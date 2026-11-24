@@ -17,6 +17,11 @@ export function roundedMinutes(seconds: number): number {
   return Math.round(secondsToMinutes(seconds));
 }
 
+/** 秒の大きさ（符号を除く）が、分へ丸めて1分以上か。0は1分以上でない。 */
+export function reachesMinute(seconds: number): boolean {
+  return roundedMinutes(Math.abs(seconds)) >= 1;
+}
+
 /** 秒を、分へ丸めて「38分」の形にする。 */
 export function formatMinutes(seconds: number): string {
   return `${roundedMinutes(seconds)}${MINUTE_UNIT}`;
@@ -25,6 +30,6 @@ export function formatMinutes(seconds: number): string {
 /** 秒を「102分」「38分」の形にする（1時間を超えても分で書く）。1分未満は「1分未満」。 */
 export function formatDurationShort(seconds: number): string {
   if (!Number.isFinite(seconds) || seconds < 0) return "—";
-  if (Math.round(secondsToMinutes(seconds)) < 1) return `1${MINUTE_UNIT}未満`;
+  if (!reachesMinute(seconds)) return `1${MINUTE_UNIT}未満`;
   return formatMinutes(seconds);
 }

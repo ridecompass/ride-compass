@@ -1,7 +1,7 @@
 // ルートの応答の代償の内訳（`penalty`。軸ごとの秒と、避け方の倍率が好む道で下げた秒・避ける道で上乗せした秒と、曲がる所の罰の秒と、
 // その和）を、画面が読む形にする。候補・区間・編集の差が同じ形を読む。
 
-import { formatDurationShort, formatMinutes, roundedMinutes } from "@/lib/duration";
+import { formatDurationShort, formatMinutes, reachesMinute, roundedMinutes } from "@/lib/duration";
 import { formatLensNumber } from "@/lib/mapDisplay/costLensPaint";
 import { signMark } from "@/lib/numberFormat";
 import palette from "@/types/generated/palette.json";
@@ -99,5 +99,5 @@ export function formatPenalty(seconds: number): string {
  * 丸まらない負担は「+<1」「−<1」（0と見分ける。内訳の「+1分未満」と同じ線）。 */
 export function formatPenaltyMinutes(seconds: number): string {
   const minutes = roundedMinutes(Math.abs(seconds));
-  return `${penaltySign(seconds)}${seconds !== 0 && minutes === 0 ? "<1" : minutes}`;
+  return `${penaltySign(seconds)}${seconds !== 0 && !reachesMinute(seconds) ? "<1" : minutes}`;
 }
