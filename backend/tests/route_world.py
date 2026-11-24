@@ -2,9 +2,7 @@
 
 3×3の格子（1辺約1km。長さの要るテストには大きな格子・任意の道と地点の道路網も）を`RoadNetwork`で組み、プロセス境界（DB・天気の予報ファイル）だけを代役にし、道路網は本番と同じ置き場（一時ディレクトリ）から読ませて、
 本物の`GraphService`・エンジンの組み立て（`services/route_generation_setup.py: assemble_route_generation_setup`）・戦略層を通す。
-
-使う側: `test_route_generation_behavior.py`・`test_route_generation_segments.py`（戦略層の入口）・`test_routes_generate.py`（HTTPの入口）・
-`test_search_kernels.py`（生成の経路がPythonから呼ぶJIT）・`test_route_generator.py`（経由地の無い周回の指定だけ）。
+道路網を通さずに経路の並べ方・選び方を確かめるテストには、評価済みの経路を組む`evaluated_route`を置く。
 """
 
 import itertools
@@ -23,7 +21,7 @@ from app.domain.traffic import stop_count_material_ids
 from app.domain.cost_preference import CostPreference
 from app.domain.road_avoidance import AvoidanceLevel
 from app.domain.road_network import RoadNetwork
-from app.domain.route import Coordinates
+from app.domain.route import Coordinates, EvaluatedRoute, PenaltyBreakdown, RouteFacts
 from app.domain.route_request import FixedPoints, RequestedConditions
 from app.domain.msm import MsmBlock, MsmGrid
 from app.domain.time_zone import JST
@@ -273,3 +271,18 @@ DEPARTURE = datetime(2026, 9, 22, 8, 10, tzinfo=JST)
 def fastest_of(candidates):
     """一覧の中で所要時間が最小の候補（基準線）。"""
     return min(candidates, key=lambda c: c.estimated_duration_seconds)
+
+
+def evaluated_route(*, distance_km: float, estimated_duration_seconds: float | None, cost_seconds: float,
+                    **fields) -> EvaluatedRoute:
+    """並びの鍵が読む距離・所要時間・費用を決めた評価済みの経路。ほかの欄は`fields`で渡したもの以外は空にする
+    （応答の欄が増えても、欄の中身を読まないテストは書き換えずに済む）。"""
+    return EvaluatedRoute(**{
+        "direction_label": "", "geometry": {"type": "LineString", "coordinates": []}, "point_distances_m": [],
+        "elevation_gain_m": None, "segments": [], "wind_previous_run_from": None,
+        "penalty": PenaltyBreakdown(axis_seconds={}, preferred_seconds=0.0, avoided_seconds=0.0, turn_penalty_seconds=0.0),
+        "facts": RouteFacts(axes={}), "missing_travel_data_share": None, "edge_ids": [], "edge_point_offsets": [],
+        "node_ids": [], "turns": [], "waypoint_distances_km": [],
+        "distance_km": distance_km, "estimated_duration_seconds": estimated_duration_seconds, "cost_seconds": cost_seconds,
+        **fields,
+    })

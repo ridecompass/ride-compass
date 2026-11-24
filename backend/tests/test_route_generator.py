@@ -23,7 +23,7 @@ import pytest
 from app.domain.errors import GENERATION_BUSY_MESSAGE, RoutingError, SearchAreaTooLargeError, SearchMemoryBusyError
 from app.domain.loop_routing import LoopTurnaround, TracedLoop
 from app.domain.model_settings import ModelSettings
-from app.domain.route import PenaltyBreakdown, Coordinates, EvaluatedRoute, RouteCandidate, RouteFacts, RouteSegmentDetail
+from app.domain.route import Coordinates, EvaluatedRoute, RouteCandidate
 from app.domain.road_classes import EMPTY_ROAD_CLASSES
 from app.domain.route_request import DEFAULT_MAX_ROUTES, MAX_ROUTES, FixedPoints
 from app.domain.time_zone import JST
@@ -33,7 +33,7 @@ from app.services.road_graph_engine import RoadGraphEngine
 from app.services.route_generator import RouteGenerator
 from tests.bound_fake import bound
 from tests.cost_axes_fixture import cost_axes
-from tests.route_world import NO_POINTS
+from tests.route_world import NO_POINTS, evaluated_route
 from tests.tuning_fixture import TUNED
 
 ORIGIN = Coordinates(latitude=35.6789, longitude=139.7712)
@@ -45,26 +45,11 @@ UNREACHABLE = "指定した経由地・目的地を通る経路が見つかり�
 RETRY = "距離や「道路」の設定を変えてお試しください。"
 
 
-def _segment() -> RouteSegmentDetail:
-    return RouteSegmentDetail(
-        start_latitude=0.0, start_longitude=0.0, end_latitude=0.0, end_longitude=0.0,
-        distance_km=1.0,
-        road_classes={}, avoidance_stretches=[], regulation_margin=False, penalty=PenaltyBreakdown(axis_seconds={}, preferred_seconds=0.0, avoided_seconds=0.0, turn_penalty_seconds=0.0),
-    )
-
-
 def _candidate(key: str, penalty: float = 10.0, **fields) -> EvaluatedRoute:
-    """区間1本（1km・所要時間100秒・代償`penalty`秒）を持つ経路。距離と所要時間が揃うので、周回の並び（1kmあたりの代償の秒）
+    """1km・所要時間100秒・代償`penalty`秒の経路。距離と所要時間が揃うので、周回の並び（1kmあたりの代償の秒）
     と目的地の並び（費用）が同じ順になる。戦略層は名前を付け替えうるので、どの候補かは`edge_ids`で見分ける。"""
-    return EvaluatedRoute(**{
-        "direction_label": f"方位-{key}", "distance_km": 1.0, "geometry": {"type": "LineString", "coordinates": []},
-        "point_distances_m": [], "elevation_gain_m": None, "segments": [_segment()], "estimated_duration_seconds": 100.0,
-        "wind_previous_run_from": None,
-        "cost_seconds": 100.0 + penalty, "penalty": PenaltyBreakdown(axis_seconds={"a": penalty}, preferred_seconds=0.0, avoided_seconds=0.0, turn_penalty_seconds=0.0),
-        "facts": RouteFacts(axes={}),
-        "missing_travel_data_share": None, "edge_ids": [key], "edge_point_offsets": [], "node_ids": [], "turns": [],
-        "waypoint_distances_km": [], **fields,
-    })
+    return evaluated_route(**{"distance_km": 1.0, "estimated_duration_seconds": 100.0, "cost_seconds": 100.0 + penalty,
+                              "direction_label": f"方位-{key}", "edge_ids": [key], **fields})
 
 
 def _route(key: str, distance_km: float = 10.0, bearing: int | None = 0) -> TracedLoop:
