@@ -36,10 +36,10 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.domain.attributes import EDGE_ROW_ARRAY_FIELDS, CategoricalColumn, EdgeMaterialArrays
 import app.domain.elevation_profile
 import app.domain.road_network_build
+import app.domain.traffic_regulation
 from app.domain.geo import bearings_between
-from app.domain.material_catalog import material_array_columns
 from app.domain.road_network import RoadNetwork, positions_in
-from app.domain.material_catalog import PEDESTRIAN_ROAD
+from app.domain.material_catalog import MATERIAL_CATALOG, PEDESTRIAN_ROAD, material_array_columns
 from app.domain.road_network_build import EdgelessWays, build_road_network, regulation_arrays
 from app.domain.traffic_regulation import PEDESTRIAN_ROAD_LABELS
 from app.domain.tuning import MAX_PLAUSIBLE_GRADE_ID, STEEPEST_MIN_INTERVAL_ID
@@ -58,10 +58,12 @@ ROOT = DATA_DIR / "road_network"
 
 #: 署名には、配列を組むときに通るコードの全文を入れる——組み方を直したのに署名が変わらないと、直す前のコードで組んだ置き場を
 #: 読み続ける。このファイル（つながり・形・階級・向きを組む所と、材料と断面を詰める所）・事実から値を導く2つのモジュール・
-#: それらが呼ぶ関数と、DBの行を配列にする読み出しの関数。
-NETWORK_SHAPE = shape_digest(RoadNetwork, *NETWORK_SQL_SOURCES, HIGHWAY_RANK, material_array_columns(), *(
+#: それらが呼ぶ関数（交通規制の判断を含む）と、DBの行を配列にする読み出しの関数と、1kmあたりにする材料。
+NETWORK_SHAPE = shape_digest(RoadNetwork, *NETWORK_SQL_SOURCES, HIGHWAY_RANK, material_array_columns(),
+                             sorted(material_id for material_id, spec in MATERIAL_CATALOG.items() if spec.per_km), *(
     inspect.getsource(code) for code in (
-        sys.modules[__name__], app.domain.road_network_build, app.domain.elevation_profile, bearings_between,
+        sys.modules[__name__], app.domain.road_network_build, app.domain.elevation_profile, app.domain.traffic_regulation,
+        RoadGraphRepository.get_network_regulations, bearings_between,
         highway_rank, travel_allowed, positions_in, EdgeMaterialArrays, CategoricalColumn.encode, float_array,
         RoadGraphRepository.get_edgeless_ways, RoadGraphRepository.stream_network_nodes, RoadGraphRepository.stream_network_edges,
         RoadGraphRepository.get_network_tuning, RoadGraphRepository.get_edge_material_arrays,
