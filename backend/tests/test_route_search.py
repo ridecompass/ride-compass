@@ -35,9 +35,6 @@ import pytest
 from app.domain.attributes import ElevationAttribute
 from app.domain.graph import LeanEdge
 from app.domain.route import (
-    PenaltyBreakdown,
-    EvaluatedRoute,
-    RouteFacts,
     concat_edge_geometries,
     reverse_elevation_by_edge,
     elevation_gain,
@@ -64,6 +61,7 @@ from app.domain.routing import TurnExpandedTree, build_turn_expanded_tree
 from app.domain.tree_paths import NodeJunction, add_terminal_candidate
 from app.domain.geo import KM_PER_DEGREE_LATITUDE
 from tests.tuning_fixture import TUNED, TUNING
+from tests.route_world import evaluated_route
 from tests.search_graph_world import LINE_EDGES, LINE_NODES, build_all, make_graph, state_index
 
 
@@ -102,16 +100,8 @@ def turn_tree(state_count, *, node_cost, node_length_m, node_seconds, node_best_
 
 
 def draft(distance_km, duration_seconds, cost_seconds):
-    """並びの鍵が読む距離・所要時間・費用だけを持つ候補。ほかの欄は空。"""
-    return EvaluatedRoute(
-        direction_label="", distance_km=distance_km, geometry={"type": "LineString", "coordinates": []},
-        point_distances_m=[], elevation_gain_m=None, segments=[], estimated_duration_seconds=duration_seconds, wind_previous_run_from=None,
-        cost_seconds=cost_seconds,
-        penalty=PenaltyBreakdown(axis_seconds={}, preferred_seconds=0.0, avoided_seconds=0.0, turn_penalty_seconds=0.0),
-        facts=RouteFacts(axes={}),
-        missing_travel_data_share=None,
-        edge_ids=[], edge_point_offsets=[], node_ids=[], turns=[], waypoint_distances_km=[],
-    )
+    """並びの鍵が読む距離・所要時間・費用だけを持つ候補。"""
+    return evaluated_route(distance_km=distance_km, estimated_duration_seconds=duration_seconds, cost_seconds=cost_seconds)
 
 
 # --------------------------------------------------------------------------------------
