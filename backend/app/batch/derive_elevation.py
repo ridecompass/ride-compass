@@ -30,7 +30,8 @@ https://github.com/graphhopper/graphhopper/blob/master/core/src/main/java/com/gr
 持つ派生は作らない**——面を読む出口は「そのまま見せる」か「線へ落とす」のどちらかで、
 面のままの中間結果を要る相手がいない。
 
-**画素はDB内で引く。**画素をプロセスへ取り出さず、頂点のあるタイルをDBの中で1枚ずつ展開して引く。
+**画素はDB内で引く。**画素をプロセスへ取り出さず、頂点のあるタイルをDBの中で1枚ずつ展開して引く。点の標高は、まわりの4画素の
+双線形補間にする（`infrastructure/source_models.py: dem_bilinear_corners_sql`）。
 
 同じ地点に複数の製品のタイルがありうる。どの製品の値を採るかは点ごとに決める
 （`infrastructure/dem_elevation.py: fill_elevations`）。頂点ごとに採った標高は表`_vertex_elev`に入り、行の無い頂点は値が無い。
