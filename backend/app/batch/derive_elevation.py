@@ -11,12 +11,12 @@
 **橋・トンネルの端の頂点は、道に沿って近い地面の標高で直す**（GraphHopper の
 https://github.com/graphhopper/graphhopper/blob/master/core/src/main/java/com/graphhopper/reader/dem/BridgeTunnelTowerCorrection.java
 と同じ手順）。OSM の橋の端が DEM の構造物を除いた範囲（水門の下の水面・高架の下の谷底）に入ると、端の点は橋台より低い値を
-返し、トンネルの坑口は山肌の高い値を返す。端の頂点から構造物でない区間だけを道のりで`STRUCTURE_GROUND_SEARCH_M`までたどり、
+返し、トンネルの坑口は山肌の高い値を返す。端の頂点から構造物でない区間だけを道のりで較正値`elevation.structure_ground_search_m`までたどり、
 着いた地面の頂点と、その長さで打ち切った所の DEM の値を、道のりの2乗に反比例する重み（道のりは最低1m）で平均した値に
 置き換える（頂点に DEM の値が無ければ、その値で埋める）。置き換えで、頂点に接する区間の勾配の最大が前より急になるなら取り消す
-（構造物の区間は`STRUCTURE_SLOPE_FLOOR`まで許す。取り消しが出なくなるまで繰り返す）。勾配は区間の両端の間で測るが、下の引き直しに
-合わせ、`STRUCTURE_GROUND_SEARCH_M`より長い地面の区間はその長さの位置との間で測る。置き換えた頂点に接する地面の区間は、その頂点から
-`STRUCTURE_GROUND_SEARCH_M`以内の点を直線に引き直す——GraphHopper は区間の形状点を全部引き直すが、ここは5m おきに点を持つので、
+（構造物の区間は較正値`elevation.structure_slope_floor`まで許す。取り消しが出なくなるまで繰り返す）。勾配は区間の両端の間で測るが、下の引き直しに
+合わせ、較正値`elevation.structure_ground_search_m`より長い地面の区間はその長さの位置との間で測る。置き換えた頂点に接する地面の区間は、その頂点から
+較正値`elevation.structure_ground_search_m`以内の点を直線に引き直す——GraphHopper は区間の形状点を全部引き直すが、ここは5m おきに点を持つので、
 区間全部を引き直すと遠くの起伏まで消える。
 
 **構造物の内側の頂点（構造物の区間にしか接しない頂点）は、構造物の外へつながる頂点から補う**（GraphHopper の
@@ -41,6 +41,7 @@ https://github.com/graphhopper/graphhopper/blob/master/core/src/main/java/com/gr
 """
 
 import logging
+from dataclasses import dataclass
 import math
 import time
 
@@ -64,12 +65,15 @@ logger = logging.getLogger("ridecompass.derive_elevation")
 #: 2〜5倍遅くなった。本番の範囲で340万点までは、点の数に比例する速さで流れることを確かめた。
 CHUNK_POINTS = 3_000_000
 
-#: 橋・トンネルの端の頂点から、地面の標高を集めにたどる道のりの長さ（m）。置き換えた頂点に接する地面の区間を引き直す長さも同じ。
-#: GraphHopper の`BridgeTunnelTowerCorrection`の`MAX_DIST_M`と同じ値。
-STRUCTURE_GROUND_SEARCH_M = 50.0
-#: 端の頂点の置き換えで、構造物の区間の勾配が増えても許す上限（割合）。両端が同じ誤った DEM を返す平らな橋を両端そろって
-#: 直すと、小さな本当の勾配が出るため。GraphHopper の`STRUCTURE_SLOPE_FLOOR`と同じ値。
-STRUCTURE_SLOPE_FLOOR = 0.015
+
+
+@dataclass(frozen=True)
+class _StructureFix:
+    """橋・トンネルの端の直し方（較正値）。`ground_search_m`は端の頂点から地面の標高を集めにたどる道のりで、置き換えた頂点に
+    接する地面の区間を引き直す長さも同じ。`slope_floor`は端を直して構造物の区間の勾配が増えても許す上限（割合）。"""
+
+    ground_search_m: float
+    slope_floor: float
 
 #: 区間の形と、構造物の種類（トンネル・橋・どちらでもなければ NULL）、断面の刻みの数・塊の番号。`$1`は刻みの上限（m）、
 #: `$2`は塊の点の数の目安。
@@ -377,7 +381,8 @@ async def _interpolate_inner_nodes(conn: asyncpg.Connection) -> int:
     return added
 
 
-async def _fix_structure_ends(conn: asyncpg.Connection, products: list[tuple[str, int]]) -> tuple[int, int, int, int]:
+async def _fix_structure_ends(conn: asyncpg.Connection, products: list[tuple[str, int]], fix: _StructureFix,
+                              ) -> tuple[int, int, int, int]:
     """橋・トンネルの頂点の置き換え（`_node_fix`）を、塊に分ける前に全部の区間で決める。構造物に接する頂点の数・
     端を置き換えた頂点の数・ガードで取り消した頂点の数・補った内側の頂点の数を返す。"""
     for sql in (_ENDPOINTS, "CREATE INDEX ON _endpoint (node_id)", "ANALYZE _endpoint",
@@ -389,10 +394,10 @@ async def _fix_structure_ends(conn: asyncpg.Connection, products: list[tuple[str
         await conn.execute("DROP TABLE IF EXISTS _frontier")
         await conn.execute(_WALK_FRONTIER)
         await conn.execute("UPDATE _walk SET fresh = false WHERE fresh")
-        if not affected_rows(await conn.execute(_WALK_STEP, STRUCTURE_GROUND_SEARCH_M)):
+        if not affected_rows(await conn.execute(_WALK_STEP, fix.ground_search_m)):
             break
     await conn.execute("ANALYZE _walk")
-    await conn.execute(_STRUCTURE_PROBES, STRUCTURE_GROUND_SEARCH_M)
+    await conn.execute(_STRUCTURE_PROBES, fix.ground_search_m)
     await _fill_vertices(conn, products, dict.fromkeys((product for product, _ in products), 0))
     await conn.execute(_CUTS)
     await conn.execute("CREATE INDEX ON _cut (start)")
@@ -401,7 +406,7 @@ async def _fix_structure_ends(conn: asyncpg.Connection, products: list[tuple[str
     await conn.execute(_PROPOSALS)
     await conn.execute("CREATE INDEX ON _node_fix (node_id)")
     rejected = 0
-    while count := affected_rows(await conn.execute(_REJECT_STEEPENING, STRUCTURE_SLOPE_FLOOR, STRUCTURE_GROUND_SEARCH_M)):
+    while count := affected_rows(await conn.execute(_REJECT_STEEPENING, fix.slope_floor, fix.ground_search_m)):
         rejected += count
     fixed = await conn.fetchval("SELECT count(*) FROM _node_fix")
     inner = await _interpolate_inner_nodes(conn)
@@ -411,20 +416,20 @@ async def _fix_structure_ends(conn: asyncpg.Connection, products: list[tuple[str
 
 
 async def _derive_chunk(conn: asyncpg.Connection, chunk: int, products: list[tuple[str, int]],
-                        profile_tolerance_m: float, filled: dict[str, int]) -> tuple[int, int, int]:
+                        profile_tolerance_m: float, fix: _StructureFix, filled: dict[str, int]) -> tuple[int, int, int]:
     """1つの塊の区間の標高を出して書き、その塊の点の数・値の無い点の数・書いた区間の数を返す。`filled`へ製品ごとの値の付いた
     点の数を足す。"""
     await _drop_vertex_tables(conn)
     await conn.execute(_VERTICES, chunk)
     points, remaining = await _fill_vertices(conn, products, filled)
     await conn.execute(_APPLY_STRUCTURE_FIXES)
-    await conn.execute(_RAMP_STRUCTURE_ENDS, chunk, STRUCTURE_GROUND_SEARCH_M)
+    await conn.execute(_RAMP_STRUCTURE_ENDS, chunk, fix.ground_search_m)
     written = affected_rows(await conn.execute(_INSERT_ELEVATION, profile_tolerance_m))
     return points, remaining, written
 
 
 async def _derive_elevation(conn: asyncpg.Connection, profile_step_m: float, profile_tolerance_m: float,
-                            chunk_points: int) -> None:
+                            fix: _StructureFix, chunk_points: int) -> None:
     started = time.perf_counter()
     products = await products_in_priority(conn)
     await conn.execute("TRUNCATE edge_elevation")
@@ -432,16 +437,16 @@ async def _derive_elevation(conn: asyncpg.Connection, profile_step_m: float, pro
     await conn.execute(_SHAPES, profile_step_m, chunk_points)
     await conn.execute("CREATE INDEX ON _shape (chunk)")
     await conn.execute("ANALYZE _shape")
-    structure_nodes, fixed, rejected, inner = await _fix_structure_ends(conn, products)
+    structure_nodes, fixed, rejected, inner = await _fix_structure_ends(conn, products, fix)
     logger.info("標高: 橋・トンネルに接する頂点 %d点のうち、端の %d点を道に沿って%.0fm以内の地面の標高で直し（勾配が急になる"
                 " %d点は直さない）、内側の %d点を外へつながる頂点から補った / %.0f秒",
-                structure_nodes, fixed, STRUCTURE_GROUND_SEARCH_M, rejected, inner, time.perf_counter() - started)
+                structure_nodes, fixed, fix.ground_search_m, rejected, inner, time.perf_counter() - started)
     chunks = [r["chunk"] for r in await conn.fetch("SELECT DISTINCT chunk FROM _shape ORDER BY chunk")]
     logger.info("標高: 区間 %d本を%d個の塊に分けた", edges, len(chunks))
     filled = dict.fromkeys((product for product, _ in products), 0)
     vertices = missing = updated = 0
     for done, chunk in enumerate(chunks, 1):
-        points, remaining, written = await _derive_chunk(conn, chunk, products, profile_tolerance_m, filled)
+        points, remaining, written = await _derive_chunk(conn, chunk, products, profile_tolerance_m, fix, filled)
         vertices, missing, updated = vertices + points, missing + remaining, updated + written
         logger.info("標高: 塊 %d/%d・点 %d（値の無い点 %d）・区間 %d本を書いた / %.0f秒",
                     done, len(chunks), points, remaining, written, time.perf_counter() - started)
@@ -451,10 +456,12 @@ async def _derive_elevation(conn: asyncpg.Connection, profile_step_m: float, pro
 
 
 async def derive(conn: asyncpg.Connection, *, profile_step_m: float, profile_tolerance_m: float,
-                 chunk_points: int = CHUNK_POINTS) -> None:
-    """`profile_step_m`は標高を拾う間隔の上限（m）、`profile_tolerance_m`は揺れを消す閾値（m）、`chunk_points`は1つの塊に
-    入れる点の数の目安。塊の分け方は値を変えない。"""
+                 structure_ground_search_m: float, structure_slope_floor: float, chunk_points: int = CHUNK_POINTS) -> None:
+    """`profile_step_m`は標高を拾う間隔の上限（m）、`profile_tolerance_m`は揺れを消す閾値（m）、`structure_ground_search_m`と
+    `structure_slope_floor`は橋・トンネルの端の直し方（`_StructureFix`）、`chunk_points`は1つの塊に入れる点の数の目安。
+    塊の分け方は値を変えない。"""
     require_tuning({ELEVATION_PROFILE_STEP_ID: profile_step_m}, profile_step_m > 0, "0より大きい")
     require_tuning({ELEVATION_PROFILE_TOLERANCE_ID: profile_tolerance_m}, profile_tolerance_m >= 0, "0以上")
     async with conn.transaction():
-        await _derive_elevation(conn, profile_step_m, profile_tolerance_m, chunk_points)
+        await _derive_elevation(conn, profile_step_m, profile_tolerance_m,
+                                _StructureFix(structure_ground_search_m, structure_slope_floor), chunk_points)

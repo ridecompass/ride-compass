@@ -51,14 +51,15 @@ GROUP BY r.osm_way_id, r.segment_index, (vc).value
 _LANDCOVER_COLUMNS = [(name, "lc_" + landcover_key(name)) for name, _ in PERCENT_CLASSES]
 _VALUE_COLUMNS = [column for _, column in _LANDCOVER_COLUMNS]
 
-_INSERT_LANDCOVER = f"""
+def _insert_sql(min_valid_pixels: float) -> str:
+    return f"""
 INSERT INTO edge_landcover (osm_way_id, segment_index, {", ".join(_VALUE_COLUMNS)})
 SELECT osm_way_id, segment_index, {", ".join(f"p.{name}" for name, _ in _LANDCOVER_COLUMNS)}
-FROM ({class_percentages_sql(_COUNT_CLASSES)}) p
+FROM ({class_percentages_sql(_COUNT_CLASSES, min_valid_pixels)}) p
 """
 
 
-async def _derive_edges(conn: asyncpg.Connection, ring_outer_m: float, ring_inner_m: float) -> None:
+async def _derive_edges(conn: asyncpg.Connection, ring_outer_m: float, ring_inner_m: float, min_valid_pixels: float) -> None:
     started = time.perf_counter()
     tiles = await conn.fetchval(f"SELECT count(*) FROM {LANDCOVER_TILES_SQL} t")
     edges = await conn.fetchval("SELECT count(*) FROM road_edges")
@@ -67,15 +68,16 @@ async def _derive_edges(conn: asyncpg.Connection, ring_outer_m: float, ring_inne
     await conn.execute("ANALYZE _rings")
     logger.info("土地被覆: 帯 %d本を作った。重なる画素を数える",
                 await conn.fetchval("SELECT count(*) FROM _rings"))
-    updated = affected_rows(await conn.execute(_INSERT_LANDCOVER))
+    updated = affected_rows(await conn.execute(_insert_sql(min_valid_pixels)))
 
     logger.info("土地被覆: 数えた区間 %d/%d本に値が付いた / タイル %d枚 / %.1f秒",
                 updated, edges, tiles, time.perf_counter() - started)
 
 
-async def derive(conn: asyncpg.Connection, *, ring_outer_m: float, ring_inner_m: float) -> None:
-    """帯は道の中心線から`ring_inner_m`より外・`ring_outer_m`までで、路面そのものの幅を除く。"""
+async def derive(conn: asyncpg.Connection, *, ring_outer_m: float, ring_inner_m: float, min_valid_pixels: float) -> None:
+    """帯は道の中心線から`ring_inner_m`より外・`ring_outer_m`までで、路面そのものの幅を除く。有効な画素が`min_valid_pixels`
+    より少ない区間は割合を持たない。"""
     async with conn.transaction():
         await conn.execute("TRUNCATE edge_landcover")
-        await _derive_edges(conn, ring_outer_m, ring_inner_m)
+        await _derive_edges(conn, ring_outer_m, ring_inner_m, min_valid_pixels)
         await conn.execute("ANALYZE edge_landcover")

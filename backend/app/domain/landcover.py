@@ -30,11 +30,6 @@ _LULC_RANGELAND = 11
 # No Data(0)・Clouds(10)は分母（有効画素数）から除外する。
 _LULC_INVALID_VALUES = frozenset({0, _LULC_CLOUDS})
 
-# これ未満の有効画素数は「値なし」（行を作らない）。統計的に安定した割合と呼べる
-# 最低限の画素数（10m画素×20 = 2,000m2程度）。
-MIN_VALID_PIXELS = 20
-
-
 @dataclass(frozen=True)
 class LandcoverClass:
     """土地被覆1クラスの表示上の定義。
@@ -165,11 +160,11 @@ LANDCOVER_TILE_MAX_ZOOM = 14
 LandcoverTileZoom = Annotated[int, Field(ge=LANDCOVER_TILE_MIN_ZOOM, le=LANDCOVER_TILE_MAX_ZOOM)]
 
 
-def class_percentages_sql(counts: str) -> str:
+def class_percentages_sql(counts: str, min_valid_pixels: float) -> str:
     """クラスごとの画素数から割合(%)を出すSQL。
 
     `counts`は`(osm_way_id, segment_index, cls, n)`を返す関係。有効画素数
-    （No Data・Cloudsを除いた合計）が`MIN_VALID_PIXELS`未満の区間は返らない——
+    （No Data・Cloudsを除いた合計）が`min_valid_pixels`（較正値`landcover.min_valid_pixels`）未満の区間は返らない——
     帯がラスタの外へ大きくはみ出た・雲に覆われていた等、統計として信頼できないため。
     """
     invalid = ", ".join(str(v) for v in sorted(_LULC_INVALID_VALUES))
@@ -188,5 +183,5 @@ agg AS (
     FROM counted GROUP BY osm_way_id, segment_index)
 SELECT osm_way_id, segment_index, valid_pixels,
        {percents}
-FROM agg WHERE valid_pixels >= {MIN_VALID_PIXELS}
+FROM agg WHERE valid_pixels >= {float(min_valid_pixels)!r}
 """

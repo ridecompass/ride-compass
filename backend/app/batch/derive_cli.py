@@ -72,7 +72,17 @@ from app.batch.common import (
 )
 from app.infrastructure.tuning_overrides import load_tuning_values
 from app.infrastructure import derived_data_meta, derived_database_export, region_tile_cache, road_network_store
+from app.domain.stop_place import CONTACT_MERGE_GROUPS
 from app.domain.tuning import (
+    DIVIDED_BEARING_TOLERANCE_ID,
+    DIVIDED_GEOMETRIC_GAP_ID,
+    DIVIDED_NAMED_GAP_ID,
+    LANDCOVER_MIN_VALID_PIXELS_ID,
+    PLACE_CHAIN_MERGE_ID,
+    PLACE_HERITAGE_MERGE_ID,
+    STRUCTURE_GROUND_SEARCH_ID,
+    STRUCTURE_SLOPE_FLOOR_ID,
+    place_contact_merge_id,
     ELEVATION_PROFILE_STEP_ID,
     ELEVATION_PROFILE_TOLERANCE_ID,
     LANDCOVER_RING_INNER_ID,
@@ -122,21 +132,27 @@ STAGES: tuple[DeriveStage, ...] = (
                 {"cluster_distance_m": STOP_CLUSTER_DISTANCE_ID}),
     # 標高の段は、道から区間が橋かトンネルかだけを読み、その値を区間ごとに表へ残す。
     DeriveStage("elevation", derive_elevation, frozenset({Source.OSM_WAY, Source.DEM}), ("topology",), ("edge_elevation",),
-                {"profile_step_m": ELEVATION_PROFILE_STEP_ID, "profile_tolerance_m": ELEVATION_PROFILE_TOLERANCE_ID}),
+                {"profile_step_m": ELEVATION_PROFILE_STEP_ID, "profile_tolerance_m": ELEVATION_PROFILE_TOLERANCE_ID,
+                 "structure_ground_search_m": STRUCTURE_GROUND_SEARCH_ID, "structure_slope_floor": STRUCTURE_SLOPE_FLOOR_ID}),
     DeriveStage("landcover", derive_landcover, frozenset({Source.LULC}), ("topology",), ("edge_landcover",),
-                {"ring_outer_m": LANDCOVER_RING_OUTER_ID, "ring_inner_m": LANDCOVER_RING_INNER_ID}),
+                {"ring_outer_m": LANDCOVER_RING_OUTER_ID, "ring_inner_m": LANDCOVER_RING_INNER_ID,
+                 "min_valid_pixels": LANDCOVER_MIN_VALID_PIXELS_ID}),
     DeriveStage("traffic_regulations", derive_traffic_regulations, frozenset({Source.JARTIC_REGULATION}), ("topology",),
                 ("traffic_regulations", "traffic_regulation_slots", "edge_traffic_regulations"),
                 {"line_half_width_m": REGULATION_LINE_HALF_WIDTH_ID, "edge_share": REGULATION_EDGE_SHARE_ID,
                  "max_angle_deg": REGULATION_MAX_ANGLE_ID}),
-    DeriveStage("directions", derive_way_directions, frozenset({Source.OSM_WAY}), ("topology",), ("way_directions",)),
+    DeriveStage("directions", derive_way_directions, frozenset({Source.OSM_WAY}), ("topology",), ("way_directions",),
+                {"named_gap_m": DIVIDED_NAMED_GAP_ID, "geometric_gap_m": DIVIDED_GEOMETRIC_GAP_ID,
+                 "bearing_tolerance_deg": DIVIDED_BEARING_TOLERANCE_ID}),
     # 住所の区画は、道路（`osm_way`）のパーティションを読まず、取込の記録から範囲だけを読む（読んだ数の見張りに出ないので、
     # 手で挙げる）。
     DeriveStage("addresses", derive_addresses, frozenset({Source.ABR, Source.ISJ_BLOCK, Source.OSM_WAY}), (),
                 ("address_areas", "address_search_keys", "address_blocks")),
     DeriveStage("places", derive_places,
                 frozenset({Source.OVERTURE_PLACE, Source.BUNKA_HERITAGE, Source.ESTAT_SMALL_AREA}), (),
-                ("places",)),
+                ("places",),
+                {"chain_merge_radius_m": PLACE_CHAIN_MERGE_ID, "heritage_merge_radius_m": PLACE_HERITAGE_MERGE_ID,
+                 **{f"contact_merge_radius_m_{group}": place_contact_merge_id(group) for group in CONTACT_MERGE_GROUPS}}),
 )
 
 

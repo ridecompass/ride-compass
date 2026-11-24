@@ -35,6 +35,7 @@ from app.infrastructure.road_graph_repository import RoadGraphRepository
 from app.infrastructure.tuning_overrides import TuningOverrideStore
 from app.services.tuning_service import TuningService
 from tests.conftest import raw_connection
+from tests.source_ingest import stage_tuning
 from tests.profile_fixture import profiles as road_profiles
 from tests.tuning_fixture import TUNING
 
@@ -111,8 +112,8 @@ async def test_a_rebuild_stops_naming_a_value_its_sql_cannot_run_with(road_graph
         with pytest.raises(TuningValueError, match=STOP_CLUSTER_DISTANCE_ID):
             await derive_counts.derive(conn, cluster_distance_m=-1.0)
         with pytest.raises(TuningValueError, match=ELEVATION_PROFILE_STEP_ID):
-            await derive_elevation.derive(conn, profile_step_m=0.0, profile_tolerance_m=0.3)
+            await derive_elevation.derive(conn, **stage_tuning("elevation", profile_step_m=0.0))
         with pytest.raises(TuningValueError, match=ELEVATION_PROFILE_TOLERANCE_ID):
-            await derive_elevation.derive(conn, profile_step_m=5.0, profile_tolerance_m=-0.1)
+            await derive_elevation.derive(conn, **stage_tuning("elevation", profile_tolerance_m=-0.1))
     with pytest.raises(TuningValueError, match=TURN_BEARING_DISTANCE_ID):
         road_graph_repository.stream_network_edges(1, {TURN_BEARING_DISTANCE_ID: -1.0})

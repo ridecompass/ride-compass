@@ -140,6 +140,23 @@ REGULATION_EDGE_SHARE_ID = "traffic_regulation.edge_share"
 REGULATION_MAX_ANGLE_ID = "traffic_regulation.max_angle_deg"
 #: ルート生成が読む、規制の時間帯を前後に広げる幅のid。
 REGULATION_MARGIN_MINUTES_ID = "regulation.margin_minutes"
+#: 上下線の分かれた道の片側かを決める距離と向きの差のid（`domain/divided_carriageway.py`）。
+DIVIDED_NAMED_GAP_ID = "divided.named_gap_m"
+DIVIDED_GEOMETRIC_GAP_ID = "divided.geometric_gap_m"
+DIVIDED_BEARING_TOLERANCE_ID = "divided.bearing_tolerance_deg"
+#: 土地被覆の割合を出す有効な画素の下限のid（`domain/landcover.py`）。
+LANDCOVER_MIN_VALID_PIXELS_ID = "landcover.min_valid_pixels"
+#: 立ち寄り先をまとめる距離のid（`domain/stop_place.py`）。連絡先で寄せる距離は群ごと（`place_contact_merge_id`）。
+PLACE_CHAIN_MERGE_ID = "place.chain_merge_radius_m"
+PLACE_HERITAGE_MERGE_ID = "place.heritage_merge_radius_m"
+#: 橋・トンネルの端の地面の探し方のid（`batch/derive_elevation.py`）。
+STRUCTURE_GROUND_SEARCH_ID = "elevation.structure_ground_search_m"
+STRUCTURE_SLOPE_FLOOR_ID = "elevation.structure_slope_floor"
+
+
+def place_contact_merge_id(group: str) -> str:
+    """立ち寄り先の群`group`の、言語違いの同じ場所を連絡先で寄せる距離の較正値のid。"""
+    return f"place.contact_merge_radius_m.{group}"
 #: 区間の標高を拾う間隔の上限のid。
 ELEVATION_PROFILE_STEP_ID = "elevation.profile_step_m"
 #: 拾った標高の揺れを消す閾値のid。
@@ -231,6 +248,54 @@ TUNING_PARAMETERS: tuple[TuningParameter, ...] = (
         "交通規制の時間帯を前後に広げる幅", "分", TuningEffect.IMMEDIATE,
         "ルート生成は、区間を通る見込みの時間帯（レグの出発の見込みから到着の見込みまで）をこの幅だけ前後に広げた間に一度でも効く"
         "規制を、そのレグの間ずっと効いているとみなす。通る時刻の見込みのずれ（休憩や道の事情で遅れる等）を、規制が効く側へ吸う。",
+    ),
+    # --- 上下線 ---
+    TuningParameter(
+        DIVIDED_NAMED_GAP_ID, "上下線の相方を同じ路線番号・名前で探す距離", "m", TuningEffect.DERIVE_REBUILD,
+        "一方通行の道に、同じ路線番号か名前の逆向きの一方通行がこの距離以内を並走していれば、上下線の分かれた道の片側とみなし、"
+        "一方通行に数えない。名前が同じなら同じ道路だとOSMが言っているので、間隔は広めに許す。",
+    ),
+    TuningParameter(
+        DIVIDED_GEOMETRIC_GAP_ID, "上下線の相方を形だけで探す距離", "m", TuningEffect.DERIVE_REBUILD,
+        "名前に頼らず、同じ道の種別の逆向きの一方通行が全長にわたってこの距離以内に寄り添えば、上下線の分かれた道の片側とみなす。"
+        "上下線の間隔（幹線で中央値10m前後）と、街区を挟んで並ぶ別々の一方通行の路地の間隔（中央値20m弱）の谷間に置く。",
+    ),
+    TuningParameter(
+        DIVIDED_BEARING_TOLERANCE_ID, "上下線の相方とみなす向きの差", "度", TuningEffect.DERIVE_REBUILD,
+        "相方の道の進む向きが、ちょうど逆向き（180度）からこの角度以内なら逆向きとみなす。カーブの途中で上下線の向きがずれる分を吸う。",
+    ),
+    # --- 土地被覆 ---
+    TuningParameter(
+        LANDCOVER_MIN_VALID_PIXELS_ID, "土地被覆の割合を出す有効な画素の下限", "画素", TuningEffect.DERIVE_REBUILD,
+        "道の周りの帯の、値のある画素（No Data・雲を除く）がこの数より少ない区間は、土地被覆の割合を持たない。帯が画像の外へ"
+        "はみ出た・雲に覆われていた区間の割合は、統計として信頼できない。",
+    ),
+    # --- 立ち寄り先 ---
+    TuningParameter(
+        PLACE_CHAIN_MERGE_ID, "同じチェーンの立ち寄り先をまとめる距離", "m", TuningEffect.DERIVE_REBUILD,
+        "同じ群・同じチェーンの地点がこの距離以内に並べば、1つの店にまとめる。出どころごとに少しずれた位置で重なって入っている"
+        "同じ店を1つにする。",
+    ),
+    *(TuningParameter(
+        place_contact_merge_id(group), f"言語違いの同じ場所を連絡先で寄せる距離（{label}）", "m", TuningEffect.DERIVE_REBUILD,
+        f"{label}の地点のうち名前に日本語の文字が無いものを、この距離以内の同じ連絡先を持つ日本語の名前の地点へ寄せる。"
+        "同じ場所が出どころの中で言語違いの別の行として重なって入っているのを1つにする。",
+    ) for group, label in (("scenic", "景色・名所"), ("lodging", "宿"), ("bath", "風呂"), ("bicycle", "自転車"))),
+    TuningParameter(
+        PLACE_HERITAGE_MERGE_ID, "寺社の建物をまとめる距離", "m", TuningEffect.DERIVE_REBUILD,
+        "同じ名前の文化財の建物がこの距離以内に連なれば、1つの寺社にまとめる。境内の建物（本堂・山門・霊廟）は1つにし、同じ名前の"
+        "別の寺社・離れた奥之院は分ける。",
+    ),
+    # --- 橋・トンネル ---
+    TuningParameter(
+        STRUCTURE_GROUND_SEARCH_ID, "橋・トンネルの端の地面を探す道のり", "m", TuningEffect.DERIVE_REBUILD,
+        "橋・トンネルの端の頂点から、構造物でない道に沿ってこの道のりまでの地面の標高で端を直し、続く道もこの道のり以内を直線に"
+        "引き直す（GraphHopper の`BridgeTunnelTowerCorrection`の`MAX_DIST_M`と同じ値から始める）。",
+    ),
+    TuningParameter(
+        STRUCTURE_SLOPE_FLOOR_ID, "橋・トンネルの端を直して許す勾配", "割合", TuningEffect.DERIVE_REBUILD,
+        "端を直して構造物の区間の勾配が増えても、この割合までは許す。両端が同じ誤った標高を返す平らな橋を両端そろって直すと、"
+        "小さな本当の勾配が出るため（GraphHopper の`STRUCTURE_SLOPE_FLOOR`と同じ値から始める）。",
     ),
     # --- 走行モデル ---
     TuningParameter(

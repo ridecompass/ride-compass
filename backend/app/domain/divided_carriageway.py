@@ -9,19 +9,7 @@ OSMは中央分離帯のある道路の上下線を別々のwayとして持ち�
 from app.domain.geo import bearing_sql, degrees_covering_m
 from app.domain.material_sql import sql_literals
 from app.domain.traffic import DIRECTION_BACKWARD, one_way_sql
-
-#: 同じ路線番号/名前を持つ相方を探すときの横方向の距離（m）。名前が一致している時点で
-#: 同じ道路だとOSM自身が言っているため、間隔そのものは広めに許す。
-NAMED_GAP_M = 40.0
-
-#: 名前に頼らず幾何だけで判定するときの距離（m）。上下線分離の間隔（幹線で中央値10m前後）
-#: と、街区を挟んで並ぶ別々の一方通行路地の間隔（中央値20m弱）が分布として分かれる、
-#: その谷間に置く値。
-GEOMETRIC_GAP_M = 15.0
-
-#: 「逆向き」と見なす進行方位の差の許容（度、180度からのずれ）。カーブの途中で上下線の
-#: 向きがずれるぶんを吸収する。
-_BEARING_TOLERANCE_DEG = 45.0
+from app.domain.tuning import DIVIDED_GEOMETRIC_GAP_ID, DIVIDED_NAMED_GAP_ID, TUNING_PARAMETERS_BY_ID
 
 #: 「全長にわたって寄り添う」を確かめる標本点の位置（線長に対する割合）。端点ちょうどは
 #: 交差点で他の道と接するため、少し内側から取る。
@@ -30,10 +18,10 @@ _SAMPLE_FRACTIONS = (0.05, 0.25, 0.5, 0.75, 0.95)
 #: OSMが「上下線が分かれている」と言っている`carriageway`の値。
 TAG_VALUES = ("dual", "triple", "2")
 
-#: 説明の文が判定を指す言い方。分かれた道として除く距離を、判定の値から引く。
+#: 説明の文が判定を指す言い方。距離は値ではなく較正値の名前で指す（値は管理画面で変わる）。
 DIVIDED_ROAD_NOTE = (
-    f"上下線が分かれているだけの道[逆向きの一方通行が{GEOMETRIC_GAP_M:g}m以内、"
-    f"同じ路線番号・名前なら{NAMED_GAP_M:g}m以内を並走する道]"
+    f"上下線が分かれているだけの道[逆向きの一方通行が較正値の「{TUNING_PARAMETERS_BY_ID[DIVIDED_GEOMETRIC_GAP_ID].label}」"
+    f"以内、同じ路線番号・名前なら「{TUNING_PARAMETERS_BY_ID[DIVIDED_NAMED_GAP_ID].label}」以内を並走する道]"
 )
 
 
@@ -48,23 +36,24 @@ def facts_sql(way: str, direction: str) -> str:
            + CASE WHEN {direction} = '{DIRECTION_BACKWARD}' THEN 180 ELSE 0 END AS travel_deg"""
 
 
-def _antiparallel_sql(row: str) -> str:
-    """`row`と相方`b`が逆向きに並走しているか。"""
-    return f"abs(((b.travel_deg - {row}.travel_deg)::numeric % 360 + 360) % 360 - 180) < {_BEARING_TOLERANCE_DEG}"
+def _antiparallel_sql(row: str, bearing_tolerance_deg: float) -> str:
+    """`row`と相方`b`が逆向き（180度から`bearing_tolerance_deg`以内）に並走しているか。"""
+    return f"abs(((b.travel_deg - {row}.travel_deg)::numeric % 360 + 360) % 360 - 180) < {float(bearing_tolerance_deg)!r}"
 
 
-def divided_sql(row: str, candidates: str) -> str:
-    """道の行`row`が上下線の分かれた道の片側かのSQL式。
+def divided_sql(row: str, candidates: str, named_gap_m: float, geometric_gap_m: float, bearing_tolerance_deg: float) -> str:
+    """道の行`row`が上下線の分かれた道の片側かのSQL式。距離と向きの差は較正値（`domain/tuning.py: DIVIDED_*`）。
 
     `row`と相方の候補の関係`candidates`は、どちらも`osm_way_id`・`geom`・`direction`・`highway`と
     `facts_sql`の列を持つ。
     """
     fractions = ", ".join(str(f) for f in _SAMPLE_FRACTIONS)
     # 前置フィルタの箱は距離の判定より必ず広く取る——箱の方が狭いと、箱の大きさが距離の実効の上限になる。
-    named_deg = degrees_covering_m(NAMED_GAP_M)
-    geometric_deg = degrees_covering_m(GEOMETRIC_GAP_M)
+    named_gap, geometric_gap = float(named_gap_m), float(geometric_gap_m)
+    named_deg = degrees_covering_m(named_gap)
+    geometric_deg = degrees_covering_m(geometric_gap)
     tag_values = sql_literals(TAG_VALUES)
-    antiparallel = _antiparallel_sql(row)
+    antiparallel = _antiparallel_sql(row, bearing_tolerance_deg)
     return f"""{one_way_sql(f"{row}.direction")} AND {row}.travel_deg IS NOT NULL AND (
                -- 条件1: OSM自身の申告
                {row}.carriageway = ANY(ARRAY[{tag_values}])
@@ -75,7 +64,7 @@ def divided_sql(row: str, candidates: str) -> str:
                      AND {one_way_sql("b.direction")}
                      AND b.ident = {row}.ident
                      AND b.geom && ST_Expand({row}.geom, {named_deg})
-                     AND ST_DWithin({row}.geom::geography, b.geom::geography, {NAMED_GAP_M})
+                     AND ST_DWithin({row}.geom::geography, b.geom::geography, {named_gap!r})
                      AND {antiparallel}
                ))
                -- 条件3: 全長にわたって対向する同種別の一方通行が寄り添う
@@ -97,7 +86,7 @@ def divided_sql(row: str, candidates: str) -> str:
                                ST_LineInterpolatePoint({row}.geom, f), {geometric_deg})
                          AND ST_DWithin(
                                ST_LineInterpolatePoint({row}.geom, f)::geography,
-                               b.geom::geography, {GEOMETRIC_GAP_M})
+                               b.geom::geography, {geometric_gap!r})
                          AND {antiparallel}
                    )
                )

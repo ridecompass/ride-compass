@@ -18,10 +18,8 @@ from app.domain.landcover import (
     PERCENT_CLASSES,
     landcover_key,
 )
-from app.domain.tuning import LANDCOVER_RING_INNER_ID, LANDCOVER_RING_OUTER_ID
 from app.domain.region import WEB_MERCATOR_HALF_M, tile_bounds_3857, tile_bounds_lonlat
-from tests.source_ingest import ingest_records, tile_record, way_record
-from tests.tuning_fixture import TUNING
+from tests.source_ingest import ingest_records, stage_tuning, tile_record, way_record
 
 # moduleスコープのroad_graph_engine（conftest.py）の上のDBを使うため、.claude/rules/testing-backend.mdのパターン2どおり
 # loop_scope="module"が必須。
@@ -58,8 +56,7 @@ ROAD = _road()
 
 #: 帯の境目からこれより近い画素は欠測にする。距離を平面で近似した誤差と、画素が帯に入るかを
 #: 段へ渡す帯の幅（較正値の宣言の既定）。
-_DEFAULT_RING = {"ring_inner_m": TUNING[LANDCOVER_RING_INNER_ID],
-                 "ring_outer_m": TUNING[LANDCOVER_RING_OUTER_ID]}
+_DEFAULT_RING = stage_tuning("landcover")
 #: 中心で決めるか触れるかの違い（画素の対角の半分、約5.5m）を吸収する。
 BOUNDARY_MARGIN_M = 6.0
 
@@ -127,7 +124,7 @@ async def test_rerun_on_pixels_left_out_keeps_no_share_on_segments(landcover_con
 
 
 #: 既定の帯と、外・内の幅を両方変えた帯。変えた帯は既定の帯の内径・外径をまたぐ。
-_RINGS = [_DEFAULT_RING, {"ring_inner_m": 30.0, "ring_outer_m": 60.0}]
+_RINGS = [_DEFAULT_RING, stage_tuning("landcover", ring_inner_m=30.0, ring_outer_m=60.0)]
 
 
 @pytest.mark.parametrize("band", _RINGS, ids=["既定の帯", "幅を変えた帯"])

@@ -82,10 +82,10 @@ DEMが返すのは地表面の標高で、桁や坑道の高さではない—�
 標高だけで上り下りと勾配を出す（派生が断面の点を両端の2点だけにする。`batch/derive_elevation.py`）。
 
 **橋・トンネルの端の頂点は、道に沿って近い地面の標高で直す**（GraphHopper の`BridgeTunnelTowerCorrection`と同じ手順。
-式と長さは`batch/derive_elevation.py`の冒頭と`STRUCTURE_GROUND_SEARCH_M`・`STRUCTURE_SLOPE_FLOOR`）。配信元はDEMから
+式と長さは`batch/derive_elevation.py`の冒頭と較正値`elevation.structure_ground_search_m`・`elevation.structure_slope_floor`）。配信元はDEMから
 構造物を除いているので、OSM の橋の端がその除かれた範囲に入ると、端の点は水面や谷底を返す（例: 荒川の朝霞水門の端が2.7m・
 堤防の上は約13m）。トンネルの坑口は山肌の高い値を返す。両端だけを引く作りではその値がそのまま構造物の高さになり、端を共有する
-隣の道にも急な偽の坂ができる。そこで端の頂点から構造物でない道だけを`STRUCTURE_GROUND_SEARCH_M`（50m）までたどり、地面の値を
+隣の道にも急な偽の坂ができる。そこで端の頂点から構造物でない道だけを較正値`elevation.structure_ground_search_m`（初めの値は50m）までたどり、地面の値を
 道のりで重みづけて平均した値に置き換える。置き換えで接する道の勾配が急になるものは直さず、直した端に続く道は端から同じ長さ以内を
 直線に引き直す（段を残さない）。途中の頂点で区間が分かれた橋・トンネルの内側の頂点は、外へつながる頂点から補う（GraphHopper の
 `EdgeElevationInterpolator`と同じ式）。
