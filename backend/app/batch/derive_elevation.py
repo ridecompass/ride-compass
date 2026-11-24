@@ -300,11 +300,6 @@ async def _fill_vertices(conn: asyncpg.Connection, products: list[tuple[str, int
     return points, remaining
 
 
-async def _drop_vertex_tables(conn: asyncpg.Connection) -> None:
-    for table in ("_vertex", "_vertex_elev"):
-        await conn.execute(f"DROP TABLE IF EXISTS {table}")
-
-
 #: GraphHopper の`ElevationInterpolator.EPSILON`（経緯度の度）。
 _INTERPOLATION_EPSILON = 0.00001
 
@@ -411,7 +406,7 @@ async def _fix_structure_ends(conn: asyncpg.Connection, products: list[tuple[str
         rejected += count
     fixed = await conn.fetchval("SELECT count(*) FROM _node_fix")
     inner = await _interpolate_inner_nodes(conn)
-    await _drop_vertex_tables(conn)
+    await conn.execute("DROP TABLE IF EXISTS _vertex")
     await conn.execute("ANALYZE _node_fix")
     return await conn.fetchval("SELECT count(*) FROM _structure_node"), fixed, rejected, inner
 
@@ -420,7 +415,7 @@ async def _derive_chunk(conn: asyncpg.Connection, chunk: int, products: list[tup
                         profile_tolerance_m: float, fix: _StructureFix, filled: dict[str, int]) -> tuple[int, int, int]:
     """1つの塊の区間の標高を出して書き、その塊の点の数・値の無い点の数・書いた区間の数を返す。`filled`へ製品ごとの値の付いた
     点の数を足す。"""
-    await _drop_vertex_tables(conn)
+    await conn.execute("DROP TABLE IF EXISTS _vertex")
     await conn.execute(_VERTICES, chunk)
     points, remaining = await _fill_vertices(conn, products, filled)
     await conn.execute(_APPLY_STRUCTURE_FIXES)

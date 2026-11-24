@@ -35,25 +35,30 @@ async def products_in_priority(conn: asyncpg.Connection) -> list[tuple[str, int]
 async def fill_elevations(conn: asyncpg.Connection, points: str, elevations: str,
                           products: list[tuple[str, int]]) -> dict[str, int]:
     """表`points`（列`vid`・`lon`・`lat`）の点の標高を、製品`products`（`products_in_priority`の並び）の順に引いて、
-    一時の表`elevations`（列`vid`が主キー・`elev`）を作り直して入れる。値のある点だけが行を持つ。製品ごとに入れた行の数を返す。
+    一時の表`elevations`（列`vid`が主キー・`elev`）を空けて入れる。値のある点だけが行を持つ。製品ごとに入れた行の数を返す。
 
     点のまわりの画素はタイルの番地の表へ一度実体にし、索引を張ってから引く——関数から直に結合すると行数を見積もれず、プランナが
     タイル側を入れ子で読み直す計画を選ぶ。タイルは1枚ずつ1回だけ展開し、そのタイルの画素を番地の索引で引く
-    （`infrastructure/source_models.py: dem_tile_pixels_sql`）。表は取引の終わりに消える一時の表として作るので、取引の中で呼ぶ。"""
-    await conn.execute(f"DROP TABLE IF EXISTS {elevations}")
-    await conn.execute(f"CREATE TEMP TABLE {elevations} (vid bigint PRIMARY KEY, elev double precision) ON COMMIT DROP")
+    （`infrastructure/source_models.py: dem_tile_pixels_sql`）。表は取引の終わりに消える一時の表として作るので、取引の中で呼ぶ。
+
+    **表は、同じ取引の中では消さずに`TRUNCATE`で空けて使い回す**——取引の中で消した表のファイルは取引の終わりまでディスクに
+    残るので、同じ取引で何度も呼ぶと、呼んだ分の表がディスクに積もる。同じ取引で作った表の`TRUNCATE`は、ファイルをその場で縮める。"""
+    await conn.execute(f"CREATE TEMP TABLE IF NOT EXISTS {elevations} (vid bigint PRIMARY KEY, elev double precision) ON COMMIT DROP")
+    await conn.execute(f"TRUNCATE {elevations}")
+    await conn.execute("CREATE TEMP TABLE IF NOT EXISTS _dem_point_pixel "
+                       "(vid bigint, tx int, ty int, ix int, iy int, w double precision) ON COMMIT DROP")
+    await conn.execute("CREATE INDEX IF NOT EXISTS _dem_point_pixel_tile ON _dem_point_pixel (tx, ty)")
     filled = {}
     for product, zoom in products:
-        await conn.execute("DROP TABLE IF EXISTS _dem_point_pixel")
+        await conn.execute("TRUNCATE _dem_point_pixel")
         await conn.execute(f"""
-CREATE TEMP TABLE _dem_point_pixel ON COMMIT DROP AS
+INSERT INTO _dem_point_pixel (vid, tx, ty, ix, iy, w)
 SELECT v.vid, bc.tx, bc.ty, bc.ix, bc.iy, bc.w
 FROM {points} v
 CROSS JOIN LATERAL (SELECT {_POINT_TILE_X} AS fx, {_POINT_TILE_Y} AS fy) p
 {dem_bilinear_corners_sql("p.fx", "p.fy", "$2")}
 WHERE bc.w > 0 AND NOT EXISTS (SELECT 1 FROM {elevations} e WHERE e.vid = v.vid)
 """, zoom, product)
-        await conn.execute("CREATE INDEX ON _dem_point_pixel (tx, ty)")
         await conn.execute("ANALYZE _dem_point_pixel")
         filled[product] = await conn.fetchval(f"""
 WITH added AS (
