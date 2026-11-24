@@ -41,6 +41,7 @@ from app.batch.derive_elevation import CHUNK_POINTS
 from app.batch.ingest import ingest_source
 from app.domain.region import tile_bounds_lonlat
 from tests.conftest import empty_ingested_tables
+from tests.profile_fixture import summarize_profile
 from tests.source_ingest import derive_elevation_at_default_step, gsi_dem_png, ingest_records, profile_within, way_record
 
 # moduleスコープのroad_graph_engine（conftest.py）の上のDBを使うため、.claude/rules/testing-backend.mdのパターン2どおり
@@ -124,6 +125,20 @@ def _way(way_id: int, pixels, tags: dict[str, str] | None = None):
                       [way_id * 10 + i for i in range(len(pixels))], tags)
 
 
+async def _summaries(conn: asyncpg.Connection, way_ids) -> dict[int, dict[str, float | None]]:
+    """道（区間1つ）ごとの表の断面を、道路網の配列と同じ要約にする。行の無い道は返らない。"""
+    rows = await conn.fetch("SELECT osm_way_id, elevation_profile_m, elevation_profile_along_m FROM edge_elevation"
+                            " WHERE osm_way_id = ANY($1::bigint[])", list(way_ids))
+    return {r["osm_way_id"]: summarize_profile(r["elevation_profile_m"], r["elevation_profile_along_m"]) for r in rows}
+
+
+async def _ends(conn: asyncpg.Connection, way_ids) -> dict[int, tuple[float | None, float | None]]:
+    """道ごとの、断面の始まりと終わりの標高。行の無い道は (None, None)。"""
+    summaries = await _summaries(conn, way_ids)
+    return {way_id: (summaries[way_id]["start_elevation_m"], summaries[way_id]["end_elevation_m"]) if way_id in summaries
+            else (None, None) for way_id in way_ids}
+
+
 @pytest.fixture(scope="module")
 def tile_root(tmp_path_factory):
     """手元へ写したタイルの置き場。"""
@@ -148,10 +163,7 @@ async def elevation_conn(derive_conn, tile_root):
 
 
 async def test_each_pixel_takes_the_most_accurate_product_that_has_a_value(elevation_conn):
-    rows = await elevation_conn.fetch(
-        "SELECT osm_way_id, start_elevation_m, end_elevation_m"
-        " FROM road_edges LEFT JOIN edge_elevation USING (osm_way_id, segment_index) ORDER BY osm_way_id")
-    got = {r["osm_way_id"]: (r["start_elevation_m"], r["end_elevation_m"]) for r in rows}
+    got = await _ends(elevation_conn, [way_id for way_id, _pixels, _ in CASES])
     assert got == {way_id: (expected, expected) for way_id, _pixels, expected in CASES}
 
 
@@ -167,10 +179,8 @@ async def test_rerun_without_a_product_keeps_no_value_only_that_product_gave(ele
     製品が1つも無くなれば、どの区間も値を持たない。"""
 
     async def elevations() -> dict[int, float | None]:
-        rows = await elevation_conn.fetch("SELECT osm_way_id, start_elevation_m, average_grade"
-                                " FROM road_edges LEFT JOIN edge_elevation USING (osm_way_id, segment_index)")
-        assert all(r["average_grade"] is None for r in rows if r["start_elevation_m"] is None)
-        return {r["osm_way_id"]: r["start_elevation_m"] for r in rows}
+        return {way_id: start for way_id, (start, _end) in (await _ends(
+            elevation_conn, [way_id for way_id, _pixels, _ in CASES])).items()}
 
     async def rerun() -> dict[int, float | None]:
         await derive_elevation_at_default_step(elevation_conn)
@@ -200,10 +210,9 @@ async def test_a_bridge_or_tunnel_does_not_climb_the_terrain_under_it(elevation_
         await derive_topology.derive(elevation_conn)
         await derive_elevation_at_default_step(elevation_conn)
 
-    rows = await elevation_conn.fetch(
-        "SELECT osm_way_id, elevation_gain_m, elevation_loss_m FROM edge_elevation WHERE osm_way_id IN (11, 12)")
-    assert {r["osm_way_id"]: (r["elevation_gain_m"], r["elevation_loss_m"]) for r in rows} == {
-        11: (10.0, 10.0), 12: (0.0, 0.0)}
+    summaries = await _summaries(elevation_conn, [11, 12])
+    assert {way_id: (s["elevation_gain_m"], s["elevation_loss_m"]) for way_id, s in summaries.items()} == {
+        11: (pytest.approx(10.0, abs=0.05), pytest.approx(10.0, abs=0.05)), 12: (0.0, 0.0)}
 
 
 @pytest.mark.parametrize(("profile_step_m", "profile_tolerance_m", "climb"),
@@ -220,9 +229,10 @@ async def test_the_step_and_the_tolerance_decide_how_fine_a_rise_and_fall_is_cou
                                                profile_tolerance_m=profile_tolerance_m)
 
     row = await elevation_conn.fetchrow(
-        "SELECT ee.elevation_gain_m, ee.elevation_loss_m, ee.elevation_profile_m, ee.elevation_profile_along_m, e.distance_m"
+        "SELECT ee.elevation_profile_m, ee.elevation_profile_along_m, e.distance_m"
         " FROM edge_elevation ee JOIN road_edges e USING (osm_way_id, segment_index) WHERE ee.osm_way_id = 11")
-    assert (row["elevation_gain_m"], row["elevation_loss_m"]) == climb
+    summary = summarize_profile(row["elevation_profile_m"], row["elevation_profile_along_m"])
+    assert (summary["elevation_gain_m"], summary["elevation_loss_m"]) == pytest.approx(climb, abs=0.05)
     along = row["elevation_profile_along_m"]
     assert len(along) == len(row["elevation_profile_m"])
     assert (along[0], along == sorted(along), along[-1]) == (0.0, True, pytest.approx(row["distance_m"], rel=1e-6))
@@ -265,8 +275,7 @@ async def test_a_structure_end_keeps_its_value_when_the_fix_would_steepen_a_road
         await derive_topology.derive(elevation_conn)
         await derive_elevation_at_default_step(elevation_conn)
 
-    row = await elevation_conn.fetchrow("SELECT start_elevation_m, end_elevation_m FROM edge_elevation WHERE osm_way_id = 32")
-    assert (row["start_elevation_m"], row["end_elevation_m"]) == (10.0, 10.0)
+    assert await _ends(elevation_conn, [32]) == {32: (10.0, 10.0)}
 
 
 async def test_an_inner_node_of_a_structure_is_interpolated_from_the_nodes_leading_outside(elevation_conn):
@@ -280,10 +289,7 @@ async def test_an_inner_node_of_a_structure_is_interpolated_from_the_nodes_leadi
         await derive_topology.derive(elevation_conn)
         await derive_elevation_at_default_step(elevation_conn)
 
-    rows = await elevation_conn.fetch(
-        "SELECT osm_way_id, start_elevation_m, end_elevation_m FROM edge_elevation WHERE osm_way_id IN (41, 42)")
-    assert {r["osm_way_id"]: (r["start_elevation_m"], r["end_elevation_m"]) for r in rows} == {
-        41: (10.0, 15.0), 42: (15.0, 20.0)}
+    assert await _ends(elevation_conn, [41, 42]) == {41: (10.0, 15.0), 42: (15.0, 20.0)}
 
 
 async def test_splitting_the_roads_into_chunks_does_not_change_any_value(elevation_conn):

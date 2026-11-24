@@ -1,8 +1,8 @@
-"""標高のタイルを区間に沿った断面の点で引いて、区間の標高と勾配（`edge_elevation`）にする。
+"""標高のタイルを区間に沿った断面の点で引いて、区間の標高の断面（`edge_elevation`）にする。
 
 **標高を拾う点は、区間を等しい道のりに分けた点**で、間隔は較正値（引数`profile_step_m`）以下にする。形状点で引くと、
 点の間隔が描き手ごとにばらつき、細かく描いた道ほど標高データの揺らぎを登りとして積む。拾った点は、揺れの閾値（引数
-`profile_tolerance_m`）で間引いてから表に残す（`domain/attributes.py: elevation_values_sql`）。
+`profile_tolerance_m`）で間引いてから表に残す（`domain/attributes.py: elevation_profile_sql`）。
 
 **橋かトンネルの区間は刻まずに両端だけを引く**。配信元のDEMは地表面の値で構造物の高さを反映しないため
 （https://maps.gsi.go.jp/development/hyokochi.html に明記）、中間の点は桁や坑道ではなく下の地形を指す——谷を渡る平らな橋で、
@@ -36,7 +36,7 @@ https://github.com/graphhopper/graphhopper/blob/master/core/src/main/java/com/gr
 （`infrastructure/dem_elevation.py: fill_elevations`）。頂点ごとに採った標高は表`_vertex_elev`に入り、行の無い頂点は値が無い。
 
 
-値の出し方そのものはdomainが持つ（`elevation_values_sql`）。このバッチは画素の引き方を
+間引き方はdomainが持つ（`elevation_profile_sql`）。このバッチは画素の引き方を
 組み立てるだけで、勾配の上限を持たない。
 """
 
@@ -47,7 +47,7 @@ import time
 import asyncpg
 
 from app.batch.common import affected_rows
-from app.domain.attributes import elevation_values_sql
+from app.domain.attributes import elevation_profile_sql
 from app.domain.material_sql import IS_BRIDGE_SQL, IS_TUNNEL_SQL
 from app.domain.tuning import (
     ELEVATION_PROFILE_STEP_ID,
@@ -273,15 +273,13 @@ SELECT v.osm_way_id, v.segment_index, v.ord, v.along_m, e.elev
 FROM _vertex v LEFT JOIN _vertex_elev e ON e.vid = v.vid
 """
 
-_ELEVATION_COLUMNS = ("start_elevation_m", "end_elevation_m", "elevation_gain_m", "elevation_loss_m",
-                      "average_grade", "steepest_gain_percent", "steepest_loss_percent", "elevation_profile_m",
-                      "elevation_profile_along_m")
+_ELEVATION_COLUMNS = ("elevation_profile_m", "elevation_profile_along_m")
 
 #: 値の出た区間だけを入れる。`$1`は揺れを消す閾値（m）。
 _INSERT_ELEVATION = f"""
 INSERT INTO edge_elevation (osm_way_id, segment_index, {", ".join(_ELEVATION_COLUMNS)})
 SELECT osm_way_id, segment_index, {", ".join(_ELEVATION_COLUMNS)}
-FROM ({elevation_values_sql(_VERTEX_ELEVATIONS, "$1::float8")}) v
+FROM ({elevation_profile_sql(_VERTEX_ELEVATIONS, "$1::float8")}) v
 """
 
 

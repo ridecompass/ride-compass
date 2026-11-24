@@ -1,9 +1,8 @@
-"""区間の断面の点から、区間の標高と勾配の要約を出す2つの実装——派生の段のSQL（`domain/attributes.py: elevation_values_sql`。
-揺れの閾値で間引いてから出す）と、道路網の配列を作るときの`domain/elevation_profile.py: profile_summaries`（間引いたあとの点から出す）。
+"""区間の断面の点を揺れの閾値で間引く派生の段のSQL（`domain/attributes.py: elevation_profile_sql`）と、間引いたあとの点から
+区間の標高と勾配の要約を出す`domain/elevation_profile.py: profile_summaries`（道路網の配列を作るときに出す）。
 
-要約のテストは、同じ点を両方へ通して同じ値を見る（`summarize`）。SQLはPostGISで実行して返った行を見る。点は道に沿って1歩
-（`STEP_M`）おきに置く。間引き・丸め・行の有無を見るテストはSQLだけに当て、そのほかは閾値を0にする——一直線に並んだ点だけが
-間引かれ、勾配は高低差÷間そのものになる。
+間引き・行の有無を見るテストはSQLをPostGISで実行して返った行を見て、要約のテストは`profile_summaries`へ点を通す（`summarize`）。
+点は道に沿って1歩（`STEP_M`）おきに置く。
 
 ここで見ないもの:
 - 区間ごとの頂点列と標高を作り、結果を派生の表へ書くこと → `test_derive_elevation.py`
@@ -11,24 +10,20 @@
 - 橋・トンネルの区間を両端の2点だけで測ること → `test_derive_elevation.py`
 """
 
-from decimal import Decimal
-
 from functools import partial
 
-from app.domain.attributes import elevation_values_sql
+from app.domain.attributes import elevation_profile_sql
 from app.domain.elevation_profile import (
     FLAT,
     MAX_PLAUSIBLE_GRADE_PERCENT,
     STEEPEST_MIN_INTERVAL_M,
-    SUMMARY_COLUMNS,
     along_fractions,
     flatten_spans,
-    profile_summaries,
 )
 import numpy as np
 import pytest
 from sqlalchemy import text
-from tests.profile_fixture import profiles
+from tests.profile_fixture import profiles, summarize_profile
 
 
 pytestmark = pytest.mark.asyncio(loop_scope="module")
@@ -52,37 +47,18 @@ async def values(session, segments: dict[tuple[int, int], list], along=None, tol
             rows.append(f"({way}, {segment}, {ord_}, {along_m}::float8, {elev_sql}::float8)")
     relation = (f"SELECT * FROM (VALUES {', '.join(rows)})"
                 " AS v(osm_way_id, segment_index, ord, along_m, elev)")
-    result = await session.execute(text(elevation_values_sql(relation, f"{tolerance_m}::float8")))
-    return {
-        (row.osm_way_id, row.segment_index): {
-            key: (float(value) if isinstance(value, Decimal) else value)
-            for key, value in row._mapping.items()
-            if key not in ("osm_way_id", "segment_index")
-        }
-        for row in result
-    }
+    result = await session.execute(text(elevation_profile_sql(relation, f"{tolerance_m}::float8")))
+    return {(row.osm_way_id, row.segment_index): {"elevation_profile_m": row.elevation_profile_m,
+                                                "elevation_profile_along_m": row.elevation_profile_along_m}
+            for row in result}
 
 
-def _array_summary(elevations: list, along: list | None) -> dict:
-    """`profile_summaries`の1区間の要約（値の無い列はNone）。点の位置は区間の長さ（最後の点の位置）に対する割合で渡す。"""
-    positions = np.array(along if along is not None else [i * STEP_M for i in range(len(elevations))], dtype=np.float64)
-    length = positions[-1]
-    summary = profile_summaries(
-        np.zeros(1, dtype=np.int64), np.array([len(elevations)], dtype=np.int64), np.ones(1, dtype=np.bool_),
-        np.array([np.nan if e is None else e for e in elevations], dtype=np.float32),
-        (positions / length if length > 0 else np.linspace(0.0, 1.0, len(elevations))).astype(np.float32),
-        np.array([length]), STEEPEST_MIN_INTERVAL_M)[0]
-    return {name: None if np.isnan(value) else float(value) for name, value in zip(SUMMARY_COLUMNS, summary, strict=True)}
-
-
-@pytest.fixture(params=["sql", "array"])
-def summarize(request, road_graph_session):
-    """要約を出す実装（`values`と同じ口）。SQLは閾値0で通す。"""
-    if request.param == "sql":
-        return partial(values, road_graph_session)
-
+@pytest.fixture
+def summarize():
+    """`profile_summaries`を、`values`と同じ口（`{(道, 区間番号): [点ごとの標高]}`と点の位置）で。"""
     async def run(segments: dict[tuple[int, int], list], along=None) -> dict:
-        return {key: _array_summary(elevations, (along or {}).get(key)) for key, elevations in segments.items()}
+        return {key: summarize_profile(elevations, (along or {}).get(key) or [i * STEP_M for i in range(len(elevations))])
+                for key, elevations in segments.items()}
     return run
 
 
@@ -99,13 +75,6 @@ async def test_a_road_that_climbs_and_descends_counts_both(summarize):
     assert row["elevation_gain_m"] == pytest.approx(rise(6), abs=0.05)
     assert row["elevation_loss_m"] == pytest.approx(rise(2), abs=0.05)
     assert row["average_grade"] == pytest.approx(2.0, abs=0.005)
-
-
-async def test_values_are_rounded_to_a_tenth_of_a_metre_and_a_hundredth_of_a_percent(road_graph_session):
-    row = await one(partial(values, road_graph_session), [100.04, 100.04 + rise(3.333)])
-
-    assert row["start_elevation_m"] == 100.0
-    assert row["average_grade"] == 3.33
 
 
 async def test_missing_first_and_last_vertices_move_the_ends_inward(summarize):
@@ -143,10 +112,9 @@ async def test_an_interval_shorter_than_the_minimum_is_not_the_steepest(summariz
 
 
 async def test_fluctuations_within_the_tolerance_are_removed(road_graph_session):
-    """閾値以下の上下は揺れとして消え、獲得標高にも残す点にも入らない。"""
+    """閾値以下の上下は揺れとして消え、残す点に入らない。"""
     row = await one(partial(values, road_graph_session, tolerance_m=0.3), [10.0, 10.2, 9.9, 10.1, 10.0])
 
-    assert (row["elevation_gain_m"], row["elevation_loss_m"]) == (0.0, 0.0)
     assert row["elevation_profile_along_m"] == [0.0, 4 * STEP_M]
 
 
@@ -260,8 +228,8 @@ async def test_segments_are_computed_separately(summarize):
     ids=["ありえない間", "値の無い点", "長さ0", "短いありえない間", "混ざった道"],
 )
 async def test_the_summary_counts_the_same_steps_as_the_travel_time(road_graph_session, elevations, length_m):
-    """地図の色・0次ハードフィルタ・区間の詳細が読む要約の列と、所要時間が走る点の間とが、同じ間を勾配として数える——
-    食い違うと、同じ道を地図と所要時間が別の勾配で見る。所要時間の側は、SQLが間引いて残した点と位置を道路網と同じに読む。"""
+    """地図の色・0次ハードフィルタ・区間の詳細が読む要約（`profile_summaries`）と、所要時間が走る点の間とが、同じ間を勾配として
+    数える——食い違うと、同じ道を地図と所要時間が別の勾配で見る。どちらも、SQLが間引いて残した点と位置を道路網と同じに読む。"""
     count = len(elevations)
     row = await one(partial(values, road_graph_session, tolerance_m=0.3), elevations,
                     along=[length_m * i / (count - 1) for i in range(count)])
@@ -270,10 +238,11 @@ async def test_the_summary_counts_the_same_steps_as_the_travel_time(road_graph_s
     _, lengths, grades = flatten_spans(built.start, built.points, built.forward, built.elevation_m, built.position,
                                        np.array([length_m]), np.zeros(1), FLAT.grade, FLAT.share)
     rises = lengths.astype(np.float64) * grades
+    summary = summarize_profile(kept, row["elevation_profile_along_m"])
 
-    assert row["elevation_gain_m"] == pytest.approx(rises.clip(min=0).sum(), abs=0.05)
-    assert row["elevation_loss_m"] == pytest.approx((-rises).clip(min=0).sum(), abs=0.05)
+    assert summary["elevation_gain_m"] == pytest.approx(rises.clip(min=0).sum(), abs=0.05)
+    assert summary["elevation_loss_m"] == pytest.approx((-rises).clip(min=0).sum(), abs=0.05)
     if len(lengths) == 0:
-        assert (row["average_grade"], row["steepest_gain_percent"], row["steepest_loss_percent"]) == (None, None, None)
+        assert (summary["average_grade"], summary["steepest_gain_percent"], summary["steepest_loss_percent"]) == (None, None, None)
     else:
-        assert row["average_grade"] == pytest.approx(rises.sum() / lengths.sum() * 100, abs=0.005)
+        assert summary["average_grade"] == pytest.approx(rises.sum() / lengths.sum() * 100, abs=0.005)

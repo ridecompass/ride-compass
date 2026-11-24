@@ -195,32 +195,29 @@ class RoadNodeRow(Base):
 
 
 class EdgeElevationRow(_EdgeKey, Base):
-    """区間の標高と勾配。値の出た区間だけが行を持つ。
+    """区間の標高の断面（揺れを間引いた点の標高と位置）。値のある点が2つ以上の区間だけが行を持つ。
 
-    標高は順方向の値だけ持つ。逆向きは読み出し時に入れ替えと符号反転で導く
-    （始点↔終点、上り↔下り、平均勾配は符号反転）。
+    点は順方向の並びだけ持ち、逆向きは読む側が点を逆に辿る。両端の標高・獲得/喪失・勾配の要約は、道路網の配列を作るときに
+    この点から出す（`domain/elevation_profile.py: profile_summaries`）。
     """
 
     __tablename__ = "edge_elevation"
-    __table_args__ = (_edge_key("edge_elevation"), {"info": DERIVED})
+    __table_args__ = (
+        _edge_key("edge_elevation"),
+        CheckConstraint("cardinality(elevation_profile_m) = cardinality(elevation_profile_along_m)",
+                        name="edge_elevation_profile_lengths_match"),
+        CheckConstraint("cardinality(array_remove(elevation_profile_m, NULL)) >= 2",
+                        name="edge_elevation_profile_has_two_values"),
+        CheckConstraint("array_position(elevation_profile_along_m, NULL) IS NULL",
+                        name="edge_elevation_profile_along_has_no_null"),
+        {"info": DERIVED},
+    )
 
-    start_elevation_m: Mapped[float] = mapped_column(REAL, nullable=False)
-    end_elevation_m: Mapped[float] = mapped_column(REAL, nullable=False)
-    elevation_gain_m: Mapped[float] = mapped_column(REAL, nullable=False)
-    elevation_loss_m: Mapped[float] = mapped_column(REAL, nullable=False)
-    # 標高が付いた区間でも、勾配として数える点の間が無い区間は平均勾配を持たない
-    # （`domain/attributes.py: elevation_values_sql`）。
-    average_grade: Mapped[float | None] = mapped_column(REAL, nullable=True)
-    #: 順方向に走ったときの一番急な登りと下りの勾配（%、どちらも0以上）。測れない区間は持たない（測り方は
-    #: `domain/attributes.py: elevation_values_sql`）。逆向きは2列を入れ替えて読む。
-    steepest_gain_percent: Mapped[float | None] = mapped_column(REAL, nullable=True)
-    steepest_loss_percent: Mapped[float | None] = mapped_column(REAL, nullable=True)
-    #: 順方向に並べた断面の点の標高（m）。点の位置は`elevation_profile_along_m`が持つ。値の無い点はNULL。上の要約の列は、どれもこの点から出す（`domain/attributes.py: elevation_values_sql`）。作り直す前の行は持たない
-    #: （空を許すのは、行の入った本番の表へ列を足せるようにするため）。
-    elevation_profile_m: Mapped[list[float | None] | None] = mapped_column(ARRAY(REAL), nullable=True)
+    #: 順方向に並べた断面の点の標高（m）。点の位置は`elevation_profile_along_m`が持つ。値の無い点はNULL。
+    elevation_profile_m: Mapped[list[float | None]] = mapped_column(ARRAY(REAL), nullable=False)
     #: 断面の点ごとの、区間の始まりから道に沿って測った位置（m）。`elevation_profile_m`と同じ並び。点は揺れを間引いた
-    #: あとの点なので間隔はそろわない。作り直す前の行は持たない。
-    elevation_profile_along_m: Mapped[list[float] | None] = mapped_column(ARRAY(REAL), nullable=True)
+    #: あとの点なので間隔はそろわない。
+    elevation_profile_along_m: Mapped[list[float]] = mapped_column(ARRAY(REAL), nullable=False)
 
 
 class EdgeLandcoverRow(_EdgeKey, _Landcover, Base):

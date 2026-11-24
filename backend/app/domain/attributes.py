@@ -4,7 +4,7 @@ from typing import Any
 
 import numpy as np
 
-from app.domain.elevation_profile import MAX_PLAUSIBLE_GRADE_PERCENT, STEEPEST_MIN_INTERVAL_M, ProfileSpans
+from app.domain.elevation_profile import ProfileSpans
 from app.domain.search_graph import EdgeValues
 from app.domain.strict_model import StrictModel
 from app.domain.wind_height import WindHeights
@@ -14,7 +14,7 @@ class ElevationAttribute(StrictModel):
     """Edgeへ紐付ける標高属性。Edge本体（domain/graph.py）とは独立して保持する。
 
     average_gradeは符号付き（登り=正、下り=負）で、値が取れなかった区間はNone。
-    獲得・喪失標高は揃って入る（区間の標高の表`edge_elevation`は4列とも空を許さない）。
+    獲得・喪失標高は揃って入る（どれも断面から出す。`domain/elevation_profile.py: profile_summaries`）。
     """
 
     edge_id: str
@@ -43,10 +43,6 @@ class ElevationAttribute(StrictModel):
             steepest_gain_percent=self.steepest_loss_percent,
             steepest_loss_percent=self.steepest_gain_percent,
         )
-
-
-#: 平均勾配（%）を保存・配信する桁。
-AVERAGE_GRADE_DECIMALS = 2
 
 
 @dataclass(frozen=True, slots=True)
@@ -150,40 +146,23 @@ EDGE_ROW_ARRAY_FIELDS: tuple[str, ...] = tuple(
 
 
 
-def elevation_values_sql(vertices: str, tolerance_m: str) -> str:
-    """区間に沿って拾った点（標高の断面）を揺れの閾値で間引き、残した点から標高と勾配の値を出すSQL。
+def elevation_profile_sql(vertices: str, tolerance_m: str) -> str:
+    """区間に沿って拾った点（標高の断面）を揺れの閾値で間引き、残した点の標高と位置を順に並べるSQL。
 
     `vertices`は`(osm_way_id, segment_index, ord, along_m, elev)`を返す関係。`along_m`は区間の始まりから
-    道に沿って測った点の位置（m）で、距離はすべてこの差で測る——点どうしを直線で測ると、曲がった区間で道のりより短く出て
-    勾配が大きく出る。区間の長さは最後の点の位置。
+    道に沿って測った点の位置（m）。
 
     **間引きは、断面（横が道のり、縦が標高）に Douglas-Peucker をかける**（PostGIS の`ST_Simplify`。閾値`tolerance_m`はSQLの式で
     渡す）。閾値以下の揺れを消す。残る点の間の勾配は元の点の間の一番急な勾配を越えない（GraphHopper の ramer のならしと、そのあとの
     間引きと同じ）が、高さが閾値の数倍に満たない短い段は、前後の点と一緒になだらかに残ることがある。値の無い点をまたいで間引かない
     ——値のある点の続きごとに間引き、値の無い点は残す。残す点は、点の順（`ord`）を M の値に載せて取り戻す。
 
-    **要約の列は、どれも残した点の隣り合う2点の間（点の間）のうち、勾配として数える間だけから出す**。数えるかは
-    所要時間が点の間を読むときと同じ判定（`domain/elevation_profile.py: interval_grade`）で、両端に値があり、長さが0でなく、
-    道のりで割った勾配が公道としてありうる上限以下の間だけを数える。値の無い点をまたいだ2点を隣どうしとして
-    均さない——欠けた所の起伏が均された差として混ざる。獲得/喪失は数える間の上りと下りの和、平均勾配（`average_grade`）は
-    （獲得−喪失）÷数える間の長さの和。数える間が無い区間は、平均勾配と一番急な勾配を持たず、獲得/喪失は0になる。
-
-    一番急な勾配（`steepest_gain_percent`・`steepest_loss_percent`）は、GraphHopper の`SlopeCalculator`の max_slope の式で測る:
-    3点目からの点ごとに、1つ前の2点の標高の平均から今の点までの勾配（長さは今の間と前の間の半分の和）を、前の間が
-    `STEEPEST_MIN_INTERVAL_M`より長いときだけ取り、区間の両端の勾配も候補にする。隣り合う2点だけで測ると、
-    短い間の揺れがそのまま一番急になる。この勾配は今の間と前の間の勾配を重みづけて平均したものなので、2つの間がどちらも
-    数える間のときだけ取る。数えない間で途切れた区間は、途切れない続きごとを GraphHopper の1区間として測る（欠けた所を
-    またいで均さない。欠けの無い区間では式のとおり）。GraphHopper は絶対値の一番大きい1つを持つが、ここでは登りと下りを分けて、
-    それぞれの最大の大きさ（どちらも0以上）を持つ。登りは点の順に、下りは逆の順に並べた点（逆向きに走ったときの登り）に式を
-    当てる——式は前の点を見るので、同じ点でも並べる向きで値が変わる。こうすると、逆向きの区間の値は登りと下りの入れ替えで
-    決まる（`ElevationAttribute.reversed_as`）。長さが`STEEPEST_MIN_INTERVAL_M`以上の続きが無い区間は、平均勾配を持っても
-    一番急な勾配を持たない。
-
-    値のある点が2つ未満の区間は返らない。値と一緒に、残した点の標高と位置を順に並べた`elevation_profile_m`（値の無い点はNULL）と
-    `elevation_profile_along_m`も返す——要約の列は、この並びの点の間から出る。
+    値のある点が2つ未満の区間は返らない。返すのは残した点の標高`elevation_profile_m`（値の無い点はNULL）と位置
+    `elevation_profile_along_m`。標高と勾配の要約は、道路網の配列を作るときにこの点から出す
+    （`domain/elevation_profile.py: profile_summaries`）。
     """
     return f"""
--- 標高と位置は残す断面の点と同じ精度（real）に落としてから比べる。所要時間はその点を読むので、上限ちょうどの間で数えるかが分かれない。
+-- 標高と位置は残す断面の点と同じ精度（real）に落としてから間引く。
 WITH v AS (
     SELECT osm_way_id, segment_index, ord, along_m::real::float8 AS along_m, elev::real::float8 AS elev FROM ({vertices}) s),
 -- 値の無い点で区切った、値のある点の続きの番号（値の無い点は次の続きの頭に入る）と、続きの中の値のある点の数。
@@ -201,49 +180,9 @@ kept AS (
     SELECT r.osm_way_id, r.segment_index, r.ord, r.along_m, r.elev
     FROM runs r LEFT JOIN simplified k
       ON k.osm_way_id = r.osm_way_id AND k.segment_index = r.segment_index AND k.ord = r.ord
-    WHERE r.elev IS NULL OR r.run_known < 3 OR k.ord IS NOT NULL),
-pairs AS (
-    SELECT *, elev - lag(elev) OVER w AS diff,
-           along_m - lag(along_m) OVER w AS d
-    FROM kept WINDOW w AS (PARTITION BY osm_way_id, segment_index ORDER BY ord)),
-counted AS (
-    SELECT *, CASE WHEN d > 0 AND abs(diff) * 100 <= {MAX_PLAUSIBLE_GRADE_PERCENT} * d THEN diff / d * 100 END AS g
-    FROM pairs),
--- 一番急な勾配の候補（GraphHopper の max_slope）。数える間の途切れない続き（`span`）ごとに、1つ前の2点の標高の平均から今の点までの
--- 勾配（今の間と前の間がどちらも数える間で、前の間が最短の長さより長いとき）と、続きの両端の勾配（続きの長さが最短の長さ以上のとき）。
--- 登りは点の順に見て1つ前の間（`lag`）、下りは逆の順に見て1つ前の間（`lead`）を使う。
-slopes AS (
-    SELECT *, CASE WHEN g IS NOT NULL AND lag(g) OVER w IS NOT NULL AND lag(d) OVER w > {STEEPEST_MIN_INTERVAL_M}
-                   THEN (diff + lag(diff) OVER w / 2) / (d + lag(d) OVER w / 2) * 100 END AS up,
-              CASE WHEN g IS NOT NULL AND lead(g) OVER w IS NOT NULL AND lead(d) OVER w > {STEEPEST_MIN_INTERVAL_M}
-                   THEN -(diff + lead(diff) OVER w / 2) / (d + lead(d) OVER w / 2) * 100 END AS down,
-              count(*) FILTER (WHERE g IS NULL) OVER w AS span
-    FROM counted WINDOW w AS (PARTITION BY osm_way_id, segment_index ORDER BY ord)),
-candidates AS (
-    SELECT osm_way_id, segment_index, up, down FROM slopes WHERE up IS NOT NULL OR down IS NOT NULL
-    UNION ALL
-    SELECT osm_way_id, segment_index, sum(diff) / sum(d) * 100, -sum(diff) / sum(d) * 100
-    FROM slopes WHERE g IS NOT NULL GROUP BY osm_way_id, segment_index, span HAVING sum(d) >= {STEEPEST_MIN_INTERVAL_M}),
-steepest AS (
-    SELECT osm_way_id, segment_index, max(greatest(up, 0)) AS up, max(greatest(down, 0)) AS down
-    FROM candidates GROUP BY osm_way_id, segment_index),
-raw AS (
-    SELECT osm_way_id, segment_index,
-           array_agg(elev::real ORDER BY ord) AS elevation_profile_m,
-           array_agg(along_m::real ORDER BY ord) AS elevation_profile_along_m,
-           array_agg(elev ORDER BY ord) FILTER (WHERE elev IS NOT NULL) AS known,
-           coalesce(sum(greatest(diff, 0)) FILTER (WHERE g IS NOT NULL), 0) AS gain,
-           coalesce(sum(greatest(-diff, 0)) FILTER (WHERE g IS NOT NULL), 0) AS loss,
-           sum(d) FILTER (WHERE g IS NOT NULL) AS counted_m
-    FROM counted GROUP BY osm_way_id, segment_index)
+    WHERE r.elev IS NULL OR r.run_known < 3 OR k.ord IS NOT NULL)
 SELECT osm_way_id, segment_index,
-       round(known[1]::numeric, 1) AS start_elevation_m,
-       round(known[cardinality(known)]::numeric, 1) AS end_elevation_m,
-       round(gain::numeric, 1)    AS elevation_gain_m,
-       round(loss::numeric, 1)    AS elevation_loss_m,
-       round(((gain - loss) / counted_m * 100)::numeric, {AVERAGE_GRADE_DECIMALS}) AS average_grade,
-       round(t.up::numeric, {AVERAGE_GRADE_DECIMALS})   AS steepest_gain_percent,
-       round(t.down::numeric, {AVERAGE_GRADE_DECIMALS}) AS steepest_loss_percent,
-       elevation_profile_m, elevation_profile_along_m
-FROM raw LEFT JOIN steepest t USING (osm_way_id, segment_index) WHERE cardinality(known) >= 2
+       array_agg(elev::real ORDER BY ord) AS elevation_profile_m,
+       array_agg(along_m::real ORDER BY ord) AS elevation_profile_along_m
+FROM kept GROUP BY osm_way_id, segment_index HAVING count(elev) >= 2
 """

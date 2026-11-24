@@ -2,7 +2,17 @@
 
 import numpy as np
 
-from app.domain.elevation_profile import FLAT, ElevationProfiles, GradeDistribution, ProfileSpans, along_fractions, profile_spans
+from app.domain.elevation_profile import (
+    FLAT,
+    STEEPEST_MIN_INTERVAL_M,
+    SUMMARY_COLUMNS,
+    ElevationProfiles,
+    GradeDistribution,
+    ProfileSpans,
+    along_fractions,
+    profile_spans,
+    profile_summaries,
+)
 
 
 def profiles(*rows: list[float | None], forward=None, distribution: GradeDistribution = FLAT,
@@ -23,3 +33,14 @@ def grade_spans(gradient_percent: np.ndarray, distance_m: np.ndarray) -> Profile
     rise = np.asarray(gradient_percent, dtype=np.float64) / 100.0 * np.asarray(distance_m, dtype=np.float64)
     return profile_spans(profiles(*([] if np.isnan(r) else [0.0, float(r)] for r in rise)), distance_m)
 
+
+
+def summarize_profile(elevations: list[float | None], along_m: list[float]) -> dict[str, float | None]:
+    """1区間の断面（点の標高。Noneは値の無い点）と点の道のりの位置（m）を、道路網の配列と同じ要約（`profile_summaries`）に
+    する。値の無い列はNone。区間の長さは最後の点の位置。"""
+    positions = np.asarray(along_m, dtype=np.float64)
+    summary = profile_summaries(
+        np.zeros(1, dtype=np.int64), np.array([len(elevations)], dtype=np.int64), np.ones(1, dtype=np.bool_),
+        np.array([np.nan if e is None else e for e in elevations], dtype=np.float32),
+        along_fractions(positions, len(elevations)), positions[-1:], STEEPEST_MIN_INTERVAL_M)[0]
+    return {name: None if np.isnan(value) else float(value) for name, value in zip(SUMMARY_COLUMNS, summary, strict=True)}

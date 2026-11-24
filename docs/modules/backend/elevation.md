@@ -9,7 +9,7 @@
 
 | レイヤー | ファイル |
 |---|---|
-| domain | `attributes.py`（`attributes.py: elevation_values_sql`。区間の断面の点列から標高・勾配を出すSQLを組み立てる） |
+| domain | `attributes.py`（`attributes.py: elevation_profile_sql`。区間の断面の点列を間引くSQLを組み立てる）・`elevation_profile.py`（断面から所要時間の点の間と標高・勾配の要約を出す） |
 | infrastructure | `dem_elevation.py`（地点の標高を、取り込んだ標高タイルから製品の優先の順に引く。値の無い点だけを次の製品で引く） |
 | batch | `source_adapters/gsi_dem_tile.py`（取込と取得。取得はプロファイルが挙げた製品ごとに全タイルを置き場へ写し、取込は写したタイルを製品ごとに読んでint32へ詰める。取込は配信元を叩かない）・`dem_tile_store.py`（写したタイルの置き場と、その製品に無いことの印）・`source_adapters/raster_wkb.py`（画素の並びをPostGISの`raster`へ包む）・`derive_elevation.py`（派生） |
 
@@ -20,16 +20,17 @@
    │ source_adapters/gsi_dem_tile.py: 製品ごとにint32へ詰めて、製品×タイル1枚=1行
    ▼
 source_features(source='dem')          ← 生データ。取り直さない限り変わらない
-   │ derive_elevation.py: 区間を等しい間隔に分けた点で、画素ごとに製品を選んで標高を読み、揺れを間引いて勾配を出す
+   │ derive_elevation.py: 区間を等しい間隔に分けた点で、画素ごとに製品を選んで標高を読み、揺れを間引く
    ▼
-edge_elevation（start/end・gain/loss・average・一番急な登りと下り・断面の点）
-   │ 探索フェーズが材料として読む（road_graph_repository.py）
+edge_elevation（断面の点の標高と位置）
+   │ 道路網の配列を作るときに読み、要約（start/end・gain/loss・average・一番急な登りと下り）を出す
+   │ （road_network_store.py・domain/elevation_profile.py: profile_summaries）
    ▼
 経路の集計（domain/route.py: elevation_gain）
 ```
 
-値の出し方そのものは`domain/attributes.py: elevation_values_sql`が持つ。派生バッチは
-点ごとの画素を読む関係を渡して実行するだけで、上限も欠測の扱いもそこには無い。
+間引き方は`domain/attributes.py: elevation_profile_sql`が、要約の出し方は`domain/elevation_profile.py`が持つ。派生バッチは
+点ごとの画素を読む関係を渡して実行するだけで、勾配の上限も欠測の扱いもそこには無い。
 
 ## 断面の点の拾い方と間引き方
 
@@ -37,7 +38,7 @@ edge_elevation（start/end・gain/loss・average・一番急な登りと下り�
 点の間隔が描き手ごとにばらつき、細かく描いた道ほど標高データの揺らぎを登りとして積む。間隔は標高データの格子（DEM5Aは約5m）に
 合わせる——格子より広げると、格子が持つ短い起伏を拾わない。
 
-拾った点は、較正値`elevation.profile_tolerance_m`の閾値で間引いてから残す（`domain/attributes.py: elevation_values_sql`）。断面
+拾った点は、較正値`elevation.profile_tolerance_m`の閾値で間引いてから残す（`domain/attributes.py: elevation_profile_sql`）。断面
 （横が道のり、縦が標高）に Douglas-Peucker をかけ、閾値以下の上下を揺れとして消す。残る点の間の勾配は元の点の間の一番急な
 勾配を越えない。閾値を十分に越える短い急坂はその急さのまま残り、高さが閾値の数倍に満たない短い段は前後と一緒になだらかに残ることがある。閾値は配信元が公表する標高の精度（DEM5Aは標準偏差0.3m以内。
 https://maps.gsi.go.jp/development/hyokochi.html ）に合わせる。平らな道ほど点が少なくなるので、点の数は拾った点の数より
@@ -45,7 +46,7 @@ https://maps.gsi.go.jp/development/hyokochi.html ）に合わせる。平らな�
 
 **一番急な登りと下り**（`steepest_gain_percent`・`steepest_loss_percent`）は、GraphHopper の`SlopeCalculator`の max_slope の式で
 残した点から測る（1つ前の2点の標高の平均から今の点までの勾配と、区間の両端の勾配の最大。式と最短の長さは
-`domain/attributes.py: elevation_values_sql`・`domain/elevation_profile.py: STEEPEST_MIN_INTERVAL_M`）。隣り合う2点だけで測ると、5m おきに拾った断面の
+`domain/elevation_profile.py: profile_summaries`・`STEEPEST_MIN_INTERVAL_M`）。隣り合う2点だけで測ると、5m おきに拾った断面の
 短い間の揺れがそのまま一番急になる。下りは逆向きに走ったときの登りとして、逆の順に並べた点に同じ式を当てる（式は前の点を見るので、並べる向きで値が変わる）。平均（`average_grade`）と違い、区間の中で登って下っても打ち消し合わない。ルートの区間の続く坂の斜度はこれから作る（`domain/route.py: steepest_signed_percent`）。区間の中で計算し直さず、
 道の値を同じ所から読む。距離は点の道のりの位置の差で測る（点どうしの直線で測ると、曲がった区間で勾配が大きく出る）。
 
@@ -56,18 +57,17 @@ https://maps.gsi.go.jp/development/hyokochi.html ）に合わせる。平らな�
 この点の間ごとに求め（[経路エンジン](routing-engine.md)）、獲得標高・平均勾配・一番急な所の要約も同じ点の間から出す——
 目的ごとに別の束ね方で持つと、読む所によって値が食い違う。点の間を勾配として数えるかも両方で同じにする。ルート生成と地図のレンズが
 読む要約は、道路網の配列を作るときに断面から出し（`domain/elevation_profile.py: profile_summaries`。判定は所要時間と同じ
-`domain/elevation_profile.py: interval_grade`）、勾配と登りの量の材料もここで出す（材料の出どころが`profile`）。派生の表の要約の列
-（`domain/attributes.py: elevation_values_sql`）は管理画面の欠損割合だけが読む。2つの書き方は、同じ断面を両方に通して同じ値を
-見るテスト（`test_elevation_values.py`）が一致を守る。
+`domain/elevation_profile.py: interval_grade`）、勾配と登りの量の材料もここで出す（材料の出どころが`profile`）。派生の表は
+要約を持たない——持つと、同じ規則をSQLとnumpyの2つに書くことになる。
 道路網の配列は、向きつきの行ごとの始まりの位置と点の数と、全行をつないだ標高と点の位置（区間の長さに対する割合）の配列で持ち、
 所要時間と体力を解く点の間（`domain/elevation_profile.py: ProfileSpans`）も、配列を作るときに全区間について1回だけ作って持つ
 （`domain/road_network.py: RoadNetwork.elevation_spans`）。
-位置を持たない行（作り直す前の行）は、点を等しい間隔に置いて読む（`domain/elevation_profile.py: along_fractions`）。標高の無い点の間と
+長さ0の区間は、点を等しい間隔に置いて読む（`domain/elevation_profile.py: along_fractions`）。標高の無い点の間と
 点が2つ未満の区間は、道路網全体の点の間の勾配の分布どおりの坂として走る（`domain/elevation_profile.py`）。
 
 ## 勾配を出さない区間
 
-`average_grade`がNULLなのは、標高を出せなかった区間だけではない。勾配として数える点の間が1つも無い区間も持たない。
+平均勾配（`average_grade`）が無いのは、標高を出せなかった区間だけではない。勾配として数える点の間が1つも無い区間も持たない。
 **舗装公道としてありえない急勾配**（`domain/elevation_profile.py: MAX_PLAUSIBLE_GRADE_PERCENT`）の点の間は、
 計算したうえで**数えない**と決めた間である。道の起伏ではなくDEMの読み違いで、丸めても上限で切っても直らない。
 

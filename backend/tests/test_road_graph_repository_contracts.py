@@ -27,8 +27,6 @@ from sqlalchemy import text
 
 from app.domain.material_catalog import MATERIAL_CATALOG, material_array_columns
 from app.domain.region import BoundingBox
-from app.infrastructure.derived_models import EdgeCountsRow, EdgeElevationRow, EdgeLandcoverRow
-from app.infrastructure.material_joins import reversed_partner
 from app.infrastructure.road_graph_repository import (
     ID_CHUNK_SIZE,
     MATERIAL_ARRAY_COLUMN_ORDER,
@@ -90,30 +88,6 @@ class _FakeSession:
 def _repo(*results) -> tuple[RoadGraphRepository, _FakeSession]:
     session = _FakeSession(*results)
     return RoadGraphRepository(session), session
-
-
-# --- 逆向きの読み替え ---------------------------------------------------------
-
-
-@pytest.mark.parametrize(("name", "partner"), [
-    ("start_a", ("end_a", False)),
-    # 勾配は符号を返す
-    ("a_grade", ("a_grade", True)),
-    # 向きで変わらない列
-    ("a_count", None),
-])
-def test_reversed_partner_swaps_paired_tokens_and_flips_grades(name, partner):
-    assert reversed_partner(name) == partner
-
-
-def test_reversing_twice_returns_to_the_original_column():
-    """対が壊れると、逆向きの枝の標高が別の列から来る。列の一覧は宣言から導く。"""
-    reversed_columns = {column.name: partner
-                        for row in (EdgeCountsRow, EdgeElevationRow, EdgeLandcoverRow) for column in row.__table__.columns
-                        if (partner := reversed_partner(column.name)) is not None}
-    assert reversed_columns, "向きで変わる列が1つも無い"
-    for name, (partner, negated) in reversed_columns.items():
-        assert reversed_partner(partner) == (name, negated)
 
 
 # --- 材料の行列 ---------------------------------------------------------------

@@ -322,8 +322,9 @@ MATERIAL_CATALOG: dict[str, MaterialSpec] = {
         primary_attribute=ATTR_ELEVATION,
         source="profile",
         coverage=EdgeMaterialCoverageSpec(
-                present_condition="em.average_grade IS NOT NULL",
-                source="edge_elevation.average_grade の有無",
+                present_condition="em.elevation_profile_m IS NOT NULL",
+                # 断面はあっても勾配として数える点の間が無い区間（`domain/elevation_profile.py: profile_summaries`）は値ありに数える。
+                source="区間の標高の表（edge_elevation）に行があるか",
                 missing_semantics="unknown",
             ),
     ),
@@ -342,7 +343,7 @@ MATERIAL_CATALOG: dict[str, MaterialSpec] = {
         primary_attribute=ATTR_ELEVATION,
         source="profile",
         coverage=EdgeMaterialCoverageSpec(
-            present_condition="em.elevation_gain_m IS NOT NULL",
+            present_condition="em.elevation_profile_m IS NOT NULL",
             source="区間の標高の表（edge_elevation）に行があるか",
             missing_semantics="unknown",
         ),

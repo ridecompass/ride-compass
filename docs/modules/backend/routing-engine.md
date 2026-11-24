@@ -63,7 +63,7 @@ Edgeコストは「探索の材料の表（[費用・材料](evaluation-scoring.
 なく、`prepare`が対象bbox全体ぶんの
 コスト配列を1回だけnumpyで合成し、探索へは合成済みの配列をそのまま渡す（探索中にPythonの
 関数フレームを作らない）。
-標高（勾配）は派生済みの`edge_elevation`を材料として読むだけで組み込み済み
+標高（勾配）は派生済みの`edge_elevation`の断面から道路網の配列を作るときに出し、組み込み済み
 （探索中にGSI API呼び出しは発生しない）。風は**到達時刻ごと**に効く——レグを時刻ビンへ
 刻み、ビンごとのコスト配列を探索前に合成しておいて、探索が到達時刻をラベルとして運ぶ
 （下記「レグ内の時刻ビン」）。
@@ -1044,8 +1044,8 @@ numbaでJITする探索と、探索の中へ展開する部品を置く。JITの
 
 区間（`road_edges`）は**向きを持たない1本1行**で、有向の枝は道路網全体の配列を作るときに組む
 （`road_network_store.py`。一方通行は`way_directions.direction`を見て走れる向きの枝だけを
-作る。向きごとに通れるかは`domain/traffic.py: travel_allowed`が決める）。DBへ向きを伝えるのは`(osm_way_id, segment_index, forward)`の3つ組で、向きで変わる値
-（方位・標高）はSQLが入れ替え・符号反転して返す（`material_joins.py: reversed_partner`）。材料の値の
+作る。向きごとに通れるかは`domain/traffic.py: travel_allowed`が決める）。DBへ向きを伝えるのは`(osm_way_id, segment_index, forward)`の3つ組で、向きで変わる値の
+うち方位はSQLが逆向きの行で180°回して返し（`road_graph_repository.py: _EXTRA_MATERIAL_ARRAY_COLUMNS`）、標高は断面を逆に辿る。材料の値の
 求め方は`domain/material_sql.py`・`domain/material_catalog.py`が持ち、リポジトリは式が前提に
 する別名（`w`/`re`/`em`/`wm`）のFROM句を組み立てるだけで式を書かない（`em`・`wm`は`material_joins.py: material_from_clause`）。
 

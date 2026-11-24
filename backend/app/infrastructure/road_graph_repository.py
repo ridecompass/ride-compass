@@ -100,7 +100,7 @@ _EXTRA_MATERIAL_ARRAY_COLUMNS: dict[str, str] = {
 }
 
 #: 列の並びは渡した3つ組の位置で固定する。**road_edgesへLEFT JOINする**——行が無い区間で
-#: 配列が短くなると、以降の列と静かにずれる。`em`は向きを解いた値で、材料の式は向きを知らずに済む。
+#: 配列が短くなると、以降の列と静かにずれる。
 _EDGE_MATERIAL_ARRAYS_FROM = f"""
 FROM unnest(CAST(:way_ids AS bigint[]), CAST(:segment_indexes AS int[]),
             CAST(:forwards AS boolean[]))
@@ -109,7 +109,7 @@ LEFT JOIN road_edges re
        ON re.osm_way_id = ids.osm_way_id AND re.segment_index = ids.segment_index
 LEFT JOIN LATERAL {ways_lookup_sql('ids.osm_way_id')} w ON true
 {material_from_clause([*material_value_sql().values(), *_EXTRA_MATERIAL_ARRAY_COLUMNS.values()],
-                      'ids.osm_way_id', 'ids.segment_index', forward='ids.forward')}
+                      'ids.osm_way_id', 'ids.segment_index')}
 LEFT JOIN LATERAL {nodes_lookup_sql('re.from_node_id')} nf ON true
 LEFT JOIN LATERAL {nodes_lookup_sql('re.to_node_id')} nt ON true
 """
@@ -336,9 +336,8 @@ class RoadGraphRepository:
         self, way_ids: list[int], segment_indexes: list[int]
     ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         """区間（位置で揃えた2本の列）ごとの断面の点の数（int32）と、点を区間の順に隙間なく並べた標高（m、float32、値の無い点は
-        NaN）と位置（区間の長さに対する割合、float32）。点は区間ごとに順方向に並ぶ。標高の行が無い区間は点を持たない。位置を
-        持たない行（作り直す前の行）と長さ0の区間は、点を等しい間隔に置く——作り直す前の行の点は等しい道のりに刻んだ点なので、
-        そのとおりに読む。区間ごとの小さな配列は作らない（区間が多いと、その入れ物だけで点の配列の何倍ものメモリになる）。"""
+        NaN）と位置（区間の長さに対する割合、float32）。点は区間ごとに順方向に並ぶ。標高の行が無い区間は点を持たない。長さ0の
+        区間は、点を等しい間隔に置く。区間ごとの小さな配列は作らない（区間が多いと、その入れ物だけで点の配列の何倍ものメモリになる）。"""
         counts: list[np.ndarray] = []
         elevations: list[np.ndarray] = []
         positions: list[np.ndarray] = []
