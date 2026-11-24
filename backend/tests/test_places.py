@@ -17,6 +17,7 @@ import duckdb
 import pytest
 
 from app.batch import derive_places
+from tests.source_ingest import stage_tuning
 from app.batch.common import write_fetch_record
 from app.batch.ingest import ingest_source
 from app.batch.source_adapters import overture_places
@@ -81,7 +82,7 @@ async def _places(conn, places: list[dict]) -> dict[str, str | None]:
     _write_parquet(overture_places.places_path(), places)
     write_fetch_record(overture_places.DATA_DIR, release="given")
     await ingest_source(conn, PROFILE, Source.OVERTURE_PLACE)
-    await derive_places.derive(conn)
+    await derive_places.derive(conn, **stage_tuning("places"))
     return {row["name"]: row["place_group"]
             for row in await conn.fetch("SELECT name, place_group FROM places")}
 

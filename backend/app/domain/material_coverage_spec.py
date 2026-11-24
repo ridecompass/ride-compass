@@ -74,9 +74,19 @@ class EdgeMaterialCoverageSpec:
 
 
 @dataclass(frozen=True)
+class NetworkMaterialCoverageSpec:
+    """道路網の配列の区間（区間ごとに一番若い行）を母集団とし、配列の値が無い（NaN）区間を欠損に数える材料。DBに列を持たず、
+    配列を作るときに求める材料（`domain/material_catalog.py: MaterialSpec.source`が`profile`）に使う。"""
+
+    source: str
+    missing_semantics: MissingSemantics
+    population: Population = "edge"
+
+
+@dataclass(frozen=True)
 class CoverageExcluded:
     """欠損率を測らない材料と、その理由。`domain/material_catalog.py: MaterialSpec.coverage`が
-    `WayMaterialCoverageSpec`/`EdgeMaterialCoverageSpec`とこの型のいずれかを必ず持つため、
+    欠損を数える型（`WayMaterialCoverageSpec`・`EdgeMaterialCoverageSpec`・`NetworkMaterialCoverageSpec`）とこの型のいずれかを必ず持つため、
     「どちらの一覧にも載っていない材料」は型として作れない。
 
     測らない材料も`missing_semantics`は持つ（欠損率を測るかと、値が無いときにどう扱うかは別の問い）。"""
@@ -85,4 +95,4 @@ class CoverageExcluded:
     missing_semantics: MissingSemantics
 
 
-MaterialCoverage = WayMaterialCoverageSpec | EdgeMaterialCoverageSpec | CoverageExcluded
+MaterialCoverage = WayMaterialCoverageSpec | EdgeMaterialCoverageSpec | NetworkMaterialCoverageSpec | CoverageExcluded

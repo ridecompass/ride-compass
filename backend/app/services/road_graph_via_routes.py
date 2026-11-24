@@ -82,12 +82,13 @@ async def select_via_nodes(
 
     tree_started = start_timer()
     # 往路レグを、最後の固定点→終点の見込み所要時間ぶんの時刻ビンで組み直す。
+    last_hours = straight_line_hours(start_point, destination, context.composer.speed_kmh, context.composer.detour_ratio)
+    # 最後の区間は往路のレグで探して帰りのレグで評価するので、交通規制は「最後の固定点〜終点の見込み」の時間帯で1回だけ判定し、
+    # 2つのレグに同じ判定を持たせる。
+    last_window = (fixed_hours, fixed_hours + last_hours)
     outbound = await asyncio.to_thread(
         context.composer.compose,
-        leg_name(leg_index), fixed_hours, +1,
-        duration_hours=straight_line_hours(
-            start_point, destination, context.composer.speed_kmh, context.composer.detour_ratio,
-        ),
+        leg_name(leg_index), fixed_hours, +1, duration_hours=last_hours, regulation_hours=last_window,
     )
     context.legs = [*context.legs[:leg_index], outbound]
     forward_tree = await asyncio.to_thread(
@@ -124,7 +125,7 @@ async def select_via_nodes(
     inbound = await asyncio.to_thread(
         context.composer.compose,
         "inbound", arrival_hours, -1,
-        passage_hours=reached_or_estimated_hours(forward_hours, fallback_hours),
+        passage_hours=reached_or_estimated_hours(forward_hours, fallback_hours), regulation_hours=last_window,
     )
     context.legs = [*context.legs[:leg_index + 1], inbound]
     backward_tree = await asyncio.to_thread(

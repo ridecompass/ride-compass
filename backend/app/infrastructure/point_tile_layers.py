@@ -24,7 +24,7 @@ from app.domain.map_display import POINT_CLUSTER_CELLS_PER_TILE, POINT_COUNT_PRO
 from app.domain.primary_attributes import PRIMARY_ATTRIBUTES, SUPPLY_PLACE_GROUPS, stop_poi_map_group_sql
 from app.domain.registry import PrimaryAttributeSpec, TileKind
 from app.domain.stop_place import StopPlaceGroup
-from app.domain.traffic import STOP_POI_KINDS, stop_cluster_sql, stop_kind_sql
+from app.domain.traffic import SIGNAL_KIND, STOP_POI_KINDS, stop_cluster_sql, stop_kind_sql
 from app.domain.tuning import STOP_CLUSTER_DISTANCE_ID
 from app.infrastructure.cache_identity import shape_digest
 from app.infrastructure.derived_data_meta import recorded_tuning_sql
@@ -108,14 +108,14 @@ def _clustered_mvt_sql(points: str, rows: tuple[str, ...], properties: tuple[str
 
 # 種別は`node_kinds.kind`（派生側の分類器が付けたもの）に信号の読み替えを済ませたもので、
 # 位置は`source_features`の点。コンビニだけは地点の表（`places`）の群「コンビニ」の行から足し、店の名前も添える。
-_POI_KIND_EXPR = stop_kind_sql("nm")
-_POI_GROUP_EXPR = stop_poi_map_group_sql("nm")
+_POI_KIND_EXPR = stop_kind_sql("nm", "sp.place_id")
+_POI_GROUP_EXPR = stop_poi_map_group_sql("nm", "sp.place_id")
 
 #: 地面の1mを覆う度。クラスタ化のためにタイルの外側も読む幅は、まとめる距離からSQLの中で作る。
 _DEGREES_PER_M = degrees_covering_m(1.0)
 
-# 停止要因POI・補給POIを1タイルへ焼き込む。停止要因は派生を作り直したときのまとめる距離で`domain/traffic.py: stop_cluster_sql`で
-# まとめてから、ほかの点と同じく升目で束ねる。タイル境界で塊が切れると同じ交差点が隣り合うタイルで別々の点になるので、境目の外へ
+# 停止要因POI・補給POIを1タイルへ焼き込む。信号は交差点の段の信号の交差点（`signal_places`）に1点で出し、ほかの停止要因は
+# 派生を作り直したときのまとめる距離で`domain/traffic.py: stop_cluster_sql`でまとめてから、ほかの点と同じく升目で束ねる。タイル境界で塊が切れると同じ交差点が隣り合うタイルで別々の点になるので、境目の外へ
 # まとめる距離ずつ2つ先まで連なる点を読む（式の間隔は地面のmを下回らないので、地面のmで覆えば足りる）。
 _POI_POINTS_SQL = f"""
     SELECT grouped.kind, grouped.map_group, grouped.name, grouped.geom
@@ -128,15 +128,18 @@ _POI_POINTS_SQL = f"""
         FROM (
             SELECT {_POI_KIND_EXPR} AS kind,
                    {_POI_GROUP_EXPR} AS map_group,
-                   p.geom AS geom,
+                   CASE WHEN {_POI_KIND_EXPR} = '{SIGNAL_KIND}' THEN pl.geom ELSE p.geom END AS geom,
                    -- 停止要因はまとめてから出す（同じ交差点が複数の点に
                    -- ならないように）。補給POIは別々の実体なのでまとめない。
-                   CASE WHEN nm.kind = ANY(:stop_kinds) THEN
+                   CASE WHEN {_POI_KIND_EXPR} = '{SIGNAL_KIND}' THEN 'p' || sp.place_id
+                        WHEN nm.kind = ANY(:stop_kinds) THEN
                        'c' || {stop_cluster_sql("p.geom", "(SELECT eps_m FROM cluster)", _POI_GROUP_EXPR)}
                    ELSE 'n' || p.osm_node_id END AS cluster_key,
                    NULL::text AS name
             FROM {NODES_SOURCE_SQL} p
             JOIN node_kinds nm ON nm.osm_node_id = p.osm_node_id
+            LEFT JOIN signal_place_nodes sp ON sp.osm_node_id = p.osm_node_id
+            LEFT JOIN signal_places pl ON pl.place_id = sp.place_id
             WHERE ST_Intersects(
                   p.geom,
                   ST_Expand(
@@ -173,7 +176,7 @@ _POI_TILE_MVT_SQL = text(
 )
 
 # 事故。表示に使う値（死亡事故か・自転車が絡むか・発生年）は生データの列から都度導く。判定の
-# 規則は`domain/accident.py`が持ち、集計（`derive_counts.py`）と同じものを使う。束ねた代表点は、一番新しい事故の発生年を持つ。
+# 規則は`domain/accident.py`が持つ。束ねた代表点は、一番新しい事故の発生年を持つ。
 _ACCIDENT_POINTS_SQL = f"""
     SELECT a.geom, NULL::text AS name, {BICYCLE_SQL} AS involves_bicycle, {FATAL_SQL} AS fatal, a.occurred_year
     FROM {accidents_within_sql("ST_MakeEnvelope(:xmin, :ymin, :xmax, :ymax, 4326)")} a

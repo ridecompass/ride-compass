@@ -1,17 +1,28 @@
 import asyncio
 import logging
-from collections.abc import Awaitable, Callable, Sequence
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import datetime
 from functools import partial
 
+import shapely
+
 from app.domain.cost_preference import CostPreference
 from app.domain.lens_values import RoadInspection
-from app.domain.region import ROADS_AT_LIMIT, BoundingBox, RoadAt, tile_bounds_lonlat
+from app.domain.region import ROAD_TILE_MIN_ZOOM, ROADS_AT_LIMIT, BoundingBox, RoadAt, tile_bounds_lonlat
 from app.domain.registry import TileKind
 from app.domain.feature_materials import FeatureMaterials
-from app.domain.road_classes import current_road_classes
-from app.domain.road_features import feature_materials, feature_rows, road_layer_values
+from app.domain.road_classes import RoadClassDefinitions, current_road_classes
+from app.domain.road_features import (
+    MapFeatures,
+    feature_lines,
+    feature_materials,
+    feature_rows,
+    map_features_in,
+    map_features_near,
+    road_layer_values,
+)
+from app.domain.timed_regulations import regulated_rows_within, regulation_variant
 from app.domain.tuning import REBUILT_CLIENT_TUNING_IDS
 from app.infrastructure.debug_log import log_external_call
 from app.infrastructure.point_tile_layers import PointTileLayer
@@ -21,6 +32,7 @@ from app.infrastructure.vector_tile import ROAD_FEATURE_PROPERTIES, ROAD_SURFACE
 from app.infrastructure.media_types import MVT_CONTENT_TYPE
 from app.infrastructure.region_tile_cache import MVT_TILE_GENERATIONS, serve_region_tile
 from app.services.lens_service import LensService
+from app.services.time_frame_service import TimeFrameService
 
 logger = logging.getLogger("ridecompass.region_service")
 
@@ -51,6 +63,7 @@ class RegionService:
         empty_tile: bytes,
         external_call_name: str,
         z: int, x: int, y: int,
+        variant: str = "",
     ) -> bytes:
         async def fetch_tile(fields: dict) -> bytes | None:
             """PostGIS側（ST_AsMVT）でタイル1枚分のMVTを丸ごと生成する。
@@ -77,27 +90,33 @@ class RegionService:
             content_type=MVT_CONTENT_TYPE,
             external_call_name=external_call_name,
             fetch_tile=fetch_tile,
+            variant=variant,
         )
 
-    async def get_road_surface_tile(self, z: int, x: int, y: int) -> bytes:
-        """地図の道の線のタイル。フィーチャーごとの地図の線の層の値（`road_layer_values`）を焼く。"""
+    async def get_road_surface_tile(self, z: int, x: int, y: int, frame: str | None, time_frames: TimeFrameService) -> bytes:
+        """地図の道の線のタイル。フィーチャーごとの地図の線の層の値（`road_layer_values`）を焼く。路面タイルのコマの印`frame`を
+        渡すと、道ごとの鍵を焼くズーム（`ROAD_TILE_MIN_ZOOM`以上）では、規制の当たる道の区分をそのコマの始まりの時刻に効く規制で
+        焼き、持ちはタイルの規制の効き方（`domain/timed_regulations.py: regulation_variant`）で分ける。引いたズームは時刻で変わらない
+        規制だけで焼き、印を確かめない（地図は時刻で変わる規制の層を、そのズームでは描かない）。今の一覧に無い印は投げる。"""
         definitions = current_road_classes()
+        timed_at = await time_frames.road_surface_at(frame) if z >= ROAD_TILE_MIN_ZOOM else None
+        variant = ""
+        if timed_at is not None:
+            variant = await asyncio.to_thread(_regulation_variant, tile_bounds_lonlat(z, x, y), timed_at)
+            if not variant:
+                timed_at = None
 
         async def read_tile(z: int, x: int, y: int, bbox: BoundingBox) -> bytes | None:
-            features = await self._repository.get_tile_features(z, x, y, bbox)
-            # 道路網を読むのと、引いたズームのタイルの数万本の道の値を並べるのは、イベントループの外で行う。
-            layer_values = await asyncio.to_thread(
-                lambda: road_layer_values(road_network_store.current(), [row.feature_key for row in features],
-                                          [row.osm_way_id for row in features], [row.segment_index for row in features],
-                                          definitions))
-            return await self._repository.get_road_surface_tile_mvt(z, x, y, bbox, layer_values)
+            # 道路網を読むのと、引いたズームのタイルの数万本の道の値と形を並べるのは、イベントループの外で行う。
+            keys, shapes, layer_values = await asyncio.to_thread(_road_surface_features, z, bbox, definitions, timed_at)
+            return await self._repository.get_road_surface_tile_mvt(z, x, y, bbox, keys, shapes, layer_values)
 
         return await self._get_tile(
             read_tile=read_tile,
             kind="road_surface",
             empty_tile=encode_empty_tile(ROAD_SURFACE_LAYER_NAME),
             external_call_name="region:road-surface-tile",
-            z=z, x=x, y=y,
+            z=z, x=x, y=y, variant=variant,
         )
 
     async def get_point_tile(self, layer: PointTileLayer, z: int, x: int, y: int) -> bytes:
@@ -131,17 +150,24 @@ class RegionService:
         """押した所に近い道（近い順、最大`ROADS_AT_LIMIT`本）。道のタイルを読まずに道を押せるようにする。プロパティの材料は、
         路面タイルが塗るのと同じ道路網の配列のフィーチャーの値。"""
         with log_external_call("region:roads-at", z=z) as fields:
-            found = await self._repository.roads_at(lon, lat, z, radius_m, ROADS_AT_LIMIT)
+            found, materials, shapes = await asyncio.to_thread(_roads_at, lon, lat, z, radius_m)
+            names = await self._repository.get_way_names(sorted(set(found.way_ids))) if len(found) else {}
             fields["found"] = len(found)
-        materials = await asyncio.to_thread(_roads_at_materials, found)
-        return [RoadAt(properties={**road.properties, **materials.tile_properties(row)}, shape=road.shape)
-                for row, (road, _) in enumerate(found)]
+        roads = []
+        for row, (key, way_id) in enumerate(zip(found.keys, found.way_ids, strict=True)):
+            name, ref = names.get(way_id, (None, None))
+            # 道の窓が、小窓に出た値と同じ行を曖昧さ無く引き直すための識別子（道の番号）も載せる。
+            properties = {ROAD_FEATURE_PROPERTIES["feature_key"]: key, ROAD_FEATURE_PROPERTIES["way_id"]: way_id,
+                          **{ROAD_FEATURE_PROPERTIES[column]: value for column, value in (("name", name), ("ref", ref))
+                             if value is not None}}
+            roads.append(RoadAt(properties={**properties, **materials.tile_properties(row)}, shape=shapes[row]))
+        return roads
 
     async def get_accident_years(self) -> list[int]:
         """事故データの収録年。地図の説明文へ配る。
 
         表示側が年を文字列で持つと、取り込み直したときに黙って食い違う。年の正本は
-        今の事故の数を数えた取込の宣言（`source_runs.profile`）だけにする。
+        地図の点が読む取込の素性（`source_runs.origin`）だけにする。
         """
         with log_external_call("region:accident-years-covered") as fields:
             years = await self._repository.get_accident_years()
@@ -167,14 +193,32 @@ class RegionService:
             return area
 
 
-def _roads_at_materials(found: Sequence[tuple[RoadAt, int | None]]) -> FeatureMaterials:
-    """押した所に近い道（`RoadGraphRepository.roads_at`の行）の、路面タイルが塗るのと同じフィーチャーの材料。道路網を読むので、
-    イベントループの外で呼ぶ。"""
+def _regulation_variant(bounds: BoundingBox, at: datetime) -> str:
+    """範囲`bounds`の路面タイルの、時刻`at`の規制の効き方の印。道路網を読むので、イベントループの外で呼ぶ。"""
     network = road_network_store.current()
-    edge_rows, way_rows = feature_rows(network, (int(road.properties[ROAD_FEATURE_PROPERTIES["way_id"]])
-                                                 for road, _ in found), (segment for _, segment in found))
-    return feature_materials(network, tuple(str(road.properties[ROAD_FEATURE_PROPERTIES["feature_key"]])
-                                            for road, _ in found), edge_rows, way_rows)
+    return regulation_variant(network, regulated_rows_within(
+        network, bounds.min_longitude, bounds.min_latitude, bounds.max_longitude, bounds.max_latitude), at)
+
+
+def _road_surface_features(z: int, bbox: BoundingBox, definitions: RoadClassDefinitions,
+                           at: datetime | None) -> tuple[tuple[str, ...], list[bytes], dict[str, dict[str, str]]]:
+    """路面タイルの、ズーム`z`・範囲`bbox`のフィーチャーの鍵と線の形（WKB）と地図の線の層の値（`road_layer_values`）。道路網を
+    読むので、イベントループの外で呼ぶ。"""
+    network = road_network_store.current()
+    features = map_features_in(network, z, bbox.min_longitude, bbox.min_latitude, bbox.max_longitude, bbox.max_latitude)
+    layer_values = road_layer_values(network, features.keys, features.way_ids, features.segment_indexes, definitions, at)
+    return features.keys, shapely.to_wkb(feature_lines(network, features)).tolist(), layer_values
+
+
+def _roads_at(lon: float, lat: float, z: int, radius_m: float
+              ) -> tuple[MapFeatures, FeatureMaterials, list[list[tuple[float, float]]]]:
+    """押した所に近い道のフィーチャー（`map_features_near`）と、路面タイルが塗るのと同じ材料と、タイルで切らない線の全体（経度,
+    緯度）。道路網を読むので、イベントループの外で呼ぶ。"""
+    network = road_network_store.current()
+    found = map_features_near(network, z, lon, lat, radius_m, ROADS_AT_LIMIT)
+    edge_rows, way_rows = feature_rows(network, found.way_ids, found.segment_indexes)
+    shapes = [[(float(x), float(y)) for x, y in shapely.get_coordinates(line)] for line in feature_lines(network, found)]
+    return found, feature_materials(network, found.keys, edge_rows, way_rows), shapes
 
 
 class RoadInspectorService:
@@ -186,7 +230,7 @@ class RoadInspectorService:
         self._lens = lens
 
     async def inspect(
-        self, osm_way_id: int, feature_key: str, tile: tuple[int, int, int], bearing_deg: float, at: datetime | None,
+        self, osm_way_id: int, feature_key: str, tile: tuple[int, int, int], bearing_deg: float, frame: str | None,
         speed_kmh: float, cost_preference: CostPreference,
     ) -> RoadInspection | None:
         """押した道（osm_way_id）か、タイル`tile`（押したフィーチャー`feature_key`を焼いた`(z, x, y)`）にそのフィーチャーが
@@ -194,7 +238,7 @@ class RoadInspectorService:
         road = await self._region_service.inspected_road(osm_way_id)
         if road is None:
             return None
-        lens = await self._lens.inspect(feature_key, *tile, bearing_deg, at, speed_kmh, cost_preference)
+        lens = await self._lens.inspect(feature_key, *tile, bearing_deg, frame, speed_kmh, cost_preference)
         if lens is None:
             return None
         return RoadInspection(highway=road.highway, tags=road.tags, lens=lens)

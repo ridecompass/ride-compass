@@ -27,7 +27,7 @@ from numba import njit
 from app.domain.attributes import CategoricalColumn
 from app.domain.elevation_profile import ProfileSpans
 from app.domain.road_classes import RoadClassDefinitions, class_material_id
-from app.domain.search_graph import kernel_array
+from app.domain.search_graph import kernel_array, range_positions
 from app.domain.traffic import stop_count_material_ids
 from app.domain.tuning import BASE_CRR_ID, RIDER_HEIGHT_ID, Tuning, require_tuning
 from app.domain.wind import drag_increases_m2_s2, kmh_to_ms
@@ -382,7 +382,7 @@ class SegmentSpeedModel:
         first = np.searchsorted(spans.row, rows, side="left")
         counts = np.searchsorted(spans.row, rows, side="right") - first
         position = np.repeat(np.arange(len(rows), dtype=np.int32), counts)
-        taken = np.repeat(first - np.cumsum(counts) + counts, counts) + np.arange(int(counts.sum()))
+        taken = range_positions(first, counts)
         return _Spans(position, spans.length[taken], spans.grade[taken], spans.constant_force[taken],
                       spans.static_extra[taken], spans.crr[rows], spans.kickoffs[rows], spans.pressure_kpa[rows], len(rows))
 

@@ -17,10 +17,12 @@ from app.domain.cost_preference import multiplier_label
 from app.domain.hard_filters import HARD_FILTER_PROPERTY, HARD_FILTERS
 from app.domain.road_avoidance import AVOIDANCE_LEVEL_NAMES, AVOIDANCE_LEVELS, AvoidanceLevel, avoidance_rows, level_multipliers
 from app.domain.tuning import Tuning
+from app.domain.region import ROAD_SURFACE_TILE_MIN_ZOOM, ROAD_TILE_MIN_ZOOM
 from app.domain.road_classes import (
     RoadClassDefinitions,
     by_sort_order,
     published_map_layers,
+    reads_timed_facts,
 )
 from app.domain.strict_model import StrictModel
 
@@ -46,6 +48,9 @@ class RoadMapLayerView(StrictModel):
     hide_missing_rows: bool
     #: 区分の外の道を「データなし」（`domain/road_classes.py: NO_DATA_VALUE`）と「該当なし」に分けるか。
     has_no_data: bool
+    #: 描き始めるズーム。時刻で変わる事実を読む分け方は、道路タイルが道ごとに時刻の値を焼くズーム（`domain/region.py:
+    #: ROAD_TILE_MIN_ZOOM`）から描く——それより引いたズームのタイルは時刻で変わらない値だけで焼くので、描くと寄せたときと色が違う。
+    min_zoom: int
     classes: list[RoadClassView]
 
 
@@ -119,6 +124,7 @@ def road_class_catalog(definitions: RoadClassDefinitions, tuning: Tuning) -> Roa
                 panel_hint=layer.panel_hint,
                 hide_missing_rows=layer.hides_unclassified,
                 has_no_data=layer.no_data_fact_key is not None,
+                min_zoom=ROAD_TILE_MIN_ZOOM if reads_timed_facts(classification) else ROAD_SURFACE_TILE_MIN_ZOOM,
                 classes=[
                     RoadClassView(
                         key=class_key,

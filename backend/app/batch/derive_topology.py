@@ -91,8 +91,7 @@ built AS (
 SELECT b.way_id AS osm_way_id, b.segment_index::smallint AS segment_index,
        a.node_id AS from_node_id, z.node_id AS to_node_id, b.geom,
        ST_Length(b.geom::geography)::real AS distance_m,
-       ({bearing_sql("ST_StartPoint(b.geom)", "ST_EndPoint(b.geom)")})::real AS bearing_deg,
-       ({bearing_sql("ST_EndPoint(b.geom)", "ST_StartPoint(b.geom)")})::real AS reverse_bearing_deg
+       ({bearing_sql("ST_StartPoint(b.geom)", "ST_EndPoint(b.geom)")})::real AS bearing_deg
 FROM built b
 JOIN n a ON a.way_id = b.way_id AND a.ord = b.start_ord
 JOIN n z ON z.way_id = b.way_id AND z.ord = b.end_ord
@@ -126,9 +125,9 @@ SELECT DISTINCT osm_way_id FROM _seg
 
 _INSERT_EDGES = """
 INSERT INTO road_edges (osm_way_id, segment_index, from_node_id, to_node_id,
-                        geom, distance_m, bearing_deg, reverse_bearing_deg)
+                        geom, distance_m, bearing_deg)
 SELECT osm_way_id, segment_index, from_node_id, to_node_id,
-       geom, distance_m, bearing_deg, reverse_bearing_deg
+       geom, distance_m, bearing_deg
 FROM _seg
 """
 

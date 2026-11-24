@@ -129,6 +129,21 @@ describe("負担を取れなかったとき", () => {
 
     expect(await screen.findByRole("group", { name: "負担の内訳" })).toHaveTextContent("+12秒");
   });
+
+  it("出発時刻の風の予報が無ければ、今の風で求めずに取れなかったと出す（地図のレンズと同じ）", async () => {
+    const sent = onBackend("POST", "/api/region/road-inspector", () => Response.json(inspectorResult()));
+    render(
+      <RoadInspectorPopup
+        properties={SURFACED_ROAD}
+        track={null}
+        costPreference={RIDE.costPreference}
+        conditions={{ ...RIDE.conditions, lensFrame: null }}
+      />,
+    );
+
+    expect(await screen.findByText(/負担を取得できませんでした/)).toBeInTheDocument();
+    expect(sent).toEqual([]);
+  });
 });
 
 describe("道の識別子", () => {

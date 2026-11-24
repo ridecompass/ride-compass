@@ -42,6 +42,7 @@ from tests.source_ingest import (
     ingest_records,
     overture_place_record,
     point_record,
+    stage_tuning,
 )
 
 pytestmark = pytest.mark.asyncio(loop_scope="module")
@@ -96,7 +97,7 @@ async def _ingest_places(places: list[object]) -> None:
     """Overture の地点を取り込み、地点の表を作る派生の段を流す。"""
     await ingest_records("overture_place", places)
     async with raw_connection() as conn:
-        await derive_places.derive(conn)
+        await derive_places.derive(conn, **stage_tuning("places"))
 
 
 def _kinds(tile: bytes | None) -> Counter[str]:

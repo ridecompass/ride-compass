@@ -35,12 +35,12 @@ describe("負担の利用者の値", () => {
 describe("負担の走行の条件", () => {
   const CONDITIONS = RIDE.conditions;
 
-  it("開いている間に出発時刻が進んでも、開いたときの条件で取った負担を出し続ける", async () => {
+  it("開いている間に出発時刻のコマが進んでも、開いたときの条件で取った負担を出し続ける", async () => {
     serveInspector(inspectorResult());
     const { rerender } = render(<RoadInspectorPopup {...props} conditions={CONDITIONS} />);
     await screen.findByText(SHOWN);
 
-    rerender(<RoadInspectorPopup {...props} conditions={{ ...CONDITIONS, at: new Date("2026-09-24T00:05:00Z") }} />);
+    rerender(<RoadInspectorPopup {...props} conditions={{ ...CONDITIONS, lensFrame: "v1-2026092410" }} />);
 
     expect(screen.getByText(SHOWN)).toBeInTheDocument();
   });

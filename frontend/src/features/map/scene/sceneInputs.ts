@@ -78,6 +78,8 @@ export interface SceneLook {
   readonly wayMaterials: ReadonlyMap<string, { materials: WayMaterials }>;
   /** 道の値の式が読む走る条件。 */
   readonly wayConditions: WayConditions;
+  /** 出発の時刻を含む路面タイルのコマの印（`useTimeFrames`）。道の線の区分のうち時刻で変わる交通規制の区分は、このコマの値で塗る。 */
+  readonly roadSurfaceFrame: string | null | undefined;
   readonly hiddenLegendKeys: HiddenLegendKeys;
   /** 地図の地の明るさ。 */
   readonly mapTheme: MapTheme;
@@ -206,7 +208,7 @@ function pointTileUrls(): Record<PointTileLayer, readonly string[]> {
 export function sceneInputsFrom(props: SceneWiringProps): SceneInputs {
   const pointZoom = { minZoom: ROAD_TILE_MIN_ZOOM, maxZoom: ROAD_TILE_MAX_ZOOM };
   const roadTiles = {
-    urls: [roadSurfaceTileUrl()],
+    urls: [roadSurfaceTileUrl(props.look.roadSurfaceFrame)],
     sourceLayer: ROAD_TILE_SOURCE_LAYER,
     minZoom: ROAD_SURFACE_TILE_MIN_ZOOM,
     maxZoom: ROAD_TILE_MAX_ZOOM,

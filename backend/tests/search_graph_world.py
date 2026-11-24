@@ -15,7 +15,6 @@ import numpy as np
 from app.domain.road_network_build import filled_bearings, node_max_ranks
 from app.domain import search_graph, stop_events, turn_structure
 from app.domain.traffic import NO_EVENT, StopEvent
-from tests.tuning_fixture import TUNING
 
 
 class EdgeSpec(NamedTuple):
@@ -141,11 +140,11 @@ TURN_SPEC = turn_structure.TurnCostSpec(
 )
 
 
-def build_all(graph, spec=FLAT_SPEC, edge_rank=None, node_has_signal=None, node_rank=None):
+def build_all(graph, spec=FLAT_SPEC, edge_rank=None, node_signal_place=None, node_rank=None):
     """lazy graph・静的派生物・ターン展開構造を一度に組む。
 
     ターンの費用に要る列は`None`を渡せない（渡し忘れが「上位の道の横断に待ちが付かない」
-    構造を黙って作るため）。省略したときは、待ちが付かない値——階級0・信号なし——で埋める。
+    構造を黙って作るため）。省略したときは、待ちが付かない値——階級0・どの頂点も信号の交差点に入らない——で埋める。
     集まる道の本数は、渡した区間から数える。頂点の階級（省略したとき）と、向きの無い区間の端のそばの向きは、渡した区間から
     道路網の配列と同じ決まりで求める（`domain/road_network_build.py: node_max_ranks`・`filled_bearings`）。
     """
@@ -160,10 +159,9 @@ def build_all(graph, spec=FLAT_SPEC, edge_rank=None, node_has_signal=None, node_
                             lazy.graph.edge_from, lazy.graph.edge_to)
             for bearing in (graph.start_bearing_deg, graph.end_bearing_deg)), edge_rank,
         spec,
-        np.zeros(node_count, dtype=bool) if node_has_signal is None else node_has_signal,
+        np.full(node_count, -1, dtype=np.int32) if node_signal_place is None else node_signal_place,
         node_max_ranks(node_count, lazy.graph.edge_from, lazy.graph.edge_to, edge_rank) if node_rank is None else node_rank,
         branch_counts(graph.edge_from, graph.edge_to, node_count),
-        np.asarray(graph.distance_m, dtype=np.float64)[lazy.graph.edge_rows], TUNING["stop.cluster_distance_m"],
     )
     return lazy, statics, structure
 

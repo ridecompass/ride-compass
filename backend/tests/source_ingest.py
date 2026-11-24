@@ -21,7 +21,7 @@ import shapely
 from PIL import Image
 from shapely.geometry import LineString, Point, Polygon
 
-from app.batch import derive_counts, derive_elevation, derive_nodes
+from app.batch import derive_cli, derive_counts, derive_elevation, derive_nodes
 from app.batch.ingest import ADAPTERS, AdapterInputs, RegisteredAdapter, SourceRecord, ingest_source
 from app.batch.source_adapters.gsi_dem_tile import NODATA, SCALE, pack_elevations
 from app.batch.source_adapters.raster_wkb import tile_bbox_wkb, tile_raster_wkb
@@ -30,9 +30,6 @@ from app.domain.address_area import standardize_address
 from app.batch.source_profile import NoFields, SourceProfile, SourceSpec, Target, load_source_profile
 from app.domain.region import BoundingBox, tile_bounds_lonlat, tiles_covering_bbox
 from app.domain.tuning import (
-    ACCIDENT_MATCH_DISTANCE_ID,
-    ELEVATION_PROFILE_STEP_ID,
-    ELEVATION_PROFILE_TOLERANCE_ID,
     STOP_CLUSTER_DISTANCE_ID,
 )
 from app.infrastructure.source_models import WAY_KIND_TAG
@@ -215,24 +212,26 @@ def dem_tile_records(product: str, zoom: int, bbox: BoundingBox,
 
 
 async def derive_nodes_at_default_radius(conn: asyncpg.Connection) -> None:
-    """ノードの派生の段を、信号を区間へ寄せる半径をテストの較正値にして流す。"""
-    await derive_nodes.derive(conn, TUNING["signal.match_radius_m"])
+    """ノードの派生の段を、信号の交差点へ点を入れる半径と信号の点をまとめる距離をテストの較正値にして流す。"""
+    await derive_nodes.derive(conn, signal_radius_m=TUNING["signal.match_radius_m"],
+                              cluster_distance_m=TUNING[STOP_CLUSTER_DISTANCE_ID])
+
+
+def stage_tuning(name: str, **overrides: float) -> dict[str, float]:
+    """派生の段`name`（`batch/derive_cli.py: STAGES`）の`derive`へ渡す較正値の引数を、テストの較正値で（`overrides`はその値）。"""
+    [stage] = [stage for stage in derive_cli.STAGES if stage.name == name]
+    return {argument: TUNING[param] for argument, param in stage.tuning.items()} | overrides
 
 
 async def derive_elevation_at_default_step(conn: asyncpg.Connection, **tuning: float) -> None:
-    """標高の派生の段を、拾う間隔と揺れの閾値をテストの較正値（`tuning`で渡したものはその値）にして流す。"""
-    await derive_elevation.derive(
-        conn,
-        **{"profile_step_m": TUNING[ELEVATION_PROFILE_STEP_ID],
-           "profile_tolerance_m": TUNING[ELEVATION_PROFILE_TOLERANCE_ID], **tuning})
+    """標高の派生の段を、テストの較正値（`tuning`で渡したものはその値）で流す。"""
+    await derive_elevation.derive(conn, **stage_tuning("elevation", **tuning))
 
 
 async def derive_counts_at_default_tuning(conn: asyncpg.Connection, **tuning: float) -> None:
     """数の派生の段を、テストの較正値（`tuning`で渡したものはその値）で流す。"""
     await derive_counts.derive(conn, **{
         "cluster_distance_m": TUNING[STOP_CLUSTER_DISTANCE_ID],
-        "accident_fatal_weight": TUNING["accident.fatal_weight"],
-        "accident_match_distance_m": TUNING[ACCIDENT_MATCH_DISTANCE_ID],
         **tuning,
     })
 

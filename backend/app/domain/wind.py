@@ -1,6 +1,6 @@
 import math
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from functools import cached_property
 
 import numpy as np
@@ -9,6 +9,8 @@ from numba import njit
 from app.domain.geo import haversine_distance_km, haversine_distance_km_array
 from app.domain.msm import MsmBlock
 from app.domain.route import Coordinates
+from app.domain.time_frames import TimeFrame, frames_from
+from app.domain.time_zone import JST
 from app.domain.way_value_formula import (
     FormulaNode,
     Unary,
@@ -176,3 +178,14 @@ def reached_or_estimated_hours(reached_hours: np.ndarray, estimated_hours: np.nd
     """区間ごとの通過時刻: 前向きの探索が届いた区間は実際の到達時刻`reached_hours`、届かない（有限でない）
     区間だけ直線距離からの推定`estimated_hours`。"""
     return np.where(np.isfinite(reached_hours), reached_hours, estimated_hours)
+
+
+def wind_frames(times: list[datetime], version: str, start: datetime, end: datetime) -> list[TimeFrame]:
+    """予報の時刻`times`（系列の時刻の形、1時間刻み）の、`start`〜`end`の風のコマ。時刻はそれに最も近い予報のコマの風を引くので
+    （`WindForecastSeries.time_index`。ちょうど中間は後のコマ）、正時の前後30分を1つのコマにし、印は予報の版`version`と正時から作る。
+    予報の時刻の外（端へ寄せる時刻）はコマを持たない。"""
+    half = timedelta(minutes=30)
+    hours = [moment for hour in times if start - half <= (moment := hour.replace(tzinfo=JST)) < end + half]
+    instants = [max(hour - half, start) for hour in hours]
+    frames = frames_from(instants, [f"{version}-{hour:%Y%m%d%H}" for hour in hours], min(hours[-1] + half, end)) if hours else []
+    return [frame for frame in frames if frame.start < end]

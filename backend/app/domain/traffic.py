@@ -108,7 +108,7 @@ _TRAFFIC_CALMING_VALUES: frozenset[str] = frozenset(
 STOP_POI_KINDS: frozenset[str] = frozenset(get_args(_StopPoiKind))
 
 
-# 停止要因の集計キー（`edge_counts`・`way_counts`の件数列`poi_<キー>`）と、
+# 停止要因の集計キー（`edge_counts`の件数列`poi_<キー>`）と、
 # その日本語ラベル。止まる出来事の宣言（`domain/stop_events.py: STOP_EVENT_KINDS`）の停止要因から導き、材料
 # （`domain/material_catalog.py`の`poi_*_per_km`）はこの一覧から生成する。
 #
@@ -189,7 +189,7 @@ def stop_event(group: EventGroup, name: str, tuning: Tuning) -> StopEvent:
 
 
 def poi_count_column(kind: str) -> str:
-    """停止要因の種別`kind`の件数を持つ列（`edge_counts`・`way_counts`）の名前。"""
+    """停止要因の種別`kind`の件数を持つ列（`edge_counts`）の名前。"""
     return f"poi_{kind}"
 
 
@@ -378,25 +378,26 @@ def travel_allowed(direction: str) -> tuple[bool, bool]:
     return direction != DIRECTION_BACKWARD, direction != _DIRECTION_FORWARD
 
 
-#: 信号の読み替え。近くに信号がある（`has_traffic_signals`）これらの種別の点は、利用者から
+#: 信号の読み替え。信号の交差点に入る（`signal_place_nodes`）これらの種別の点は、利用者から
 #: 見れば信号である（信号は流入路ごと・横断歩道位置ごとの複数ノードで描かれる）。
 _SIGNAL_READ_KINDS: tuple[_StopPoiKind, ...] = ("traffic_signals", "crossing")
-_SIGNAL_KIND: _StopPoiKind = "traffic_signals"
+SIGNAL_KIND: _StopPoiKind = "traffic_signals"
 
-def stop_kind_sql(alias: str) -> str:
-    """`node_kinds`の別名`alias`の行の種別を、信号の読み替えを済ませて返すSQL式。
+def stop_kind_sql(alias: str, signal_place: str) -> str:
+    """`node_kinds`の別名`alias`の行の種別を、信号の読み替えを済ませて返すSQL式。`signal_place`は、その点が入る信号の
+    交差点の番号の式（`signal_place_nodes.place_id`。入らなければNULL）。
 
     地図へ出す種別も数える種別もこの式から導く——別々に書くと、見えている点の数と
     評価の停止回数が合わなくなる。
     """
     read = ", ".join(_quote(kind) for kind in _SIGNAL_READ_KINDS)
-    return (f"(CASE WHEN {alias}.has_traffic_signals AND {alias}.kind IN ({read})"
-            f" THEN {_quote(_SIGNAL_KIND)} ELSE {alias}.kind END)")
+    return (f"(CASE WHEN {signal_place} IS NOT NULL AND {alias}.kind IN ({read})"
+            f" THEN {_quote(SIGNAL_KIND)} ELSE {alias}.kind END)")
 
 
 def kinds_shown_as(kind: str) -> tuple[str, ...]:
     """地図へ`kind`として出る取込時の種別（`stop_kind_sql`の信号の読み替えで`kind`になるものを含む）。"""
-    return _SIGNAL_READ_KINDS if kind == _SIGNAL_KIND else (kind,)
+    return _SIGNAL_READ_KINDS if kind == SIGNAL_KIND else (kind,)
 
 
 def kind_map_sql[K: str](kind_sql: str, mapping: Mapping[K, str], *, otherwise: str = "NULL") -> str:
@@ -406,12 +407,16 @@ def kind_map_sql[K: str](kind_sql: str, mapping: Mapping[K, str], *, otherwise: 
     return f"(CASE {kind_sql} {whens} ELSE {otherwise} END)"
 
 
-def count_kind_sql(alias: str) -> str:
-    """`node_kinds`の別名`alias`の行を、数える種別（`POI_COUNT_KINDS`のキー）へ畳むSQL式。
+#: 信号の数える種別。この種別の点は、信号の交差点ごとに1つの止まる場所に数える。
+SIGNAL_COUNT_KIND = COUNT_KIND_OF[SIGNAL_KIND]
+
+
+def count_kind_sql(alias: str, signal_place: str) -> str:
+    """`node_kinds`の別名`alias`の行を、数える種別（`POI_COUNT_KINDS`のキー）へ畳むSQL式。`signal_place`は`stop_kind_sql`と同じ。
 
     停止要因でない行（補給休憩・ただの交差点）はNULL。
     """
-    return kind_map_sql(stop_kind_sql(alias), COUNT_KIND_OF)
+    return kind_map_sql(stop_kind_sql(alias, signal_place), COUNT_KIND_OF)
 
 
 def _values_clause(rules: tuple[tuple[str, str, str, int], ...]) -> str:

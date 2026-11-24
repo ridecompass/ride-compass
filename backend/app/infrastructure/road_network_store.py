@@ -36,13 +36,15 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.domain.attributes import EDGE_ROW_ARRAY_FIELDS, CategoricalColumn, EdgeMaterialArrays
 import app.domain.elevation_profile
 import app.domain.road_network_build
+import app.domain.traffic_regulation
 from app.domain.geo import bearings_between
-from app.domain.material_catalog import material_array_columns
 from app.domain.road_network import RoadNetwork, positions_in
-from app.domain.road_network_build import EdgelessWays, build_road_network
+from app.domain.material_catalog import MATERIAL_CATALOG, PEDESTRIAN_ROAD, material_array_columns
+from app.domain.road_network_build import build_road_network, per_km, regulation_arrays
+from app.domain.traffic_regulation import PEDESTRIAN_ROAD_VOCAB
+from app.domain.tuning import MAX_PLAUSIBLE_GRADE_ID, STEEPEST_MIN_INTERVAL_ID
 from app.domain.search_graph import run_starts
 from app.domain.traffic import HIGHWAY_RANK, highway_rank, travel_allowed
-from app.domain.tuning import STOP_CLUSTER_DISTANCE_ID
 from app.infrastructure.cache_identity import shape_digest
 from app.infrastructure.container_memory import memory_note
 from app.infrastructure.data_paths import DATA_DIR
@@ -56,12 +58,14 @@ ROOT = DATA_DIR / "road_network"
 
 #: 署名には、配列を組むときに通るコードの全文を入れる——組み方を直したのに署名が変わらないと、直す前のコードで組んだ置き場を
 #: 読み続ける。このファイル（つながり・形・階級・向きを組む所と、材料と断面を詰める所）・事実から値を導く2つのモジュール・
-#: それらが呼ぶ関数と、DBの行を配列にする読み出しの関数。
-NETWORK_SHAPE = shape_digest(RoadNetwork, *NETWORK_SQL_SOURCES, HIGHWAY_RANK, material_array_columns(), *(
+#: それらが呼ぶ関数（交通規制の判断を含む）と、DBの行を配列にする読み出しの関数と、1kmあたりにする材料。
+NETWORK_SHAPE = shape_digest(RoadNetwork, *NETWORK_SQL_SOURCES, HIGHWAY_RANK, material_array_columns(),
+                             sorted(material_id for material_id, spec in MATERIAL_CATALOG.items() if spec.per_km), *(
     inspect.getsource(code) for code in (
-        sys.modules[__name__], app.domain.road_network_build, app.domain.elevation_profile, bearings_between,
+        sys.modules[__name__], app.domain.road_network_build, app.domain.elevation_profile, app.domain.traffic_regulation,
+        RoadGraphRepository.get_network_regulations, bearings_between,
         highway_rank, travel_allowed, positions_in, EdgeMaterialArrays, CategoricalColumn.encode, float_array,
-        RoadGraphRepository.get_edgeless_ways, RoadGraphRepository.stream_network_nodes, RoadGraphRepository.stream_network_edges,
+        RoadGraphRepository.stream_network_nodes, RoadGraphRepository.stream_network_edges,
         RoadGraphRepository.get_network_tuning, RoadGraphRepository.get_edge_material_arrays,
         RoadGraphRepository.get_edge_elevation_profiles)))
 
@@ -273,14 +277,26 @@ async def build(repository: RoadGraphRepository, revision: int) -> RoadNetwork:
         len(nodes["node_osm_id"]), len(edges["edge_way_id"]), dropped_without_endpoint, topology_s, memory_note(),
     )
 
-    materials = await _read_materials(repository, edges["edge_way_id"], edges["edge_segment"], edges["edge_forward"],
-                                      await repository.get_edgeless_ways())
+    materials = await _read_materials(repository, edges["edge_way_id"], edges["edge_segment"], edges["edge_forward"])
     _release_freed_memory()
     read_s = time.monotonic() - started
     logger.info("道路網の材料を読みました 有向の区間=%d %.0f秒 %s", len(edges["edge_way_id"]), read_s - topology_s,
                 memory_note())
-    network = build_road_network(revision=revision, stop_cluster_distance_m=tuning[STOP_CLUSTER_DISTANCE_ID],
-                                 **nodes, **edges, **materials)
+    # 材料の値式は区間の量を返すので、1kmあたりにする材料（`MaterialSpec.per_km`）はここで区間の長さで割る（割り算は
+    # `domain/road_network_build.py: per_km`の1か所）。
+    for column, material_id in enumerate(materials["numeric_ids"]):
+        if MATERIAL_CATALOG[material_id].per_km:
+            materials["numeric_values"][:, column] = per_km(materials["numeric_values"][:, column], materials["distance_m"])
+    regulation_fields, pedestrian_road = regulation_arrays(
+        edges["edge_way_id"], edges["edge_segment"], await repository.get_network_regulations())
+    column = materials["categorical_ids"].index(PEDESTRIAN_ROAD)
+    materials["categorical_codes"][:, column] = pedestrian_road
+    vocab = list(materials["categorical_vocab"])
+    vocab[column] = PEDESTRIAN_ROAD_VOCAB
+    materials["categorical_vocab"] = tuple(vocab)
+    network = build_road_network(revision=revision, max_grade=tuning[MAX_PLAUSIBLE_GRADE_ID] / 100.0,
+                                 steepest_min_interval_m=tuning[STEEPEST_MIN_INTERVAL_ID],
+                                 **nodes, **edges, **materials, **regulation_fields)
     logger.info("道路網の配列を組みました %.0f秒 %s", time.monotonic() - started - read_s, memory_note())
     return network
 
@@ -303,7 +319,7 @@ def _return_large_buffers_at_once() -> None:
 #: `RoadNetwork`の欄 → (ノードの行の列, 型)。
 _NODE_COLUMNS = {
     "node_osm_id": ("osm_node_id", np.int64), "node_lat": ("latitude", np.float64),
-    "node_lon": ("longitude", np.float64), "node_has_signals": ("has_traffic_signals", np.bool_),
+    "node_lon": ("longitude", np.float64), "node_signal_place": ("signal_place", np.int32),
     "node_branch_count": ("branch_count", np.int16),
 }
 #: 有向の区間の欄 → 型。
@@ -381,28 +397,17 @@ async def _read_directed_edges(
 
 
 async def _read_materials(
-    repository: RoadGraphRepository, way: np.ndarray, segment: np.ndarray, forward: np.ndarray, way_ids: list[int]
+    repository: RoadGraphRepository, way: np.ndarray, segment: np.ndarray, forward: np.ndarray
 ) -> dict[str, Any]:
-    """材料は`get_edge_material_arrays`で引く。区間を持たない道`way_ids`の材料も同じ読み出しで、区間の無い道の値として引き
-    （区間の値の表は値を持たない）、区間の材料のあとに続けて詰めてから分ける（分類の語彙を区間と1つにする）。"""
+    """材料は`get_edge_material_arrays`で引く。"""
     edge_count = len(way)
-    accident_years_covered = await repository.get_accident_years_covered()
-    columns = MaterialColumns(edge_count + len(way_ids))
-    batches = [(way[start:start + _MATERIAL_BATCH].tolist(), segment[start:start + _MATERIAL_BATCH].tolist(),
-                forward[start:start + _MATERIAL_BATCH].tolist()) for start in range(0, edge_count, _MATERIAL_BATCH)]
-    batches += [(way_ids[start:start + _MATERIAL_BATCH], [-1] * len(way_ids[start:start + _MATERIAL_BATCH]),
-                 [True] * len(way_ids[start:start + _MATERIAL_BATCH])) for start in range(0, len(way_ids), _MATERIAL_BATCH)]
-    for ways, segments, forwards in batches:
-        columns.add(await repository.get_edge_material_arrays(ways, segments, forwards, accident_years_covered))
-        logger.info("材料 %d/%d", columns.filled, edge_count + len(way_ids))
-    result = columns.result()
-    numeric, codes = result.pop("numeric_values"), result.pop("categorical_codes")
-    return {
-        **{name: values[:edge_count] if isinstance(values, np.ndarray) else values for name, values in result.items()},
-        "numeric_values": numeric[:edge_count], "categorical_codes": codes[:edge_count],
-        "edgeless": EdgelessWays(np.asarray(way_ids, dtype=np.int64), numeric[edge_count:], codes[edge_count:]),
-        **await _read_profiles(repository, way, segment),
-    }
+    columns = MaterialColumns(edge_count)
+    for start in range(0, edge_count, _MATERIAL_BATCH):
+        stop = start + _MATERIAL_BATCH
+        columns.add(await repository.get_edge_material_arrays(
+            way[start:stop].tolist(), segment[start:stop].tolist(), forward[start:stop].tolist()))
+        logger.info("材料 %d/%d", columns.filled, edge_count)
+    return {**columns.result(), **await _read_profiles(repository, way, segment)}
 
 
 async def _read_profiles(repository: RoadGraphRepository, way: np.ndarray, segment: np.ndarray) -> dict[str, Any]:

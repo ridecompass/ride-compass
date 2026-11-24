@@ -40,49 +40,16 @@ def _material_columns(key: tuple[str, ...]) -> dict[str, Column]:
 _EDGE_MATERIAL_COLUMNS = _material_columns(_EDGE_KEY)
 _WAY_MATERIAL_COLUMNS = _material_columns(_WAY_KEY)
 
-#: 逆向きで入れ替わる語の対。列名がこの規則に従う限り、対応表を手で並べる必要がない。
-_REVERSING_TOKEN_PAIRS = (("start_", "end_"), ("_gain_", "_loss_"))
-
-
-def reversed_partner(name: str) -> tuple[str, bool] | None:
-    """逆向きの枝でこの列へ入る相手の列と、符号を返すか。向きで変わらない列はNone。
-
-    対になる語を入れ替え、`_grade`で終わる量は符号を返す。標高は地形の物理量で進行方向に依存しないため、
-    この変換は厳密に正しい（形状点列を逆順に辿ると各区間の差分の符号がすべて反転する）。
-    """
-    swapped = name
-    for first, second in _REVERSING_TOKEN_PAIRS:
-        if first in swapped:
-            swapped = swapped.replace(first, second, 1)
-            break
-        if second in swapped:
-            swapped = swapped.replace(second, first, 1)
-            break
-    negated = name.endswith("_grade")
-    return None if swapped == name and not negated else (swapped, negated)
-
-
-#: 区間の列→逆向きで読む相手の列と、符号を返すか。
-_REVERSED_EDGE_COLUMNS = {name: partner for name in _EDGE_MATERIAL_COLUMNS if (partner := reversed_partner(name))}
-
-#: 入れ替え先の列が無ければSQLは実行時に落ちる。import時に気づけるようにする。
-_missing_partners = sorted(partner for partner, _ in _REVERSED_EDGE_COLUMNS.values()
-                           if partner not in _EDGE_MATERIAL_COLUMNS)
-if _missing_partners:
-    raise RuntimeError(f"逆向きの列が存在しない: {_missing_partners}")
-
 _MATERIAL_REFERENCE = re.compile(r"(?<![\w.])(em|wm)\.(\w+)")
 
 
 def material_from_clause(
-    expressions: Iterable[str], way_id: str, segment_index: str | None = None, *,
-    forward: str | None = None,
+    expressions: Iterable[str], way_id: str, segment_index: str | None = None,
 ) -> str:
     """`expressions`が読む`em`・`wm`の列を与えるJOINの並び。読む列を持つ表だけを、主キーで`way_id`
     （と`segment_index`）の式へ外部結合する。呼び出し側はFROM句の行の後ろへそのまま続ける。
 
-    `em`は区間の値で、読むなら`segment_index`を渡す。
-    `forward`（真なら順方向）を渡すと、`em`の向きで変わる列を逆向きの行で入れ替え・符号反転する。
+    `em`は区間の値（向きで変わらない）で、読むなら`segment_index`を渡す。
 
     式が宣言に無い列を読めば送出する——SQLの実行まで気づかないと、その経路の読み出しが材料ぶん丸ごと落ちる。
     """
@@ -102,15 +69,8 @@ def material_from_clause(
         tables.add(column.table)
         return f"t_{column.table.name}.{column.name}"
 
-    def edge_value(name: str) -> str:
-        value = read(_EDGE_MATERIAL_COLUMNS[name])
-        if forward is None or name not in _REVERSED_EDGE_COLUMNS:
-            return value
-        partner, negated = _REVERSED_EDGE_COLUMNS[name]
-        reverse = ("-" if negated else "") + read(_EDGE_MATERIAL_COLUMNS[partner])
-        return f"CASE WHEN {forward} THEN {value} ELSE {reverse} END"
-
-    selects: dict[str, list[str]] = {"em": [f"{edge_value(name)} AS {name}" for name in sorted(names["em"])], "wm": []}
+    selects: dict[str, list[str]] = {"em": [f"{read(_EDGE_MATERIAL_COLUMNS[name])} AS {name}" for name in sorted(names["em"])],
+                                     "wm": []}
     for name in sorted(names["wm"]):
         selects["wm"].append(f"{read(_WAY_MATERIAL_COLUMNS[name])} AS {name}")
 

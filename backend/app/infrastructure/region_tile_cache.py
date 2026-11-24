@@ -13,10 +13,12 @@ import inspect
 from collections.abc import Awaitable, Callable, Mapping
 from types import MappingProxyType
 
-from app.domain import road_features
+from app.domain import road_features, timed_regulations, traffic_regulation
 from app.domain.hard_filters import HARD_FILTERS
 from app.domain.registry import TileKind
-from app.domain.road_network import RoadNetwork, edge_key, positions_in
+from app.domain.graph import edge_feature_key
+from app.domain.search_graph import range_positions
+from app.domain.road_network import RoadNetwork, edge_key, positions_in, rows_in_bbox
 from app.infrastructure import tile_cache
 from app.infrastructure.landcover_raster import raster_paths
 from app.infrastructure.cache_identity import (
@@ -30,20 +32,21 @@ from app.infrastructure.cache_identity import (
 from app.infrastructure.debug_log import log_external_call
 from app.infrastructure.point_tile_layers import POINT_TILE_LAYERS
 from app.infrastructure.road_network_store import NETWORK_SHAPE
-from app.infrastructure.road_tile_sql import ROAD_SURFACE_TILE_SHAPE, TILE_FEATURES_SQL
+from app.infrastructure.road_tile_sql import ROAD_SURFACE_TILE_SHAPE
 
 #: 土地被覆ラスタタイルの系統名。DBから焼かないので、DBから焼くタイルの系統（`TileKind`）の外にある。
 LANDCOVER_TILE_KIND = "landcover"
 
 #: DBから焼いて配るタイルの系統と、ディスクの鍵の世代（形の署名）。路面タイルは地図の線の層の値（道路網の配列の材料に道の区分を
-#: 当てたもの）と、当たる0次ハードフィルタを焼くので、配列の形とフィルタの条件と、タイルのフィーチャーの鍵を読むSQLと、その鍵で
-#: 配列から値を引くコードの全文も入れる。点のレイヤーはそれぞれ自分のSQLだけから署名を持つので、1つのSQLを変えても他のレイヤーの
+#: 当てたもの）と、当たる0次ハードフィルタを焼くので、配列の形とフィルタの条件と、タイルのフィーチャーと形を配列から選び、値を
+#: 引くコードの全文も入れる。点のレイヤーはそれぞれ自分のSQLだけから署名を持つので、1つのSQLを変えても他のレイヤーの
 #: 鍵は変わらない。
 MVT_TILE_GENERATIONS: Mapping[TileKind, str] = MappingProxyType({
-    "road_surface": shape_digest(ROAD_SURFACE_TILE_SHAPE, TILE_FEATURES_SQL, NETWORK_SHAPE, HARD_FILTERS, *(
+    "road_surface": shape_digest(ROAD_SURFACE_TILE_SHAPE, NETWORK_SHAPE, HARD_FILTERS, *(
         inspect.getsource(code) for code in (
-            road_features, positions_in, edge_key, RoadNetwork.__dict__["edge_first_rows"].func,
-            RoadNetwork.__dict__["edge_keys"].func))),
+            road_features, timed_regulations, traffic_regulation, positions_in, edge_key, range_positions, rows_in_bbox,
+            edge_feature_key,
+            RoadNetwork.__dict__["edge_first_rows"].func, RoadNetwork.__dict__["edge_keys"].func))),
     **{layer.name: layer.shape for layer in POINT_TILE_LAYERS.values()},
 })
 
@@ -71,9 +74,10 @@ async def serve_region_tile(
     external_call_name: str,
     fetch_tile: Callable[[dict], Awaitable[bytes | None]],
     source_label: str = "postgis",
+    variant: str = "",
 ) -> bytes:
     """キャッシュにあればそれを、無ければ`fetch_tile`で作ってディスクへ書いたものを返す。`fetch_tile`がNone（取込範囲の外）なら空タイル。"""
-    key = region_tile_key(kind, generation, z, x, y, extension)
+    key = region_tile_key(kind, generation, z, x, y, extension, variant)
     with log_external_call(external_call_name, z=z, x=x, y=y) as fields:
         # ディスクの読み書きは同期のI/O。地図を開くと多数のタイルが同時に来るため、イベントループの上で行うと
         # 同時に処理中の他の要求が止まる。

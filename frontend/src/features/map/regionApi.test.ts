@@ -46,7 +46,7 @@ describe("押した道の内訳（fetchAxisInspector）", () => {
     x: 29100,
     y: 12900,
     bearingDeg: 270,
-    at: new Date("2026-10-01T00:30:00Z"),
+    lensFrame: "v1-2026100110",
     speedKmh: 22,
   };
 
@@ -71,7 +71,7 @@ describe("押した道の内訳（fetchAxisInspector）", () => {
           x: 29100,
           y: 12900,
           bearing_deg: 270,
-          at: "2026-10-01T00:30:00.000Z",
+          frame: "v1-2026100110",
           speed_kmh: 22,
         },
       ]);
@@ -86,7 +86,7 @@ describe("地図が塗るレンズの道ごとの材料（fetchLensMaterials）"
     );
 
     const result = await api.fetchLensMaterials("ascent", 15, 29100, 12900, {
-      at: "2026-10-01T00:00:00.000Z",
+      frame: "v1-2026100109",
       speed_kmh: 25,
     });
 
@@ -95,7 +95,7 @@ describe("地図が塗るレンズの道ごとの材料（fetchLensMaterials）"
       {
         method: "GET",
         path: "/api/region/lens/ascent/15/29100/12900",
-        query: { at: "2026-10-01T00:00:00.000Z", speed_kmh: "25" },
+        query: { frame: "v1-2026100109", speed_kmh: "25" },
       },
     ]);
   });

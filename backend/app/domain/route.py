@@ -196,6 +196,10 @@ class RouteSegmentDetail(StrictModel):
     # 避け方の倍率が所要時間から足し引きした道を、倍率を決めた行ごとに（区間の中で最初に通る順）。秒の和は`penalty`の
     # `preferred_seconds`と`avoided_seconds`の和。地図のルートの両脇の線の理由として、区間の小窓が出す。
     avoidance_stretches: list[AvoidanceStretch]
+    # 区間の道のどれかで、時刻で変わる交通規制を効くとみなしたか。ルートは通る見込みの時間帯を較正値
+    # `regulation.margin_minutes`だけ広げて規制を見込むので、地図（選んだ出発の時刻そのもので塗る）では規制の外に見える道でも、
+    # 規制の道として避け方を当てたことがある。区間の小窓がその理由を添える。
+    regulation_margin: bool
 
 
 @dataclass(frozen=True, slots=True)
@@ -222,6 +226,8 @@ class EdgeSegment:
     deciding_row: tuple[str, AvoidanceLevel] | None
     # 層のid→この道の区分の鍵（区分に入らない道はNone）。道1本の中で区分は変わらない。
     road_classes: dict[str, str | None]
+    # 通ったレグの判定が、この道で時刻で変わる交通規制の組を効くとみなしたか（`domain/timed_regulations.py`）。
+    regulation_margin: bool
 
 
 #: 候補の種類。周回（出発地へ戻る経路。経由地の有無を問わない）・目的地（目的地で終わる経路。経由地の有無を問わない）・
@@ -488,6 +494,7 @@ BIN_FIELD_MERGERS: dict[str, Callable[[list[EdgeSegment]], object]] = {
     "estimated_arrival_time": lambda segments: segments[0].estimated_arrival_time,
     "road_classes": _merge_road_classes,
     "avoidance_stretches": _merge_avoidance_stretches,
+    "regulation_margin": lambda segments: any(segment.regulation_margin for segment in segments),
     # 区間は道の分で、曲がる所の罰を持たない。
     "penalty": lambda segments: merge_penalty_breakdowns(segments, 0.0),
 }

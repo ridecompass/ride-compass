@@ -130,10 +130,21 @@ describe("ルートを作る", () => {
 
   it("走行条件の想定速度と出発時刻を変えると、生成の要求と地図の道の詳細へ同じ値が渡る", async () => {
     const departure = new Date("2026-10-05T09:00:00+09:00");
-    // 道の窓は、送られた条件が走行条件と同じときだけ返す。
+    // レンズのコマは、出発時刻を含むものだけが別の印を持つ。
+    onBackend("GET", "/api/region/time-frames", () =>
+      Response.json({
+        road_surface: [{ start: "2000-01-01T00:00:00+09:00", end: "2100-01-01T00:00:00+09:00", key: "road" }],
+        lens: [
+          { start: "2000-01-01T00:00:00+09:00", end: "2026-10-05T08:30:00+09:00", key: "before" },
+          { start: "2026-10-05T08:30:00+09:00", end: "2026-10-05T09:30:00+09:00", key: "departure" },
+          { start: "2026-10-05T09:30:00+09:00", end: "2100-01-01T00:00:00+09:00", key: "after" },
+        ],
+      }),
+    );
+    // 道の窓は、送られた条件が走行条件と同じ（時刻は出発時刻を含むコマの印）ときだけ返す。
     onBackend("POST", "/api/region/road-inspector", ({ body }) => {
-      const sent = body as { speed_kmh?: number; at?: string };
-      return sent.speed_kmh === 25 && sent.at === departure.toISOString()
+      const sent = body as { speed_kmh?: number; frame?: string };
+      return sent.speed_kmh === 25 && sent.frame === "departure"
         ? Response.json(inspectorResult())
         : Response.json({ detail: "条件が違う" }, { status: 400 });
     });

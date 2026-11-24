@@ -1,6 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
+import { withFreshFrames } from "@/features/map/useTimeFrames";
 import { useState } from "react";
 import { PopupHeader } from "@/components/MapPopup/MapPopupParts";
 import { isDebugEnabled } from "@/lib/debugLog";
@@ -55,11 +56,14 @@ export default function RoadInspectorPopup({ properties, track, conditions, cost
     {
       queryKey: ["road-inspector", wayId, featureKey, opened, costPreference],
       queryFn: async () => {
-        const value = await fetchRoadInspection(wayId!, featureKey!, opened, costPreference);
+        // 地図のレンズと同じく、出発時刻の風のコマが無ければ（予報の範囲の外）今の風で求めない。
+        if (opened.lensFrame === null) throw new Error("出発時刻の風の予報がありません");
+        const value = await withFreshFrames(fetchRoadInspection(wayId!, featureKey!, opened, costPreference));
         if (value === null) throw new Error("負担が返りませんでした");
         return value;
       },
-      enabled: inspectable,
+      // コマの一覧が届くまでは取らない。
+      enabled: inspectable && opened.lensFrame !== undefined,
       // 同じ道を同じ条件・利用者の値で開き直したときは、前に取った負担を出す。
       staleTime: Infinity,
     },

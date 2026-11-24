@@ -10,6 +10,7 @@ import {
 import { installMapFinder } from "./liveMap";
 import { BASEMAP_STYLE_URL } from "@/features/map/basemapStyle";
 import { TWO_COST_AXES } from "@/testing/costAxes";
+import { WIDE_TIME_FRAMES } from "@/testing/timeFrames";
 import { mapDisplay } from "@/types/generated/mapDisplay";
 import regionTileConfig from "@/types/generated/region-tile-config.json";
 import nextConfig from "../next.config";
@@ -85,6 +86,8 @@ export async function installApiMocks(page: Page): Promise<void> {
   await page.route(`${API_BASE}/api/region/lens/**`, (route) =>
     route.fulfill({ json: { materials: {}, wind_previous_run_from: null } }),
   );
+  // 時刻で変わる値のコマ。路面タイルもレンズも、どの出発時刻も1つのコマで覆う。
+  await page.route(`${API_BASE}/api/region/time-frames`, (route) => route.fulfill({ json: WIDE_TIME_FRAMES }));
 
   // 地点の行が、置いた位置の辺りを引く。辺り無し（境界の外）で答える。
   await page.route(`${API_BASE}/api/place-area*`, (route) => route.fulfill({ json: { area: null } }));

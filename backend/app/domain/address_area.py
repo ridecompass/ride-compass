@@ -16,7 +16,7 @@ from collections.abc import Iterable, Sequence
 from app.domain.material_sql import sql_literals
 from app.domain.place_search import PlaceMatchLevel
 
-#: 区画の段（粗い→細かい）。郡は段にせず、郡に属す町村の区画が名前（`county_name`）で持つ。
+#: 区画の段（粗い→細かい）。郡は段にせず、郡に属す町村の区画は、郡の名前を頭に付けた検索の鍵も持つ。
 ADDRESS_AREA_LEVELS: tuple[PlaceMatchLevel, ...] = ("prefecture", "city", "ward", "oaza", "aza")
 
 #: 鍵を続き（打ちかけの語を頭に持つ区画）に使う段。大字・町までで、丁目・字は続きに出さない。
