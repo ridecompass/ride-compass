@@ -29,7 +29,8 @@ from app.domain.time_zone import as_series_time
 from app.domain.model_settings import ModelSettings
 from app.domain.tuning import SNAP_CORRECTION_ID
 from app.domain.errors import RoutingError
-from app.domain.search_materials import SearchMaterials, build_search_materials
+from app.domain.search_materials import ColumnsOrEmpty, SearchMaterials, build_search_materials
+from app.domain.timed_regulations import TimedRegulations
 from app.domain.hard_filters import compute_routable_nodes, compute_search_exclusion
 from app.domain.leg_costs import LegCostArrays, LegCostComposer
 from app.domain.cost_axes import burden_material_ids
@@ -81,6 +82,7 @@ from app.domain.route_diversity import overlap_ratio, physical_overlap_ratio, se
 from app.domain.wind import (
     cruise_hours,
     detour_ratio_or_default,
+    straight_line_hours,
 )
 from app.infrastructure import detour_ratio_cache
 from app.services.graph_service import GraphService, network_burden_fills
@@ -220,10 +222,11 @@ class RoadGraphEngine:
         return self._settings
 
     async def _build_search_graph(
-        self, bbox: BoundingBox, origin: Coordinates, now: datetime
+        self, bbox: BoundingBox, origin: Coordinates, now: datetime, first_point: Coordinates | None, radius_km: float,
     ) -> _SearchGraph | None:
         """bboxに対する探索用グラフ（lazy_graph）＋bbox全体ぶんのコスト配列を構築する。
         風の時別予報が無いときの風（出発時点の値）は`origin`（起点）の地点で決める。時別予報は`bbox`を覆う格子点ごとに引く。
+        準備の往路の交通規制は、`first_point`（最初の置いた点。無ければ`radius_km`の先）へ着く見込みまでの時間帯で判定する。
 
         `GraphService.get_search_slice`が切り出した区間の材料から探索の材料の表（`SearchMaterials`）を組み、費目の帳簿の式
         （`domain/ledger_costs.py`）でコスト配列を**bbox全体ぶん1回だけ**numpyで合成する。探索本体へは合成済みのnumpy配列を
@@ -261,6 +264,11 @@ class RoadGraphEngine:
 
         def compose_outbound() -> tuple[RoadAvoidanceMasks, LegCostComposer, LegCostArrays]:
             search_masks = compute_search_exclusion(materials, self._road_avoidance, self._avoidance_multipliers)
+            regulations = TimedRegulations(
+                road.network, road.rows,
+                ColumnsOrEmpty(material_arrays_of(road, self._settings.tuning).columns, road.edge_count, self._settings.road_classes),
+                search_masks, materials.hard_filtered, self._settings.road_classes, self._road_avoidance,
+                self._avoidance_multipliers)
             composer = LegCostComposer(
                 materials, search_masks,
                 wind_series, start, self._assumed_speed_kmh, lazy_graph.edge_rows,
@@ -269,8 +277,13 @@ class RoadGraphEngine:
                 burden_fills=network_burden_fills(road.network, cost_axes),
                 settings=self._settings,
                 parameters=ledger_parameters(self._cost_preference, self._settings.tuning),
+                regulations=regulations,
             )
-            return search_masks, composer, composer.compose("outbound", 0.0, +1)
+            # 準備の往路は所要の見込みを持たない（届く先が決まらない）ので、規制は最初の置いた点（無ければ届く見込みの半径）までの
+            # 直線距離×迂回率÷巡航速度の時間帯で判定する。
+            reach_hours = (straight_line_hours(origin, first_point, composer.speed_kmh, composer.detour_ratio)
+                           if first_point is not None else cruise_hours(radius_km * composer.detour_ratio, composer.speed_kmh))
+            return search_masks, composer, composer.compose("outbound", 0.0, +1, regulation_hours=(0.0, reach_hours))
 
         search_masks, composer, outbound = await asyncio.to_thread(compose_outbound)
         cost_ms = elapsed_ms(cost_started)
@@ -361,7 +374,7 @@ class RoadGraphEngine:
         covering = self._graph_service.edge_endpoints(covering_edge_ids)
         bbox = bbox_covering_points([origin, *points, *covering], radius_km + margin_km)
 
-        search = await self._build_search_graph(bbox, origin, now)
+        search = await self._build_search_graph(bbox, origin, now, points[0] if points else None, radius_km)
         if search is None:
             return None
         node_index, accessible, passable, statics, turn_structure = await self._build_search_structures(search)
@@ -404,9 +417,12 @@ class RoadGraphEngine:
         if leg_index == 0:
             leg = context.legs[0]
         else:
+            leg_start = cruise_hours(cumulative_m / 1000, context.composer.speed_kmh)
+            # 経由地のあいだのレグは所要の見込みを持たないので、規制は区間の両端の直線距離×迂回率÷巡航速度の時間帯で判定する。
+            reach_hours = straight_line_hours(node_coordinates(context, from_node), node_coordinates(context, to_node),
+                                              context.composer.speed_kmh, context.composer.detour_ratio)
             leg = context.composer.compose(
-                leg_name(leg_index),
-                cruise_hours(cumulative_m / 1000, context.composer.speed_kmh), +1,
+                leg_name(leg_index), leg_start, +1, regulation_hours=(leg_start, leg_start + reach_hours),
             )
             context.legs.append(leg)
         return turn_expanded_shortest_path(
@@ -551,8 +567,9 @@ class RoadGraphEngine:
                 )
                 in_ring[end_node] = False
             in_ring[start_node] = False
+            # 通れるかは往路のレグで決める（時刻で変わる交通規制は、レグの時間帯で通れない区間がある）。
             in_ring &= nodes_reached_without_retracing(
-                statics.csr, context.passable, context.accessible, [start_node, end_node],
+                statics.csr, np.isfinite(outbound.cost_lazy), context.accessible, [start_node, end_node],
             )
             ring = np.flatnonzero(in_ring)
             if len(ring) == 0:
@@ -764,6 +781,10 @@ class RoadGraphEngine:
                     duration_hours=leg_duration_hours(total_m / 1000, context.composer.speed_kmh),
                 ),
             ]
+        # 時刻で変わる交通規制は、区間を通るレグの時間帯で除くことがある（上の確かめは時刻で変わらない除外だけを見る）。
+        blocked = sum(not np.isfinite(context.legs[leg].cost_lazy[index]) for index, leg in zip(path, leg_of_edge, strict=True))
+        if blocked:
+            raise RoutingError(f"経路が、通る時間帯に探索から除く区間を通ります count={blocked}")
         return TracedLoop(
             bearing=None, distance_km=round(total_m / 1000, DISTANCE_KM_DECIMALS), data=path, leg_of_edge=leg_of_edge,
             waypoint_offsets=_waypoint_offsets_along(context, [tails[0], *heads], waypoints), reversible=False,

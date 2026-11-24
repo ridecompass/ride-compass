@@ -13,7 +13,7 @@ import math
 from collections.abc import Mapping
 from dataclasses import dataclass
 from functools import cached_property
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import NamedTuple, cast
 
 import numpy as np
@@ -48,7 +48,8 @@ from app.domain.road_network import MaterialFills
 from app.domain.road_avoidance import AvoidanceLevel, RoadAvoidanceMasks
 from app.domain.search_graph import EDGE_VALUE_DTYPE, kernel_array
 from app.domain.traffic import POI_COUNT_KINDS, stop_count_material_ids, stop_event
-from app.domain.tuning import Tuning
+from app.domain.timed_regulations import RegulationJudgement, TimedRegulations
+from app.domain.tuning import REGULATION_MARGIN_MINUTES_ID, Tuning
 from app.domain.wind import WindForecastSeries
 from app.domain.wind_context import WindContext
 
@@ -129,6 +130,9 @@ class LegCostArrays:
     # 各ビンの時刻の入力。区間の表示は、経路をたどって決めたビンの時刻で経路上の行だけを合成し直して読む
     # （`LegCostComposer.values_at_rows`）——全区間ぶんの表示の値をレグごとに持つと、区間数×レグ数ぶん膨らむ。
     bin_times: tuple[BinTime, ...]
+    # レグの時間帯の交通規制の判定（`domain/timed_regulations.py`）。規制の当たる区間が範囲に無ければNone。区間の内訳と
+    # 応答の区間の区分は、このレグの判定で読む。
+    judgement: RegulationJudgement | None = None
 
 
 def _representative_bin(bin_count: int, duration_hours: float | None) -> int:
@@ -362,10 +366,11 @@ class LegCostComposer:
         burden_fills: Mapping[str, float],
         settings: ModelSettings,
         parameters: LedgerParameters,
+        regulations: TimedRegulations | None = None,
     ) -> None:
         """`material_fills`は取込の範囲全体の材料の分布、`burden_fills`は道のストレスの軸id→取込の範囲全体の重さの平均
         （`burden_fills`。どちらも欠けた材料を埋める）。費用は費目の帳簿の式（`domain/ledger_costs.py`）で、`settings`の費用の軸と
-        `parameters`の強さで組む。"""
+        `parameters`の強さで組む。`regulations`は時刻で変わる交通規制の判定（Noneなら、規制は時刻で変わらない組だけが効く）。"""
         self._search_materials = search_materials
         self._material_fills = material_fills
         self._burden_fills = burden_fills
@@ -376,13 +381,11 @@ class LegCostComposer:
         self._categorical_material_arrays = dict(
             zip(search_materials.categorical_material_ids, search_materials.categorical_material_columns, strict=True)
         )
-        # 探索から除く区間（費用を無限大にする）と、避け方の倍率。倍率は所要時間に掛けて探索の費用にし、予想の所要時間と
-        # 代償には掛けない。
-        self._excluded = search_masks.excluded
-        self._cost_scale = search_masks.cost_scale
+        # 探索から除く区間（費用を無限大にする）と、避け方の倍率（時刻で変わらない規制だけが効く。レグの判定がある区間は
+        # レグの判定が替わる）。倍率は所要時間に掛けて探索の費用にし、予想の所要時間と代償には掛けない。
         self._avoidance = search_masks
         #: 区間の費用が所要時間に対して下がる最小の倍率（好む側の段の区間があればその倍率、無ければ1）。探索の見込み
-        #: （`domain/route_search.py: heuristic_seconds`）を、費用の下界に保つよう緩める。要求の間は変わらないので1回だけ求める。
+        #: （`domain/route_search.py: heuristic_seconds`）を、費用の下界に保つよう緩める。レグの規制の判定で下がれば、そこで緩める。
         self.min_cost_scale = float(search_masks.cost_scale.min(initial=1.0))
         self._wind_series = wind_series
         # 区間ごとに風を引く入力（切り出した区間の順）。
@@ -399,8 +402,12 @@ class LegCostComposer:
         # あればそれ、無ければ`ROUTE_DETOUR_RATIO`。合成には使わず、レグの時刻を置く探索の側が読む。
         self.detour_ratio = detour_ratio
         self._cache: dict[tuple, LegCostArrays] = {}
-        # 時刻ビン（`BinTime`が鍵）の合成。同じ鍵のビンは、レグの向きや開始時刻が違っても同じ中身なので、往路と帰りで使い回す。
-        self._bins: dict[BinTime, _ComposedBin] = {}
+        # 時刻ビン（`BinTime`と規制の判定の鍵が鍵）の合成。同じ鍵のビンは、レグの向きや開始時刻が違っても同じ中身なので、往路と
+        # 帰りで使い回す。走行の模型（`_ledger_bin`）は風だけで決まるので、規制の判定に依らない。
+        self._bins: dict[tuple[BinTime, bytes], _ComposedBin] = {}
+        self._regulations = regulations
+        self._regulation_margin_hours = settings.tuning.checked(
+            REGULATION_MARGIN_MINUTES_ID, lambda v: v >= 0, "0以上") / 60.0
 
     @cached_property
     def _materials(self) -> dict[str, MaterialColumn]:
@@ -433,6 +440,7 @@ class LegCostComposer:
         direction: int,
         duration_hours: float | None = None,
         passage_hours: np.ndarray | None = None,
+        regulation_hours: tuple[float, float] | None = None,
     ) -> LegCostArrays:
         """`direction=+1`なら起点から離れていく・`-1`なら向かっていくレグとして、
         そのレグを走る時刻の風でコスト配列を合成する。
@@ -445,14 +453,19 @@ class LegCostComposer:
         `duration_hours`を渡さない場合はビン1本＝レグ全体を開始時刻で評価する。時刻ラベルを
         持てない探索（目的地から遡る木）だけは、前向き木が出した実際の到達時間を
         `passage_hours`（切り出した区間の順）として渡す。
+
+        交通規制は、レグの見込みの時間帯（出発から`regulation_hours`の間。省くとレグの出発〜出発＋見込みの所要、到達時間を渡した
+        レグはその最小〜最大）を前後に較正値の幅だけ広げた間で1回判定し、そのレグの全部のビンに当てる。
         """
         bin_count = self._bin_count(duration_hours)
         # `direction=-1`の`offset_hours`はレグの終了時刻のため、開始時刻へ直す。
         leg_start = offset_hours if direction > 0 else offset_hours - (duration_hours or 0.0)
+        judgement = self._judgement(regulation_hours or self._leg_hours(leg_start, duration_hours, passage_hours))
+        judged = judgement.key if judgement is not None else b""
         if passage_hours is not None:
-            key: tuple = ("passage", round(offset_hours, 3), direction, _array_digest(passage_hours))
+            key: tuple = ("passage", round(offset_hours, 3), direction, _array_digest(passage_hours), judged)
         else:
-            key = _timed_leg_key(leg_start, bin_count, duration_hours)
+            key = (*_timed_leg_key(leg_start, bin_count, duration_hours), judged)
         cached = self._cache.get(key)
         if cached is not None:
             # 同じ内容を使い回すのは正しい（風が時刻で変わらないレグは1本で足りる）が、
@@ -466,14 +479,14 @@ class LegCostComposer:
         reused_bins = 0
         if passage_hours is not None:
             bin_times: tuple[BinTime, ...] = (self._passage_time(passage_hours),)
-            bins = [self._compose_bin(bin_times[0], steps_ms)]
+            bins = [self._compose_bin(bin_times[0], judgement, steps_ms)]
         else:
             bin_times = tuple(self.bin_time(leg_start + k * TIME_BIN_HOURS) for k in range(bin_count))
             bins = []
             for time in bin_times:
-                composed = self._bins.get(time)
+                composed = self._bins.get((time, judged))
                 if composed is None:
-                    composed = self._bins[time] = self._compose_bin(time, steps_ms)
+                    composed = self._bins[(time, judged)] = self._compose_bin(time, judgement, steps_ms)
                 else:
                     reused_bins += 1
                 bins.append(composed)
@@ -489,6 +502,7 @@ class LegCostComposer:
             travel_bins_lazy=_stacked([composed.travel for composed in bins]),
             bin_seconds=TIME_BIN_HOURS * 3600.0 if len(bins) > 1 else np.inf,
             bin_times=bin_times,
+            judgement=judgement,
         )
         add_elapsed_ms(steps_ms, "finish", finish_started)
         self._cache[key] = leg
@@ -497,6 +511,28 @@ class LegCostComposer:
             label, len(bins), reused_bins, elapsed_ms(started), steps_note(steps_ms),
         )
         return leg
+
+    @staticmethod
+    def _leg_hours(leg_start: float, duration_hours: float | None, passage_hours: np.ndarray | None) -> tuple[float, float]:
+        """規制を判定するレグの時間帯（出発からの時間）。"""
+        if passage_hours is not None:
+            finite = np.asarray(passage_hours, dtype=np.float64)
+            finite = finite[np.isfinite(finite)]
+            if len(finite):
+                return float(finite.min()), float(finite.max())
+        return leg_start, leg_start + (duration_hours or 0.0)
+
+    def _judgement(self, hours: tuple[float, float]) -> RegulationJudgement | None:
+        """出発から`hours`の間を前後に較正値の幅だけ広げた間の、交通規制の判定。"""
+        if self._regulations is None:
+            return None
+        margin = timedelta(hours=self._regulation_margin_hours)
+        judgement = self._regulations.judge(self.start + timedelta(hours=hours[0]) - margin,
+                                            self.start + timedelta(hours=hours[1]) + margin)
+        if judgement is not None:
+            # 探索の見込みが費用の下界のままであるよう、好む側の段が規制で増えたら緩める。
+            self.min_cost_scale = min(self.min_cost_scale, float(judgement.masks.cost_scale.min(initial=1.0)))
+        return judgement
 
     def to_full_row_order(self, lazy_values: np.ndarray) -> np.ndarray:
         """lazy行順（探索が使う並び）の配列を切り出した区間の順へ戻す。
@@ -519,19 +555,20 @@ class LegCostComposer:
             return 1
         return int(min(MAX_TIME_BINS, max(1, math.ceil(duration_hours / TIME_BIN_HOURS))))
 
-    def values_at_rows(self, rows: np.ndarray, time: BinTime) -> LegValues:
-        """経路上の行`rows`（切り出した区間の順の行番号）だけを、時刻ビンの時刻`time`（`LegCostArrays.bin_times`の1つ）で
-        合成し直した表示の値。"""
+    def values_at_rows(self, rows: np.ndarray, time: BinTime, judgement: RegulationJudgement | None = None) -> LegValues:
+        """経路上の行`rows`（切り出した区間の順の行番号）だけを、時刻ビンの時刻`time`（`LegCostArrays.bin_times`の1つ）と
+        レグの交通規制の判定`judgement`（`LegCostArrays.judgement`）で合成し直した表示の値。"""
+        avoidance = judgement.masks if judgement is not None else self._avoidance
         rows = np.asarray(rows, dtype=np.int64)
         headwind, crosswind, temperature = self._wind.take(rows).components(time.take(rows).forecast)
         inputs = self._travel_inputs
         travel_seconds, penalty_by_axis = self._ledger.row_seconds(inputs.model, headwind, crosswind, temperature, rows)
         # 探索の費用（`_bin_costs`）のうち、避け方の倍率が所要時間から足し引きした分。探索と同じ式で、float64で求める。
-        scaled = avoidance_seconds(self._cost_scale[rows].astype(np.float64),
+        scaled = avoidance_seconds(avoidance.cost_scale[rows].astype(np.float64),
                                    np.asarray(travel_seconds + inputs.wait_seconds[rows], dtype=np.float64))
         return LegValues(headwind_ms=headwind, penalty_by_axis=penalty_by_axis,
                          preferred_seconds=np.minimum(scaled, 0.0), avoided_seconds=np.maximum(scaled, 0.0),
-                         deciding_rows=self._avoidance.deciding_at(rows))
+                         deciding_rows=avoidance.deciding_at(rows))
 
     @property
     def distance_m(self) -> np.ndarray:
@@ -594,15 +631,16 @@ class LegCostComposer:
         """曲がる所の費用（秒、遷移ごと）。探索の重み（時間に罰を足したもの）に漕ぎ出しの代償を足したもの。"""
         return self._ledger.transition_costs(turn_search_seconds, turn_kickoffs)
 
-    def _compose_bin(self, time: BinTime, steps_ms: dict[str, int]) -> _ComposedBin:
-        """時刻`time`で1本ぶん合成する。段ごとの時間を`steps_ms`へ足す。体力と道のストレスは風と気温だけで決まる。欠けは取込の範囲
-        全体の平均で埋める（`material_fills`・`burden_fills`）。"""
+    def _compose_bin(self, time: BinTime, judgement: RegulationJudgement | None, steps_ms: dict[str, int]) -> _ComposedBin:
+        """時刻`time`と交通規制の判定`judgement`で1本ぶん合成する。段ごとの時間を`steps_ms`へ足す。体力と道のストレスは風と気温
+        だけで決まる。欠けは取込の範囲全体の平均で埋める（`material_fills`・`burden_fills`）。"""
+        avoidance = judgement.masks if judgement is not None else self._avoidance
         started = start_timer()
         travel_seconds, added_seconds = self._ledger_bin(time)
         add_elapsed_ms(steps_ms, "speed", started)
         started = start_timer()
         cost, travel = _bin_cost_arrays(
-            travel_seconds, self._travel_inputs.wait_seconds, self._excluded, self._cost_scale, added_seconds,
+            travel_seconds, self._travel_inputs.wait_seconds, avoidance.excluded, avoidance.cost_scale, added_seconds,
             self._full_row_index, len(self._lazy_row_index),
         )
         add_elapsed_ms(steps_ms, "finish", started)

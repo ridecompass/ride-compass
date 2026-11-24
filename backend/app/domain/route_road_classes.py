@@ -14,6 +14,7 @@ from app.domain.attributes import CategoricalColumn
 from app.domain.landcover import LANDCOVER_CLASSES
 from app.domain.map_display import segment_series_layer
 from app.domain.road_network import RoadSlice
+from app.domain.timed_regulations import RegulationJudgement
 
 _LANDCOVER_LAYER = segment_series_layer("landcoverClass")
 
@@ -37,10 +38,13 @@ class SegmentClassReader:
             ),
         )
 
-    def values_at(self, index: int) -> dict[str, str | None]:
-        """切り出しの中の`index`番目の区間の、分け方・「緑と水」→区分。"""
+    def values_at(self, index: int, judgement: RegulationJudgement | None = None) -> dict[str, str | None]:
+        """切り出しの中の`index`番目の区間の、分け方・「緑と水」→区分。分け方の値は、区間を通ったレグの交通規制の判定
+        `judgement`があればその値（時刻で変わる規制の区分を、ルートが避けた時間帯で出す）。"""
         row = int(self.road.rows[index])
         values: dict[str, str | None] = {key: column.value_at(row) for key, column in self.classes}
+        if judgement is not None and (judged := judgement.layer_values_at(index)) is not None:
+            values.update(judged)
         values[_LANDCOVER_LAYER] = self._dominant_landcover(row)
         return values
 

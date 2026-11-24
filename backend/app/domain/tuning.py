@@ -138,6 +138,8 @@ LANDCOVER_RING_INNER_ID = "landcover.ring_inner_m"
 REGULATION_LINE_HALF_WIDTH_ID = "traffic_regulation.line_half_width_m"
 REGULATION_EDGE_SHARE_ID = "traffic_regulation.edge_share"
 REGULATION_MAX_ANGLE_ID = "traffic_regulation.max_angle_deg"
+#: ルート生成が読む、規制の時間帯を前後に広げる幅のid。
+REGULATION_MARGIN_MINUTES_ID = "regulation.margin_minutes"
 #: 区間の標高を拾う間隔の上限のid。
 ELEVATION_PROFILE_STEP_ID = "elevation.profile_step_m"
 #: 拾った標高の揺れを消す閾値のid。
@@ -223,6 +225,12 @@ TUNING_PARAMETERS: tuple[TuningParameter, ...] = (
         "線の規制は、区間の始点から終点への向きと、区間の中点に一番近い所の規制の線の向きの差（向きを問わず0〜90度）が"
         "この角度以下の区間にだけ当てる。広げるほど規制の線を交差点で横切る短い区間にも当たり、狭めるほど規制の線と"
         "地図の道の向きのずれで当たり漏れる。",
+    ),
+    TuningParameter(
+        REGULATION_MARGIN_MINUTES_ID,
+        "交通規制の時間帯を前後に広げる幅", "分", TuningEffect.IMMEDIATE,
+        "ルート生成は、区間を通る見込みの時間帯（レグの出発の見込みから到着の見込みまで）をこの幅だけ前後に広げた間に一度でも効く"
+        "規制を、そのレグの間ずっと効いているとみなす。通る時刻の見込みのずれ（休憩や道の事情で遅れる等）を、規制が効く側へ吸う。",
     ),
     # --- 走行モデル ---
     TuningParameter(

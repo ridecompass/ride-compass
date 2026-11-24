@@ -26,6 +26,7 @@ TUNING = {
     'stop.barrier_seconds': 8.0,
     'stop.slowed_speed_ratio': 0.5,
     'signal.match_radius_m': 25.0,
+    'regulation.margin_minutes': 30.0,
     'stop.cluster_distance_m': 40.0,
     'turn.bearing_distance_m': 20.0,
     'elevation.profile_step_m': 50.0,
