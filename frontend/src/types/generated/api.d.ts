@@ -1810,6 +1810,8 @@ export interface components {
             };
             /** Avoidance Stretches */
             avoidance_stretches: components["schemas"]["AvoidanceStretch"][];
+            /** Regulation Margin */
+            regulation_margin: boolean;
             /** Lens Seconds Per Km */
             readonly lens_seconds_per_km: {
                 [key: string]: number;

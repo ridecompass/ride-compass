@@ -23,6 +23,7 @@ from app.domain.traffic_regulation import (
     PEDESTRIAN_ROAD_LABELS,
     active_kinds,
     active_slots,
+    invariant_slots,
 )
 
 _VOCAB = (None, *PEDESTRIAN_ROAD_LABELS)
@@ -38,6 +39,13 @@ class RegulationJudgement:
     masks: RoadAvoidanceMasks
     rows: np.ndarray
     layers: dict[str, CategoricalColumn]
+    #: `rows`ごとに、時刻で変わる規制の組を効くとみなしたか（応答の区間の`regulation_margin`）。
+    timed: np.ndarray
+
+    def timed_at(self, row: int) -> bool:
+        """切り出した区間の順の行`row`で、時刻で変わる規制の組を効くとみなしたか。"""
+        position = int(np.searchsorted(self.rows, row))
+        return position < len(self.rows) and self.rows[position] == row and bool(self.timed[position])
 
     def layer_values_at(self, row: int) -> dict[str, str | None] | None:
         """切り出した区間の順の行`row`の地図の線の層の値。規制の当たらない区間はNone（道路網の値のまま）。"""
@@ -84,6 +92,10 @@ class TimedRegulations:
             self._network_rows, network.edge_regulation_start, network.edge_regulation_count, network.regulation_index,
             network.regulation_slot_start, network.regulation_slot_count, network.regulation_slot_values, active)
         n = len(self.rows)
+        timed_bicycle, timed_excepted = active_kinds(
+            self._network_rows, network.edge_regulation_start, network.edge_regulation_count, network.regulation_index,
+            network.regulation_slot_start, network.regulation_slot_count, network.regulation_slot_values,
+            active & ~invariant_slots(network.regulation_slot_values))
         variants = []
         # 両方効く区間は、変種ごとに片方の値を採る。片方だけ効く区間は、どちらの変種も同じ値になる。
         for codes in (np.where(bicycle, _PROHIBITED, np.where(excepted, _EXCEPTED, 0)),
@@ -102,7 +114,8 @@ class TimedRegulations:
         full_deciding[self.rows] = np.where(take_other, other.deciding_row, strict.deciding_row)
         return RegulationJudgement(
             key=key, masks=replace(base, excluded=full_excluded, cost_scale=full_scale, deciding_row=full_deciding),
-            rows=self.rows, layers=layer_columns(self._definitions, {**facts, **classes}, n))
+            rows=self.rows, layers=layer_columns(self._definitions, {**facts, **classes}, n),
+            timed=timed_bicycle | timed_excepted)
 
 
 #: 最後に求めた道路網と、その規制の当たった行。道路網は入れ替えのたびに別のオブジェクトになるので、同じオブジェクトなら求め直さない。

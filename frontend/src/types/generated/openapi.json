@@ -6074,6 +6074,10 @@
             "type": "array",
             "title": "Avoidance Stretches"
           },
+          "regulation_margin": {
+            "type": "boolean",
+            "title": "Regulation Margin"
+          },
           "lens_seconds_per_km": {
             "anyOf": [
               {
@@ -6106,6 +6110,7 @@
           "penalty",
           "road_classes",
           "avoidance_stretches",
+          "regulation_margin",
           "lens_seconds_per_km"
         ],
         "title": "RouteSegmentDetail"

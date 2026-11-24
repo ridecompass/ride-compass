@@ -349,7 +349,8 @@ def _build_segment_details(
                 preferred_seconds=preferred_seconds,
                 avoided_seconds=avoided_seconds,
                 deciding_row=deciding_row,
-                road_classes=road_classes.values_at(row, context.legs[orientation.leg_of_edge[index]].judgement),
+                road_classes=road_classes.values_at(row, judgement := context.legs[orientation.leg_of_edge[index]].judgement),
+                regulation_margin=judgement is not None and judgement.timed_at(row),
             )
         )
 

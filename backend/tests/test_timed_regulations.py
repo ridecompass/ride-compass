@@ -57,6 +57,8 @@ def test_only_edges_with_a_regulation_active_in_the_interval_change_their_avoida
     assert judgement.masks.cost_scale.tolist() == [1.0, 3.0, 1.0, 1.0]
     assert [judgement.layer_values_at(row) for row in range(4)] == [
         {ROAD: "bicycle"}, {ROAD: "excepted"}, {ROAD: "bicycle"}, None]
+    # 応答の区間の`regulation_margin`は、時刻で変わる組を効くとみなした区間。
+    assert [judgement.timed_at(row) for row in range(4)] == [True, True, True, False]
 
 
 def test_outside_the_hours_no_regulation_applies():
