@@ -522,26 +522,46 @@ INGESTED_DEM_PRODUCTS_SQL = (
 
 
 def dem_tile_pixels_sql(tile: str, pixels: str) -> str:
-    """標高タイルの行`tile`（`DEM_TILES_SQL`の行の別名）の画素を1回だけ展開し、別名`pixels`の行（`vals`・`nodata`・`width`・
-    `scale`）として結ぶ句（`FROM`の後ろに置く）。点を引く式（`dem_pixel_value_sql`）はこの行を読む。
+    """標高タイルの行`tile`（`DEM_TILES_SQL`の行の別名）の画素を1回だけ展開し、別名`pixels`の行（`vals`・`nodata`・
+    `scale`）として結ぶ句（`FROM`の後ろに置く）。画素を引く式（`dem_pixel_value_sql`）はこの行を読む。
 
     **展開はタイルごとに1回にする**——点ごとに`ST_Value`で引くと、そのたびにタイル全体が読み出される。`OFFSET 0`は副問い合わせを
     平らにさせない（平らにされると、引く点ごとに展開し直す）。値の無い画素も生の値のまま受けて`nodata`と比べる（NULLを含む配列は、
-    添字で引くたびに先頭から数え直す）。幅は`attrs`が持つ——rasterから読むと、そのたびに画素が実体化される。標高は`scale`で割って
-    戻す（取込が整数へ詰めているため。尺度だけはrasterが持てない）。"""
+    添字で引くたびに先頭から数え直す）。標高は`scale`で割って戻す（取込が整数へ詰めているため。尺度だけはrasterが持てない）。"""
     return (f"CROSS JOIN LATERAL (SELECT ST_DumpValues({tile}.rast, 1, false) AS vals, ST_BandNoDataValue({tile}.rast, 1) AS nodata, "
-            f"({tile}.attrs->>'width')::int AS width, ({tile}.attrs->>'scale')::float AS scale OFFSET 0) {pixels}")
+            f"({tile}.attrs->>'scale')::float AS scale OFFSET 0) {pixels}")
 
 
-def dem_pixel_value_sql(pixels: str, fx: str, fy: str, tx: str, ty: str) -> str:
-    """展開した標高タイル（`dem_tile_pixels_sql`の行の別名`pixels`）の、タイル座標（小数）`fx`・`fy`（整数部`tx`・`ty`）に
-    当たる画素の標高（m）の式。値の無い画素はNULL。
+def dem_bilinear_corners_sql(fx: str, fy: str, product: str) -> str:
+    """製品`product`（SQLの式）のタイル座標（小数）`fx`・`fy`の点を双線形補間で引くための、まわりの4画素の行（`tx`・`ty`が
+    その画素のタイルの番地、`ix`・`iy`がタイルの中の1始まりの列・行、`w`が重み）を結ぶ句（`FROM`の後ろに置く）。重みが0の画素も
+    行に入るので、読み手が外す。
 
-    **どの画素かは算術で出す。**`ST_Intersects(rast, 点)`で絞ると当たり判定のたびにタイルの画素が実体化され、外枠だけで
-    絞ると境界線上の点が隣のタイルへ割り当たる。番地で決めれば、rasterに触らずに1画素へ確定する。"""
-    width = f"{pixels}.width"
-    return (f"NULLIF({pixels}.vals[least({width}, floor(({fy} - {ty}) * {width})::int + 1)]"
-            f"[least({width}, floor(({fx} - {tx}) * {width})::int + 1)], {pixels}.nodata) / {pixels}.scale")
+    幅は`attrs`が持つ——rasterから読むと、そのたびに画素が実体化される。製品のタイルはどれも同じ幅で取り込まれる前提で、1枚から読む。
+
+    **値は画素の中心にあるとみなす**（GraphHopper の`core/src/main/java/com/graphhopper/reader/dem/HeightTile.java`の
+    `interpolate`の分岐と同じ置き方）。最寄りの1画素で引くと、5m おきの点が画素の境をまたぐたびに値が段で変わり、平らな道に偽の
+    起伏が出る。**4画素はズームの全体の画素の番地で決めてからタイルへ割る**ので、タイルの端の点は隣のタイルの画素を読み、
+    タイルの境で値が段にならない。**どの画素かは算術で出す**——`ST_Intersects(rast, 点)`で絞ると当たり判定のたびにタイルの
+    画素が実体化される。PostGIS の`ST_Value`の`resample => 'bilinear'`は使わない——点ごとにタイル全体を読み出し、タイルの境で
+    隣のタイルを読まない。"""
+    return f"""CROSS JOIN (SELECT (t.attrs->>'width')::int AS width FROM {DEM_TILES_SQL} t
+  WHERE t.attrs->>'product' = {product} LIMIT 1) bw
+CROSS JOIN LATERAL (SELECT {fx} * bw.width - 0.5 AS gx, {fy} * bw.width - 0.5 AS gy) bp
+CROSS JOIN LATERAL (SELECT floor(bp.gx)::bigint AS x0, floor(bp.gy)::bigint AS y0) bf
+CROSS JOIN LATERAL (VALUES (0, 0), (1, 0), (0, 1), (1, 1)) bd(dx, dy)
+CROSS JOIN LATERAL (SELECT bf.x0 + bd.dx AS px, bf.y0 + bd.dy AS py,
+  (CASE bd.dx WHEN 0 THEN 1 - (bp.gx - bf.x0) ELSE bp.gx - bf.x0 END)
+  * (CASE bd.dy WHEN 0 THEN 1 - (bp.gy - bf.y0) ELSE bp.gy - bf.y0 END) AS w) bq
+CROSS JOIN LATERAL (SELECT floor(bq.px::float / bw.width)::int AS tx, floor(bq.py::float / bw.width)::int AS ty) bt
+CROSS JOIN LATERAL (SELECT bt.tx, bt.ty, (bq.px - bt.tx * bw.width)::int + 1 AS ix, (bq.py - bt.ty * bw.width)::int + 1 AS iy,
+  bq.w) bc"""
+
+
+def dem_pixel_value_sql(pixels: str, ix: str, iy: str) -> str:
+    """展開した標高タイル（`dem_tile_pixels_sql`の行の別名`pixels`）の、1始まりの列`ix`・行`iy`の画素の標高（m）の式。
+    値の無い画素はNULL。"""
+    return f"NULLIF({pixels}.vals[{iy}][{ix}], {pixels}.nodata) / {pixels}.scale"
 
 #: 土地被覆タイル（1枚=1行）。
 LANDCOVER_TILES_SQL = _raster_tiles_sql(Source.LULC)
