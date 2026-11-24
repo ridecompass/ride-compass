@@ -12,6 +12,7 @@ Open-MeteoがAWS Open Data経由で公開している前処理済みMSM（CC-BY-
 """
 
 import asyncio
+import hashlib
 import json
 import logging
 import re
@@ -118,6 +119,18 @@ def _load_json(path: Path) -> dict:
         return json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return {}
+
+
+def forecast_version() -> str:
+    """置き場の予報の版。同期が予報を入れ替えると変わる（入れ替えの最後に書くメタ情報とETagの中身から決める）。"""
+    digest = hashlib.sha1()
+    for name in (_META_FILE_NAME, _ETAGS_FILE_NAME):
+        try:
+            digest.update((MSM_DIR / name).read_bytes())
+        except FileNotFoundError:
+            pass
+        digest.update(b"\x1f")
+    return digest.hexdigest()[:12]
 
 
 #: 配信元のメタ情報がrun更新間隔を持たない（使えない値の）ときに使う間隔。

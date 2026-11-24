@@ -288,7 +288,7 @@ export function useMapView({
         ? deriveFetchLayerStatus(
             lensFetch.loading,
             lensFetch.error,
-            lensFetch.materials.size > 0,
+            [...lensFetch.materials.values()].some((leaves) => Object.keys(leaves).length > 0),
             lensFetch.hasFetched,
             lensFetch.truncated,
           )

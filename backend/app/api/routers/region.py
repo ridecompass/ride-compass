@@ -107,7 +107,7 @@ async def region_landcover_tile(
     return tile_response(tile, PNG_CONTENT_TYPE)
 
 
-@router.get("/api/region/lens/{lens_id}/{z}/{x}/{y}")
+@router.get("/api/region/lens/{lens_id}/{z}/{x}/{y}", response_model=LensMaterials)
 async def region_lens(
     lens_id: str,
     z: RoadTileZoom,
@@ -118,7 +118,7 @@ async def region_lens(
     at: datetime | None = None,
     preference: CostPreference = Depends(cost_preference_query),
     service: LensService = Depends(get_lens_service),
-) -> LensMaterials:
+) -> Response:
     """ルートを出す前の地図がレンズ`lens_id`（総合`total`か費用の軸のid。`domain/lens_values.py`）で道を塗る、指定タイルの
     フィーチャーごとの道ごとの材料: 道の向きに辿った・逆向きに辿った1kmあたりの代償の秒（辿れない向きは載せない）と、
     道の向き。どちらの向きを塗るかは、`/api/cost-axes`のレンズの`map_lens.formula`が走行方位で選ぶ。値は時刻`at`（省略すると今。
@@ -130,10 +130,10 @@ async def region_lens(
     check_tile_rate_limit(request, "lens")
     validate_tile_coords(z, x, y)
     async with region_tile_semaphore:
-        materials = await service.way_materials(lens_id, z, x, y, at, speed_kmh, preference)
-    if materials is None:
+        body = await service.way_materials(lens_id, z, x, y, at, speed_kmh, preference)
+    if body is None:
         raise HTTPException(status_code=404, detail="この負担の種類の値はありません。")
-    return materials
+    return Response(body, media_type="application/json")
 
 
 class RoadInspectorRequest(StrictModel):

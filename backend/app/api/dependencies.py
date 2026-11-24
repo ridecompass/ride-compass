@@ -44,7 +44,7 @@ from app.services.graph_service import GraphService, SearchMemory
 from app.services.jma_amedas_service import JmaAmedasService
 from app.services.jma_tile_prewarm_service import prewarm_ingested_area
 from app.services.landcover_tile_service import get_landcover_tile
-from app.services.lens_service import LensService
+from app.services.lens_service import LensService, new_response_cache
 from app.services.material_coverage_service import MaterialCoverageService
 from app.services.nearest_point_areas import new_cells_cache
 from app.services.place_search_service import PlaceSearchReads, PlaceSearchService
@@ -185,10 +185,14 @@ def get_place_search_service(tile_sessions: TileSessions):
     return PlaceSearchService(partial(_open_place_search_reads, tile_sessions))
 
 
+#: 地図のレンズの応答の持ち。サービスは要求ごとに作られるため、プロセスの側で持つ。
+_lens_responses = new_response_cache()
+
+
 async def get_lens_service(tile_sessions: TileSessions, weather_service: WeatherService = Depends(get_weather_service)):
     """地図のレンズの道ごとの値。タイルのフィーチャーの鍵を読むセッション（値は取込範囲全体の道の網から求める）。"""
     async with tile_sessions() as session:
-        yield LensService(weather_service, RoadGraphRepository(session))
+        yield LensService(weather_service, RoadGraphRepository(session), _lens_responses)
 
 
 async def get_road_inspector_service(tile_sessions: TileSessions,
@@ -196,7 +200,8 @@ async def get_road_inspector_service(tile_sessions: TileSessions,
     """道の窓。道の一次属性とタイルのフィーチャーの鍵を、同じセッションで引く。"""
     async with tile_sessions() as session:
         repository = RoadGraphRepository(session)
-        yield RoadInspectorService(RegionService(repository=repository), LensService(weather_service, repository))
+        yield RoadInspectorService(RegionService(repository=repository),
+                                   LensService(weather_service, repository, _lens_responses))
 
 
 def get_jma_tile_client():
