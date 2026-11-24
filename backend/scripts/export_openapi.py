@@ -59,7 +59,7 @@ from app.domain.weather_elements import (
     weather_element_deliveries,
     weather_element_tile,
 )
-from app.domain.cycling_speed import CRUISE_SPEED_LABEL
+from app.domain.cycling_speed import CRUISE_SPEED_LABEL, TRAVEL_MODEL_WORDING
 from app.domain.road_classes import NO_DATA_VALUE
 from app.domain.map_display import (
     ALWAYS_SHOWN_ATTRIBUTIONS,
@@ -617,8 +617,9 @@ def main() -> None:
             "max_assumed_speed_kmh": MAX_ASSUMED_SPEED_KMH,
             # フロントが状態を問い合わせるとき、終わるまで待たせる秒（口が受け付ける上限そのもの）。
             "job_wait_seconds": JOB_WAIT_MAX_SECONDS,
-            # 利用者が入れる巡航速度の名前と、所要時間の見積もりが何を足したものかの文と、候補の並べ方の文と、罰の曲がりの扱いの文。
+            # 利用者が入れる巡航速度の名前と、区間の速度の決め方の文と、所要時間の見積もりが何を足したものかの文と、候補の並べ方の文と、罰の曲がりの扱いの文。
             "cruise_speed_label": CRUISE_SPEED_LABEL,
+            "travel_model_wording": TRAVEL_MODEL_WORDING,
             "duration_estimate_wording": DURATION_ESTIMATE_WORDING,
             "candidate_order_wording": CANDIDATE_ORDER_WORDING,
             # 所要時間の計算が値の無い区間をどう数えるかの文。結果の「平均で計算した道のり」の注意の詳しい説明に出す。
