@@ -220,7 +220,7 @@ async def test_the_summary_counts_the_same_steps_as_the_travel_time(road_graph_s
                     along=[length_m * i / (count - 1) for i in range(count)])
     kept = row["elevation_profile_m"]
     built = profiles(kept, positions=[list(along_fractions(np.array(row["elevation_profile_along_m"]), len(kept)))])
-    _, lengths, grades = flatten_spans(built.start, built.points, built.forward, built.elevation_m, built.position,
+    _, lengths, grades, _ = flatten_spans(built.start, built.points, built.forward, built.elevation_m, built.position,
                                        np.array([length_m]), np.zeros(1), FLAT.grade, FLAT.share, MAX_GRADE)
     rises = lengths.astype(np.float64) * grades
     summary = summarize_profile(kept, row["elevation_profile_along_m"])

@@ -133,7 +133,7 @@
   （`domain/ledger_costs.py: LedgerCosts.penalty_by_axis`）を持ち、その和が区間の代償の秒（`LedgerCosts.penalty_seconds`）になる。
 - **ルートの内訳**: 経路の区間の代償は、探索がその区間に使ったビンの風で、経路上の行だけを解き直して求める
   （`domain/leg_costs.py: LegCostComposer.values_at_rows`が`domain/ledger_costs.py: LedgerCosts.row_seconds`を呼び、走行の模型は
-  `SegmentSpeedModel.ride`に行を渡すとその行の点の間だけを解く）。点の間ごとの計算は互いに依らないので、全部を解いた探索の
+  `SegmentSpeedModel.ride`に行を渡すとその行の点の間だけを解く）。行ごとの計算は互いに依らない（勢いは行の中でだけ持ち越す）ので、全部を解いた探索の
   値と同じになり、所要時間と内訳の和が探索の費用に合う。避け方の秒は、避け方の倍率と1の差 × 区間の所要時間
   （`domain/leg_costs.py: avoidance_seconds`。探索の費用も同じ式を読む）で、
   負の分（好む側の段）と正の分（避ける側の段）を分けて持つ（`domain/route.py: PenaltyBreakdown`の`preferred_seconds`・`avoided_seconds`）。

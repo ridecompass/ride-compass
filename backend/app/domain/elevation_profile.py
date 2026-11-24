@@ -3,7 +3,7 @@
 断面の点は、区間に沿って拾った標高を揺れの閾値で間引いた点（`infrastructure/derived_models.py: EdgeElevationRow.elevation_profile_m`）で、
 点の間隔はそろわない。道路網の配列は全区間の点を順方向に並べてつないだ1本の標高の配列と、点ごとの位置（区間の長さに対する
 割合。始まりが0、終わりが1）の配列と、向きつきの行ごとの始まりの位置・点の数・順方向かで持つ（区間の両向きの行は同じ点を指し、
-逆向きの行は勾配の符号を返して読む）。点の間の長さは、区間の長さ×（隣の点との位置の差）。
+逆向きの行は点を逆順にたどって勾配の符号を返して読む）。点の間の長さは、区間の長さ×（隣の点との位置の差）。
 
 **点の間は、道路網の配列を作るときに1回だけJITで平らな並びに詰める**（`profile_spans`。区間の行ごとの範囲で持ち、探索は
 範囲の区間の行の分を写すだけ）。所要時間は探索の範囲の全区間について風の時刻ごとに解くため、numpyで点の間（区間の数倍）の
@@ -120,37 +120,42 @@ def row_elevations_m(start: np.ndarray, points: np.ndarray, elevation_m: np.ndar
 @njit(cache=True, nogil=True)
 def flatten_spans(start: np.ndarray, points: np.ndarray, forward: np.ndarray, elevation_m: np.ndarray,
                    position: np.ndarray, distance_m: np.ndarray, unknown_m: np.ndarray, fill_grade: np.ndarray,
-                   fill_share: np.ndarray, max_grade: float) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+                   fill_share: np.ndarray, max_grade: float) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """区間の行ごとの、値のある点の間と、標高の無い長さを分布の階級ごとに分けた道を、`(行, 長さ, 走る向きの勾配)`の
-    平らな並びにする（風に依らないので、リクエストに1回。`domain/cycling_speed.py`が風の時刻ごとに解くループを1本の平らな
-    並びにして、CPUがまとめて計算できるようにする）。"""
+    平らな並びにし、行ごとの値のある点の間の数を添える（風に依らないので、リクエストに1回。`domain/cycling_speed.py`が風の
+    時刻ごとに解くループを1本の平らな並びにして、CPUがまとめて計算できるようにする）。
+
+    行の中は、値のある点の間を**走る順**に並べ（逆向きの行は点を逆順にたどる。勢いを点の間の順に持ち越すため）、そのあとに
+    分布で埋める道を並べる。分布で埋める道は道の上の位置を持たないので、勢いを持ち越さない。"""
     total = 0
     for row in range(len(points)):
         total += max(points[row] - 1, 0) + (len(fill_grade) if unknown_m[row] > 0 else 0)
     span_row = np.empty(total, dtype=np.int32)
     span_length = np.empty(total, dtype=np.float32)
     span_grade = np.empty(total, dtype=np.float32)
+    positioned = np.zeros(len(points), dtype=np.int32)
     found = 0
     for row in range(len(points)):
         count = points[row]
         if count >= 2:
-            sign = 1.0 if forward[row] else -1.0
             first = start[row]
-            for i in range(count - 1):
+            for k in range(count - 1):
+                i = k if forward[row] else count - 2 - k
                 step = distance_m[row] * (position[first + i + 1] - position[first + i])
                 grade = interval_grade(elevation_m[first + i], elevation_m[first + i + 1], step, max_grade)
                 if not np.isnan(grade):
                     span_row[found] = row
                     span_length[found] = step
-                    span_grade[found] = sign * grade
+                    span_grade[found] = grade if forward[row] else -grade
                     found += 1
+                    positioned[row] += 1
         if unknown_m[row] > 0:
             for k in range(len(fill_grade)):
                 span_row[found] = row
                 span_length[found] = unknown_m[row] * fill_share[k]
                 span_grade[found] = fill_grade[k]
                 found += 1
-    return span_row[:found], span_length[:found], span_grade[:found]
+    return span_row[:found], span_length[:found], span_grade[:found], positioned
 
 
 @dataclass(frozen=True)
@@ -160,23 +165,27 @@ class ProfileSpans:
 
     start: np.ndarray  # int64
     count: np.ndarray  # int32
+    positioned: np.ndarray  # int32、行の先頭から何個が値のある点の間か（走る順。残りは分布で埋める道）
     length_m: np.ndarray  # float32
     grade: np.ndarray  # float32、走る向きの勾配（小数）
     unknown_m: np.ndarray  # float64
     mean_elevation_m: np.ndarray  # float64
 
     def take(self, rows: np.ndarray) -> "ProfileSpans":
-        return ProfileSpans(np.asarray(self.start[rows]), np.asarray(self.count[rows]), self.length_m, self.grade,
-                            np.asarray(self.unknown_m[rows]), np.asarray(self.mean_elevation_m[rows]))
+        return ProfileSpans(np.asarray(self.start[rows]), np.asarray(self.count[rows]), np.asarray(self.positioned[rows]),
+                            self.length_m, self.grade, np.asarray(self.unknown_m[rows]),
+                            np.asarray(self.mean_elevation_m[rows]))
 
-    def flat(self) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-        """`(行, 長さ, 走る向きの勾配)`の平らな並び（行はこの束の中の位置）。"""
+    def flat(self) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+        """`(行, 長さ, 走る向きの勾配, 値のある点の間か)`の平らな並び（行はこの束の中の位置）。"""
         count = np.asarray(self.count, dtype=np.int64)
         # 行ごとの範囲 [始まり, 始まり＋数) をつないだ位置（行の先頭からの位置 ＋ 行の始まり）。
         offset = np.asarray(self.start, dtype=np.int64) - (np.cumsum(count) - count)
+        within = np.arange(int(count.sum())) - np.repeat(np.cumsum(count) - count, count)
         taken = np.repeat(offset, count) + np.arange(int(count.sum()))
         return (np.repeat(np.arange(len(count), dtype=np.int32), count),
-                np.asarray(self.length_m[taken], dtype=np.float32), np.asarray(self.grade[taken], dtype=np.float32))
+                np.asarray(self.length_m[taken], dtype=np.float32), np.asarray(self.grade[taken], dtype=np.float32),
+                within < np.repeat(np.asarray(self.positioned, dtype=np.int64), count))
 
 
 def profile_spans(profiles: ElevationProfiles, distance_m: np.ndarray) -> ProfileSpans:
@@ -187,12 +196,12 @@ def profile_spans(profiles: ElevationProfiles, distance_m: np.ndarray) -> Profil
     position = np.asarray(profiles.position, dtype=np.float32)
     distance = np.asarray(distance_m, dtype=np.float64)
     unknown = unknown_lengths_m(start, points, elevation, position, distance, profiles.max_grade)
-    span_row, length, grade = flatten_spans(
+    span_row, length, grade, positioned = flatten_spans(
         start, points, np.asarray(profiles.forward, dtype=np.bool_), elevation, position, distance, unknown,
         np.asarray(profiles.distribution.grade, dtype=np.float64), np.asarray(profiles.distribution.share, dtype=np.float64),
         profiles.max_grade)
     count = np.bincount(span_row, minlength=len(points)).astype(np.int32)
-    return ProfileSpans(np.cumsum(count, dtype=np.int64) - count, count, length, grade, unknown,
+    return ProfileSpans(np.cumsum(count, dtype=np.int64) - count, count, positioned, length, grade, unknown,
                         row_elevations_m(start, points, elevation))
 
 

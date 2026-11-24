@@ -112,10 +112,11 @@ class RoadNetwork:
     edge_profile_points: np.ndarray  # int32
     profile_elevation_m: np.ndarray  # float32、行数は区間ではなく点の数
     profile_position: np.ndarray  # float32、点ごとの位置（区間の長さに対する割合）。行数は`profile_elevation_m`と同じ
-    # 所要時間と体力を解く点の間（`domain/elevation_profile.py: ProfileSpans`）。区間の行ごとの始まりの位置と数と、標高の無い長さと
-    # 気圧を出す標高。
+    # 所要時間と体力を解く点の間（`domain/elevation_profile.py: ProfileSpans`）。区間の行ごとの始まりの位置と数と、そのうち値のある
+    # 点の間の数と、標高の無い長さと気圧を出す標高。
     edge_span_start: np.ndarray  # int64
     edge_span_count: np.ndarray  # int32
+    edge_span_positioned: np.ndarray  # int32
     span_length_m: np.ndarray  # float32、行数は点の間の数
     span_grade: np.ndarray  # float32
     unknown_elevation_m: np.ndarray  # float64
@@ -188,8 +189,8 @@ class RoadNetwork:
     @property
     def elevation_spans(self) -> ProfileSpans:
         """全区間の、所要時間と体力を解く点の間。"""
-        return ProfileSpans(self.edge_span_start, self.edge_span_count, self.span_length_m, self.span_grade,
-                            self.unknown_elevation_m, self.mean_elevation_m)
+        return ProfileSpans(self.edge_span_start, self.edge_span_count, self.edge_span_positioned, self.span_length_m,
+                            self.span_grade, self.unknown_elevation_m, self.mean_elevation_m)
 
     @cached_property
     def edge_first_rows(self) -> np.ndarray:

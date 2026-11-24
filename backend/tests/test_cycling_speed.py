@@ -231,7 +231,8 @@ def test_a_road_that_climbs_and_descends_takes_longer_than_a_flat_one_of_the_sam
 
 
 def test_a_backward_row_runs_the_points_of_its_road_the_other_way():
-    """両向きの行は同じ点を指し、逆向きの行は勾配の符号を返して読む。読み違えると、登りを下りとして走る。"""
+    """両向きの行は同じ点を指し、逆向きの行は点を逆順にたどって勾配の符号を返して読む。読み違えると、登りを下りとして走り、
+    勢いを走る順と逆に持ち越す。"""
     climbing, descending, down_as_read = _seconds([0.0, 30.0], [0.0, 30.0], [30.0, 0.0], distance=600.0,
                                                   forward=[True, False, True])
 
@@ -249,6 +250,19 @@ def test_a_road_without_elevation_runs_the_slopes_of_the_whole_network():
     (up,) = _seconds([-3.0, 3.0], distance=300.0)
 
     assert missing == pytest.approx(down + up)
+
+
+def test_small_rises_and_falls_are_ridden_on_momentum_without_pushing():
+    """1本の道の中では勢いを持ち越す。平地から入って、巡航の勢いで越えられる小さな上り下り（約20mおきに0.2m）は踏み増さず、登坂の体力を数えない
+    ——持ち越さないと、上りの間の踏み増しだけが積まれて下りで戻らず、標高の小さな揺れが体力に効く。所要は平地とほぼ同じ。"""
+    bumps = [0.0, 0.0] + [0.2, 0.0] * 10
+    model = SegmentSpeedModel(RIDER, profile_spans(road_profiles(bumps, [0.0] * len(bumps)), np.full(2, 400.0)),
+                              np.full(2, 400.0), np.full(2, RIDER.crr), np.zeros(2), TUNED)
+
+    ride = model.ride(np.zeros(2), np.zeros(2), _standard(2), 0.0)
+
+    assert ride.gravity_extra_j.tolist() == [0.0, 0.0]
+    assert ride.seconds[0] == pytest.approx(ride.seconds[1], rel=0.01)
 
 
 def test_riding_only_some_rows_gives_those_rows_of_riding_them_all():
