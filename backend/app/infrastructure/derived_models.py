@@ -137,10 +137,8 @@ class _Landcover:
 class RoadEdgeRow(Base):
     """道を交差点で切った区間1本。**向きでは分けない**。
 
-    向きが持つ情報はいずれも導ける——方位は両向きぶんを列で持ち（+180°の単純反転に
-    しない。地球の丸みを近似しないため）、勾配は符号を反転し、通行の可否は道の属性
-    （一方通行）から決まる。有向グラフは探索がメモリ上で組む実行時の構成物で、表が
-    両向きの行を持つ必要はない。
+    向きが持つ情報はいずれも導ける——逆向きの方位は順方向の方位に180°を足し、勾配は符号を反転し、通行の可否は道の属性
+    （一方通行）から決まる。有向グラフは探索がメモリ上で組む実行時の構成物で、表が両向きの行を持つ必要はない。
     """
 
     __tablename__ = "road_edges"
@@ -172,12 +170,8 @@ class RoadEdgeRow(Base):
         Geometry("LINESTRING", srid=4326, spatial_index=False), nullable=False)
     #: 長さは丸めない。4.8 cmの区間が実在し、0へ落とすと読み出し側が除算を守る羽目になる。
     distance_m: Mapped[float] = mapped_column(REAL, nullable=False)
-    #: 順方向の方位。
+    #: 順方向の方位（始点から終点を見た向き）。
     bearing_deg: Mapped[float] = mapped_column(REAL, nullable=False)
-    #: 逆向きの方位。**+180°ではない**（球面上では往路と復路の方位はちょうど反対を
-    #: 向かない）ため、形状の終点→始点から測った値を持つ。読むたびに`ST_Azimuth`で
-    #: 求め直すとグラフ読み込みが目に見えて遅くなるため、列として持つ。
-    reverse_bearing_deg: Mapped[float] = mapped_column(REAL, nullable=False)
 
 
 class RoadWayRow(Base):

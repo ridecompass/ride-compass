@@ -100,7 +100,7 @@ async def test_branch_count_is_the_number_of_segment_ends_at_the_node(topology_c
 
 async def _parallel_edge(conn):
     return await conn.fetchrow(
-        "SELECT distance_m, bearing_deg, reverse_bearing_deg FROM road_edges WHERE osm_way_id = $1", PARALLEL_WAY[0])
+        "SELECT distance_m, bearing_deg FROM road_edges WHERE osm_way_id = $1", PARALLEL_WAY[0])
 
 
 async def test_distance_is_the_geodesic_length_of_the_geometry(topology_conn):
@@ -118,21 +118,16 @@ async def test_distance_is_the_geodesic_length_of_the_geometry(topology_conn):
     assert (await _parallel_edge(topology_conn))["distance_m"] == pytest.approx(expected, abs=0.01)
 
 
-async def test_bearings_are_measured_from_the_shape_ends(topology_conn):
-    """順方向は始点→終点、逆向きは終点→始点で測る（+180°の単純反転にしない）。
+async def test_the_bearing_is_measured_from_the_shape_start_to_its_end(topology_conn):
+    """順方向の方位は、始点から終点を見た測地線の向き。
 
-    同じ緯度の2点を結ぶ測地線は極の側へ膨らむので、始点では真東より北へ、終点から戻る向きは真西より北へ、
-    同じ角だけ傾く（傾きは atan(sin緯度×tan(経度の差/2))）。+180°で反転すると逆向きが真西より南へ傾き、
+    同じ緯度の2点を結ぶ測地線は極の側へ膨らむので、始点では真東より北へ傾く（傾きは atan(sin緯度×tan(経度の差/2))）。
     経度緯度を平面として測ると傾きが0になる。
     """
     _, _, lat, _, d_lon = PARALLEL_WAY
     tilt = math.degrees(math.atan(math.sin(math.radians(lat)) * math.tan(math.radians(d_lon / 2))))
 
-    edge = await _parallel_edge(topology_conn)
-    assert (edge["bearing_deg"], edge["reverse_bearing_deg"]) == (
-        pytest.approx(90 - tilt, abs=1e-4),
-        pytest.approx(270 + tilt, abs=1e-4),
-    )
+    assert (await _parallel_edge(topology_conn))["bearing_deg"] == pytest.approx(90 - tilt, abs=1e-4)
 
 
 async def test_geometry_follows_the_shape_between_the_cut_points(topology_conn):

@@ -92,8 +92,9 @@ async def create_tables(engine: AsyncEngine) -> None:
 #: 材料ではないが、材料と同じ1回のクエリで求まるため一緒に受け取る列。
 _EXTRA_MATERIAL_ARRAY_COLUMNS: dict[str, str] = {
     "distance_m": "re.distance_m",
-    # 逆向きの方位は+180°ではない。両向きぶんを列で持つ（`road_edges`）。
-    "bearing_deg": "CASE WHEN ids.forward THEN re.bearing_deg ELSE re.reverse_bearing_deg END",
+    # 逆向きの方位は、順方向の方位に180°を足したもの（`road_edges`は順方向だけを持つ）。
+    "bearing_deg": "CASE WHEN ids.forward THEN re.bearing_deg"
+                   " ELSE re.bearing_deg + CASE WHEN re.bearing_deg >= 180 THEN -180 ELSE 180 END END",
     **dict(zip(("mid_lat", "mid_lon"), midpoint_sql("nf.geom", "nt.geom"), strict=True)),
 }
 
