@@ -39,7 +39,9 @@ import app.domain.road_network_build
 from app.domain.geo import bearings_between
 from app.domain.material_catalog import material_array_columns
 from app.domain.road_network import RoadNetwork, positions_in
-from app.domain.road_network_build import EdgelessWays, build_road_network
+from app.domain.material_catalog import PEDESTRIAN_ROAD
+from app.domain.road_network_build import EdgelessWays, build_road_network, regulation_arrays
+from app.domain.traffic_regulation import PEDESTRIAN_ROAD_LABELS
 from app.domain.search_graph import run_starts
 from app.domain.traffic import HIGHWAY_RANK, highway_rank, travel_allowed
 from app.infrastructure.cache_identity import shape_digest
@@ -273,7 +275,14 @@ async def build(repository: RoadGraphRepository, revision: int) -> RoadNetwork:
     read_s = time.monotonic() - started
     logger.info("道路網の材料を読みました 有向の区間=%d %.0f秒 %s", len(edges["edge_way_id"]), read_s - topology_s,
                 memory_note())
-    network = build_road_network(revision=revision, **nodes, **edges, **materials)
+    regulation_fields, pedestrian_road = regulation_arrays(
+        edges["edge_way_id"], edges["edge_segment"], await repository.get_network_regulations())
+    column = materials["categorical_ids"].index(PEDESTRIAN_ROAD)
+    materials["categorical_codes"][:, column] = pedestrian_road
+    vocab = list(materials["categorical_vocab"])
+    vocab[column] = (None, *PEDESTRIAN_ROAD_LABELS)
+    materials["categorical_vocab"] = tuple(vocab)
+    network = build_road_network(revision=revision, **nodes, **edges, **materials, **regulation_fields)
     logger.info("道路網の配列を組みました %.0f秒 %s", time.monotonic() - started - read_s, memory_note())
     return network
 

@@ -26,11 +26,14 @@ from app.domain.attributes import CategoricalColumn, EdgeMaterialArrays
 from app.domain.elevation_profile import along_fractions
 from app.domain.geo import bearing_sql, degrees_covering_m, midpoint_sql
 from app.domain.material_catalog import (
+    MATERIAL_CATALOG,
     material_array_columns,
     material_value_sql,
 )
 from app.domain.region import BoundingBox, RoadAt
+from app.domain.road_network_build import NetworkRegulations
 from app.domain.search_graph import EDGE_VALUE_DTYPE
+from app.domain.traffic_regulation import SLOT_FIELDS, RegulationSlot
 from app.domain.tuning import TURN_BEARING_DISTANCE_ID, require_tuning
 from app.infrastructure import derived_data_meta
 from app.infrastructure.material_joins import material_from_clause
@@ -272,6 +275,26 @@ class RoadGraphRepository:
         require_tuning({TURN_BEARING_DISTANCE_ID: bearing_distance_m}, bearing_distance_m >= 0, "0以上")
         return self._stream(_NETWORK_EDGES_SQL.bindparams(bearing_distance_m=bearing_distance_m), chunk_size)
 
+    async def get_network_regulations(self) -> NetworkRegulations:
+        """区間に当たった交通規制と、規制ごとの条件の組（道路網の配列の規制の欄の元）。"""
+        ids: list[str] = list((await self._session.execute(text(
+            "SELECT regulation_id FROM traffic_regulations ORDER BY regulation_id"))).scalars())
+        index = {regulation_id: i for i, regulation_id in enumerate(ids)}
+        hits = (await self._session.execute(text(
+            "SELECT osm_way_id, segment_index, regulation_id FROM edge_traffic_regulations"
+            " ORDER BY osm_way_id, segment_index, regulation_id"))).all()
+        slots = (await self._session.execute(text(
+            f"SELECT regulation_id, {', '.join(SLOT_FIELDS)} FROM traffic_regulation_slots ORDER BY regulation_id, slot"))).all()
+        return NetworkRegulations(
+            regulation_count=len(ids),
+            hit_way=np.array([row.osm_way_id for row in hits], dtype=np.int64),
+            hit_segment=np.array([row.segment_index for row in hits], dtype=np.int64),
+            hit_regulation=np.array([index[row.regulation_id] for row in hits], dtype=np.int64),
+            slot_regulation=np.array([index[row.regulation_id] for row in slots], dtype=np.int64),
+            slot_values=np.array([RegulationSlot(*row[1:]).as_values() for row in slots], dtype=np.int16).reshape(
+                -1, len(SLOT_FIELDS)),
+        )
+
     async def get_edgeless_ways(self) -> list[int]:
         """区間を持たない道の番号（昇順）。"""
         return list((await self._session.execute(_EDGELESS_WAYS_SQL)).scalars())
@@ -328,7 +351,11 @@ class RoadGraphRepository:
         return EdgeMaterialArrays(
             numeric_ids=numeric_ids, numeric_values=numeric_values,
             categorical_ids=categorical_ids,
-            categorical_columns=tuple(CategoricalColumn.encode(raw[material_id]) for material_id in categorical_ids),
+            # 値式を持たない分類の材料（出どころが`regulation`）は、宣言の語彙の値なしの列で返す（配列を作るときに埋める）。
+            categorical_columns=tuple(
+                CategoricalColumn.encode(raw[material_id]) if material_id in raw
+                else CategoricalColumn(np.zeros(n, dtype=np.int16), (None, *MATERIAL_CATALOG[material_id].value_labels))
+                for material_id in categorical_ids),
             **{name: float_array(raw[name]) for name in _EXTRA_MATERIAL_ARRAY_COLUMNS},
         )
 

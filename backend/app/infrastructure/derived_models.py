@@ -48,7 +48,7 @@ from app.domain.landcover import PERCENT_CLASSES, landcover_key
 from app.domain.material_sql import sql_literals
 from app.domain.stop_place import BRAND_CHAIN_PREFIX, StopPlaceGroup
 from app.domain.traffic import DIRECTIONS, NODE_KINDS, POI_COUNT_KINDS, poi_count_column
-from app.domain.traffic_regulation import REGULATION_HOURS
+from app.domain.traffic_regulation import DAY_CODES, MINUTES_PER_DAY
 
 #: 数えた値は負にならない。0は数えた結果の「1つも無い」。
 #: 件数は小数を持つ——区間の端に乗るものは前後の区間が0.5ずつ持つ（`batch/derive_counts.py`）。
@@ -229,35 +229,79 @@ class EdgeLandcoverRow(_EdgeKey, _Landcover, Base):
 
 
 class EdgeCountsRow(_EdgeKey, _Counts, Base):
-    """区間に付く数（事故・交差点・停止要因）。全区間が行を持つ。"""
+    """区間に付く数（交差点・停止要因）。全区間が行を持つ。"""
 
     __tablename__ = "edge_counts"
     __table_args__ = (_edge_key("edge_counts"), *_count_checks("edge_counts"), {"info": DERIVED})
 
 
-def _not_stronger_check(table: str, weaker: str, stronger: str) -> CheckConstraint:
-    """時間帯の列`weaker`が列`stronger`より強くならない制約（強さは`REGULATION_HOURS`の並び）。どちらかがNULLなら通す。"""
-    order = f"ARRAY[{sql_literals(REGULATION_HOURS)}]"
-    return CheckConstraint(f"array_position({order}, {weaker}) >= array_position({order}, {stronger})",
-                           name=f"{table}_{weaker}_not_stronger")
+def _minutes_check(table: str, start: str, end: str) -> CheckConstraint:
+    """時間の欄（0:00からの分）の制約。両端がそろい、始まりは0〜1439、終わりは1〜1440で、両端が同じでない。"""
+    return CheckConstraint(
+        f"({start} IS NULL) = ({end} IS NULL) AND {start} BETWEEN 0 AND {MINUTES_PER_DAY - 1}"
+        f" AND {end} BETWEEN 1 AND {MINUTES_PER_DAY} AND {start} <> {end}", name=f"{table}_{start}_minutes")
 
 
-class EdgeTrafficRegulationRow(_EdgeKey, Base):
-    """区間に当たった交通規制が効く時間帯。規制が当たった区間だけが行を持つ。"""
+def _month_day_check(table: str, start: str, end: str) -> CheckConstraint:
+    """期間の欄（月日の数。MMDD）の制約。両端がそろい、どちらもある月日（2月は29日まで）。"""
+    def valid(column: str) -> str:
+        return (f"{column} / 100 BETWEEN 1 AND 12 AND {column} % 100 BETWEEN 1 AND"
+                f" (ARRAY[31,29,31,30,31,30,31,31,30,31,30,31])[{column} / 100]")
+    return CheckConstraint(f"({start} IS NULL) = ({end} IS NULL) AND {valid(start)} AND {valid(end)}",
+                           name=f"{table}_{start}_month_day")
 
-    __tablename__ = "edge_traffic_regulations"
+
+class TrafficRegulationRow(Base):
+    """区間に当てた交通規制（歩行者用道路）1件。条件の組は`TrafficRegulationSlotRow`が持ち、組を持たない規制は毎日いつでも
+    全部の車両に効く（`domain/traffic_regulation.py`）。"""
+
+    __tablename__ = "traffic_regulations"
+    __table_args__ = ({"info": DERIVED},)
+
+    regulation_id: Mapped[str] = mapped_column(String, primary_key=True)
+
+
+class TrafficRegulationSlotRow(Base):
+    """交通規制の条件の組1つ（`domain/traffic_regulation.py: RegulationSlot`の欄）。欄の無いものはNULL。"""
+
+    __tablename__ = "traffic_regulation_slots"
     __table_args__ = (
-        _edge_key(__tablename__),
-        _vocabulary_check(__tablename__, "pedestrian_road", frozenset(REGULATION_HOURS)),
-        _vocabulary_check(__tablename__, "pedestrian_road_bicycle", frozenset(REGULATION_HOURS)),
-        _not_stronger_check(__tablename__, "pedestrian_road_bicycle", "pedestrian_road"),
+        CheckConstraint("slot BETWEEN 1 AND 5", name="traffic_regulation_slots_slot_range"),
+        _minutes_check(__tablename__, "hours_from", "hours_to"),
+        _minutes_check(__tablename__, "except_hours_from", "except_hours_to"),
+        _month_day_check(__tablename__, "period_from", "period_to"),
+        _month_day_check(__tablename__, "except_period_from", "except_period_to"),
+        CheckConstraint(f"days IN ({', '.join(map(str, sorted(DAY_CODES)))})", name="traffic_regulation_slots_days_known"),
+        CheckConstraint(f"except_days IN ({', '.join(map(str, sorted(DAY_CODES)))})",
+                        name="traffic_regulation_slots_except_days_known"),
         {"info": DERIVED},
     )
 
-    #: 歩行者用道路の規制が効く時間帯。
-    pedestrian_road: Mapped[str] = mapped_column(String, nullable=False)
-    #: 普通自転車も対象の歩行者用道路の規制が効く時間帯。自転車が対象の規制が当たらない区間はNULL。
-    pedestrian_road_bicycle: Mapped[str | None] = mapped_column(String, nullable=True)
+    regulation_id: Mapped[str] = mapped_column(
+        String, ForeignKey("traffic_regulations.regulation_id", ondelete="CASCADE"), primary_key=True)
+    #: 配布の組の番号。
+    slot: Mapped[int] = mapped_column(SmallInteger, primary_key=True, autoincrement=False)
+    applies_to_bicycles: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    hours_from: Mapped[int | None] = mapped_column(SmallInteger, nullable=True)
+    hours_to: Mapped[int | None] = mapped_column(SmallInteger, nullable=True)
+    days: Mapped[int | None] = mapped_column(SmallInteger, nullable=True)
+    period_from: Mapped[int | None] = mapped_column(SmallInteger, nullable=True)
+    period_to: Mapped[int | None] = mapped_column(SmallInteger, nullable=True)
+    except_hours_from: Mapped[int | None] = mapped_column(SmallInteger, nullable=True)
+    except_hours_to: Mapped[int | None] = mapped_column(SmallInteger, nullable=True)
+    except_days: Mapped[int | None] = mapped_column(SmallInteger, nullable=True)
+    except_period_from: Mapped[int | None] = mapped_column(SmallInteger, nullable=True)
+    except_period_to: Mapped[int | None] = mapped_column(SmallInteger, nullable=True)
+
+
+class EdgeTrafficRegulationRow(_EdgeKey, Base):
+    """区間に当たった交通規制。区間と規制の組ごとに1行で、規制が当たった区間だけが行を持つ。"""
+
+    __tablename__ = "edge_traffic_regulations"
+    __table_args__ = (_edge_key(__tablename__), {"info": DERIVED})
+
+    regulation_id: Mapped[str] = mapped_column(
+        String, ForeignKey("traffic_regulations.regulation_id", ondelete="CASCADE"), primary_key=True)
 
 
 class WayDirectionRow(_WayKey, Base):

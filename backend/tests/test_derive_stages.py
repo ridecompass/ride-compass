@@ -138,7 +138,8 @@ async def world(road_graph_engine, road_network_root):
             await _ingest_places(conn)
             await ingest_records("jartic_regulation", [SourceRecord(
                 natural_key="regulation", geom_wkb=shapely.to_wkb(box(west - 0.01, south - 0.01, west + 0.01, south + 0.01)),
-                attrs={"共通規制種別コード": PEDESTRIAN_ROAD_KIND, "点・線・面コード": "3"})], conn=conn)
+                attrs={"共通規制種別コード": PEDESTRIAN_ROAD_KIND, "点・線・面コード": "3",
+                       "規制時間1_開始": "800", "規制時間1_終了": "2000"})], conn=conn)
             await ingest_records("bunka_heritage", [point_record("bunka-1", *_point(3), {"bunka-14-s": "宗教法人神田神社"})],
                                  conn=conn)
             assert await derive_cli.run(postgis_database_url()) == 0

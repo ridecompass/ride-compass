@@ -33,7 +33,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.domain.accident import PartyType
 from app.domain.material_sql import sql_literals
 from app.domain.place_search import PlaceMatchLevel
-from app.domain.traffic_regulation import RegulationSlot
+from app.domain.traffic_regulation import DAY_CODES, MINUTES_PER_DAY, OTHER_DAYS, RegulationSlot
 from app.infrastructure.orm_base import Base
 
 
@@ -447,9 +447,32 @@ JARTIC_REGULATIONS_SOURCE_SQL = (
 )
 
 
-def _minutes(hours: str) -> int | None:
-    """規制時間（時分をつないだ数字で、先頭の0を持たない。「800」「2400」）を0:00からの分へ。空なら None。"""
-    return None if not hours else int(hours) // 100 * 60 + int(hours) % 100
+def _minutes(hours: str, *, end: bool = False) -> int | None:
+    """規制時間（時分をつないだ数字。先頭の0は書かれることも書かれないこともある。「800」「0730」「2400」）を0:00からの分へ。
+    空ならNone。終わりの0は、その日の終わり（24:00）。"""
+    if not hours:
+        return None
+    minutes = int(hours) // 100 * 60 + int(hours) % 100
+    return MINUTES_PER_DAY if end and minutes == 0 else minutes
+
+
+#: 配布が「その他」を書く綴り（説明書の共通コード表は99）。
+_OTHER_DAYS_WRITTEN = 9999
+
+
+def _days(code: str) -> int | None:
+    """規制曜日コード。空ならNone。説明書に無いコードは断る（効く日を読み違えたまま区間へ当てない）。"""
+    if not code:
+        return None
+    value = OTHER_DAYS if int(code) == _OTHER_DAYS_WRITTEN else int(code)
+    if value not in DAY_CODES:
+        raise ValueError(f"説明書に無い規制曜日コード: {code}")
+    return value
+
+
+def _month_day(text: str) -> int | None:
+    """期間（月日をつないだ数字。「719」「0401」）。空ならNone。"""
+    return int(text) if text else None
 
 
 def _has_digit(code: str, place: int) -> bool:
@@ -466,15 +489,23 @@ def _includes_bicycle(vehicles: list[str]) -> bool:
 
 
 def regulation_slots(slots_json: str) -> list[RegulationSlot]:
-    """`JARTIC_REGULATIONS_SOURCE_SQL`の`slots`（JSON の文字列）を、条件の組の値へ読み替える。"""
-    return [RegulationSlot(
-        hours_from=_minutes(slot["hours_from"]), hours_to=_minutes(slot["hours_to"]), days=bool(slot["days"]),
-        period=bool(slot["period_from"] or slot["period_to"]), vehicles=any(slot["vehicles"]),
-        vehicles_bicycle=_includes_bicycle(slot["vehicles"]),
-        except_hours=bool(slot["except_hours_from"] or slot["except_hours_to"]), except_days=bool(slot["except_days"]),
-        except_period=bool(slot["except_period_from"] or slot["except_period_to"]),
-        except_vehicles_bicycle=_includes_bicycle(slot["except_vehicles"]),
-    ) for slot in json.loads(slots_json)]
+    """`JARTIC_REGULATIONS_SOURCE_SQL`の`slots`（JSON の文字列）を、条件の組の値へ読み替える。欄が1つも書かれていない組は
+    組に数えない。対象の車両を書かない組は、車両の全部を対象とする。"""
+    slots = []
+    for slot in json.loads(slots_json):
+        if not any(slot[name] for name in _JARTIC_SLOT_COLUMNS) and not any(slot["vehicles"] + slot["except_vehicles"]):
+            continue
+        targets_bicycle = not any(slot["vehicles"]) or _includes_bicycle(slot["vehicles"])
+        slots.append(RegulationSlot(
+            applies_to_bicycles=targets_bicycle and not _includes_bicycle(slot["except_vehicles"]),
+            hours_from=_minutes(slot["hours_from"]), hours_to=_minutes(slot["hours_to"], end=True), days=_days(slot["days"]),
+            period_from=_month_day(slot["period_from"]), period_to=_month_day(slot["period_to"]),
+            except_hours_from=_minutes(slot["except_hours_from"]),
+            except_hours_to=_minutes(slot["except_hours_to"], end=True), except_days=_days(slot["except_days"]),
+            except_period_from=_month_day(slot["except_period_from"]),
+            except_period_to=_month_day(slot["except_period_to"]),
+        ))
+    return slots
 
 
 def _raster_tiles_sql(source: Source) -> str:

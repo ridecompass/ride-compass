@@ -29,6 +29,7 @@ from app.domain.geo import bearings_between
 from app.domain.material_catalog import ELEVATION_GAIN_PER_KM, GRADIENT_PERCENT, MATERIAL_CATALOG
 from app.domain.road_network import RoadNetwork
 from app.domain.search_graph import EDGE_VALUE_DTYPE, run_starts
+from app.domain.traffic_regulation import SLOT_FIELDS, BICYCLE_EXCEPTED, BICYCLE_PROHIBITED, PEDESTRIAN_ROAD_LABELS, active_kinds, invariant_slots
 
 
 @dataclass(frozen=True)
@@ -43,6 +44,53 @@ class EdgelessWays:
     def none(cls, numeric_columns: int, categorical_columns: int) -> "EdgelessWays":
         return cls(np.zeros(0, dtype=np.int64), np.zeros((0, numeric_columns)),
                    np.zeros((0, categorical_columns), dtype=np.int16))
+
+
+@dataclass(frozen=True)
+class NetworkRegulations:
+    """区間に当たった交通規制（`infrastructure/road_graph_repository.py: get_network_regulations`）。規制は0始まりの番号で、
+    当たりは区間の番号順、組は規制の番号順。"""
+
+    regulation_count: int
+    hit_way: np.ndarray
+    hit_segment: np.ndarray
+    hit_regulation: np.ndarray
+    slot_regulation: np.ndarray
+    slot_values: np.ndarray  # (組, `domain/traffic_regulation.py: SLOT_FIELDS`)
+
+    @classmethod
+    def none(cls) -> "NetworkRegulations":
+        empty = np.zeros(0, dtype=np.int64)
+        return cls(0, empty, empty, empty, empty, np.zeros((0, len(SLOT_FIELDS)), dtype=np.int16))
+
+
+def regulation_arrays(edge_way_id: np.ndarray, edge_segment: np.ndarray, regulations: NetworkRegulations,
+                      ) -> tuple[dict[str, Any], np.ndarray]:
+    """`RoadNetwork`の規制の欄と、材料`pedestrian_road`の列の番号（`PEDESTRIAN_ROAD_LABELS`の並びの語彙。時刻で変わらない組だけで
+    決め、自転車も対象の規制と除外の規制が両方効く区間は、自転車も禁止）。区間の行は道・区間の番号順で、同じ区間の両向きの行が
+    同じ規制を持つ。"""
+    # 区間の番号は smallint（2**15 未満）なので、道の番号と1つの数に詰めて比べる。
+    row_key = np.asarray(edge_way_id, dtype=np.int64) * 65536 + np.asarray(edge_segment, dtype=np.int64)
+    hit_key = regulations.hit_way * 65536 + regulations.hit_segment
+    low, high = np.searchsorted(row_key, hit_key, "left"), np.searchsorted(row_key, hit_key, "right")
+    per_hit = high - low
+    row = np.repeat(low, per_hit) + (np.arange(int(per_hit.sum())) - np.repeat(np.cumsum(per_hit) - per_hit, per_hit))
+    order = np.argsort(row, kind="stable")
+    regulation = np.repeat(regulations.hit_regulation, per_hit)[order]
+    count = np.bincount(row[order], minlength=len(row_key)).astype(np.int16)
+    slot_count = np.bincount(regulations.slot_regulation, minlength=regulations.regulation_count).astype(np.int16)
+    fields = {
+        "edge_regulation_start": np.cumsum(count, dtype=np.int64) - count, "edge_regulation_count": count,
+        "regulation_index": regulation.astype(np.int32),
+        "regulation_slot_start": np.cumsum(slot_count, dtype=np.int64) - slot_count, "regulation_slot_count": slot_count,
+        "regulation_slot_values": regulations.slot_values,
+    }
+    bicycle, excepted = active_kinds(np.arange(len(row_key)), fields["edge_regulation_start"], count, regulation,
+                                     fields["regulation_slot_start"], slot_count, regulations.slot_values,
+                                     invariant_slots(regulations.slot_values))
+    vocab = list(PEDESTRIAN_ROAD_LABELS)
+    codes = np.where(bicycle, vocab.index(BICYCLE_PROHIBITED) + 1, np.where(excepted, vocab.index(BICYCLE_EXCEPTED) + 1, 0))
+    return fields, codes.astype(np.int16)
 
 
 def build_road_network(

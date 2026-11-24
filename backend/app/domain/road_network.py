@@ -43,7 +43,7 @@ _WIND_HEIGHTS_LOCK = threading.Lock()
 logger = logging.getLogger("ridecompass.graph")
 
 #: 行数が区間でも頂点でもなく、点（形・断面の点・点の間）の数の欄の頭。
-_POINT_PREFIXES = ("profile_", "shape_", "span_")
+_POINT_PREFIXES = ("profile_", "shape_", "span_", "regulation_")
 
 
 @dataclass(frozen=True, eq=False)
@@ -121,6 +121,16 @@ class RoadNetwork:
     unknown_elevation_m: np.ndarray  # float64
     mean_elevation_m: np.ndarray  # float64
 
+    # 区間に当たった交通規制（`domain/traffic_regulation.py`）。区間の行ごとに、`regulation_index`の中の始まりの位置と規制の数。
+    # 規制ごとに、`regulation_slot_values`（`domain/traffic_regulation.py: SLOT_FIELDS`の列）の中の始まりの位置と組の数。
+    # 材料`pedestrian_road`の列は時刻で変わらない組だけで決めた値で、時刻を決めて読む所はこの欄から決め直す。
+    edge_regulation_start: np.ndarray  # int64
+    edge_regulation_count: np.ndarray  # int16
+    regulation_index: np.ndarray  # int32、行数は区間と規制の組の数
+    regulation_slot_start: np.ndarray  # int64、行数は規制の数
+    regulation_slot_count: np.ndarray  # int16、行数は規制の数
+    regulation_slot_values: np.ndarray  # (組, 欄) int16
+
     # 道1本の値（区分の層が道1本で塗るズームの値）。道は区間を持つ道と、区間を持たない道（区間の列には現れない）の全部で、
     # `osm_way_id`の昇順。材料の列は区間の材料と同じ並びと語彙で、区間を持つ道は区間の値を集めたもの（`domain/road_network_build.py`）。
     way_osm_id: np.ndarray  # int64
@@ -143,7 +153,9 @@ class RoadNetwork:
         }
         for start, count, points in (("edge_profile_start", "edge_profile_points", "profile_elevation_m"),
                                      ("edge_shape_start", "edge_shape_points", "shape_lon"),
-                                     ("edge_span_start", "edge_span_count", "span_length_m")):
+                                     ("edge_span_start", "edge_span_count", "span_length_m"),
+                                     ("edge_regulation_start", "edge_regulation_count", "regulation_index"),
+                                     ("regulation_slot_start", "regulation_slot_count", "regulation_slot_values")):
             first, number = getattr(self, start), getattr(self, count)
             if len(first) and int(np.max(first + number)) > len(getattr(self, points)):
                 wrong[start] = len(getattr(self, points))

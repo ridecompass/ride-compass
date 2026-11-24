@@ -126,7 +126,7 @@ STAGES: tuple[DeriveStage, ...] = (
     DeriveStage("landcover", derive_landcover, frozenset({Source.LULC}), ("topology",), ("edge_landcover",),
                 {"ring_outer_m": LANDCOVER_RING_OUTER_ID, "ring_inner_m": LANDCOVER_RING_INNER_ID}),
     DeriveStage("traffic_regulations", derive_traffic_regulations, frozenset({Source.JARTIC_REGULATION}), ("topology",),
-                ("edge_traffic_regulations",),
+                ("traffic_regulations", "traffic_regulation_slots", "edge_traffic_regulations"),
                 {"line_half_width_m": REGULATION_LINE_HALF_WIDTH_ID, "edge_share": REGULATION_EDGE_SHARE_ID,
                  "max_angle_deg": REGULATION_MAX_ANGLE_ID}),
     DeriveStage("directions", derive_way_directions, frozenset({Source.OSM_WAY}), ("topology",), ("way_directions",)),

@@ -32,7 +32,7 @@ from app.domain.tuning import (
     REGULATION_MAX_ANGLE_ID,
     TUNING_PARAMETERS_BY_ID,
 )
-from app.domain.traffic_regulation import REGULATION_HOURS_LABELS
+from app.domain.traffic_regulation import PEDESTRIAN_ROAD_LABELS
 from app.domain.primary_attributes import (
     PRIMARY_ATTRIBUTES,
     ATTR_CYCLEWAY,
@@ -152,8 +152,9 @@ MaterialDType = Literal["numeric", "boolean", "categorical"]
 
 #: 材料の値の出どころ。`db`はDBの値式（`MaterialSpec.value_sql`）で求める。`road_class`は道の区分から都度作る
 #: （`domain/road_classes.py: class_columns`）。`profile`は道路網の配列を作るときに区間の断面から求める
-#: （`domain/road_network_build.py`）。
-_MaterialSource = Literal["db", "road_class", "profile"]
+#: （`domain/road_network_build.py`）。`regulation`は区間に当たった交通規制の組から、時刻を決めて求める
+#: （`domain/traffic_regulation.py`。配列の列の値は時刻で変わらない組だけで決めた値）。
+_MaterialSource = Literal["db", "road_class", "profile", "regulation"]
 
 
 class MaterialSpec(StrictModel):
@@ -277,29 +278,8 @@ def _landcover_description(cls: LandcoverClass) -> str:
     )
 
 
-def _pedestrian_road_material(column: str, label: str, subject: str) -> MaterialSpec:
-    """区間に当たった歩行者用道路の規制が効く時間帯の材料（`edge_traffic_regulations`の列`column`）。"""
-    return MaterialSpec(
-        material_id=column,
-        label=label,
-        description=(
-            f"日本道路交通情報センターの交通規制情報から、{subject}歩行者用道路の規制が当たった区間の、規制が効く時間帯"
-            "（終日か、時間・曜日を限るか）。区間の長さのうち較正値の"
-            f"「{TUNING_PARAMETERS_BY_ID[REGULATION_EDGE_SHARE_ID].label}」以上が規制の場所（線の規制は較正値の"
-            f"「{TUNING_PARAMETERS_BY_ID[REGULATION_LINE_HALF_WIDTH_ID].label}」の帯、面の規制は面）の中にある区間に当てます。"
-            "線の規制は、さらに区間と線の向きの差が較正値の"
-            f"「{TUNING_PARAMETERS_BY_ID[REGULATION_MAX_ANGLE_ID].label}」以下の区間（線に沿う区間）に限ります。"
-            "規制が当たらない区間は値を持ちません。"
-        ),
-        dtype="categorical",
-        tile_property=None,
-        value_labels=REGULATION_HOURS_LABELS,
-        value_sql=f"em.{column}",
-        coverage=CoverageExcluded(
-            reason="edge_traffic_regulationsは規制が当たった区間だけが行を持ち、行が無いのは規制が無いこと（データの欠けではない）",
-            missing_semantics="definite",
-        ),
-    )
+#: 歩行者用道路の規制の材料のid。配列を作るときと、時刻を決めて読む所が名指す。
+PEDESTRIAN_ROAD = "pedestrian_road"
 
 
 #: コードが名指しで読む材料のid。カタログのキーにも同じ定数を使う——綴りを別々に書くと、
@@ -532,9 +512,26 @@ MATERIAL_CATALOG: dict[str, MaterialSpec] = {
         coverage=_tag_coverage(BICYCLE_NORMALIZED_SQL, f"bicycle（{SHARED_PEDESTRIAN_PATH_NOTE}で判定、タグ不在は非該当扱い）", "definite"),
     ),
     # --- 道の区分を決める事実（タグの値を束ねずに持つ）。道の区分の条件はこれらを読む ---
-    "pedestrian_road": _pedestrian_road_material("pedestrian_road", "歩行者用道路", ""),
-    "pedestrian_road_bicycle": _pedestrian_road_material(
-        "pedestrian_road_bicycle", "歩行者用道路[自転車も対象]", "普通自転車も通行の禁止の対象とする"),
+    PEDESTRIAN_ROAD: MaterialSpec(
+        material_id=PEDESTRIAN_ROAD,
+        label="歩行者用道路",
+        description=(
+            "日本道路交通情報センターの交通規制情報から、歩行者用道路の規制が当たった区間の、その時刻に効いている規制が普通自転車も"
+            "対象とするか。時間・曜日・期間を限る規制は、効いている時刻だけ値を持ちます。区間の長さのうち較正値の"
+            f"「{TUNING_PARAMETERS_BY_ID[REGULATION_EDGE_SHARE_ID].label}」以上が規制の場所（線の規制は較正値の"
+            f"「{TUNING_PARAMETERS_BY_ID[REGULATION_LINE_HALF_WIDTH_ID].label}」の帯、面の規制は面）の中にある区間に当てます。"
+            "線の規制は、さらに区間と線の向きの差が較正値の"
+            f"「{TUNING_PARAMETERS_BY_ID[REGULATION_MAX_ANGLE_ID].label}」以下の区間（線に沿う区間）に限ります。"
+        ),
+        dtype="categorical",
+        tile_property=None,
+        value_labels=PEDESTRIAN_ROAD_LABELS,
+        source="regulation",
+        coverage=CoverageExcluded(
+            reason="規制が当たった区間だけが値を持ち、値が無いのは規制が無いこと（データの欠けではない）",
+            missing_semantics="definite",
+        ),
+    ),
     "bicycle": _tag_fact_material(
         "bicycle", "自転車の通行", "自転車が通ってよいか（禁止・指定・許可等）。",
         ACCESS_VALUE_LABELS, ATTR_CYCLEWAY, "unknown",

@@ -14,7 +14,7 @@ from app.domain.attributes import CategoricalColumn
 from app.domain.geo import bearings_between, haversine_distance_km_pairs
 from app.domain.material_catalog import GRADIENT_PERCENT
 from app.domain.road_network import RoadNetwork
-from app.domain.road_network_build import EdgelessWays, build_road_network
+from app.domain.road_network_build import EdgelessWays, NetworkRegulations, build_road_network, regulation_arrays
 from app.domain.traffic import highway_rank
 
 
@@ -93,6 +93,8 @@ def road_network(
         else np.zeros((len(directed), 0), dtype=np.int16),
         categorical_vocab=tuple(c.vocab for c in classes.values()),
         distance_m=distance_m, bearing_deg=bearing,
+        # 交通規制はどの区間にも当たらない。
+        **regulation_arrays(rows.way, rows.segment, NetworkRegulations.none())[0],
         mid_lat=(lat[tail] + lat[head]) / 2, mid_lon=(lon[tail] + lon[head]) / 2,
         edge_profile_start=profile_start[owner], edge_profile_points=profile_points[owner],
         profile_elevation_m=along[profile_points > 0].ravel().astype(np.float32),
