@@ -331,7 +331,7 @@ def _clustered_ring_network() -> tuple[RoadNetwork, Coordinates]:
     easy_bearing = 4
     for spoke in range(16):
         angle = math.radians(spoke * 22.5)
-        steps = [1.0, 2.0, 3.0, 4.0, 4.6] if spoke == easy_bearing else [1.0, 2.0, 3.0, 4.0, 5.0, 6.0]
+        steps = [1.0, 2.0, 3.0, 4.0] if spoke == easy_bearing else [1.0, 2.0, 3.0, 4.0, 5.0, 6.0]
         previous = 1
         for step, km in enumerate(steps):
             node = 100 + spoke * 10 + step
@@ -356,7 +356,7 @@ def _clustered_ring_network() -> tuple[RoadNetwork, Coordinates]:
                 ways[len(ways) + 1] = (patch_node(row, col), patch_node(row, col + 1))
             if row + 1 < side:
                 ways[len(ways) + 1] = (patch_node(row, col), patch_node(row + 1, col))
-    ways[len(ways) + 1] = (100 + easy_bearing * 10 + 4, patch_node(40, 40))
+    ways[len(ways) + 1] = (100 + easy_bearing * 10 + 3, patch_node(40, 40))
     return road_network(ways, coordinates, bad_ways=bad_ways), Coordinates(latitude=origin[0], longitude=origin[1])
 
 
