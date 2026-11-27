@@ -7,12 +7,14 @@ domainの計算は本物を通す。
 - 風の成分から風速・風向を求めること・格子点の並びの作り方と間引き → `test_msm.py`
 - 格子点の時系列から今日の分を切り出し、丸め、最も高い・低い値を選ぶこと → `test_weather_domain.py`
 - 格子点ごとの予報を道・区間へ配ること → `test_region_lens.py`・`test_leg_costs.py`
+- 広すぎて断った範囲を口が返す状態と文 → `test_weather_route.py`
 """
 
 from datetime import datetime
 
 import numpy as np
 
+from app.domain.msm_grid import MSM_GRID_MAX_AREA_SQ_DEG
 from app.domain.region import BoundingBox
 from app.domain.route import Coordinates
 from app.infrastructure import msm_client
@@ -80,3 +82,15 @@ async def test_the_map_grid_gives_each_grid_point_its_rounded_wind_and_rain_with
     assert second.precipitation_mm == [None]
     assert (forecast.latitude_step_deg, forecast.longitude_step_deg) == (0.05, 0.0625)
     assert forecast.latest_run_end == datetime(2026, 10, 9, 0, 0)
+
+
+async def test_the_map_grid_refuses_a_range_wider_than_one_read_without_reading(monkeypatch):
+    """広すぎる範囲は、間引く前に格子点を丸ごと読む。"""
+    async def read_weather_grid(south, west, north, east, max_points):
+        raise AssertionError("読まない")
+
+    monkeypatch.setattr(msm_client, "read_weather_grid", bound(msm_client.read_weather_grid, read_weather_grid))
+    side = MSM_GRID_MAX_AREA_SQ_DEG**0.5 + 0.01
+
+    assert await WeatherService().get_msm_grid(
+        BoundingBox(min_latitude=30.0, min_longitude=130.0, max_latitude=30.0 + side, max_longitude=130.0 + side)) is None

@@ -37,13 +37,12 @@ from app.domain.geo import Latitude, Longitude, haversine_distance_km
 from app.domain.errors import GENERATION_BUSY_MESSAGE
 from app.domain.route import Coordinates
 from app.infrastructure import job_registry
-from app.infrastructure.debug_log import record_rate_limit_rejection
 from app.services.generation_slots import GenerationSlots
 from app.services.route_generation_job import (
     RoadAvoidanceOverride,
     RouteGenerateResponse,
+    admit_route_generation,
     generate_route_response,
-    run_route_generation_job,
 )
 from app.domain.strict_model import StrictModel
 
@@ -172,14 +171,6 @@ async def generate_routes(
 ) -> RouteGenerateJobCreatedResponse:
     enforce_rate_limit(http_request, "generate", settings.generate_rate_limit_per_minute)
 
-    if slots.full():
-        record_rate_limit_rejection(
-            "generate-concurrency",
-            client_id(http_request),
-            f"concurrent={settings.generate_max_concurrent},queued={settings.generate_max_queued}",
-        )
-        raise HTTPException(status_code=429, detail=GENERATION_BUSY_MESSAGE)
-    job_id = job_registry.create_job()
     generate = partial(
         generate_route_response,
         open_setup,
@@ -195,10 +186,9 @@ async def generate_routes(
         waypoints=request.waypoints,
         destination=request.destination,
     )
-    # ジョブ本体は`BackgroundTasks`ではなく`create_task`で起動する。`BackgroundTasks`は
-    # レスポンス送出が完了してから実行されるため、送出中の失敗（クライアント切断・
-    # ミドルウェアの例外）でジョブが一度も起動せず、記録したジョブが待ちのまま残る。
-    slots.start(partial(run_route_generation_job, job_id, slots, client_id(http_request), failure_reply, generate))
+    job_id = admit_route_generation(slots, client_id(http_request), failure_reply, generate)
+    if job_id is None:
+        raise HTTPException(status_code=429, detail=GENERATION_BUSY_MESSAGE)
     return RouteGenerateJobCreatedResponse(job_id=job_id)
 
 

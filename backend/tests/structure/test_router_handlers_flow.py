@@ -1,11 +1,14 @@
-"""ルーターのハンドラが要求の段取りを持たないことの検査。
+"""ルーターのハンドラと定期ジョブが要求の段取りを持たないことの検査。
 
 段取りは`services/`の持ち物である（docs/architecture/directory-layout.md「backend」の`api/`）。ハンドラ
-（`api/routers/`の`@<router>.<method>(...)`を付けた関数）と、ルーターのモジュール直下の補助関数が持ってはいけない形:
+（`api/routers/`の`@<router>.<method>(...)`を付けた関数）と`main.py`の定期ジョブ、そこから呼ぶ同じモジュールの関数が
+持ってはいけない形:
 
-- 流れ: `domain/`の関数・下の層（注入した部品——`Depends`で受けた引数と、それを開いて`with ... as`で得たもの——の
-  メソッドと、`app.services`の関数）の戻り値が、下の層の呼び出しの引数へ流れる。下の層の戻り値で、下の層を呼ぶかを
-  `if`で分ける形も同じ。戻り値は代入した名前を通して辿る。下の層を独立に何度呼んでも、流れが無ければ違反にしない。
+- 流れ: 元（`domain/`・`infrastructure/`の関数と、注入した部品——`Depends`で受けた引数と、それを開いて`with ... as`で
+  得たもの——のメソッドと、`app.services`の関数）の戻り値が、先（注入した部品・`app.services`・`domain/`の関数）の
+  呼び出しの引数へ流れる。元の戻り値で、先を呼ぶかを`if`で分ける形も同じで、`else`の無い`if`が`raise`か`return`で
+  抜けるなら、その後に続く文も分けた枝に数える。戻り値は代入した名前を通して辿る。元を独立に何度呼んでも、流れが
+  無ければ違反にしない。`asyncio.to_thread(f, ...)`は`f(...)`として読む。
 - 選り分け: `if`の付いた内包表記・`sorted`・`filter`・本体に`continue`を持つループ。宣言や結果から選ぶ・並べるのは
   `domain/`の判断である。
 - 宣言からの導出: `domain/`の関数の戻り値か`domain/`のデータ（宣言）から導いた値を、`round`で丸める・f-stringで
@@ -14,12 +17,12 @@
 - 注入の外: `app.services`の`async`の関数を、注入した部品を渡さずに呼ぶ。I/Oを持つ下の層の口は`Depends`で受け取り、
   テストはそれを差し替える（ルーターの属性を差し替えない）。
 
-母集団はソースから導く——`app/api/routers/`の全`.py`のハンドラと、ハンドラが呼ぶ同じモジュールの関数（受け渡した
-注入の部品・流れは、渡した先の引数でも同じに読む）。同じモジュールの関数の戻り値は、中で`domain/`の関数か下の層を
-呼んでいれば流れの元に数える。
+母集団はソースから導く——`app/api/routers/`の全`.py`のハンドラと、`app/main.py`がスケジューラへ渡す（`add_job`の
+最初の引数の）同じモジュールの関数と、それらが呼ぶ同じモジュールの関数（受け渡した注入の部品・流れは、渡した先の
+引数でも同じに読む）。同じモジュールの関数の戻り値は、中で元を呼んでいれば流れの元に数える。
 
 ここで見ないもの:
-- 部品を呼ばず、`infrastructure/`を直接呼ぶ素通し（directory-layout.md が許す）。その戻り値を丸める・組むのも見ない
+- `infrastructure/`の戻り値を丸める・組む（directory-layout.md が許す素通し）
 - f-string の外の組み立て（`+`・`str.format`・f-string の外の`join`）——ルーターに今は無く、書かれたら周期レビューが読む
 - `app.services`の同期の関数を注入せずに呼ぶ——I/Oを持たない導出で、テストが差し替えない。
   同期でI/Oをするものは周期レビューが読む
@@ -39,6 +42,7 @@ BACKEND_ROOT = Path(__file__).resolve().parent.parent.parent
 HTTP_METHODS = {"get", "post", "put", "patch", "delete", "head", "options", "api_route"}
 SELECTING_CALLS = {"sorted", "filter"}
 ROUNDING_CALLS = {"round"}
+THREAD_HANDOFFS = {"asyncio.to_thread", "to_thread"}
 
 Function = ast.FunctionDef | ast.AsyncFunctionDef
 
@@ -62,6 +66,14 @@ def _injected_parameters(function: Function) -> set[str]:
     defaults: list[ast.expr | None] = [None] * (len(positional) - len(arguments.defaults)) + list(arguments.defaults)
     pairs = list(zip(positional, defaults)) + list(zip(arguments.kwonlyargs, arguments.kw_defaults))
     return {argument.arg for argument, default in pairs if _is_depends(default) or _is_depends(argument.annotation)}
+
+
+def _callee(call: ast.Call) -> tuple[ast.expr, list[ast.expr]]:
+    """呼んだ関数と渡した値。`asyncio.to_thread(f, ...)`は`f(...)`として読む（関数を参照で渡す形）。"""
+    values = [*call.args, *(keyword.value for keyword in call.keywords)]
+    if ast.unparse(call.func) in THREAD_HANDOFFS and call.args:
+        return call.args[0], values[1:]
+    return call.func, values
 
 
 def _root_name(expr: ast.expr) -> str | None:
@@ -120,6 +132,24 @@ def _continues(loop: ast.For | ast.AsyncFor | ast.While) -> bool:
     return False
 
 
+def _after_early_exits(function: Function) -> dict[ast.If, list[ast.stmt]]:
+    """`else`の無い`if`のうち本体が`raise`か`return`で終わるもの→同じ並びでその後に続く文（断ったときに通らない文）。"""
+    out: dict[ast.If, list[ast.stmt]] = {}
+    for node in ast.walk(function):
+        for field in ("body", "orelse", "finalbody"):
+            statements = getattr(node, field, None)
+            if not isinstance(statements, list):
+                continue
+            for index, statement in enumerate(statements):
+                if (
+                    isinstance(statement, ast.If)
+                    and not statement.orelse
+                    and isinstance(statement.body[-1], (ast.Raise, ast.Return))
+                ):
+                    out[statement] = statements[index + 1:]
+    return out
+
+
 class _Module:
     def __init__(self, source: SourceTree, module: str):
         tree = source.tree(module)
@@ -135,7 +165,13 @@ class _Module:
         return symbol is not None and symbol.module.startswith(package) and kind in (None, symbol.kind)
 
     def _is_lower(self, call: ast.Call, injected: set[str]) -> bool:
-        return _root_name(call.func) in injected or self._resolves_into(call.func, "app.services")
+        """流れの先になる呼び出し（注入した部品・`app.services`・`domain/`の関数）。"""
+        func = _callee(call)[0]
+        return (
+            _root_name(func) in injected
+            or self._resolves_into(func, "app.services")
+            or self._resolves_into(func, "app.domain", "function")
+        )
 
     def _helper(self, call: ast.Call) -> Function | None:
         return self.functions.get(call.func.id) if isinstance(call.func, ast.Name) else None
@@ -147,8 +183,8 @@ class _Module:
         return {name for name, value in passed if name and isinstance(value, ast.Name) and value.id in injected}
 
     def _is_source(self, call: ast.Call, injected: set[str], seen: frozenset[str]) -> bool:
-        """戻り値が流れの元になる呼び出し（同じモジュールの関数は、中で`domain/`の関数か下の層を呼ぶもの）。"""
-        if self._is_lower(call, injected) or self._resolves_into(call.func, "app.domain", "function"):
+        """戻り値が流れの元になる呼び出し（先と`infrastructure/`の関数と、同じモジュールの関数は、中で元を呼ぶもの）。"""
+        if self._is_lower(call, injected) or self._resolves_into(_callee(call)[0], "app.infrastructure", "function"):
             return True
         helper = self._helper(call)
         if helper is None or helper.name in seen:
@@ -189,10 +225,10 @@ class _Module:
 
     def _outside_injection(self, call: ast.Call, injected: set[str]) -> bool:
         """`app.services`の`async`の関数を、注入した部品を渡さずに呼ぶか。"""
-        symbol = self.scope.resolve(call.func)
+        func, arguments = _callee(call)
+        symbol = self.scope.resolve(func)
         if symbol is None or not symbol.module.startswith("app.services") or not isinstance(symbol.node, ast.AsyncFunctionDef):
             return False
-        arguments = [*call.args, *(keyword.value for keyword in call.keywords)]
         return not any(isinstance(node, ast.Name) and node.id in injected for value in arguments for node in ast.walk(value))
 
     def violations(
@@ -211,14 +247,17 @@ class _Module:
         tainted = _spread(assignments, tainted, lambda value, names: self._carries(value, names, injected, seen))
         declared = _spread(assignments, declared, lambda value, names: self._declares(value, names, seen))
 
+        after_exit = _after_early_exits(function)
         out: list[str] = []
         for node in ast.walk(function):
             if isinstance(node, ast.Call) and self._is_lower(node, injected):
-                for value in [*node.args, *(keyword.value for keyword in node.keywords)]:
+                func, values = _callee(node)
+                for value in values:
                     if self._carries(value, tainted, injected, seen):
-                        out.append(f"{function.name}:{node.lineno} 流れ {ast.unparse(value)} → {ast.unparse(node.func)}")
+                        out.append(f"{function.name}:{node.lineno} 流れ {ast.unparse(value)} → {ast.unparse(func)}")
             elif isinstance(node, (ast.If, ast.IfExp)) and self._carries(node.test, tainted, injected, seen):
-                branches = [node.body, node.orelse] if isinstance(node, ast.IfExp) else [*node.body, *node.orelse]
+                branches = [node.body, node.orelse] if isinstance(node, ast.IfExp) else [
+                    *node.body, *node.orelse, *after_exit.get(node, [])]
                 if any(
                     isinstance(call, ast.Call) and self._is_lower(call, injected)
                     for branch in branches
@@ -263,7 +302,7 @@ class _Module:
 
 
 def handlers_orchestrating(backend_root: Path) -> list[str]:
-    """段取りを持つハンドラ（`<モジュール>.<ハンドラ> <関数>:<行> <形> <式>`）。"""
+    """段取りを持つハンドラと定期ジョブ（`<モジュール>.<関数> <関数>:<行> <形> <式>`）。"""
     source = SourceTree(backend_root)
     out: set[str] = set()
     for path in sorted((backend_root / "app" / "api" / "routers").glob("*.py")):
@@ -274,7 +313,29 @@ def handlers_orchestrating(backend_root: Path) -> list[str]:
                     f"{module.module}.{name} {violation}"
                     for violation in module.violations(function, _injected_parameters(function), set(), set(), frozenset({name}))
                 }
+    if (backend_root / "app" / "main.py").is_file():
+        main = _Module(source, "app.main")
+        for name in _scheduled_jobs(main):
+            out |= {
+                f"app.main.{name} {violation}"
+                for violation in main.violations(main.functions[name], set(), set(), set(), frozenset({name}))
+            }
     return sorted(out)
+
+
+def _scheduled_jobs(module: _Module) -> set[str]:
+    """`main.py`がスケジューラへ渡す（`add_job`の最初の引数の）、同じモジュールの関数の名前。"""
+    return {
+        call.args[0].id
+        for function in module.functions.values()
+        for call in ast.walk(function)
+        if isinstance(call, ast.Call)
+        and isinstance(call.func, ast.Attribute)
+        and call.func.attr == "add_job"
+        and call.args
+        and isinstance(call.args[0], ast.Name)
+        and call.args[0].id in module.functions
+    }
 
 
 def test_router_handlers_hold_no_orchestration() -> None:
@@ -287,7 +348,8 @@ def test_router_handlers_hold_no_orchestration() -> None:
 
 
 def test_detects_handlers_that_orchestrate(tmp_path: Path) -> None:
-    """検査が効いていること（段取りを形ごとに置いて捕まえ、独立に呼ぶだけのものと要求を型へ詰めるものは通す）。"""
+    """検査が効いていること（段取りを形ごとに置いて捕まえ、独立に呼ぶだけのもの・要求を型へ詰めるもの・定期ジョブに渡さない
+    mainの関数は通す）。"""
     root = tmp_path
     (root / "app" / "api" / "routers").mkdir(parents=True)
     (root / "app" / "services").mkdir(parents=True)
@@ -296,12 +358,28 @@ def test_detects_handlers_that_orchestrate(tmp_path: Path) -> None:
         "async def cached(client, path): ...\nasync def upstream(client, path): ...\n", encoding="utf-8"
     )
     (root / "app" / "domain" / "grid.py").write_text(
-        "class Point: ...\nDECLARED = []\ndef points(area): ...\n", encoding="utf-8"
+        "class Point: ...\nDECLARED = []\ndef points(area): ...\ndef labels(points): ...\n", encoding="utf-8"
+    )
+    (root / "app" / "infrastructure").mkdir(parents=True)
+    (root / "app" / "infrastructure" / "store.py").write_text("def current(): ...\n", encoding="utf-8")
+    (root / "app" / "main.py").write_text(
+        "import asyncio\n"
+        "from app.domain.grid import labels, points\n"
+        "from app.infrastructure.store import current\n"
+        "async def _warm_job():\n"
+        "    await asyncio.to_thread(labels, current())\n"
+        "async def _not_scheduled():\n"
+        "    return labels(current())\n"
+        "def start(scheduler):\n"
+        "    scheduler.add_job(_warm_job, 'interval')\n",
+        encoding="utf-8",
     )
     (root / "app" / "api" / "routers" / "sample.py").write_text(
+        "import asyncio\n"
         "from fastapi import APIRouter, Depends\n"
         "from app.domain import grid\n"
-        "from app.domain.grid import DECLARED, Point, points\n"
+        "from app.domain.grid import DECLARED, Point, labels, points\n"
+        "from app.infrastructure.store import current\n"
         "from app.services import tiles\n"
         "from app.services.tiles import cached\n"
         "router = APIRouter()\n"
@@ -345,20 +423,35 @@ def test_detects_handlers_that_orchestrate(tmp_path: Path) -> None:
         "    return names, round(len(points(1)), 2), round(lower, 1), f'{lower}'\n"
         "@router.get('/outside')\n"
         "async def outside(client=Depends(object)):\n"
-        "    return await tiles.upstream(None, 'p'), await cached(client, 'p')\n",
+        "    return await tiles.upstream(None, 'p'), await cached(client, 'p')\n"
+        "@router.get('/after-refusal')\n"
+        "async def after_refusal(service=Depends(object), slots=Depends(object)):\n"
+        "    if slots.full():\n"
+        "        raise ValueError\n"
+        "    return await service.start()\n"
+        "@router.get('/domain-into-domain')\n"
+        "async def domain_into_domain():\n"
+        "    return labels(points(1))\n"
+        "@router.get('/store-into-domain')\n"
+        "async def store_into_domain():\n"
+        "    return await asyncio.to_thread(labels, current())\n",
         encoding="utf-8",
     )
 
     assert handlers_orchestrating(root) == [
-        "app.api.routers.sample.branch branch:23 分岐 await service.get() is None",
-        "app.api.routers.sample.derive derive:40 選り分け continue（e in d）",
-        "app.api.routers.sample.derive derive:42 名前を組む f'{d}'",
-        "app.api.routers.sample.derive derive:44 丸め round(len(points(1)), 2)",
-        "app.api.routers.sample.domain_into_lower domain_into_lower:14 流れ at → service.read",
-        "app.api.routers.sample.helper_output helper_output:32 流れ await _get(service) → other.read",
-        "app.api.routers.sample.lower_into_lower lower_into_lower:17 流れ await cached(client, 'p') → tiles.upstream",
-        "app.api.routers.sample.outside outside:47 注入の外 tiles.upstream",
-        "app.api.routers.sample.select select:27 選り分け [d for d in DECLARED if d]",
-        "app.api.routers.sample.select select:27 選り分け sorted(DECLARED)",
-        "app.api.routers.sample.through_helpers _read:10 流れ at → service.read",
+        "app.api.routers.sample.after_refusal after_refusal:52 分岐 slots.full()",
+        "app.api.routers.sample.branch branch:25 分岐 await service.get() is None",
+        "app.api.routers.sample.derive derive:42 選り分け continue（e in d）",
+        "app.api.routers.sample.derive derive:44 名前を組む f'{d}'",
+        "app.api.routers.sample.derive derive:46 丸め round(len(points(1)), 2)",
+        "app.api.routers.sample.domain_into_domain domain_into_domain:57 流れ points(1) → labels",
+        "app.api.routers.sample.domain_into_lower domain_into_lower:16 流れ at → service.read",
+        "app.api.routers.sample.helper_output helper_output:34 流れ await _get(service) → other.read",
+        "app.api.routers.sample.lower_into_lower lower_into_lower:19 流れ await cached(client, 'p') → tiles.upstream",
+        "app.api.routers.sample.outside outside:49 注入の外 tiles.upstream",
+        "app.api.routers.sample.select select:29 選り分け [d for d in DECLARED if d]",
+        "app.api.routers.sample.select select:29 選り分け sorted(DECLARED)",
+        "app.api.routers.sample.store_into_domain store_into_domain:60 流れ current() → labels",
+        "app.api.routers.sample.through_helpers _read:12 流れ at → service.read",
+        "app.main._warm_job _warm_job:5 流れ current() → labels",
     ]

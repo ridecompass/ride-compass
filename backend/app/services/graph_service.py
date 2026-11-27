@@ -19,8 +19,9 @@ from app.domain.road_network import (
     road_class_columns,
     slice_network,
 )
+from app.domain.model_settings import current_model_settings
 from app.domain.route_search import DETOUR_RATIO_SHARING_ZOOM
-from app.infrastructure import container_memory
+from app.infrastructure import container_memory, road_network_store
 from app.infrastructure.detour_ratio_cache import TileSet
 
 logger = logging.getLogger("ridecompass.graph")
@@ -104,6 +105,12 @@ def network_burden_fills(network: RoadNetwork, axes: CostAxisDefinitions) -> dic
     fills = burden_fills(burdens, columns, network.distance_m)
     _burden_fills = (network, classes, burdens, fills)
     return fills
+
+
+def warm_road_network() -> None:
+    """道路網の置き場が入れ替わっていれば読み直し、取込範囲全体の区分の列と道のストレスの軸の欠けを埋める平均を求めておく。
+    全区間を数えるので、スレッドから呼ぶ。"""
+    network_burden_fills(road_network_store.current(), current_model_settings().cost_axes)
 
 
 def _slice(network: RoadNetwork, bbox: BoundingBox) -> RoadSlice:

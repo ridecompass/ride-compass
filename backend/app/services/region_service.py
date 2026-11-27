@@ -23,7 +23,10 @@ from app.domain.road_features import (
     road_layer_values,
 )
 from app.domain.timed_regulations import regulated_rows_within, regulation_variant
-from app.domain.tuning import REBUILT_CLIENT_TUNING_IDS
+from app.domain.model_settings import current_model_settings
+from app.domain.road_class_catalog import RoadClassCatalog, road_class_catalog
+from app.domain.strict_model import StrictModel
+from app.domain.tuning import REBUILT_CLIENT_TUNING_IDS, client_tuning_values
 from app.infrastructure.debug_log import log_external_call
 from app.infrastructure.point_tile_layers import PointTileLayer
 from app.infrastructure.road_graph_repository import RoadGraphRepository
@@ -44,6 +47,16 @@ _TileReader = Callable[[int, int, int, BoundingBox], Awaitable[bytes | None]]
 class _InspectedRoad:
     highway: str
     tags: dict[str, str]
+
+
+class ClientConfigResponse(StrictModel):
+    # フロントが使う較正値（id → いま効いている値、`domain/tuning.py`が宣言。作り直しで効く値は作り直しに使った値）。
+    client_tuning: dict[str, float]
+    # 事故データの収録年（地図の点が読む取込の宣言そのもの）。地図の説明文が範囲を書くために使う。表示側に文字列で
+    # 持つと、取り込み直したときに黙って食い違う。
+    accident_years: list[int]
+    # 道の区分（`domain/road_class_catalog.py: road_class_catalog`）。
+    road_classes: RoadClassCatalog
 
 
 class RegionService:
@@ -163,21 +176,21 @@ class RegionService:
             roads.append(RoadAt(properties={**properties, **materials.tile_properties(row)}, shape=shapes[row]))
         return roads
 
-    async def get_accident_years(self) -> list[int]:
-        """事故データの収録年。地図の説明文へ配る。
-
-        表示側が年を文字列で持つと、取り込み直したときに黙って食い違う。年の正本は
-        地図の点が読む取込の素性（`source_runs.origin`）だけにする。
-        """
+    async def get_client_config(self) -> ClientConfigResponse:
+        """画面が起動のときに1回取る、再デプロイなしに変わる値。区分と較正値はプロセス内の値で、事故の収録年と作り直しで効く
+        較正値だけがDBを見る。"""
+        settings = current_model_settings()
+        with log_external_call("region:rebuilt-client-tuning"):
+            rebuilt = await self._repository.get_recorded_tuning(REBUILT_CLIENT_TUNING_IDS)
+        # 事故の収録年の正本は、地図の点が読む取込の素性（`source_runs.origin`）だけにする。
         with log_external_call("region:accident-years-covered") as fields:
             years = await self._repository.get_accident_years()
             fields["years_covered"] = len(years)
-            return years
-
-    async def get_rebuilt_client_tuning(self) -> dict[str, float]:
-        """フロントへ配る較正値のうち作り直しで効くもの（`REBUILT_CLIENT_TUNING_IDS`）の、作り直しに使った値。"""
-        with log_external_call("region:rebuilt-client-tuning"):
-            return await self._repository.get_recorded_tuning(REBUILT_CLIENT_TUNING_IDS)
+        return ClientConfigResponse(
+            client_tuning={**client_tuning_values(settings.tuning), **rebuilt},
+            accident_years=years,
+            road_classes=road_class_catalog(settings.road_classes, settings.tuning),
+        )
 
     async def get_ingested_area(self) -> BoundingBox | None:
         """サービスの対象範囲（取り込んだ道路の範囲）。気象庁タイルのプリウォームが、ここから

@@ -25,9 +25,8 @@ from app.infrastructure.process_resources import close_process_resources
 from app.infrastructure.request_log import format_log_lines, request_log_middleware
 from app.infrastructure.response_compression import ContentTypeGZipMiddleware
 from app.infrastructure.jma_amedas_client import AMEDAS_REFRESH_INTERVAL_MINUTES
-from app.domain.model_settings import current_model_settings
 from app.services.definitions_loading import refresh_definitions
-from app.services.graph_service import network_burden_fills
+from app.services.graph_service import warm_road_network
 
 logging.basicConfig(level=logging.DEBUG if settings.debug_mode else logging.INFO)
 for _handler in logging.getLogger().handlers:
@@ -85,10 +84,8 @@ async def _sync_msm_job() -> None:
 
 
 async def _warm_road_network_job() -> None:
-    """道路網の置き場が入れ替わっていれば読み直し、取込範囲全体の区分の列と道のストレスの軸の欠けを埋める平均を求めておく。
-    派生を作り直した直後の最初の要求（ルート生成・地図のレンズ）が、取込範囲全体を数える時間を待たない。"""
-    network = await asyncio.to_thread(road_network_store.current)
-    await asyncio.to_thread(network_burden_fills, network, current_model_settings().cost_axes)
+    """派生を作り直した直後の最初の要求（ルート生成・地図のレンズ）が、取込範囲全体を数える時間を待たない。"""
+    await asyncio.to_thread(warm_road_network)
 
 
 async def _prune_stale_disk_generations_job() -> None:
