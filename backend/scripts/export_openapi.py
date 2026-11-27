@@ -152,7 +152,7 @@ from app.domain.region import (
     ROAD_TILE_MAX_ZOOM,
     ROAD_TILE_MIN_ZOOM,
 )
-from app.domain.leg_costs import DURATION_ESTIMATE_WORDING, MISSING_TRAVEL_DATA_WORDING
+from app.domain.leg_costs import DURATION_ESTIMATE_WORDING, MISSING_TRAVEL_DATA_HEADING, MISSING_TRAVEL_DATA_WORDING
 from app.domain.route_search import CANDIDATE_ORDER_WORDING
 from app.domain.cost_axes import LENS_QUANTITY_LABEL, LENS_UNIT
 from app.config import Settings
@@ -622,7 +622,8 @@ def main() -> None:
             "travel_model_wording": TRAVEL_MODEL_WORDING,
             "duration_estimate_wording": DURATION_ESTIMATE_WORDING,
             "candidate_order_wording": CANDIDATE_ORDER_WORDING,
-            # 所要時間の計算が値の無い区間をどう数えるかの文。結果の「平均で計算した道のり」の注意の詳しい説明に出す。
+            # データが欠けた道のりの割合（百分率）に続ける注意の文と、所要時間の計算が値の無い区間をどう数えるかの文。
+            "missing_travel_data_heading": MISSING_TRAVEL_DATA_HEADING,
             "missing_travel_data_wording": MISSING_TRAVEL_DATA_WORDING,
             # 地図のレンズ（総合と費用の軸ごと）の量の名前と単位。レンズを述べる画面の文が差し込む。
             "lens_quantity_label": LENS_QUANTITY_LABEL,

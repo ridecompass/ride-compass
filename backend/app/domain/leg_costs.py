@@ -64,9 +64,12 @@ MAX_TIME_BINS = 4
 #: 土地被覆の割合の欠けを取込の範囲全体の平均の割合で埋める）。置き換え方を変えたら、ここも変える。
 MISSING_TRAVEL_DATA_WORDING = (
     "データが欠けた所は、次の値で計算しています。\n"
-    "・坂を測れない所[標高が無いか乱れている]: 地域でよくある坂\n"
-    "・信号などの止まる所の数や、周りの建物・林の様子が分からない区間: 平均の値\n"
+    "・坂を測れない所[標高が無いか乱れている]: 地域の道の坂の分布どおりの坂\n"
+    "・信号などの止まる所の数や、周りの建物・林の様子が分からない区間: 地域の平均の値\n"
     "・標高の無い区間の空気の濃さ: 海面の高さのもの")
+
+#: `missing_travel_data_share`の割合（「N%の」）に続けて、利用者に言う短い文。埋め方は値ごとに違うので、どれかの埋め方の名前を言わない。
+MISSING_TRAVEL_DATA_HEADING = "道のりはデータが欠けていて、代わりの値で計算しています"
 
 #: 所要時間の見積もりが何を足したものかを、利用者に言う文（区間の走行時間・止まる出来事の待ち・曲がる所の時間）。
 DURATION_ESTIMATE_WORDING = "走る時間に、信号などで止まる時間と曲がる時間を足した見積もりです。"
@@ -593,17 +596,18 @@ class LegCostComposer:
         return int(self._full_row_index[full_row])
 
     def missing_travel_data_share(self, rows: np.ndarray) -> float | None:
-        """切り出した区間の順の行`rows`の距離のうち、所要時間の計算で取込の範囲全体の平均で埋めた長さの割合。坂は測れない間
-        （`unknown_m`）の長さだけを平均の坂で埋め、停止要因の件数の無い区間は区間の全体を平均の密度で数える（`_travel_inputs`が
-        欠けを置き換えるのと同じ値を見る）。区間の長さで数えると、短い間の揺れ1か所で割合が何倍にもなる。距離の合計が0ならNone。"""
+        """切り出した区間の順の行`rows`の距離のうち、所要時間の計算で値が欠けて埋めた長さの割合（埋め方は
+        `MISSING_TRAVEL_DATA_WORDING`）。坂は測れない間（`unknown_m`）の長さだけを数え、停止要因の件数か土地被覆の割合の無い区間は
+        区間の全体を数える（`_travel_inputs`と風の高さの倍率が埋めるのと同じ欠けを見る）。区間の長さで数えると、短い間の揺れ1か所で
+        割合が何倍にもなる。距離の合計が0ならNone。"""
         distance = self._search_materials.distance_m[rows]
         total = float(distance.sum())
         if total <= 0:
             return None
-        stops_missing = np.zeros(len(rows), dtype=bool)
+        whole_missing = self._search_materials.wind_heights.filled()[rows]
         for material_id in stop_count_material_ids():
-            stops_missing |= np.isnan(self._static_material_arrays[material_id][rows])
-        filled = np.where(stops_missing, distance, self._travel_inputs.model.unknown_m[rows])
+            whole_missing |= np.isnan(self._static_material_arrays[material_id][rows])
+        filled = np.where(whole_missing, distance, self._travel_inputs.model.unknown_m[rows])
         return round(float(filled.sum()) / total, 4)
 
     @cached_property

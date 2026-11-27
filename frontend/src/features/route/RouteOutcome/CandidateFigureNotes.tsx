@@ -25,15 +25,15 @@ export function CandidateFiguresInfo() {
   );
 }
 
-/** 選んだ候補の所要時間の前提が崩れていることの注意（黙って短い所要時間を見せない）。`share`は、勾配か停止要因の値が無く全体の平均で
- * 出した区間の距離の割合（0〜1、RouteCandidate.missing_travel_data_share）。丸めて1%以上のときだけ出す——0%を並べても判断の材料にならない。 */
+/** 選んだ候補の所要時間の前提が崩れていることの注意（黙って短い所要時間を見せない）。`share`は、値が欠けて代わりの値で
+ * 出した道のりの割合（0〜1、RouteCandidate.missing_travel_data_share）。丸めて1%以上のときだけ出す——0%を並べても判断の材料にならない。 */
 export function MissingTravelDataNotice({ share }: { share: number | null }) {
   const missingPct = share == null ? 0 : Math.round(share * 100);
   if (missingPct < 1) return null;
   return (
     <WarningText>
-      {`${missingPct}%の道のりはデータが欠けていて、平均の値で計算しています`}
-      <InfoPopover triggerAriaLabel="平均で計算した道のりの説明">
+      {`${missingPct}%の${routeGenerateConfig.missing_travel_data_heading}`}
+      <InfoPopover triggerAriaLabel="データが欠けた道のりの説明">
         <p>
           <GuideText text={routeGenerateConfig.missing_travel_data_wording} />
         </p>
