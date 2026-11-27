@@ -121,6 +121,7 @@ from app.domain.weather_display import (
     PRECIPITATION_COLOR_STOPS,
     WIND_CALM_BELOW_MS,
     WIND_SPEED_COLOR_STOPS,
+    tile_pixel_colors,
 )
 from app.domain.display_palette import (
     BASEMAP_DARK_ICON_OPACITY_SCALE,
@@ -142,7 +143,7 @@ from app.domain.landcover import (
     LANDCOVER_TILE_MIN_ZOOM,
 )
 from app.infrastructure.cache_identity import LANDCOVER_TILE_VERSION
-from app.domain.jma_tile_specs import JMA_ELEMENTS, JMA_TILE_MIN_ZOOM, effective_max_zoom
+from app.domain.jma_tile_specs import JMA_ELEMENTS, JMA_RASTER_TILE_SIZE_PX, JMA_TILE_MIN_ZOOM, effective_max_zoom
 from app.domain.material_catalog import MATERIAL_CATALOG, display_axis_missing_semantics
 from app.domain.material_coverage_spec import MISSING_SEMANTICS_DISPLAY, POPULATION_LABELS
 from app.domain.primary_attributes import PRIMARY_ATTRIBUTES
@@ -154,6 +155,8 @@ from app.domain.region import (
 )
 from app.domain.leg_costs import DURATION_ESTIMATE_WORDING, MISSING_TRAVEL_DATA_HEADING, MISSING_TRAVEL_DATA_WORDING
 from app.domain.route_search import CANDIDATE_ORDER_WORDING
+from app.domain.ledger_costs import COST_WORDING, PENALTY_WORDING
+from app.domain.road_avoidance import AVOIDANCE_MULTIPLIER_WORDING
 from app.domain.cost_axes import LENS_QUANTITY_LABEL, LENS_UNIT
 from app.config import Settings
 from app.domain.cost_preference import COST_MULTIPLIER_LEVELS, COST_STRENGTH_LEVELS, DISABLED_LABEL, STANDARD_COST_FACTOR
@@ -295,6 +298,8 @@ def _weather_element_entry(element: WeatherElement) -> dict:
             "minZoom": JMA_TILE_MIN_ZOOM,
             "maxZoom": effective_max_zoom(tile),
             "vectorLayer": tile.vector_layer,
+            # ラスタのタイルの一辺（画素）。ベクタのタイルはNone。
+            "rasterSizePx": JMA_RASTER_TILE_SIZE_PX if element.kind == "rasterTile" else None,
         },
     }
 
@@ -514,7 +519,14 @@ def main() -> None:
             "wind_speed": [s._asdict() for s in WIND_SPEED_COLOR_STOPS],
             "linear_rainband_outline_color": LINEAR_RAINBAND_OUTLINE_COLOR,
             "linear_rainband_outline_casing_color": LINEAR_RAINBAND_OUTLINE_CASING_COLOR,
-            **{scale: [level._asdict() for level in levels] for scale, levels in LEVELS_OF_SCALE.items()},
+            # 段ごとの`pixel_color`は、配信元のタイルの画素をその段と見分ける色の[R, G, B]（`domain/weather_display.py: tile_pixel_colors`。描かない段はNone）。
+            **{
+                scale: [
+                    {**level._asdict(), "pixel_color": color}
+                    for level, color in zip(levels, tile_pixel_colors(levels), strict=True)
+                ]
+                for scale, levels in LEVELS_OF_SCALE.items()
+            },
             "wind_calm_below_ms": WIND_CALM_BELOW_MS,
             "precipitation_none_below_mm": PRECIPITATION_MIN_MM,
         },
@@ -617,11 +629,15 @@ def main() -> None:
             "max_assumed_speed_kmh": MAX_ASSUMED_SPEED_KMH,
             # フロントが状態を問い合わせるとき、終わるまで待たせる秒（口が受け付ける上限そのもの）。
             "job_wait_seconds": JOB_WAIT_MAX_SECONDS,
-            # 利用者が入れる巡航速度の名前と、区間の速度の決め方の文と、所要時間の見積もりが何を足したものかの文と、候補の並べ方の文と、罰の曲がりの扱いの文。
+            # 利用者が入れる巡航速度の名前と、区間の速度の決め方の文と、所要時間の見積もりが何を足したものかの文と、候補の並べ方の文。
             "cruise_speed_label": CRUISE_SPEED_LABEL,
             "travel_model_wording": TRAVEL_MODEL_WORDING,
             "duration_estimate_wording": DURATION_ESTIMATE_WORDING,
             "candidate_order_wording": CANDIDATE_ORDER_WORDING,
+            # 負担が何を数えるかと、費用の式と、道の避け方の倍率が何に掛かるかの文（名詞句）。費用を述べる画面の文が差し込む。
+            "penalty_wording": PENALTY_WORDING,
+            "cost_wording": COST_WORDING,
+            "avoidance_multiplier_wording": AVOIDANCE_MULTIPLIER_WORDING,
             # データが欠けた道のりの割合（百分率）に続ける注意の文と、所要時間の計算が値の無い区間をどう数えるかの文。
             "missing_travel_data_heading": MISSING_TRAVEL_DATA_HEADING,
             "missing_travel_data_wording": MISSING_TRAVEL_DATA_WORDING,

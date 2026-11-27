@@ -2,7 +2,7 @@
 
 **標高を拾う点は、区間を等しい道のりに分けた点**で、間隔は較正値（引数`profile_step_m`）以下にする。形状点で引くと、
 点の間隔が描き手ごとにばらつき、細かく描いた道ほど標高データの揺らぎを登りとして積む。拾った点は、揺れの閾値（引数
-`profile_tolerance_m`）で間引いてから表に残す（`domain/attributes.py: elevation_profile_sql`）。
+`profile_tolerance_m`）で間引いてから表に残す（`elevation_profile_sql`）。
 
 **橋かトンネルの区間は刻まずに両端だけを引く**。配信元のDEMは地表面の値で構造物の高さを反映しないため
 （https://maps.gsi.go.jp/development/hyokochi.html に明記）、中間の点は桁や坑道ではなく下の地形を指す——谷を渡る平らな橋で、
@@ -37,7 +37,7 @@ https://github.com/graphhopper/graphhopper/blob/master/core/src/main/java/com/gr
 （`infrastructure/dem_elevation.py: fill_elevations`）。頂点ごとに採った標高は表`_vertex_elev`に入り、行の無い頂点は値が無い。
 
 
-間引き方はdomainが持つ（`elevation_profile_sql`）。このバッチは画素の引き方を
+間引き方は`elevation_profile_sql`が持ち、閾値は較正値から渡す。このバッチは画素の引き方を
 組み立てるだけで、勾配の上限を持たない。
 """
 
@@ -49,7 +49,6 @@ import time
 import asyncpg
 
 from app.batch.common import affected_rows
-from app.domain.attributes import elevation_profile_sql
 from app.domain.material_sql import IS_BRIDGE_SQL, IS_TUNNEL_SQL
 from app.domain.tuning import (
     ELEVATION_PROFILE_STEP_ID,
@@ -277,6 +276,48 @@ _VERTEX_ELEVATIONS = """
 SELECT v.osm_way_id, v.segment_index, v.ord, v.along_m, e.elev
 FROM _vertex v LEFT JOIN _vertex_elev e ON e.vid = v.vid
 """
+
+def elevation_profile_sql(vertices: str, tolerance_m: str) -> str:
+    """区間に沿って拾った点（標高の断面）を揺れの閾値で間引き、残した点の標高と位置を順に並べるSQL。
+
+    `vertices`は`(osm_way_id, segment_index, ord, along_m, elev)`を返す関係。`along_m`は区間の始まりから
+    道に沿って測った点の位置（m）。
+
+    **間引きは、断面（横が道のり、縦が標高）に Douglas-Peucker をかける**（PostGIS の`ST_Simplify`。閾値`tolerance_m`はSQLの式で
+    渡す）。閾値以下の揺れを消す。残る点の間の勾配は元の点の間の一番急な勾配を越えない（GraphHopper の ramer のならしと、そのあとの
+    間引きと同じ）が、高さが閾値の数倍に満たない短い段は、前後の点と一緒になだらかに残ることがある。値の無い点をまたいで間引かない
+    ——値のある点の続きごとに間引き、値の無い点は残す。残す点は、点の順（`ord`）を M の値に載せて取り戻す。
+
+    値のある点が2つ未満の区間は返らない。返すのは残した点の標高`elevation_profile_m`（値の無い点はNULL）と位置
+    `elevation_profile_along_m`。標高と勾配の要約は、道路網の配列を作るときにこの点から出す
+    （`domain/elevation_profile.py: profile_summaries`）。
+    """
+    return f"""
+-- 標高と位置は残す断面の点と同じ精度（real）に落としてから間引く。
+WITH v AS (
+    SELECT osm_way_id, segment_index, ord, along_m::real::float8 AS along_m, elev::real::float8 AS elev FROM ({vertices}) s),
+-- 値の無い点で区切った、値のある点の続きの番号（値の無い点は次の続きの頭に入る）と、続きの中の値のある点の数。
+runs AS (
+    SELECT *, count(elev) OVER (PARTITION BY osm_way_id, segment_index, run) AS run_known
+    FROM (SELECT *, count(*) FILTER (WHERE elev IS NULL) OVER (PARTITION BY osm_way_id, segment_index ORDER BY ord) AS run
+          FROM v) n),
+simplified AS (
+    SELECT osm_way_id, segment_index, ST_M(d.geom)::int AS ord
+    FROM (SELECT osm_way_id, segment_index,
+                 ST_Simplify(ST_MakeLine(ST_MakePointM(along_m, elev, ord) ORDER BY ord), {tolerance_m}) AS line
+          FROM runs WHERE elev IS NOT NULL AND run_known >= 3 GROUP BY osm_way_id, segment_index, run) l
+    CROSS JOIN LATERAL ST_DumpPoints(l.line) d),
+kept AS (
+    SELECT r.osm_way_id, r.segment_index, r.ord, r.along_m, r.elev
+    FROM runs r LEFT JOIN simplified k
+      ON k.osm_way_id = r.osm_way_id AND k.segment_index = r.segment_index AND k.ord = r.ord
+    WHERE r.elev IS NULL OR r.run_known < 3 OR k.ord IS NOT NULL)
+SELECT osm_way_id, segment_index,
+       array_agg(elev::real ORDER BY ord) AS elevation_profile_m,
+       array_agg(along_m::real ORDER BY ord) AS elevation_profile_along_m
+FROM kept GROUP BY osm_way_id, segment_index HAVING count(elev) >= 2
+"""
+
 
 _ELEVATION_COLUMNS = ("elevation_profile_m", "elevation_profile_along_m")
 

@@ -32,7 +32,7 @@ from app.domain.msm import MsmBlock, MsmGrid
 from app.domain.road_avoidance import RoadAvoidanceMasks
 from app.domain.road_classes import EMPTY_ROAD_CLASSES
 from app.domain.cycling_speed import STANDARD_TEMPERATURE_C
-from app.domain.wind import WindForecastSeries
+from app.domain.wind import WeatherForecastSeries
 from app.domain.wind_height import WindHeights
 from app.domain.material_catalog import MATERIAL_CATALOG
 from app.domain.route import AxisFact
@@ -92,9 +92,9 @@ def _matrix(n: int, *, distance=1000.0, gradient=0.0, bearing=NORTH, surface="pa
     )
 
 
-def _series(speeds_by_hour: list[float], from_deg: float = NORTH) -> WindForecastSeries:
+def _series(speeds_by_hour: list[float], from_deg: float = NORTH) -> WeatherForecastSeries:
     """格子点1つの、`START`から1時間刻みの予報。"""
-    return WindForecastSeries(
+    return WeatherForecastSeries(
         times=[START + timedelta(hours=h) for h in range(len(speeds_by_hour))],
         speed_ms=np.array([speeds_by_hour], dtype=float),
         direction_deg=np.full((1, len(speeds_by_hour)), from_deg),

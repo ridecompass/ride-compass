@@ -32,7 +32,7 @@ from app.config import settings
 from app.domain.flood_forecast import ActiveFloodForecast
 from app.domain.jma_amedas import AmedasObservation, WindDirection
 from app.domain.jma_warning import ActiveWarning
-from app.domain.msm_grid import MSM_GRID_MAX_AREA_SQ_DEG, MsmGridForecast, MsmGridPointForecast
+from app.domain.msm_grid import MsmGridForecast, MsmGridPointForecast
 from app.domain.time_zone import JST
 from app.domain.twilight import Twilight
 from app.domain.weather import GridPointToday
@@ -195,20 +195,13 @@ def test_the_msm_grid_route_returns_the_grid_points_with_local_times(override_de
     }
 
 
-#: 面積が上限をわずかに超える正方形の一辺[度]。
-_TOO_WIDE_SIDE = MSM_GRID_MAX_AREA_SQ_DEG**0.5 + 0.01
-
-
-@pytest.mark.parametrize(("bbox", "detail"), [
-    ({**TOKYO_BBOX, "min_lat": 36.0, "max_lat": 35.3}, "表示範囲の指定が正しくありません。"),
-    (
-        {"min_lon": 130.0, "min_lat": 30.0, "max_lon": 130.0 + _TOO_WIDE_SIDE, "max_lat": 30.0 + _TOO_WIDE_SIDE},
-        "表示範囲が広すぎます。ズームインしてください。",
-    ),
+@pytest.mark.parametrize(("bbox", "answer", "detail"), [
+    ({**TOKYO_BBOX, "min_lat": 36.0, "max_lat": 35.3}, MSM_GRID, "表示範囲の指定が正しくありません。"),
+    (TOKYO_BBOX, None, "表示範囲が広すぎます。ズームインしてください。"),
 ], ids=["inverted", "too-wide"])
-def test_an_msm_grid_range_that_is_inverted_or_too_wide_is_refused(override_dependency, bbox, detail):
-    """広すぎる範囲は、間引く前に格子点を丸ごと読む（読む量は範囲の格子点の数に比例する）。"""
-    override_dependency(get_weather_service, lambda: FakeService(MSM_GRID))
+def test_an_msm_grid_range_that_is_inverted_or_too_wide_is_refused(override_dependency, bbox, answer, detail):
+    """広すぎるかはサービスが決める（`test_weather_service.py`）。"""
+    override_dependency(get_weather_service, lambda: FakeService(answer))
 
     response = client.get("/api/weather/msm-grid", params=bbox)
 

@@ -296,7 +296,7 @@ def road_class_columns(
         },
     }
     classes = class_columns(definitions, facts, network.edge_count)
-    return classes, layer_columns(definitions, {**facts, **classes}, network.edge_count)
+    return classes, layer_columns(definitions, {**facts, **classes})
 
 
 def slice_network(

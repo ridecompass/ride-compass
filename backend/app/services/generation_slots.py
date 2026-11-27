@@ -17,10 +17,7 @@ class GenerationSlots:
         self._jobs: set[asyncio.Task] = set()
 
     def full(self) -> bool:
-        """走る分と待つ分を合わせた数が上限に達しているか。
-
-        受け付けを決める側は、これを見てから`start`するまでにawaitを挟まない（挟むと、ほぼ同時に届いた要求が上限を
-        超えて受理される）。"""
+        """走る分と待つ分を合わせた数が上限に達しているか。"""
         return len(self._jobs) >= self._capacity
 
     def start(self, job: Callable[[], Coroutine[Any, Any, None]]) -> None:

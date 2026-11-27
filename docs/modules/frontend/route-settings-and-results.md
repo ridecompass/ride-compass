@@ -50,6 +50,7 @@
 | `features/map/MapView/useMapMarkers.tsx` | 地図の地点の印（出発地・経由地・目的地）と選んでいる区間の印の作成・位置の更新・ドラッグ・後始末を1か所に持つフック。`MapView`は地図を作ったあとに呼ぶだけ（下記「地点の指定」「区間クリック詳細」） |
 | `features/route/PlaceSearch/usePlaceLookup.ts` | 住所・施設の名前を打つ欄の中身と引き方（打ちかけで間を置いて引く・変換中は引かない・Enter ですぐ引く・引いたときの地図の真ん中を添える）。地点を探す小窓（`PlaceSearch/PointSearch.tsx`）が使う（下記「住所・施設で探す」） |
 | `features/route/placeSearchApi.ts` | 地点の検索の口（`GET /api/place-search`）と置いた位置の辺りの口（`GET /api/place-area`）を叩く薄いラッパー（[地点の検索（backend）](../backend/place-search.md)） |
+| `lib/placeCandidate.ts` | 位置と名前だけで決まる地点（地図で置いた地点・地図の上の名前のある点・現在地）を、探して選んだ施設と同じ形の候補にする（`lib/placeCandidate.ts: pointCandidate`）。地図の側と条件の地点の一覧の両方が使う |
 | `hooks/useClientConfig.ts` | 画面の設定（`GET /api/client-config`。較正値・道の区分等）の取得。機能をまたいで読む形を`hooks/useClientConfig.ts: useClientConfig`が返す。1つの機能だけが読む形は、その機能が同じ取得の応答から`hooks/useClientConfig.ts: useClientConfigSelect`で導く（地図の道の線の層は[地図: レンズ・ルート色分け](map-axis-coloring.md)の`features/map/useMapCatalog.ts`）——共有の設定へ相乗りさせると、読み手が1機能だけの知識を共有の層が運ぶ。取れていないことの項目（`hooks/useClientConfig.ts: clientConfigFetchFailure`。常設ヘッダーの印）もここが持つ |
 | `lib/clientConfig.ts` | 上記フックが返す画面の設定の形（`lib/clientConfig.ts: ClientConfig`）を応答から導く純関数（`lib/clientConfig.ts: clientConfigFromResponse`）と、画面が読む較正値（`lib/clientConfig.ts: CLIENT_TUNING_IDS`・`lib/clientConfig.ts: clientTuningValue`。並べるidは生成物`route-generate-config.json`に在るものだけを型が通し、引けなければ既定を作らず`undefined`を返す）。取れるまでは較正値も道の区分も空で、ビルド時の写しで埋めない。フックが持つのは「いつ取りに行き、誰と共有するか」だけ |
 | `services/clientConfigApi.ts` | 上記フックが叩くbackend APIの薄いラッパーと、取れなかったときの知らせが名指す呼び名（`services/clientConfigApi.ts: CLIENT_CONFIG_LABEL`。「画面の設定」） |

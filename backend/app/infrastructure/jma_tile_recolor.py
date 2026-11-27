@@ -4,21 +4,28 @@
   （`domain/weather_display.py: PRECIPITATION_COLOR_STOPS`）と同じなので、パレットの色を1対1で替えれば、地図の色と
   凡例（同じ段から組み立てる）が一致する。アプリが塗らない段（いちばん弱い段の下限より弱い雨）の色は透明にする。
   画素は書き換えずパレットとその透明度だけを替え、パレット形式のまま配る。
-- 段で塗る災害（雷・竜巻・キキクル）: 注意の段（段の表の`painted`がFalse）の画素だけを、地図で見える濃さが
-  `ATTENTION_LEVEL_OPACITY`になる不透明度へ下げる。色と段は変えない（段を1対1のまま、見せる濃さだけを替える）。
-  段の表に色の無い画素は、そのまま返して警告を1度だけ出す（配信元の配色が変わったか、まだ測れていない段）。
+- 段で塗る災害（雷・竜巻・キキクル）: 画素の段を宣言の見分け方（`domain/weather_display.py: tile_pixel_level`）で決め、
+  注意の段（段の表の`painted`がFalse）の画素だけを、地図で見える濃さが`ATTENTION_LEVEL_OPACITY`になる不透明度へ下げる。
+  色と段は変えない（段を1対1のまま、見せる濃さだけを替える）。段の表の測った色に無い画素は、警告を1度だけ出す
+  （配信元の配色が変わったか、まだ測れていない段）。
 """
 
 import io
 import logging
-from typing import cast
+from typing import NamedTuple, cast
 
 import numpy as np
 from PIL import Image, ImageColor
 
 from app.domain.jma_tile_specs import jma_tile_spec
 from app.domain.map_display import AREA_OPACITY
-from app.domain.weather_display import ATTENTION_LEVEL_OPACITY, PRECIPITATION_COLOR_STOPS
+from app.domain.weather_display import (
+    ATTENTION_LEVEL_OPACITY,
+    PRECIPITATION_COLOR_STOPS,
+    RGB,
+    tile_pixel_colors,
+    tile_pixel_level,
+)
 from app.domain.weather_elements import LEVELS_OF_SCALE, WEATHER_ELEMENTS
 from app.infrastructure.cache_identity import shape_digest
 from app.infrastructure.jma_tile_paths import read_jma_tile_path
@@ -40,22 +47,33 @@ _PRECIPITATION_COLORS: dict[tuple[int, ...], tuple[int, ...]] = {
     for jma, stop in zip(JMA_PRECIPITATION_TILE_COLORS, PRECIPITATION_COLOR_STOPS, strict=True)
 }
 
-logger = logging.getLogger(__name__)
-
-RGB = tuple[int, ...]
+logger = logging.getLogger("ridecompass.jma_tile_recolor")
 
 
-def _level_tile_colors() -> dict[str, tuple[frozenset[RGB], frozenset[RGB]]]:
-    """配信要素id → （段の表が色を持つ全部の段の色, そのうち注意の段の色）。段で塗る要素だけを持つ。"""
-    colors: dict[str, tuple[frozenset[RGB], frozenset[RGB]]] = {}
+
+class _LevelTileColors(NamedTuple):
+    #: 段の表の測ったタイルの色。これに無い画素の色は警告する。
+    measured: frozenset[RGB]
+    #: 段の並びの順の、画素を段と見分ける色（`tile_pixel_colors`）。
+    pixel_colors: tuple[RGB | None, ...]
+    #: 注意の段の並びの番号。
+    attention: frozenset[int]
+
+
+def _level_tile_colors() -> dict[str, _LevelTileColors]:
+    """配信要素id → 段の色。段で塗る要素だけを持つ。"""
+    colors: dict[str, _LevelTileColors] = {}
     for element in WEATHER_ELEMENTS:
         if element.level_scale is None or element.kind != "rasterTile":
             continue
-        levels = [level for level in LEVELS_OF_SCALE[element.level_scale] if level.tile_color is not None]
-        known = frozenset(ImageColor.getrgb(cast("str", level.tile_color)) for level in levels)
-        attention = frozenset(ImageColor.getrgb(cast("str", level.tile_color)) for level in levels if not level.painted)
+        levels = LEVELS_OF_SCALE[element.level_scale]
+        entry = _LevelTileColors(
+            measured=frozenset(cast("RGB", ImageColor.getrgb(level.tile_color)) for level in levels if level.tile_color is not None),
+            pixel_colors=tile_pixel_colors(levels),
+            attention=frozenset(index for index, level in enumerate(levels) if not level.painted),
+        )
         for element_id in element.jma_elements:
-            colors[element_id] = (known, attention)
+            colors[element_id] = entry
     return colors
 
 
@@ -73,7 +91,8 @@ RECOLOR_VERSION = shape_digest(
     [
         sorted(_PRECIPITATION_COLORS.items()),
         _UNPAINTED,
-        sorted((key, sorted(known), sorted(attention)) for key, (known, attention) in _LEVEL_TILE_COLORS.items()),
+        sorted((key, sorted(entry.measured), entry.pixel_colors, sorted(entry.attention))
+               for key, entry in _LEVEL_TILE_COLORS.items()),
         _ATTENTION_ALPHA,
     ]
 )
@@ -94,21 +113,21 @@ def recolored(path: str, content: bytes) -> bytes:
         return content
     try:
         if level_colors is not None:
-            return _thin_attention(tile.element_id, content, *level_colors)
+            return _thin_attention(tile.element_id, content, level_colors)
         return _recolor_palette(path, content)
     except (OSError, ValueError, SyntaxError) as error:
         raise UnexpectedShapeError(f"jma tile is not an image: {path}") from error
 
 
-def _thin_attention(element_id: str, content: bytes, known: frozenset[RGB], attention: frozenset[RGB]) -> bytes:
-    """注意の段の色の画素の不透明度を`_ATTENTION_ALPHA`へ下げる。パレット形式はパレットの透明度だけを、
+def _thin_attention(element_id: str, content: bytes, level_colors: _LevelTileColors) -> bytes:
+    """注意の段の画素の不透明度を`_ATTENTION_ALPHA`へ下げる。パレット形式はパレットの透明度だけを、
     RGBA は画素の不透明度を替える。注意の段の画素が無ければ、そのまま返す。"""
     with Image.open(io.BytesIO(content)) as image:
         colors = cast(
             "list[tuple[int, tuple[int, int, int, int]]]", image.convert("RGBA").getcolors(maxcolors=1 << 16) or []
         )
         used = {rgba[:3] for _count, rgba in colors if rgba[3] > 0}
-        for rgb in used - known:
+        for rgb in used - level_colors.measured:
             if (element_id, rgb) not in _warned_unknown:
                 _warned_unknown.add((element_id, rgb))
                 logger.warning(
@@ -116,7 +135,8 @@ def _thin_attention(element_id: str, content: bytes, known: frozenset[RGB], atte
                     element_id,
                     rgb,
                 )
-        if not used & attention:
+        attention = {rgb for rgb in used if tile_pixel_level(rgb, level_colors.pixel_colors) in level_colors.attention}
+        if not attention:
             return content
         buffer = io.BytesIO()
         if image.mode == "P":

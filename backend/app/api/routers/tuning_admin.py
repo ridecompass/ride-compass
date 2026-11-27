@@ -13,27 +13,11 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from app.api.admin_auth import require_admin_basic_auth
 from app.api.dependencies import get_tuning_service
 from app.domain.strict_model import StrictModel
-from app.domain.road_classes import current_road_classes
-from app.domain.tuning import TUNING_PARAMETERS_BY_ID, Tuning, TuningParameter, current_tuning, tuning_parameters_by_effect
-from app.domain.tuning_labels import tuning_label, tuning_subjects
+from app.domain.tuning import TUNING_PARAMETERS_BY_ID
+from app.domain.tuning_labels import TuningParameterView, tuning_parameter_view, tuning_parameter_views
 from app.services.tuning_service import TuningService
 
 router = APIRouter(prefix="/api/admin/tuning", tags=["tuning-admin"], dependencies=[Depends(require_admin_basic_auth)])
-
-
-class TuningParameterView(StrictModel):
-    """較正値1件の宣言と、いま効いている値。"""
-
-    id: str
-    label: str
-    unit: str
-    description: str
-    #: 変えたとき効くまでに何が要るか（`TuningEffect`の値）。画面はこれでまとめる。
-    effect: str
-    #: 上と同じことを利用者へ見せる言い方（`TuningEffect.title`）。**画面へ対応表を
-    #: 持たせない**——効き方を足したときに画面が知らず、名前の無いまとまりへ落ちる。
-    effect_title: str
-    value: float
 
 
 class TuningUpdateRequest(StrictModel):
@@ -42,24 +26,9 @@ class TuningUpdateRequest(StrictModel):
     value: float
 
 
-def _view(parameter: TuningParameter, subjects_by_id: dict[str, tuple[str, ...]], tuning: Tuning) -> TuningParameterView:
-    return TuningParameterView(
-        id=parameter.id,
-        label=tuning_label(parameter, subjects_by_id),
-        unit=parameter.unit,
-        description=parameter.description,
-        effect=parameter.effect.value,
-        effect_title=parameter.effect.title,
-        value=tuning.value(parameter.id),
-    )
-
-
 @router.get("", response_model=list[TuningParameterView])
 async def list_tuning_parameters() -> list[TuningParameterView]:
-    """較正値を効き方の順（`tuning_parameters_by_effect`）に返す。"""
-    subjects_by_id = tuning_subjects(current_road_classes())
-    tuning = current_tuning()
-    return [_view(p, subjects_by_id, tuning) for p in tuning_parameters_by_effect()]
+    return tuning_parameter_views()
 
 
 @router.put("/{param_id}", response_model=TuningParameterView)
@@ -73,4 +42,4 @@ async def update_tuning_parameter(
         # 較正値の宣言に無いidは書かせない（較正値ではない固定値はこの逆引きに載らない）。
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail=f"較正値がありません: {param_id}")
     await service.save_value(param_id, request.value)
-    return _view(parameter, tuning_subjects(current_road_classes()), current_tuning())
+    return tuning_parameter_view(parameter)

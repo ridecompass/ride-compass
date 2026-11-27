@@ -100,6 +100,29 @@ async def generate_route_response(
     )
 
 
+def admit_route_generation(
+    slots: GenerationSlots,
+    client: str,
+    failure_reply: Callable[[BaseException], tuple[int, str] | None],
+    generate: Callable[[], Awaitable[RouteGenerateResponse]],
+) -> str | None:
+    """枠に空きがあれば生成のジョブを登録して起動し、そのidを返す。走る分と待つ分が上限に達していれば断りを記録してNone。
+
+    同期の関数なので、空きの判定から起動までにawaitを挟めない（挟むと、ほぼ同時に届いた要求が上限を超えて受理される）。"""
+    if slots.full():
+        record_rate_limit_rejection(
+            "generate-concurrency", client,
+            f"concurrent={settings.generate_max_concurrent},queued={settings.generate_max_queued}",
+        )
+        return None
+    job_id = job_registry.create_job()
+    # ジョブ本体は`BackgroundTasks`ではなく`create_task`で起動する。`BackgroundTasks`は
+    # レスポンス送出が完了してから実行されるため、送出中の失敗（クライアント切断・
+    # ミドルウェアの例外）でジョブが一度も起動せず、記録したジョブが待ちのまま残る。
+    slots.start(partial(run_route_generation_job, job_id, slots, client, failure_reply, generate))
+    return job_id
+
+
 async def run_route_generation_job(
     job_id: str,
     slots: GenerationSlots,

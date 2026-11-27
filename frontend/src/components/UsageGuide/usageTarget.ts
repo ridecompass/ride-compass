@@ -1,3 +1,5 @@
+import { useEffect, useState } from "react";
+
 /** 使い方の文を持たせる印。共有部品は`usage`の値をここへ書き、素の要素は置く箇所でこの属性を直に付ける。 */
 const USAGE_ATTRIBUTE = "data-usage";
 
@@ -115,4 +117,21 @@ export function iconTargetOf(pressed: Element): UsageTarget | null {
     if (isVisibleText(node, target.element)) return null;
   }
   return target;
+}
+
+/**
+ * 出している部品。部品の名前・使い方・開いているかは出している間にも変わるので、部品の中が変わるたびに
+ * `read`で引き直す。
+ */
+export function useLiveTarget(read: (element: Element) => UsageTarget | null) {
+  const state = useState<UsageTarget | null>(null);
+  const [target, setTarget] = state;
+  const element = target?.element ?? null;
+  useEffect(() => {
+    if (element === null) return;
+    const observer = new MutationObserver(() => setTarget(read(element)));
+    observer.observe(element, { attributes: true, childList: true, characterData: true, subtree: true });
+    return () => observer.disconnect();
+  }, [element, read, setTarget]);
+  return state;
 }

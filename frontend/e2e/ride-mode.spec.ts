@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 import { trueHeadingDeg } from "@/lib/magneticDeclination";
 import { moved } from "@/testing/movedPoint";
 
-import { MAIN_MAP_CANVAS, openMapApp } from "./fixtures";
+import { MAIN_MAP_CANVAS } from "./fixtures";
 import {
   START,
   buttonLook,
@@ -11,6 +11,7 @@ import {
   dotOffsetFrom,
   expectDrawnAt,
   mapBearing,
+  openRideMapApp,
   screenPointOf,
   settledScreenPoint,
 } from "./rideMap";
@@ -23,7 +24,7 @@ test("走行モードの間、地図は届いた位置を同じ所に描き続�
   page,
   context,
 }) => {
-  await openMapApp(page, { routes: () => context.setGeolocation(START) });
+  await openRideMapApp(page, context, START);
 
   // 走行モードの入切と休んでいる間は、ボタンの面の色と縁で見分けられる（パターン4 観点3: 地図の操作のボタンの既定の面に負けない）。
   const rideButton = page.getByRole("button", { name: "走行モード" });
@@ -118,7 +119,7 @@ test("走行モードで地図の大きさが変わって見えている所の�
   page,
   context,
 }) => {
-  await openMapApp(page, { routes: () => context.setGeolocation(START) });
+  await openRideMapApp(page, context, START);
   await page.getByRole("button", { name: "走行モード" }).click();
   await settledScreenPoint(page, START);
 

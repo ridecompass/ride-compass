@@ -212,7 +212,7 @@ def road_layer_values(network: RoadNetwork, feature_keys: Sequence[str], way_ids
             **materials.columns, PEDESTRIAN_ROAD: _regulation_at(network, way_ids, segment_indexes, regulation, at)})
     facts = ColumnsOrEmpty(materials.columns, n, definitions)
     columns = ColumnsOrEmpty({**materials.columns, **class_columns(definitions, facts, n)}, n, definitions)
-    layers = {**layer_columns(definitions, columns, n), HARD_FILTER_PROPERTY: hard_filter_column(columns, n)}
+    layers = {**layer_columns(definitions, columns), HARD_FILTER_PROPERTY: hard_filter_column(columns, n)}
     out: dict[str, dict[str, str]] = {}
     for row, key in enumerate(materials.feature_keys):
         if values := {layer: value for layer, column in layers.items() if (value := column.value_at(row)) is not None}:
