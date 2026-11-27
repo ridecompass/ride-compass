@@ -290,7 +290,7 @@ class EvaluatedRoute(StrictModel):
         return None if per_km is None else round(per_km, COST_SECONDS_DECIMALS)
 
     facts: RouteFacts
-    # 所要時間の見積もりで、取込の範囲全体の平均で埋めた長さの、距離に対する割合（0〜1。数え方は
+    # 所要時間の見積もりで、値が欠けて埋めた長さの、距離に対する割合（0〜1。数え方は
     # `domain/leg_costs.py: LegCostComposer.missing_travel_data_share`）。画面が利用者へ知らせる。区間が無ければNone。
     missing_travel_data_share: float | None
     # 経路を構成するEdge idの列（起点から順）。フロントは候補どうしの共通部分を集合演算で
@@ -539,12 +539,7 @@ def _shape_positions(edges: list[LeanEdge]) -> list[list[float]]:
     first_at = np.minimum(first, len(along) - 1)
     last_at = np.minimum(np.maximum(first + counts - 1, first), len(along) - 1)
     total = np.repeat(along[last_at] - along[first_at], counts)
-    within = np.arange(counts.sum()) - np.repeat(first, counts)
-    even = within / np.repeat(np.maximum(counts - 1, 1), counts)  # 長さ0のEdgeは等しい間隔
-    with np.errstate(divide="ignore", invalid="ignore"):
-        at = np.where(total > 0, (along - np.repeat(along[first_at], counts)) / total, even)
-    at[np.repeat(counts > 0, counts) & (within == 0)] = 0.0
-    at[within == np.repeat(counts - 1, counts)] = 1.0
+    at = (along - np.repeat(along[first_at], counts)) / total
     flat = at.tolist()
     return [flat[start:start + count] for start, count in zip(first.tolist(), counts.tolist())]
 

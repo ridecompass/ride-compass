@@ -74,7 +74,8 @@ class EffortItemRule:
 
     #: 走りの内訳の、その費目の欄。
     ride_j: Callable[[SegmentRide], np.ndarray]
-    #: 値が変わる走る条件（`domain/cycling_speed.py: SegmentSpeedModel.ride`が読む入力）。
+    #: 地図のレンズの値が変わる走る条件（`domain/cycling_speed.py: SegmentSpeedModel.ride`が読む入力のうち、地図が読むもの）。時刻を
+    #: 持たない費目は、地図では無風・標準の気温で解く。
     conditions: tuple[WayValueConditionName, ...]
     #: 数で言う事実。Noneの費目は、事実を転がり抵抗の分け方の材料で言い、物差しの端を区分の鍵で書く。
     number: EffortNumberFact | None
@@ -84,12 +85,14 @@ class EffortItemRule:
 
 #: 体力の費目 → その決まり。費目ごとの事実は、ここだけが持つ。漕ぎ出しの慣性は、止まる回数と巡航速度（½mv² と平地の出力）だけで
 #: 決まる。ほかの費目は、平地を越えて踏む出力を勾配（走る向き）・空気（風と気温、つまり時刻）・転がりの増えた抵抗の比で分け合うので、
-#: どれも向き・速度・時刻で変わる。止まる回数は、止まる出来事（と、ルートなら曲がる所）を止まってから漕ぎ出す回数に換えたもの
+#: ルートではどれも向き・速度・時刻で変わる。地図では、坂と路面は時刻で変わらない道の性質として塗る（同じ坂は時刻を変えても同じ色）
+#: ので、登りと転がりは時刻を持たない。止まる回数は、止まる出来事（と、ルートなら曲がる所）を止まってから漕ぎ出す回数に換えたもの
 #: （`domain/traffic.py: StopEvent.kickoffs`）。向かい風は予報の風を乗り手の高さへ直して区間で平均した、格子点に無い値なので、事実に出さない
 #: （`docs/architecture/data-sources.md`「今の扱い」。地図のレンズの物差しの m/s は、1kmの道の仮の値で予報の値ではない）。
+_TIMELESS = tuple(name for name in RIDE_CONDITION_ORDER if name != "at")
 EFFORT_ITEM_RULES: dict[EffortItem, EffortItemRule] = {
     "gravity": EffortItemRule(
-        ride_j=lambda ride: ride.gravity_extra_j, conditions=RIDE_CONDITION_ORDER,
+        ride_j=lambda ride: ride.gravity_extra_j, conditions=_TIMELESS,
         number=EffortNumberFact(shown=EffortShownFact(label="登り", unit="m", value=lambda inputs: inputs.ascent_m),
                                 lens_unit="%", lens_road="grade_percent")),
     "air": EffortItemRule(
@@ -100,7 +103,7 @@ EFFORT_ITEM_RULES: dict[EffortItem, EffortItemRule] = {
         number=EffortNumberFact(
             shown=EffortShownFact(label="止まる回数", unit="回", value=lambda inputs: round(inputs.stops, STOP_COUNT_DECIMALS)),
             lens_unit="回/km", lens_road="kickoffs")),
-    "rolling": EffortItemRule(ride_j=lambda ride: ride.rolling_extra_j, conditions=RIDE_CONDITION_ORDER, number=None),
+    "rolling": EffortItemRule(ride_j=lambda ride: ride.rolling_extra_j, conditions=_TIMELESS, number=None),
 }
 if set(EFFORT_ITEM_RULES) != set(get_args(EffortItem)) or set(EFFORT_AXES.values()) != set(get_args(EffortItem)):
     raise RuntimeError(f"体力の費目の決まりと軸は、費目の全部を持つ: {sorted(EFFORT_ITEM_RULES)}・{sorted(EFFORT_AXES.values())}")
