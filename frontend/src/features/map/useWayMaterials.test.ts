@@ -15,6 +15,7 @@ import { heldReplies, onBackend } from "@/testing/backendServer";
 import { mapCatalogFor } from "@/testing/mapCatalog";
 import { TWO_COST_AXES } from "@/testing/costAxes";
 import type { MapViewport } from "@/features/map/view/mapLook";
+import type { RideConditions } from "@/features/map/regionApi";
 
 import { useWayMaterials } from "./useWayMaterials";
 import { STANDARD_COST_PREFERENCE } from "@/lib/costPreference";
@@ -50,10 +51,11 @@ const ELSEWHERE_VIEWPORT = { ...VIEWPORT, west: VIEWPORT.west + 1, east: VIEWPOR
 /** 出発の時刻を含むレンズのコマの印と、その次のコマの印。 */
 const FRAME = "v1-2026092409";
 const NEXT_FRAME = "v1-2026092410";
-const CONDITIONS: { lensFrame: string | null | undefined; bearingDeg: number; speedKmh: number } = {
+const CONDITIONS: RideConditions = {
   lensFrame: FRAME,
   bearingDeg: 0,
   speedKmh: 20,
+  paintedLensId: null,
 };
 
 const WAY_MATERIALS = "/api/region/lens/:lensId/:z/:x/:y";
