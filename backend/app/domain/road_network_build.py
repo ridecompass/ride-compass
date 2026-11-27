@@ -25,7 +25,7 @@ from app.domain.elevation_profile import (
 )
 from app.domain.geo import bearings_between
 from app.domain.material_catalog import ELEVATION_GAIN_PER_KM, GRADIENT_PERCENT, MATERIAL_CATALOG
-from app.domain.road_network import RoadNetwork
+from app.domain.road_network import RoadNetwork, edge_key
 from app.domain.search_graph import EDGE_VALUE_DTYPE, range_positions, run_starts
 from app.domain.traffic_regulation import SLOT_FIELDS, active_kinds, invariant_slots, pedestrian_road_codes
 
@@ -53,9 +53,8 @@ def regulation_arrays(edge_way_id: np.ndarray, edge_segment: np.ndarray, regulat
     """`RoadNetwork`の規制の欄と、材料`pedestrian_road`の列の番号（`PEDESTRIAN_ROAD_LABELS`の並びの語彙。時刻で変わらない組だけで
     決め、自転車も対象の規制と除外の規制が両方効く区間は、自転車も禁止）。区間の行は道・区間の番号順で、同じ区間の両向きの行が
     同じ規制を持つ。"""
-    # 区間の番号は smallint（2**15 未満）なので、道の番号と1つの数に詰めて比べる。
-    row_key = np.asarray(edge_way_id, dtype=np.int64) * 65536 + np.asarray(edge_segment, dtype=np.int64)
-    hit_key = regulations.hit_way * 65536 + regulations.hit_segment
+    row_key = edge_key(edge_way_id, edge_segment)
+    hit_key = edge_key(regulations.hit_way, regulations.hit_segment)
     low, high = np.searchsorted(row_key, hit_key, "left"), np.searchsorted(row_key, hit_key, "right")
     per_hit = high - low
     row = range_positions(low, per_hit)
@@ -171,9 +170,8 @@ def _numeric_means(numeric_ids: tuple[str, ...], values: np.ndarray, distance_m:
 
 
 def per_km(amount: np.ndarray, distance_m: np.ndarray) -> np.ndarray:
-    """区間の量`amount`の、区間の長さ1kmあたり（長さ0の区間はNaN）。"""
-    distance = np.asarray(distance_m, dtype=np.float64)
-    return np.divide(amount, distance / 1000.0, out=np.full(len(distance), np.nan), where=distance > 0)
+    """区間の量`amount`の、区間の長さ1kmあたり。"""
+    return amount / (np.asarray(distance_m, dtype=np.float64) / 1000.0)
 
 
 def along_way(material_id: str, values: np.ndarray, forward: np.ndarray, elevation_loss_m: np.ndarray,

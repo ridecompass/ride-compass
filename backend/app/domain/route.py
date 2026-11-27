@@ -541,12 +541,7 @@ def _shape_positions(edges: list[LeanEdge]) -> list[list[float]]:
     first_at = np.minimum(first, len(along) - 1)
     last_at = np.minimum(np.maximum(first + counts - 1, first), len(along) - 1)
     total = np.repeat(along[last_at] - along[first_at], counts)
-    within = np.arange(counts.sum()) - np.repeat(first, counts)
-    even = within / np.repeat(np.maximum(counts - 1, 1), counts)  # 長さ0のEdgeは等しい間隔
-    with np.errstate(divide="ignore", invalid="ignore"):
-        at = np.where(total > 0, (along - np.repeat(along[first_at], counts)) / total, even)
-    at[np.repeat(counts > 0, counts) & (within == 0)] = 0.0
-    at[within == np.repeat(counts - 1, counts)] = 1.0
+    at = (along - np.repeat(along[first_at], counts)) / total
     flat = at.tolist()
     return [flat[start:start + count] for start, count in zip(first.tolist(), counts.tolist())]
 

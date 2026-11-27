@@ -23,7 +23,7 @@ from itertools import accumulate
 import pytest
 
 from app.domain.geo import KM_PER_DEGREE_LATITUDE, haversine_distance_km, km_per_degree_longitude
-from app.domain.graph import edge_key, node_key
+from app.domain.graph import edge_id_of, node_key
 from app.domain.road_classes import TRUE_FACT_VALUE
 from app.domain.road_network import RoadNetwork
 from app.domain.route import Coordinates
@@ -205,7 +205,7 @@ async def test_a_spliced_route_the_road_network_cannot_trace_is_refused(
 async def test_a_spliced_route_through_a_road_the_search_excludes_is_refused(engine_over):
     """管理APIで区分を書き換えた直後等に、通れない道を含む経路を送られても、普通の道として所要時間を付けて返さない。"""
     generator = engine_over(grid_network(motorway_ways={100}))
-    through_motorway = (edge_key(100, 0, True), edge_key(101, 0, True), edge_key(202, 0, True), edge_key(205, 0, True))
+    through_motorway = (edge_id_of(100, 0, True), edge_id_of(101, 0, True), edge_id_of(202, 0, True), edge_id_of(205, 0, True))
 
     assert (await generator.generate_spliced_route(
         at(SOUTH_WEST), FixedPoints(waypoints=[], destination=at(NORTH_EAST)), through_motorway,

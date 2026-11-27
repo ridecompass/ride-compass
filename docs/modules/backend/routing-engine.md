@@ -611,7 +611,7 @@ Nodeごとのコストは、そのNodeへ入る区間の最小を採る（木を
 
 探索範囲の中では、ノードは切り出しの中の番号（`RoadSlice.nodes`の添字）、区間は探索用グラフの番号
 （`LazyRoadGraph.edge_rows`の添字、`TracedLoop.data`もこの番号列）で持つ。区間の文字列の鍵
-（`edge_id`、`domain/graph.py: edge_key`）とノードの鍵は、**経路に載った区間の分だけ**番号から作る
+（`edge_id`、`domain/graph.py: edge_id_of`）とノードの鍵は、**経路に載った区間の分だけ**番号から作る
 （`lean_edge`・`node_key_of`）——範囲全体ぶんの鍵や区間オブジェクトを作ると、範囲の区間数に比例した
 メモリを生成のたびに払うため。クライアントが送り返す鍵（区間の乗り換え）は`lazy_index_of`が番号へ戻す。
 道路網に無い区間・並行区間の採られなかった側は番号を持たない（None）。
@@ -967,9 +967,9 @@ numbaでJITする探索と、探索の中へ展開する部品を置く。JITの
   探索は区間の番号で動き、このオブジェクトを作らない。DBの区間を指す`(osm_way_id, segment_index, forward)`は
   必ず持つ。形（`geometry`）と断面の点（`profile`）は、作るときに道路網の配列の行から付ける
   （`domain/road_network.py: edge_shape`・`edge_profile`）。
-- 区間とノードの文字列の鍵（`edge_key`・`node_key`）と、区間の鍵の読み戻し（`parse_edge_key`）は
+- 区間とノードの文字列の鍵（`edge_id_of`・`node_key`）と、区間の鍵の読み戻し（`parse_edge_id`）は
   ここだけが持つ。路面タイルのフィーチャーの鍵（向きを持たない区間。`edge_feature_key_sql`）も同じ場所に置く
-  ——`edge_key`とは別の鍵で、タイルのSQLが組み立てる。APIが運ぶ鍵とDBの`(osm_way_id, segment_index, forward)`の対応がここで決まる。
+  ——`edge_id_of`とは別の鍵で、タイルのSQLが組み立てる。APIが運ぶ鍵とDBの`(osm_way_id, segment_index, forward)`の対応がここで決まる。
 
 ### `domain/route.py`
 

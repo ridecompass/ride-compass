@@ -15,7 +15,7 @@ import numpy as np
 
 from app.services.route_generation_setup import assemble_route_generation_setup
 from app.domain.geo import haversine_distance_km
-from app.domain.graph import edge_key, node_key, parse_edge_key
+from app.domain.graph import edge_id_of, node_key, parse_edge_id
 from app.domain.landcover import LANDCOVER_CLASSES
 from app.domain.traffic import stop_count_material_ids
 from app.domain.cost_preference import CostPreference
@@ -216,7 +216,7 @@ def edges_of(candidate) -> list[tuple[int, int, bool]]:
     """候補の区間の`(道, 区間番号, 順方向)`を、通る順に。"""
     edges = []
     for edge_id in candidate.edge_ids:
-        edge = parse_edge_key(edge_id)
+        edge = parse_edge_id(edge_id)
         assert edge is not None, edge_id
         edges.append(edge)
     return edges
@@ -239,7 +239,7 @@ def lattice_ring_edges(side: int) -> list[str]:
     edges = []
     for start, end in zip(ring, ring[1:]):
         tail, head = lattice_node(*start), lattice_node(*end)
-        edges.append(edge_key(way_of[tail, head], 0, True) if (tail, head) in way_of else edge_key(way_of[head, tail], 0, False))
+        edges.append(edge_id_of(way_of[tail, head], 0, True) if (tail, head) in way_of else edge_id_of(way_of[head, tail], 0, False))
     return edges
 
 
