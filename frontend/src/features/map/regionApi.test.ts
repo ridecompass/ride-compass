@@ -48,6 +48,7 @@ describe("押した道の内訳（fetchAxisInspector）", () => {
     bearingDeg: 270,
     lensFrame: "v1-2026100110",
     speedKmh: 22,
+    paintedLensId: null,
   };
 
   it.each([{ ...STANDARD_COST_PREFERENCE, strength: 2, multipliers: { vibration: 0.5 }, disabled_axes: ["ascent"] }])(
@@ -72,11 +73,25 @@ describe("押した道の内訳（fetchAxisInspector）", () => {
           y: 12900,
           bearing_deg: 270,
           frame: "v1-2026100110",
+          wind: true,
           speed_kmh: 22,
         },
       ]);
     },
   );
+
+  it("塗っているレンズを送り、出発時刻の風のコマが無ければ風を読まずに求めさせる", async () => {
+    const sent = onBackend("POST", "/api/region/road-inspector", () => Response.json(null));
+
+    await api.fetchRoadInspection(
+      123,
+      "123:4",
+      { ...CONDITIONS, paintedLensId: "ascent", lensFrame: null },
+      STANDARD_COST_PREFERENCE,
+    );
+
+    expect(sent.map(({ body }) => body)).toEqual([expect.objectContaining({ lens_id: "ascent", wind: false })]);
+  });
 });
 
 describe("地図が塗るレンズの道ごとの材料（fetchLensMaterials）", () => {

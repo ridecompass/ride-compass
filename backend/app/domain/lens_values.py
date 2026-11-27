@@ -71,6 +71,11 @@ def lens_conditions(definitions: CostAxisDefinitions) -> dict[str, tuple[WayValu
     return {TOTAL_LENS_ID: total, **by_axis}
 
 
+def _wind_lens_ids(definitions: CostAxisDefinitions) -> set[str]:
+    """値が時刻（風）で変わるレンズのid。ほかのレンズは無風・標準の気温で解く。"""
+    return {lens_id for lens_id, conditions in lens_conditions(definitions).items() if "at" in conditions}
+
+
 def map_lens(conditions: tuple[WayValueConditionName, ...], tuning: Tuning) -> MapLens:
     """値が変わる走る条件が`conditions`のレンズの塗り方。走行方位で変わるなら辿る向きを走行方位で選び（`lens_way_formula`）、
     変わらないなら辿れる向きの値をそのまま塗る（どちらの向きも同じ値で、向きで決まらない道は無い。一方通行の道も、走れない向きへ
@@ -165,6 +170,8 @@ class LensFactInputs:
     elevation_gain_m: np.ndarray
     #: 止まってから漕ぎ出す回数（探索・停止の軸と同じ量。`domain/leg_costs.py: TravelInputs.stops`）。
     stops: np.ndarray
+    #: 風を読んで求めたか。偽なら、風で変わる軸と総合の秒は無風・標準の気温のもので、道の窓は載せない。
+    wind: bool
 
 
 def lens_table(features: LensFeatures, materials: Mapping[str, MaterialColumn], distance_m: np.ndarray,
@@ -172,8 +179,8 @@ def lens_table(features: LensFeatures, materials: Mapping[str, MaterialColumn], 
                fills: MaterialFills, burden_fills: Mapping[str, float],
                weather: tuple[np.ndarray, np.ndarray, np.ndarray] | None,
                elevation_gain_m: np.ndarray) -> tuple[LensTable, LensFactInputs]:
-    """`features.rows`の行の順の材料・長さ・断面・風の成分と気温（向かい風・横風・気温。Noneはフィーチャーが無く風を求めなかった
-    とき。無風・`STANDARD_TEMPERATURE_C`で解く）・行の向きの登りから、
+    """`features.rows`の行の順の材料・長さ・断面・風の成分と気温（向かい風・横風・気温。Noneは風を読まなかったとき。
+    無風・`STANDARD_TEMPERATURE_C`で解く）・行の向きの登りから、
     レンズの値と、道の窓が出す区間の秒と事実の入力を求める。"""
     travel = travel_inputs(materials, distance_m, spans, speed_kmh, fills, settings)
     axes = settings.cost_axes
@@ -181,17 +188,18 @@ def lens_table(features: LensFeatures, materials: Mapping[str, MaterialColumn], 
     calm = (np.zeros(len(distance_m)), np.zeros(len(distance_m)), np.full(len(distance_m), STANDARD_TEMPERATURE_C))
     _, penalties = ledger.row_seconds(travel.model, *(calm if weather is None else weather))
     total = lens_values_with_total(penalties, np.zeros(len(distance_m)))[TOTAL_LENS_ID]
-    timeless = {axis_id for axis_id, conditions in lens_conditions(axes).items() if "at" not in conditions}
     if weather is not None:
+        windy = _wind_lens_ids(axes)
         _, calm_penalties = ledger.row_seconds(travel.model, *calm)
-        penalties = {axis_id: calm_penalties[axis_id] if axis_id in timeless else seconds
+        penalties = {axis_id: seconds if axis_id in windy else calm_penalties[axis_id]
                      for axis_id, seconds in penalties.items()}
     km = _summed_by_direction(features, travel.model.distance_m) / 1000.0
     with np.errstate(invalid="ignore", divide="ignore"):
         per_km = {axis_id: _summed_by_direction(features, seconds) / km for axis_id, seconds in penalties.items()}
         total_per_km = _summed_by_direction(features, total) / km
     return (LensTable(features=features, values={TOTAL_LENS_ID: total_per_km, **per_km}),
-            LensFactInputs(settings, materials, travel.model.distance_m, penalties, total, elevation_gain_m, travel.stops))
+            LensFactInputs(settings, materials, travel.model.distance_m, penalties, total, elevation_gain_m, travel.stops,
+                           wind=weather is not None))
 
 
 def _summed_by_direction(features: LensFeatures, per_row: np.ndarray) -> np.ndarray:
@@ -220,7 +228,8 @@ class LensAxisSeconds(StrictModel):
 class LensDirection(StrictModel):
     """押したフィーチャーを1つの向きに辿ったときの代償の秒（地図のレンズと同じ秒を、区間の長さぶん足したもの）と、その元の事実。"""
 
-    total_seconds: float
+    #: 風を読めなければNone（風で変わる軸の秒と事実も載せない）。
+    total_seconds: float | None
     #: 数える軸ごとの秒（体力の軸をコードの表の順、続けて道のストレスの軸。予報が無風・標準の気温なら和が総合）。
     axes: list[LensAxisSeconds]
     #: 軸id→その軸の事実（`domain/leg_costs.py: axis_facts`。ルートの事実と同じ作り方）。
@@ -230,7 +239,7 @@ class LensDirection(StrictModel):
 class LensInspection(StrictModel):
     """押したフィーチャーの、両方の向きの秒と事実。"""
 
-    #: 地図が走行方位で塗っている向き（`along`は道の向き。直角に近くて決まらなければNone）。
+    #: 地図がレンズを塗っている向き（`along`は道の向き。走行方位で選ぶレンズで、直角に近くて決まらなければNone）。
     painted: Literal["along", "against"] | None
     #: 辿れない向き（一方通行の逆）はNone。
     along: LensDirection | None
@@ -246,29 +255,39 @@ class RoadInspection(StrictModel):
     lens: LensInspection
 
 
-def painted_direction(bearing_deg: float, road_bearing_deg: float, tuning: Tuning) -> Literal["along", "against"] | None:
-    """走行方位`bearing_deg`で、地図が道を塗る向き（`lens_way_formula`と同じ木で選ぶ）。"""
-    formula = lens_way_formula(tuning)
-    leaves = {LENS_ALONG_LEAF: 0.0, LENS_AGAINST_LEAF: 1.0, ROAD_BEARING_LEAF: road_bearing_deg}
+def painted_direction(lens: MapLens, bearing_deg: float, features: LensFeatures, index: int
+                      ) -> Literal["along", "against"] | None:
+    """走行方位`bearing_deg`で、地図がレンズ`lens`の木で`features`のフィーチャー`index`を塗る向き（直角に近くて決まらなければ
+    None）。木が辿れない向き（一方通行の逆）を選んだら、その向き。"""
+    of_feature = features.feature == index
+    leaves = {LENS_ALONG_LEAF: ALONG if np.any(of_feature & (features.direction == ALONG)) else np.nan,
+              LENS_AGAINST_LEAF: AGAINST if np.any(of_feature & (features.direction == AGAINST)) else np.nan,
+              ROAD_BEARING_LEAF: float(features.bearing_deg[index])}
     conditions = {"bearing_deg": bearing_deg}
-    if evaluate_formula(formula.undetermined, leaves, conditions, 1)[0]:
+    if evaluate_formula(lens.formula.undetermined, leaves, conditions, 1)[0]:
         return None
-    return "along" if evaluate_formula(formula.value, leaves, conditions, 1)[0] == 0.0 else "against"
+    value = float(evaluate_formula(lens.formula.value, leaves, conditions, 1)[0])
+    if np.isnan(value):
+        # 値の無い向きを選んだ。フィーチャーはどちらかの向きに行を持つので、辿れない方が選んだ向き。
+        value = ALONG if np.isnan(leaves[LENS_ALONG_LEAF]) else AGAINST
+    return "along" if value == ALONG else "against"
 
 
 def lens_inspection(features: LensFeatures, index: int, painted: Literal["along", "against"] | None,
                     facts: LensFactInputs) -> LensInspection:
-    """`features`のフィーチャー`index`の両方の向きの秒と、`facts`から引いた事実。"""
+    """`features`のフィーチャー`index`の両方の向きの秒と、`facts`から引いた事実。風を読まずに求めたなら、風で変わる軸と総合を
+    載せない（無風の値は風の日の値と違う）。"""
     of_feature = features.feature == index
+    windy = set() if facts.wind else _wind_lens_ids(facts.settings.cost_axes)
 
     def direction(slot: int) -> LensDirection | None:
         rows = np.flatnonzero(of_feature & (features.direction == slot))
         if not len(rows):
             return None
-        seconds = {axis_id: per_row[rows] for axis_id, per_row in facts.penalties.items()}
+        seconds = {axis_id: per_row[rows] for axis_id, per_row in facts.penalties.items() if axis_id not in windy}
         sums = {axis_id: float(values.sum()) for axis_id, values in seconds.items()}
         return LensDirection(
-            total_seconds=float(facts.total[rows].sum()),
+            total_seconds=float(facts.total[rows].sum()) if facts.wind else None,
             axes=[LensAxisSeconds(axis_id=axis_id, seconds=value) for axis_id, value in sums.items()],
             facts=axis_facts(facts.settings, facts.materials, rows, facts.distance_m[rows], seconds,
                              elevation_gain(facts.elevation_gain_m[rows]), float(facts.stops[rows].sum())),

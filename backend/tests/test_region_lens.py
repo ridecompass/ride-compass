@@ -35,6 +35,7 @@ from dataclasses import replace
 from datetime import datetime, timedelta
 
 from app.domain.time_zone import JST
+from app.infrastructure.msm_client import MsmUnavailableError
 from tests.fake_external_log import record_external_calls
 from tests.tuning_fixture import TUNED, TUNING
 from tests.route_world import (
@@ -287,7 +288,7 @@ async def test_the_inspector_gives_both_directions_and_the_facts_behind_them(cos
     serve_road_network(road_network_root, network)
     service = _lens_service(Weather())
 
-    inspection = await service.inspect(str(CLIMBING_WAY), Z, X, Y, 0.0, None, ASSUMED_SPEED_KMH, CostPreference())
+    inspection = await service.inspect(str(CLIMBING_WAY), Z, X, Y, 0.0, None, None, True, ASSUMED_SPEED_KMH, CostPreference())
     total = await _materials(service, "total", None)
 
     assert total is not None and inspection is not None and inspection.along is not None and inspection.against is not None
@@ -300,10 +301,67 @@ async def test_the_inspector_gives_both_directions_and_the_facts_behind_them(cos
     bad = MATERIAL_CATALOG[BAD_MATERIAL]
     assert inspection.along.facts["rough"] == AxisFact(label=bad.label, value=1.0, unit=bad.unit)
 
-    without_rough = await service.inspect(str(CLIMBING_WAY), Z, X, Y, 0.0, None, ASSUMED_SPEED_KMH,
+    without_rough = await service.inspect(str(CLIMBING_WAY), Z, X, Y, 0.0, None, None, True, ASSUMED_SPEED_KMH,
                                           CostPreference(disabled_axes=["rough"]))
     assert without_rough is not None and without_rough.along is not None
     assert "rough" not in {axis.axis_id for axis in without_rough.along.axes} | set(without_rough.along.facts)
+
+
+class _NoForecast(Weather):
+    """予報を読めない天気（同期していない・置き場が壊れた）。"""
+
+    async def get_weather_forecast_lattice(self, bbox):
+        raise MsmUnavailableError("未同期")
+
+    async def get_forecast_times(self, version):
+        raise MsmUnavailableError("未同期")
+
+
+@pytest.mark.parametrize(("weather", "wind"), [(_NoForecast(), True), (Weather(NORTH_WIND), False)],
+                         ids=["予報を読めない", "出発時刻の風のコマが無い"])
+async def test_the_inspector_without_the_wind_gives_the_seconds_that_do_not_depend_on_it(
+        weather, wind, cost_axes, road_network_root):
+    """風を読めない・読まないときも、道の窓は風に依らない軸の秒と事実を、風を読めるときと同じ値で出し、風で変わる向かい風と
+    総合は出さない（窓が開けないと、予報が止まっている間は坂や停止の負担も見られない。無風で埋めると風の日の値とずれる）。"""
+    network = road_network(WAYS, COORDINATES, bad_ways=(CLIMBING_WAY,), elevation_of={CLIMBING_WAY: (10.0, 70.0)})
+    serve_road_network(road_network_root, network)
+
+    windless = await _lens_service(weather).inspect(str(CLIMBING_WAY), Z, X, Y, 0.0, None, None, wind,
+                                                    ASSUMED_SPEED_KMH, CostPreference())
+    windy = await _lens_service(Weather(NORTH_WIND)).inspect(str(CLIMBING_WAY), Z, X, Y, 0.0, None, None, True,
+                                                             ASSUMED_SPEED_KMH, CostPreference())
+
+    assert windless is not None and windless.along is not None and windy is not None and windy.along is not None
+    assert windless.along.total_seconds is None
+    expected = [axis for axis in windy.along.axes if axis.axis_id != "headwind"]
+    assert [axis.axis_id for axis in windless.along.axes] == [axis.axis_id for axis in expected]
+    assert [axis.seconds for axis in windless.along.axes] == pytest.approx([axis.seconds for axis in expected])
+    assert windless.along.facts == {axis_id: fact for axis_id, fact in windy.along.facts.items() if axis_id != "headwind"}
+
+
+@pytest.mark.parametrize(("lens_id", "painted"), [(None, None), ("stopping", "along")], ids=["総合", "停止"])
+async def test_the_inspector_tells_the_direction_the_map_paints_with_the_painted_lens(
+        lens_id, painted, cost_axes, road_network_root):
+    """道の窓の向きは、地図が塗っているレンズの木で選ぶ。走行方位で選ぶレンズ（総合）は東へ走る地図で南北の道を向きで決めず、
+    選ばないレンズ（停止）は道の向きで塗る（「地図の向きに直角に近い道」は、塗っている色と合わない注記になる）。"""
+    serve_road_network(road_network_root, road_network(WAYS, COORDINATES))
+
+    inspection = await _lens_service(Weather()).inspect(str(CLIMBING_WAY), Z, X, Y, 90.0, lens_id, None, True,
+                                                        ASSUMED_SPEED_KMH, CostPreference())
+
+    assert inspection is not None and inspection.painted == painted
+
+
+@pytest.mark.parametrize(("lens_id", "status_code"), [("ascent", 200), ("headwind", 503)])
+async def test_without_the_forecast_the_map_paints_only_the_lenses_that_do_not_depend_on_the_wind(
+        lens_id, status_code, client, override_dependency, cost_axes, road_network_root):
+    """予報を読めなくても、風に依らないレンズ（坂）は塗り、風に依るレンズは無風で塗らずに断る。"""
+    _serve_weather(override_dependency, _NoForecast())
+    serve_road_network(road_network_root, road_network(WAYS, COORDINATES))
+
+    response = await client.get(f"/api/region/lens/{lens_id}/{Z}/{X}/{Y}", params={"speed_kmh": ASSUMED_SPEED_KMH})
+
+    assert response.status_code == status_code, response.text
 
 
 async def test_a_new_road_network_generation_paints_its_own_roads(client, cost_axes, road_network_root):

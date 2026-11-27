@@ -43,6 +43,8 @@ export interface RideConditions {
   bearingDeg: number;
   lensFrame: string | null | undefined;
   speedKmh: number;
+  /** 地図が道を塗っているレンズ（塗っていなければnull）。道の窓は、このレンズの塗り方で向きを出す。 */
+  paintedLensId: string | null;
 }
 
 /** 上記に、クリックされた点を含む道路タイルを足したもの（レンズが引いたのと同じタイルを
@@ -89,7 +91,10 @@ export async function fetchRoadInspection(
     x: conditions.x,
     y: conditions.y,
     bearing_deg: conditions.bearingDeg,
+    ...(conditions.paintedLensId !== null ? { lens_id: conditions.paintedLensId } : {}),
     ...(conditions.lensFrame ? { frame: conditions.lensFrame } : {}),
+    // 出発時刻の風のコマが無ければ（予報の範囲の外・予報を読めない）、今の風で求めずに風に依らない負担だけを取る。
+    wind: conditions.lensFrame !== null,
     speed_kmh: conditions.speedKmh,
   };
   return requestApi((init) => backendApi.POST("/api/region/road-inspector", { body, ...init }), {

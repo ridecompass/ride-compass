@@ -30,8 +30,10 @@ from app.domain.lens_values import (
     lens_inspection,
     lens_table,
     lens_features,
+    map_lens,
     painted_direction,
 )
+from app.domain.lens_total import TOTAL_LENS_ID
 from app.domain.region import BoundingBox, tile_bounds_lonlat
 from app.domain.road_features import map_features_in
 from app.domain.road_network import MaterialFills, material_arrays_of, slice_rows
@@ -40,7 +42,7 @@ from app.domain.time_zone import JST, as_series_time
 from app.domain.wind import WeatherForecastSeries
 from app.infrastructure import road_network_store
 from app.infrastructure.cache_identity import canonical_json, dynamic_tile_key, model_settings_signature
-from app.infrastructure.debug_log import log_external_call
+from app.infrastructure.debug_log import log_external_call, mark_failed
 from app.infrastructure.msm_client import MsmUnavailableError, forecast_version
 from app.services.graph_service import network_burden_fills, network_classes
 from app.services.weather_service import WeatherService
@@ -90,8 +92,7 @@ class LensService:
             fields["cache"] = "miss" if cached is None else "hit"
             if cached is not None:
                 return cached
-            tile = await self._tile(settings, z, x, y, at if "at" in conditions else None, speed_kmh, preference,
-                                    fields, wind="at" in conditions)
+            tile = await self._tile(settings, z, x, y, at, speed_kmh, preference, fields, wind="at" in conditions)
             assert tile is not None  # フィーチャーを絞らなければ、空のタイルも空の表で返る
             if lens_id not in tile.table.values:
                 return None
@@ -100,17 +101,29 @@ class LensService:
             self._responses[key] = body
             return body
 
-    async def inspect(self, feature_key: str, z: int, x: int, y: int, bearing_deg: float, frame: str | None,
-                      speed_kmh: float, preference: CostPreference) -> LensInspection | None:
+    async def inspect(self, feature_key: str, z: int, x: int, y: int, bearing_deg: float, lens_id: str | None,
+                      frame: str | None, wind: bool, speed_kmh: float, preference: CostPreference) -> LensInspection | None:
         """押したフィーチャー（地図がタイル`z/x/y`で塗っている単位）の、レンズのコマの印`frame`（省略すると今）の、地図と同じ秒を
-        区間の長さぶん足したものと、その元の事実。タイルにそのフィーチャーが無ければNone。"""
-        at = await self._time_frames.lens_at(frame)
+        区間の長さぶん足したものと、その元の事実と、地図がレンズ`lens_id`を塗る向き（塗っていない・知らないレンズなら総合の
+        塗り方）。`wind`が偽か、風を読めない（予報が無い・時刻が予報の範囲の外）なら、風を読まずに求め、風で変わる軸と総合を
+        載せない。タイルにそのフィーチャーが無ければNone。"""
         settings = current_model_settings()
         with log_external_call(_CATEGORY, z=z, x=x, y=y) as fields:
-            tile = await self._tile(settings, z, x, y, at, speed_kmh, preference, fields, only=feature_key)
+            if wind:
+                try:
+                    at = await self._time_frames.lens_at(frame)
+                    tile = await self._tile(settings, z, x, y, at, speed_kmh, preference, fields, only=feature_key)
+                except MsmUnavailableError as exc:
+                    mark_failed(fields, exc)
+                    wind = False
+            if not wind:
+                tile = await self._tile(settings, z, x, y, None, speed_kmh, preference, fields, wind=False,
+                                        only=feature_key)
         if tile is None:
             return None
-        painted = painted_direction(bearing_deg, float(tile.table.features.bearing_deg[0]), settings.tuning)
+        lenses = lens_conditions(settings.cost_axes)
+        lens = map_lens(lenses.get(lens_id or TOTAL_LENS_ID, lenses[TOTAL_LENS_ID]), settings.tuning)
+        painted = painted_direction(lens, bearing_deg, tile.table.features, 0)
         return lens_inspection(tile.table.features, 0, painted, tile.facts)
 
     async def _tile(self, settings: ModelSettings, z: int, x: int, y: int, at: datetime | None, speed_kmh: float,

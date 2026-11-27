@@ -154,7 +154,12 @@ class RoadInspectorRequest(StrictModel):
     # レンズの値は向き・時刻（風）・速さで決まる。地図のレンズの要求と同じ値を送る（時刻はレンズのコマの印。省くと今）。
     # **1本の道は往復2方向で値が違う**ので、両方の向きを返し、地図がいまの走行方位で塗っている向きを示す。
     bearing_deg: BearingDeg
+    # 地図が道を塗っているレンズ。地図と同じ木で、窓が出す向きを選ぶ（走行方位で選ばないレンズは向きで決まらない道を持たない）。
+    # 塗っていなければ省く（総合の塗り方で選ぶ）。
+    lens_id: str | None = None
     frame: TimeFrameKey | None = None
+    # 偽なら風を読まずに求め、風で変わる軸と総合を返さない（出発時刻の風のコマが無いとき。今の風で求めない）。
+    wind: bool = True
     speed_kmh: AssumedSpeedKmh
     # 利用者の値。ルート生成へ送るのと同じ形・同じ検証。地図のレンズの要求と同じ値を送る。
     cost_preference: RequestedCostPreference = Field(default_factory=CostPreference)
@@ -206,6 +211,6 @@ async def region_road_inspector(
     # 道を押すたびの単発リクエストなので、タイル向けの上限を流用せず専用の上限を使う。
     enforce_rate_limit(http_request, "road-inspector", settings.road_inspector_rate_limit_per_minute)
     return await road_inspector.inspect(
-        body.osm_way_id, body.feature_key, (body.z, body.x, body.y), body.bearing_deg, body.frame, body.speed_kmh,
-        body.cost_preference,
+        body.osm_way_id, body.feature_key, (body.z, body.x, body.y), body.bearing_deg, body.lens_id, body.frame, body.wind,
+        body.speed_kmh, body.cost_preference,
     )
