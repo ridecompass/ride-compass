@@ -10,7 +10,7 @@
 同じ交差点で待ちが抜けるか片方だけ付く。
 
 **処理はDB内で完結する。**タグを読むためだけに行を取り出さない。タグから種別への
-引き当ては`domain/traffic.py`が表と式で持ち、このバッチはそれをSQLへ渡すだけである。
+引き当ての表と式は`domain/traffic.py`が持ち、このバッチはそれを差し込んだSQL文を組むだけである。
 """
 
 import logging
@@ -20,7 +20,16 @@ import asyncpg
 
 from app.batch.common import affected_rows
 from app.domain.geo import degrees_covering_m
-from app.domain.traffic import SIGNAL_KIND, TRAFFIC_SIGNAL_SQL, stop_cluster_sql, tag_kind_sql
+from app.domain.traffic import (
+    SIGNAL_KIND,
+    TAG_KIND_RULES,
+    TRAFFIC_SIGNAL_SQL,
+    VENDING_PRIORITY,
+    first_rule_sql,
+    rule_match_sql,
+    stop_cluster_sql,
+    vending_kind_sql,
+)
 from app.domain.tuning import STOP_CLUSTER_DISTANCE_ID, require_tuning
 from app.infrastructure.source_models import NODES_SOURCE_SQL
 
@@ -32,6 +41,19 @@ def _source_nodes(extra_columns: str = "") -> str:
     タグの無いノード（形状の頂点）はどの規則にも当たらないので、先に落とす。"""
     return (f"SELECT n.osm_node_id AS id, n.tags{extra_columns}"
             f" FROM {NODES_SOURCE_SQL} n WHERE n.tags <> '{{}}'::jsonb")
+
+
+def tag_kind_sql(source: str) -> str:
+    """`source`（`id`・`tags`を返す関係）の各行へ、停止要因・補給休憩の種別を1つ付ける。どれにも当たらない行は返らない。"""
+    return f"""
+WITH src AS ({source}),
+matched AS ({rule_match_sql("src", TAG_KIND_RULES)}
+    UNION ALL
+    SELECT v.id, v.result, {VENDING_PRIORITY}
+    FROM (SELECT s.id, {vending_kind_sql("s.tags")} AS result FROM src s) v
+    WHERE v.result IS NOT NULL)
+SELECT b.id, b.result AS kind FROM ({first_rule_sql("matched")}) b
+"""
 
 
 _INSERT_KINDS = f"""

@@ -317,14 +317,21 @@ def accidents_within_sql(envelope: str) -> str:
     )
 
 
-def _jsonb_text_array_sql(value: str) -> str:
-    """jsonb の文字列の配列`value`を文字列の配列へ。配列でなければ（無い・null）NULL。"""
-    return f"CASE WHEN jsonb_typeof({value}) = 'array' THEN ARRAY(SELECT jsonb_array_elements_text({value}))::varchar[] END"
+def _jsonb_text_array_sql(value: str, form: str = "e") -> str:
+    """jsonb の文字列の配列`value`を、要素`e`ごとに式`form`を通した文字列の配列へ。配列でなければ（無い・null）NULL。"""
+    return (f"CASE WHEN jsonb_typeof({value}) = 'array'"
+            f" THEN ARRAY(SELECT {form} FROM jsonb_array_elements_text({value}) e)::varchar[] END")
+
+
+#: Overture の配布のウェブサイトの書き方の揺れ（大文字・前後の空白・`http(s)://`・`www.`・末尾の`/`）を外した形。
+_OVERTURE_WEBSITE_FORM = "regexp_replace(lower(trim(e)), '^https?://(www\\.)?|^www\\.|/+$', '', 'g')"
+#: Overture の配布の電話の書き方（`+81339412222`と`03-3941-2222`の両方がある）を、数字だけの国内の形（頭の国番号を0）にしたもの。
+_OVERTURE_PHONE_FORM = "regexp_replace(regexp_replace(e, '[^0-9]', '', 'g'), '^81', '0')"
 
 
 #: Overture の地点の生データ（1件=1点）。群・チェーン・住所の判断（`domain/stop_place.py`）が読む列へ読み替える。配布の列の
 #: 入れ子（`names.primary` 等）はここだけが名指す。`categories`は分類の道筋（`taxonomy.hierarchy`。上の段から下の段への
-#: 語の並び）、ウェブサイト・電話はその文字列の配列で、どれも無ければ NULL。住所は最初の1件の都道府県・市区町村（無ければ
+#: 語の並び）、ウェブサイト・電話はその文字列の配列を書き方の揺れを外した形にしたもので、どれも無ければ NULL。住所は最初の1件の都道府県・市区町村（無ければ
 #: 空の文字列）と残り（無ければ NULL）。
 OVERTURE_PLACES_SOURCE_SQL = (
     "(SELECT natural_key AS overture_id, geom,"
@@ -332,8 +339,8 @@ OVERTURE_PLACES_SOURCE_SQL = (
     " attrs->'brand'->'names'->>'primary' AS brand,"
     " (attrs->>'confidence')::float8 AS confidence, "
     + _jsonb_text_array_sql("attrs->'taxonomy'->'hierarchy'") + " AS categories, "
-    + _jsonb_text_array_sql("attrs->'websites'") + " AS websites, "
-    + _jsonb_text_array_sql("attrs->'phones'") + " AS phones,"
+    + _jsonb_text_array_sql("attrs->'websites'", _OVERTURE_WEBSITE_FORM) + " AS websites, "
+    + _jsonb_text_array_sql("attrs->'phones'", _OVERTURE_PHONE_FORM) + " AS phones,"
     " coalesce(attrs->'addresses'->0->>'region', '') AS region,"
     " coalesce(attrs->'addresses'->0->>'locality', '') AS locality,"
     " nullif(attrs->'addresses'->0->>'freeform', '') AS freeform"
