@@ -13,4 +13,7 @@ export const FACT_DISPLAY_NAME = "表示";
 export const BURDEN_PAINT_NAME = "負担で塗る";
 
 /** 「ルート設定」の、道の区分ごとの避け方を選ぶタブ。行は地図の道路のまとまりの層の区分なので、まとまりの名前を使う。 */
+/** 地図のスポットのまとまりの名前（まとまりの層をまとめて指す文が使う）。 */
+export const SPOT_GROUP_NAME = mapDisplay.overlayGroups.find((group) => group.key === "spot")!.label;
+
 export const ROAD_SETTINGS_TAB_NAME = mapDisplay.overlayGroups.find((group) => group.key === "road")!.label;
