@@ -24,6 +24,7 @@ from tests.conftest import (
     override_tuning,
     postgis_database_url,
     raw_connection,
+    derived_revision,
     reset_derived_revision,
 )
 from tests.tuning_fixture import TUNING
@@ -86,10 +87,6 @@ async def _empty(conn: asyncpg.Connection) -> None:
     await reset_derived_revision(conn)
 
 
-async def _revision(conn: asyncpg.Connection) -> int:
-    return await conn.fetchval("SELECT revision FROM derived_data_meta")
-
-
 @pytest_asyncio.fixture(loop_scope="module")
 async def schemas_at_start(road_graph_engine) -> set[str]:
     """作り直しを1度も走らせる前のスキーマ。作り直しが作業用のスキーマを残さないことは、これと比べて見る。"""
@@ -143,7 +140,7 @@ async def test_readers_see_the_previous_tables_until_the_swap_and_the_rebuilt_on
         seen_while_rebuilding: list[tuple[str, int | None]] = []
 
         async def observe():
-            seen_while_rebuilding.append((await direction.fetchval(100), await _revision(reader)))
+            seen_while_rebuilding.append((await direction.fetchval(100), await derived_revision(reader)))
 
         _observe_after("directions", monkeypatch, observe)
 
@@ -151,7 +148,7 @@ async def test_readers_see_the_previous_tables_until_the_swap_and_the_rebuilt_on
 
         assert seen_while_rebuilding == [("both", 1)]
         assert await direction.fetchval(100) == "forward"
-        assert await _revision(reader) == 2
+        assert await derived_revision(reader) == 2
 
     network = road_network_store.current()
     assert network.revision == 2
@@ -179,7 +176,7 @@ async def test_a_failed_rebuild_changes_nothing_readers_see(derived_before, sche
 
     assert await derived_before.fetchval(
         "SELECT direction FROM way_directions WHERE osm_way_id = 100") == "both"
-    assert await _revision(derived_before) == 1
+    assert await derived_revision(derived_before) == 1
     assert sorted(road_network_store.ROOT.iterdir()) == network_before
     assert await _schemas(derived_before) == schemas_at_start
 
@@ -201,7 +198,7 @@ async def test_rerunning_after_a_crash_between_the_swap_and_the_publish_places_t
 
     assert await derive_cli.run(postgis_database_url()) == 0
 
-    assert await _revision(derived_before) == 3
+    assert await derived_revision(derived_before) == 3
     network = road_network_store.current()
     assert network.revision == 3
     assert (100, False) not in set(zip(network.edge_way_id.tolist(), network.edge_forward.tolist(), strict=True))

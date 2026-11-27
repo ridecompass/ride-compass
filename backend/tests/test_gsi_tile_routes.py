@@ -16,19 +16,14 @@ from app.api.cache_policy import GSI_TILE_NOT_FOUND
 from app.api.dependencies import get_gsi_tile_client
 from app.config import settings
 from app.infrastructure import rate_limiter
-from app.infrastructure.gsi_dem_png import read_gsi_dem_png, terrain_rgb_png
 from app.infrastructure.http_client import UPSTREAM_NOT_FOUND
 from app.main import app
 from tests.source_ingest import gsi_dem_png
+from tests.tile_images import terrain_rgb
 
 client = TestClient(app)
 
 TERRAIN_TILE = "/api/gsi-terrain-tile/13/7276/3225.png"
-
-
-def _terrain_rgb(png: bytes) -> bytes:
-    """地理院の標高タイル1枚をTerrain-RGBのPNGにする。"""
-    return terrain_rgb_png(*read_gsi_dem_png(png))
 
 
 class FakeGsiTileClient:
@@ -59,7 +54,7 @@ def test_a_tile_is_served_as_terrain_rgb_png(override_dependency):
 
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("image/png")
-    assert response.content == _terrain_rgb(_DEM)
+    assert response.content == terrain_rgb(_DEM)
 
 
 # 整備区域外（珍しくない正常系）は上流障害の502にしない。`raster-dem`は整備区域外のタイルも視界へ入るたび要求し、
@@ -97,7 +92,7 @@ def test_a_missing_pixel_is_filled_from_the_next_product_in_the_order_the_road_e
 
     response = client.get(TERRAIN_TILE)
 
-    assert response.content == _terrain_rgb(gsi_dem_png([[50.0, 100.0]]))
+    assert response.content == terrain_rgb(gsi_dem_png([[50.0, 100.0]]))
     assert [path.split("/")[1] for path in upstream.paths] == ["dem5a_png", "dem5b_png", "dem5c_png"]
 
 
@@ -113,7 +108,7 @@ def test_a_zoom_finer_than_a_product_stretches_the_part_of_its_finest_tile(overr
     response = client.get("/api/gsi-terrain-tile/15/29099/12902.png")
 
     # x = 29099 は z14 の 14549 の右半分、y = 12902 は 6451 の上半分。
-    assert response.content == _terrain_rgb(gsi_dem_png([[2.0, 2.0], [2.0, 2.0]]))
+    assert response.content == terrain_rgb(gsi_dem_png([[2.0, 2.0], [2.0, 2.0]]))
 
 
 def test_標高タイルは配信元がデータを持たないズームを拒む(override_dependency):

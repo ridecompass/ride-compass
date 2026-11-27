@@ -17,12 +17,12 @@ import pytest
 from hypothesis import strategies as st
 
 from app.domain.geo import EARTH_RADIUS_KM
-from app.domain.msm import MsmBlock, MsmGrid
 from app.domain.route import Coordinates
 from app.domain.wind import (
     WindForecastSeries,
     estimate_passage_hours,
 )
+from tests.wind_forecast import wind_forecast
 
 #: 風速・走行速度の本番の範囲（m/s）。台風の暴風と、想定速度の上限60km/hを覆う。
 WIND_SPEEDS = st.floats(0.0, 40.0)
@@ -36,19 +36,9 @@ T0 = datetime(2026, 7, 1, 9, 0)
 
 
 def _series() -> WindForecastSeries:
-    """格子点2つ・3時刻。風速は「点の番号×100＋時刻の番号」、風向は時刻の番号×10。"""
-    hours = 3
-    lattice = MsmBlock(
-        grid=MsmGrid(lat_min=35.0, lon_min=139.0, d_lat=1.0, d_lon=1.0, n_lat=2, n_lon=2), row0=0, col0=0, rows=1, cols=2,
-    )
-    points = lattice.size
-    speed = np.array([[p * 100.0 + t for t in range(hours)] for p in range(points)])
-    direction = np.array([[t * 10.0 for t in range(hours)] for _ in range(points)])
-    return WindForecastSeries(
-        times=[T0 + timedelta(hours=t) for t in range(hours)], speed_ms=speed, direction_deg=direction,
-        temperature_c=speed / 10.0, lattice=lattice,
-        latest_run_end=T0 + timedelta(hours=hours),
-    )
+    """格子点2つ・3時刻。風速は「点の番号×100＋時刻の番号」、風向は時刻の番号×10、気温は風速の10分の1。"""
+    speed = np.array([[p * 100.0 + t for t in range(3)] for p in range(2)])
+    return wind_forecast(T0, speed, direction_deg=[t * 10.0 for t in range(3)], temperature_c=speed / 10.0)
 
 
 @pytest.mark.parametrize(

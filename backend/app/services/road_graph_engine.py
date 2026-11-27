@@ -42,7 +42,7 @@ from app.domain.geo import (
     bearing_between_array,
     compass_degrees,
 )
-from app.domain.region import BoundingBox, bbox_covering_points
+from app.domain.region import BoundingBox
 from app.domain.road_network import MaterialFills, RoadSlice, material_arrays_of
 from app.domain.route import (
     Coordinates,
@@ -371,8 +371,7 @@ class RoadGraphEngine:
         起点は出て戻れるNodeへ寄せ（`domain/node_spatial_index.py: snap_to_accessible_node`）、寄せられなければ`RoutingError`。"""
         # nowは出発時刻。区間ごとの通過時刻（風・昼夜）はここからの経過で決まる。
         margin_km = max(_BBOX_MARGIN_MIN_KM, radius_km * _BBOX_MARGIN_RATIO)
-        covering = self._graph_service.edge_endpoints(covering_edge_ids)
-        bbox = bbox_covering_points([origin, *points, *covering], radius_km + margin_km)
+        bbox = self._graph_service.bbox_covering([origin, *points], covering_edge_ids, radius_km + margin_km)
 
         search = await self._build_search_graph(bbox, origin, now, points[0] if points else None, radius_km)
         if search is None:

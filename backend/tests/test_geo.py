@@ -8,24 +8,19 @@
 - 最寄りの点を雨・アメダス・暑さ指数の値へ使うこと → それぞれのサービスのテスト
 """
 
-from typing import NamedTuple
 
 import numpy as np
 import pytest
 from hypothesis import example, given
 from hypothesis import strategies as st
 
+from app.domain.geo import LatLonPoint
 from app.domain import geo
-
-
-class Point(NamedTuple):
-    latitude: float
-    longitude: float
 
 
 latitudes = st.floats(min_value=-89.0, max_value=89.0)
 longitudes = st.floats(min_value=-180.0, max_value=180.0)
-points = st.builds(Point, latitude=latitudes, longitude=longitudes)
+points = st.builds(LatLonPoint, latitude=latitudes, longitude=longitudes)
 
 
 # --- compass_label ---
@@ -54,7 +49,7 @@ def test_compass_degrees_rounds_a_half_degree_up_like_the_sector(bearing, degree
 # --- bearing_between ---
 
 
-def tangent_plane_direction(origin: Point, destination: Point) -> tuple[float, float]:
+def tangent_plane_direction(origin: LatLonPoint, destination: LatLonPoint) -> tuple[float, float]:
     """方位を球面三角法の式とは別の道で求める: 目的地の位置ベクトルを、出発地で地面に接する平面の北向き・東向きの
     単位ベクトルへ射影した成分（北, 東）。長さは2点の中心角の正弦で、向きが定まらない出発地・対蹠点の近くでは0へ縮む。"""
     lat, lon = np.radians(origin.latitude), np.radians(origin.longitude)
@@ -67,7 +62,7 @@ def tangent_plane_direction(origin: Point, destination: Point) -> tuple[float, f
 
 @given(origin=points, destinations=st.lists(points, min_size=1, max_size=10))
 # 斜めの向きと緯度の違う2点（東西南北だけでは、式の掛け算を割り算にしても、引き算を足し算にしても答えが変わらない）。
-@example(origin=Point(35.0, 139.0), destinations=[Point(36.0, 140.0), Point(34.0, 138.0), Point(35.0, 149.0)])
+@example(origin=LatLonPoint(35.0, 139.0), destinations=[LatLonPoint(36.0, 140.0), LatLonPoint(34.0, 138.0), LatLonPoint(35.0, 149.0)])
 def test_the_bearing_agrees_with_the_direction_on_the_tangent_plane(origin, destinations):
     """向かい風・追い風の分け方は、走る向きの方位で決まる。斜めの向き・緯度の違う2点でも、北から時計回りの角度が
     別の道で求めた向きと合う（向きの定まらない2点は、比べる成分がどちらも0へ縮むので外さずに比べる）。"""
@@ -90,15 +85,15 @@ def test_the_bearing_agrees_with_the_direction_on_the_tangent_plane(origin, dest
 RESOLUTION_KM = 0.001
 
 
-def brute_force_nearest_km(location: Point, candidates: list[Point]) -> float:
+def brute_force_nearest_km(location: LatLonPoint, candidates: list[LatLonPoint]) -> float:
     return min(geo.haversine_distance_km(location, candidate) for candidate in candidates)
 
 
-def chosen_km(location: Point, candidates: list[Point], index: int) -> float:
+def chosen_km(location: LatLonPoint, candidates: list[LatLonPoint], index: int) -> float:
     return geo.haversine_distance_km(location, candidates[index])
 
 
-def nearest(locations: list[Point], candidates: list[Point]) -> np.ndarray:
+def nearest(locations: list[LatLonPoint], candidates: list[LatLonPoint]) -> np.ndarray:
     return geo.nearest_point_indices(
         np.array([p.latitude for p in locations]),
         np.array([p.longitude for p in locations]),
@@ -109,7 +104,7 @@ def nearest(locations: list[Point], candidates: list[Point]) -> np.ndarray:
 
 @given(locations=st.lists(points, min_size=1, max_size=40), candidates=st.lists(points, min_size=1, max_size=40))
 # 日付変更線の向こうが最寄り。
-@example(locations=[Point(0.0, 179.99)], candidates=[Point(0.0, -179.99), Point(0.0, 179.0)])
+@example(locations=[LatLonPoint(0.0, 179.99)], candidates=[LatLonPoint(0.0, -179.99), LatLonPoint(0.0, 179.0)])
 def test_each_location_gets_a_point_no_farther_than_any_other_anywhere_on_the_globe(locations, candidates):
     indices = nearest(locations, candidates)
 
@@ -120,17 +115,17 @@ def test_each_location_gets_a_point_no_farther_than_any_other_anywhere_on_the_gl
 
 # 観測所の並び（十数km間隔）で、格子（0.01度）より細かく散らばる地点。最寄りが格子ごとに入れ替わる場面を作る。
 dense_locations = st.builds(
-    Point, latitude=st.floats(min_value=35.0, max_value=35.5), longitude=st.floats(min_value=139.0, max_value=139.5)
+    LatLonPoint, latitude=st.floats(min_value=35.0, max_value=35.5), longitude=st.floats(min_value=139.0, max_value=139.5)
 )
 
 
 @given(locations=st.lists(dense_locations, min_size=1, max_size=200), candidates=st.lists(dense_locations, min_size=1, max_size=30))
 # 地点が格子（35.00〜35.01度・139.00〜139.01度）の北東の角にあり、最寄りの点が角の外に、格子の中心に最も近い点が
 # 南西にある。格子ごとの候補の余白が格子の1辺では最寄りを落とし、2辺で拾う。
-@example(locations=[Point(35.0099, 139.0099)], candidates=[Point(35.004, 139.004), Point(35.0135, 139.0145)])
+@example(locations=[LatLonPoint(35.0099, 139.0099)], candidates=[LatLonPoint(35.004, 139.004), LatLonPoint(35.0135, 139.0145)])
 # 地点が格子の東の端にあり、最寄りの点が東の隣の格子のさらに外に、遠い点が西の隣の格子の中心にある（候補の余白を
 # 地点の格子の中心から測らないと最寄りを落とす）。
-@example(locations=[Point(35.005, 139.0099)], candidates=[Point(35.005, 138.995), Point(35.005, 139.021)])
+@example(locations=[LatLonPoint(35.005, 139.0099)], candidates=[LatLonPoint(35.005, 138.995), LatLonPoint(35.005, 139.021)])
 def test_each_location_gets_the_nearest_point_where_points_are_dense(locations, candidates):
     indices = nearest(locations, candidates)
 
@@ -141,8 +136,8 @@ def test_each_location_gets_the_nearest_point_where_points_are_dense(locations, 
 def test_locations_spread_over_many_cells_each_get_their_nearest_point():
     """格子をまとめて比べる刻み（数百の格子）を越える数の格子に地点が散らばっても、どの地点も最寄りを得る。"""
     rng = np.random.default_rng(0)
-    locations = [Point(float(lat), float(lon)) for lat, lon in zip(rng.uniform(30, 40, 1500), rng.uniform(130, 140, 1500), strict=True)]
-    candidates = [Point(float(lat), float(lon)) for lat, lon in zip(rng.uniform(30, 40, 60), rng.uniform(130, 140, 60), strict=True)]
+    locations = [LatLonPoint(float(lat), float(lon)) for lat, lon in zip(rng.uniform(30, 40, 1500), rng.uniform(130, 140, 1500), strict=True)]
+    candidates = [LatLonPoint(float(lat), float(lon)) for lat, lon in zip(rng.uniform(30, 40, 60), rng.uniform(130, 140, 60), strict=True)]
 
     indices = nearest(locations, candidates)
 
@@ -156,8 +151,8 @@ def test_no_locations_give_no_indices():
     assert indices.shape == (0,)
 
 
-@pytest.mark.parametrize("candidates", [[Point(0.0, 1.0), Point(0.0, -1.0)], [Point(0.0, -1.0), Point(0.0, 1.0)]])
+@pytest.mark.parametrize("candidates", [[LatLonPoint(0.0, 1.0), LatLonPoint(0.0, -1.0)], [LatLonPoint(0.0, -1.0), LatLonPoint(0.0, 1.0)]])
 def test_nearest_point_index_takes_the_first_listed_of_equally_near_points(candidates):
-    index = geo.nearest_point_index(Point(0.0, 0.0), candidates)
+    index = geo.nearest_point_index(LatLonPoint(0.0, 0.0), candidates)
 
     assert index == 0

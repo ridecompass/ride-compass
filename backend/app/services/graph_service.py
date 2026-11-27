@@ -4,7 +4,7 @@ from collections.abc import Mapping, Sequence
 
 from app.domain.stopwatch import elapsed_ms, start_timer
 from app.domain.errors import SearchAreaTooLargeError, SearchMemoryBusyError
-from app.domain.geo import LatLonPoint
+from app.domain.geo import LatLon
 from app.domain.graph import parse_edge_key
 from app.domain.region import BoundingBox, tiles_covering_bbox
 from app.domain.attributes import CategoricalColumn
@@ -14,7 +14,7 @@ from app.domain.road_classes import RoadClassDefinitions, current_road_classes
 from app.domain.road_network import (
     RoadNetwork,
     RoadSlice,
-    edge_endpoint_points,
+    bbox_covering_edges,
     network_material_column,
     road_class_columns,
     slice_network,
@@ -156,7 +156,8 @@ class GraphService:
         tile_set = frozenset((DETOUR_RATIO_SHARING_ZOOM, x, y) for x, y in tiles)
         return road, tile_set
 
-    def edge_endpoints(self, edge_ids: Sequence[str]) -> list[LatLonPoint]:
-        """区間の鍵の列の、両端の地点（取込範囲全体の道路網から引く）。形の合わない鍵と道路網に無い区間は飛ばす。"""
+    def bbox_covering(self, points: Sequence[LatLon], edge_ids: Sequence[str], margin_km: float) -> BoundingBox:
+        """`points`と、区間の鍵の列`edge_ids`の区間を覆う探索の矩形（`domain/road_network.py: bbox_covering_edges`）。
+        形の合わない鍵と道路網に無い区間は飛ばす。"""
         edges = [parsed for edge_id in edge_ids if (parsed := parse_edge_key(edge_id)) is not None]
-        return edge_endpoint_points(self._network, edges)
+        return bbox_covering_edges(self._network, points, edges, margin_km)

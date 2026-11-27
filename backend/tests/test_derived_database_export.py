@@ -24,19 +24,10 @@ from app.batch.common import SOURCE_DATA_LOCK
 from app.domain.map_display import ALWAYS_SHOWN_ATTRIBUTIONS, DERIVED_DATABASE_ATTRIBUTIONS
 from app.infrastructure import derived_database_export
 from app.main import app
-from tests.conftest import postgis_database_url, raw_connection
+from tests.conftest import on_test_db, postgis_database_url, raw_connection
 from tests.source_ingest import abr_prefecture_record, ingest_records, point_record, way_record
 
 client = TestClient(app)
-
-_ON_TEST_DB = (pytest.mark.asyncio(loop_scope="module"), pytest.mark.usefixtures("road_graph_session", "road_network_root"))
-
-
-def _on_test_db(test):
-    for mark in _ON_TEST_DB:
-        test = mark(test)
-    return test
-
 
 @pytest.fixture
 def export_root(monkeypatch, tmp_path):
@@ -76,7 +67,8 @@ def test_nothing_to_download_before_the_first_export():
     assert client.get("/api/derived-database").status_code == 404
 
 
-@_on_test_db
+@on_test_db
+@pytest.mark.usefixtures("road_network_root")
 async def test_the_export_hands_every_segment_with_its_values_under_the_odbl_notice(export_root):
     """受け取った人が、道ごとの値を道・区間の鍵と形付きで、ODbL の表示と、地図と同じ元の出典と一緒に取れる。
     前の書き出しは残さない（置くのは最新の1つだけ）。"""
@@ -107,7 +99,8 @@ async def test_the_export_hands_every_segment_with_its_values_under_the_odbl_not
     assert [path.name for path in export_root.iterdir()] == [derived_database_export.latest().name]
 
 
-@_on_test_db
+@on_test_db
+@pytest.mark.usefixtures("road_network_root")
 async def test_nothing_is_written_while_an_import_or_rebuild_holds_the_source_data(export_root):
     """取込・作り直し・バックアップの途中を書き出すと、道と値が別々の世代になる。鍵が取れなければ書かずに終える。"""
     await _derive()
