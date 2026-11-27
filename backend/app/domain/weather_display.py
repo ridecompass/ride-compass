@@ -137,7 +137,7 @@ TORNADO_POTENTIAL_LEVELS: tuple[LevelColor, ...] = (
     ),
 )
 
-#: 注意の段（`painted`がFalseの段）を地図で見せる濃さ。塗る段（地図の面の濃さ`map_display.py: AREA_OPACITY`）より
+#: 注意の段（`painted`がFalseの段）を地図で見せる濃さ。塗る段（災害の面の濃さ`map_display.py: HAZARD_OPACITY`）より
 #: ずっと薄くし、範囲は分かるが下の道と地名が読めるようにする。
 ATTENTION_LEVEL_OPACITY = 0.12
 

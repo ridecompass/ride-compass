@@ -752,7 +752,10 @@ export const mapDisplay = {
     "membersProperty": "members"
   },
   "area": {
-    "opacity": 0.55,
+    "opacity": 0.35,
+    "landcoverOpacity": 0.55,
+    "hazardOpacity": 0.55,
+    "elevationSaturation": -0.4,
     "hillshadeIlluminationDeg": 315,
     "hillshadeMethod": "igor",
     "hillshadeExaggeration": 1,
