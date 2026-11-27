@@ -15,6 +15,7 @@ from app.domain.geo import (
     km_per_degree_longitude,
 )
 from app.domain.leg_costs import LegCostArrays, LegCostComposer
+from app.domain.ledger_costs import COST_WORDING
 from app.domain.route import COST_SECONDS_DECIMALS, EvaluatedRoute, seconds_per_km
 from app.domain.route_diversity import pareto_layer_index
 from app.domain.routing import time_bin_of
@@ -418,7 +419,7 @@ def prefers_reverse(forward_cost: float, reverse_cost: float) -> bool:
 
 
 #: `candidate_order`の並べ方を、利用者に言う文（代償を利用者には負担と呼ぶ）。並べ方を変えたら、ここも変える。
-CANDIDATE_ORDER_WORDING = "所要時間と負担の和が小さい順[周回は1kmあたりの和が小さい順]"
+CANDIDATE_ORDER_WORDING = f"{COST_WORDING}が小さい順[周回は1kmあたりの和が小さい順]"
 
 
 def candidate_order(candidate: EvaluatedRoute, *, loop: bool) -> float:
@@ -430,6 +431,15 @@ def candidate_order(candidate: EvaluatedRoute, *, loop: bool) -> float:
     if candidate.estimated_duration_seconds is None or not candidate.distance_km > 0:
         return float("inf")
     return float(_per_km_key(seconds_per_km(candidate.cost_seconds, candidate.distance_km * 1000.0)))
+
+
+def quickest_route(drafts: list[EvaluatedRoute]) -> EvaluatedRoute | None:
+    """最速の印を付ける1本。見積もりの所要時間がいちばん短い候補（同着は並びの先の方）。所要時間のある候補が2本に満たない
+    なら、比べる相手が無いのでNone。"""
+    timed = [(draft, draft.estimated_duration_seconds) for draft in drafts if draft.estimated_duration_seconds is not None]
+    if len(timed) < 2:
+        return None
+    return min(timed, key=lambda pair: pair[1])[0]
 
 
 def keep_routes_with_baseline(

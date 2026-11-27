@@ -33,7 +33,7 @@ from app.domain.road_classes import EMPTY_ROAD_CLASSES
 from app.domain.wind_height import WindHeights
 from app.domain.material_catalog import MATERIAL_CATALOG
 from app.domain.route import AxisFact
-from tests.wind_forecast import wind_forecast
+from tests.weather_forecast import weather_forecast
 from tests.cost_axes_fixture import BAD_AXIS, cost_axes
 from tests.route_world import BAD_MATERIAL
 from tests.profile_fixture import grade_spans, profiles
@@ -88,7 +88,7 @@ def _matrix(n: int, *, distance=1000.0, gradient=0.0, bearing=NORTH, surface="pa
 
 
 #: 無風の予報（格子点1つ・2時刻）。
-CALM_SERIES = wind_forecast(START, [0.0, 0.0])
+CALM_SERIES = weather_forecast(START, [0.0, 0.0])
 
 
 def _composer(matrix: SearchMaterials, *, excluded=None, cost_scale=None, series=CALM_SERIES, lazy=None,
@@ -235,7 +235,7 @@ def test_the_search_order_holds_only_the_segments_on_the_search_graph():
     ],
 )
 def test_a_leg_is_cut_into_hourly_bins_over_its_expected_duration(offset, direction, duration_hours, bin_starts):
-    composer = _composer(_matrix(1), series=wind_forecast(START, [0.0] * 12))
+    composer = _composer(_matrix(1), series=weather_forecast(START, [0.0] * 12))
 
     leg = composer.compose("leg", offset, direction, duration_hours=duration_hours)
 
@@ -246,7 +246,7 @@ def test_a_leg_is_cut_into_hourly_bins_over_its_expected_duration(offset, direct
 
 def test_legs_with_the_same_bins_but_a_different_middle_are_not_mixed_up():
     """同じ開始時刻・同じ本数でも、見込み時間が違えば代表のビンは変わる。"""
-    composer = _composer(_matrix(1), series=wind_forecast(START, [float(h) for h in range(12)]))
+    composer = _composer(_matrix(1), series=weather_forecast(START, [float(h) for h in range(12)]))
 
     shorter = composer.compose("a", 0.0, +1, duration_hours=4.0)
     longer = composer.compose("b", 0.0, +1, duration_hours=7.0)
@@ -266,7 +266,7 @@ def test_a_leg_sharing_hours_with_an_earlier_leg_gets_the_bins_of_its_own_hours(
     """レグのどのビンも、その時刻だけを新しく合成したものと同じ（取り違えると、別の時刻の風で探す）。
     前のレグと時刻が重なっても同じ。"""
     def composer() -> LegCostComposer:
-        return _composer(_matrix(1), parameters=STRENGTH, series=wind_forecast(START, speeds_by_hour))
+        return _composer(_matrix(1), parameters=STRENGTH, series=weather_forecast(START, speeds_by_hour))
     shared = composer()
     shared.compose("outbound", 7.5, +1, duration_hours=3.0)
 
@@ -280,7 +280,7 @@ def test_a_leg_sharing_hours_with_an_earlier_leg_gets_the_bins_of_its_own_hours(
 
 def test_a_tree_without_a_clock_reads_the_wind_at_each_segment_s_own_passage():
     """目的地から遡る木は時刻ビンを使えず、区間ごとの通過時刻で1本に合成する。"""
-    composer = _composer(_matrix(2), series=wind_forecast(START, [0.0, 8.0]))
+    composer = _composer(_matrix(2), series=weather_forecast(START, [0.0, 8.0]))
     passage = np.array([0.0, 1.0])
 
     leg = composer.compose("inbound", 3.0, -1, passage_hours=passage)
@@ -292,7 +292,7 @@ def test_a_tree_without_a_clock_reads_the_wind_at_each_segment_s_own_passage():
 def test_trees_without_a_clock_that_pass_at_different_hours_are_not_mixed_up():
     """同じ時刻・向きのレグでも、区間ごとの通過時刻が違えば前の合成を使い回さない（使い回すと別の時刻の風で探す）。
     通過時刻の和が同じで並びだけ違う2本でも同じ。"""
-    composer = _composer(_matrix(2), series=wind_forecast(START, [0.0, 8.0]))
+    composer = _composer(_matrix(2), series=weather_forecast(START, [0.0, 8.0]))
 
     first = composer.compose("inbound", 3.0, -1, passage_hours=np.array([0.0, 1.0]))
     second = composer.compose("inbound", 3.0, -1, passage_hours=np.array([1.0, 0.0]))
@@ -304,7 +304,7 @@ def test_values_recomposed_for_the_rows_on_the_route_match_the_composition_used_
     """表示は経路上の行だけをその時刻で合成し直す。全区間で合成した値の同じ行と同じで、探索の費用は所要時間と代償の秒の
     和になる（探索コストと表示の一致）。"""
     matrix = _matrix(3, bearing=[NORTH, SOUTH, 90.0], gradient=[0.0, 3.0, -2.0])
-    composer = _composer(matrix, parameters=STRENGTH, series=wind_forecast(START, [0.0, 6.0]))
+    composer = _composer(matrix, parameters=STRENGTH, series=weather_forecast(START, [0.0, 6.0]))
     leg = composer.compose("leg", 1.0, +1)
 
     values = composer.values_at_rows(np.array([2, 0]), leg.bin_times[0], None)
@@ -360,6 +360,6 @@ def test_composing_compiles_nothing_after_baking_whatever_arrays_the_matrix_hold
     with event.install_recorder("numba:compile") as compiled:
         for each in matrices:
             _composer(each, parameters=STRENGTH, cost_scale=[COST_SCALE, 1.0, 1.0],
-                      series=wind_forecast(START, [0.0, 3.0])).compose("leg", 0.0, +1, duration_hours=2.0)
+                      series=weather_forecast(START, [0.0, 3.0])).compose("leg", 0.0, +1, duration_hours=2.0)
 
     assert compiled.buffer == []

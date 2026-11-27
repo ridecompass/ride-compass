@@ -298,7 +298,7 @@ backendの答え、タイルで配る要素ごとのタイルのパスを`script
 
 | メソッド | 用途 | 時刻 |
 |---|---|---|
-| `get_wind_forecast_lattice(bbox)` | `RoadGraphEngine`の探索前コスト合成（Edgeごとの通過予定時刻・最寄りの格子点の風と気温）と、ルートを出す前の地図のレンズの風と気温（`services/lens_service.py: LensService`） | 範囲を覆うMSMの格子点ごとの時別風向・風速・気温の系列（JST、格子点の値のまま）。格子点はMSMの格子そのもの（`domain/msm.py: MsmGrid.block_covering`）で、どの範囲から引いても同じ地点は同じ格子点に当たる。時刻が2つ未満なら投げる |
+| `get_weather_forecast_lattice(bbox)` | `RoadGraphEngine`の探索前コスト合成（Edgeごとの通過予定時刻・最寄りの格子点の風と気温）と、ルートを出す前の地図のレンズの風と気温（`services/lens_service.py: LensService`） | 範囲を覆うMSMの格子点ごとの時別風向・風速・気温の系列（JST、格子点の値のまま）。格子点はMSMの格子そのもの（`domain/msm.py: MsmGrid.block_covering`）で、どの範囲から引いても同じ地点は同じ格子点に当たる。時刻が2つ未満なら投げる |
 | `get_msm_grid(bbox)` | 地図の風の矢印と降水の升目（`GET /api/weather/msm-grid`） | 現在時刻の正時から`domain/weather_elements.py: MSM_FORECAST_HOURS`時間ぶん（JST）。範囲の中の格子点を間引き、風速・風向・降水量を格子点の値のまま丸めて返す。格子の欠損はNone。読めなければ投げる |
 | `get_grid_point_today(point)` | 地点の最寄りの格子点の今日の値（`GET /api/weather`、`domain/weather.py: grid_point_today`） | 現在時刻の正時から、その日（JST）の24時まで。1時間ごとの気温・降水量・風速・風向を格子点の値のまま丸めて返し、格子点の位置と、地点から格子点までの距離（km）・方位を添える。最も高い・低い値は、並べた1時間ごとの値から選んだものとして`highest_hourly_*`・`lowest_hourly_*`の名前で返す（日の最高・最低気温ではない）。格子の欠損はNone。読めなければNone |
 
@@ -546,7 +546,7 @@ run初期時刻から数時間遅れる。そのため現在時刻から先の�
 長いrun（00/12UTC）の値を残し、どのrunも持たない時刻は全部の格子点が欠け（NaN）になる。読み出しは予報終端で切らず、
 読む範囲のうち全部の格子点が欠けた最初の時刻の手前までを返す（配信元が新しいrunを出さない間も、前のrunの値が尽きるまで
 ルートを作れる）。配信元は値の書かれていないチャンクを置かない（404）ので、同期は今を含むチャンクより先のまだ無いチャンクを
-置き場に置かずに成功し、読み出しはそのチャンクから先を値の無い時刻として扱う（今を含むチャンクが無ければ同期は失敗する）。どこから先が前のrunの値かは`infrastructure/msm_client.py: MsmGridPointSeries.latest_run_end`で返し、風の予報（`domain/wind.py: WindForecastSeries.latest_run_end`）を
+置き場に置かずに成功し、読み出しはそのチャンクから先を値の無い時刻として扱う（今を含むチャンクが無ければ同期は失敗する）。どこから先が前のrunの値かは`infrastructure/msm_client.py: MsmGridPointSeries.latest_run_end`で返し、風の予報（`domain/wind.py: WeatherForecastSeries.latest_run_end`）を
 経て、ルートの候補が着くまでにその先の風を引いたなら、前に出たrunの風に替わる時刻（最新のrunの終わり）を応答の`wind_previous_run_from`に載せる。地図の格子点（`GET /api/weather/msm-grid`）と
 今日の値（`GET /api/weather`）は同じ境を応答の`latest_run_end`に載せ、これより先の時刻の値が前のrunのものとする（この時刻を含む）。
 レンズの材料（`GET /api/region/lens/{lens_id}/{z}/{x}/{y}`）は、引いた風が前のrunのものなら、前に出たrunの風に替わる時刻を応答の`wind_previous_run_from`に載せる。

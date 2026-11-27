@@ -19,12 +19,12 @@ from sqlalchemy import BindParameter, Float, Integer, Text, TextClause, bindpara
 from sqlalchemy.dialects.postgresql import ARRAY
 
 from app.domain.accident import BICYCLE_SQL, FATAL_SQL
-from app.domain.geo import COORDINATE_DECIMALS, degrees_covering_m
-from app.domain.map_display import POINT_CLUSTER_CELLS_PER_TILE, POINT_COUNT_PROPERTY, POINT_MEMBERS_PROPERTY
+from app.domain.geo import degrees_covering_m
+from app.domain.map_display import POINT_CLUSTER_CELLS_PER_TILE, point_cluster_sql
 from app.domain.primary_attributes import PRIMARY_ATTRIBUTES, SUPPLY_PLACE_GROUPS, stop_poi_map_group_sql
 from app.domain.registry import PrimaryAttributeSpec, TileKind
 from app.domain.stop_place import StopPlaceGroup
-from app.domain.traffic import SIGNAL_KIND, STOP_POI_KINDS, stop_cluster_sql, stop_kind_sql
+from app.domain.traffic import SIGNAL_KIND, STOP_CLUSTER_REACH_STEPS, STOP_POI_KINDS, stop_cluster_sql, stop_kind_sql
 from app.domain.tuning import STOP_CLUSTER_DISTANCE_ID
 from app.infrastructure.cache_identity import shape_digest
 from app.infrastructure.derived_data_meta import recorded_tuning_sql
@@ -59,49 +59,16 @@ _PLACE_POINTS_WHERE = f"""{grouped_place_sql("s")} AND s.place_group = ANY(:plac
 _CLUSTER_PARAMS = (bindparam("cluster_cells", value=POINT_CLUSTER_CELLS_PER_TILE, type_=Integer()),)
 
 
-def _clustered_mvt_sql(points: str, rows: tuple[str, ...], properties: tuple[str, ...], preference: str) -> str:
-    """タイルの中の点を、凡例の行ごと・升目ごとに1つの代表点へ束ねて1タイルへ焼くSQL式。
+_TILE_ENVELOPE = "ST_TileEnvelope(:z, :x, :y)"
 
-    `points`はタイルの中の点の行を返すSQLで、列`geom`（経度・緯度の点）・`name`（名前。無ければNULL）と、`rows`
-    （凡例の行を決める列）・`properties`（代表点がタイルへ出す列）・`preference`（代表点の選び順の式。列は`celled.`で読む）が読む列を持つ。
-    行をまたいで束ねない——凡例で行を隠したときに、代表点ごと消えたり件数が合わなくなったりする。代表点は束ねた点の1つで、
-    重心へ動かさない（名前と位置で外の地図を開く）。
-    """
-    row_columns = ", ".join(f"celled.{c}" for c in rows)
-    selected = ", ".join(f"celled.{c} AS {c}" for c in properties)
+
+def _clustered_mvt_sql(points: str, rows: tuple[str, ...], properties: tuple[str, ...], preference: str) -> str:
+    """タイルの中の点`points`を代表点へ束ねて（`domain/map_display.py: point_cluster_sql`）1タイルへ焼くSQL式。"""
+    clustered = point_cluster_sql(
+        points, _TILE_ENVELOPE, ":cluster_cells", rows, properties, preference,
+        place=lambda geom: f"ST_AsMVTGeom({geom}, {_TILE_ENVELOPE}, :extent, {TILE_BUFFER}, true)")
     return f"""(
-        WITH points AS ({points}),
-        grid AS (
-            SELECT ST_TileEnvelope(:z, :x, :y) AS env, :cluster_cells AS cells
-        ),
-        celled AS (
-            SELECT points.*, m.geom AS geom_3857,
-                   floor((ST_X(m.geom) - ST_XMin(grid.env)) * grid.cells
-                         / (ST_XMax(grid.env) - ST_XMin(grid.env))) AS cell_x,
-                   floor((ST_Y(m.geom) - ST_YMin(grid.env)) * grid.cells
-                         / (ST_YMax(grid.env) - ST_YMin(grid.env))) AS cell_y
-            FROM points CROSS JOIN grid CROSS JOIN LATERAL (SELECT ST_Transform(points.geom, 3857) AS geom) m
-        )
-        SELECT ST_AsMVT(mvt.*, :layer_name, :extent, 'geom') FROM (
-            -- 升ごとの件数と中身は、升の点の行へ窓関数で載せる。升の集計と点を結び付け直すと、凡例の行（NULLを含みうる）を
-            -- IS NOT DISTINCT FROM で比べることになり、PostgreSQL は総当たりでしか結べず、点の密なタイルで時間切れになる。
-            SELECT DISTINCT ON ({row_columns}, celled.cell_x, celled.cell_y)
-                ST_AsMVTGeom(celled.geom_3857, ST_TileEnvelope(:z, :x, :y), :extent, {TILE_BUFFER}, true) AS geom,
-                {selected},
-                celled.name AS name,
-                count(*) OVER cell AS {POINT_COUNT_PROPERTY},
-                CASE WHEN count(*) OVER cell > 1 THEN
-                    (json_agg(json_build_array(celled.name, round(ST_X(celled.geom)::numeric, {COORDINATE_DECIMALS}),
-                                               round(ST_Y(celled.geom)::numeric, {COORDINATE_DECIMALS})))
-                         FILTER (WHERE celled.name IS NOT NULL) OVER members)::text
-                END AS {POINT_MEMBERS_PROPERTY}
-            FROM celled
-            WINDOW cell AS (PARTITION BY {row_columns}, celled.cell_x, celled.cell_y),
-                   members AS (cell ORDER BY celled.name, ST_X(celled.geom), ST_Y(celled.geom)
-                               ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING)
-            ORDER BY {row_columns}, celled.cell_x, celled.cell_y,
-                     {preference}, ST_X(celled.geom), ST_Y(celled.geom)
-        ) mvt
+        SELECT ST_AsMVT(mvt.*, :layer_name, :extent, 'geom') FROM ({clustered}) mvt
         WHERE mvt.geom IS NOT NULL
     )"""
 
@@ -115,8 +82,9 @@ _POI_GROUP_EXPR = stop_poi_map_group_sql("nm", "sp.place_id")
 _DEGREES_PER_M = degrees_covering_m(1.0)
 
 # 停止要因POI・補給POIを1タイルへ焼き込む。信号は交差点の段の信号の交差点（`signal_places`）に1点で出し、ほかの停止要因は
-# 派生を作り直したときのまとめる距離で`domain/traffic.py: stop_cluster_sql`でまとめてから、ほかの点と同じく升目で束ねる。タイル境界で塊が切れると同じ交差点が隣り合うタイルで別々の点になるので、境目の外へ
-# まとめる距離ずつ2つ先まで連なる点を読む（式の間隔は地面のmを下回らないので、地面のmで覆えば足りる）。
+# 派生を作り直したときのまとめる距離で`domain/traffic.py: stop_cluster_sql`でまとめてから、ほかの点と同じく升目で束ねる。タイル境界で塊が切れると
+# 同じ交差点が隣り合うタイルで別々の点になるので、境目の外をまとめる距離の`domain/traffic.py: STOP_CLUSTER_REACH_STEPS`倍まで読む（式の間隔は地面のmを
+# 下回らないので、地面のmで覆えば足りる）。
 _POI_POINTS_SQL = f"""
     SELECT grouped.kind, grouped.map_group, grouped.name, grouped.geom
     FROM (
@@ -144,7 +112,7 @@ _POI_POINTS_SQL = f"""
                   p.geom,
                   ST_Expand(
                       ST_MakeEnvelope(:xmin, :ymin, :xmax, :ymax, 4326),
-                      (SELECT 2 * eps_m * :degrees_per_m FROM cluster)))
+                      (SELECT {STOP_CLUSTER_REACH_STEPS} * eps_m * :degrees_per_m FROM cluster)))
             UNION ALL
             -- 補給POIの凡例の行に入る立ち寄り先の群（コンビニ）は地点の表から出す。群の値が種別の値。
             SELECT s.place_group, s.place_group, s.geom,

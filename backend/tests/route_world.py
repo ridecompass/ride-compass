@@ -24,8 +24,8 @@ from app.domain.road_network import RoadNetwork
 from app.domain.route import Coordinates, EvaluatedRoute, PenaltyBreakdown, RouteFacts
 from app.domain.route_request import FixedPoints, RequestedConditions
 from app.domain.time_zone import JST
-from app.domain.wind import WindForecastSeries
-from tests.wind_forecast import wind_forecast
+from app.domain.wind import WeatherForecastSeries
+from tests.weather_forecast import weather_forecast
 from app.infrastructure import road_network_store
 from app.services.graph_service import GraphService, SearchMemory
 from tests.road_network_fixture import road_network as build_road_network
@@ -146,16 +146,16 @@ def road_network(
 
 #: 2020〜2035年の毎時の、どこでも無風・標準の気温の予報（格子点1つ。区間はどこでも、一番近い格子点のこの1つを引く）。
 _CALM_HOURS = int((datetime(2035, 1, 1) - datetime(2020, 1, 1)).total_seconds() // 3600)
-CALM = wind_forecast(datetime(2020, 1, 1), np.zeros(_CALM_HOURS))
+CALM = weather_forecast(datetime(2020, 1, 1), np.zeros(_CALM_HOURS))
 
 
 class Weather:
     """天気の代役。時別の風の予報は`series`（省けば無風の`CALM`）を返す。"""
 
-    def __init__(self, series: WindForecastSeries = CALM):
+    def __init__(self, series: WeatherForecastSeries = CALM):
         self._series = series
 
-    async def get_wind_forecast_lattice(self, bbox):
+    async def get_weather_forecast_lattice(self, bbox):
         return self._series
 
     def forecast_version(self):
@@ -179,7 +179,7 @@ def serve_road_network(root: Path, network: RoadNetwork | None) -> None:
 
 
 def generator_for(
-    root: Path, network: RoadNetwork, wind: WindForecastSeries = CALM,
+    root: Path, network: RoadNetwork, wind: WeatherForecastSeries = CALM,
     *, assumed_speed_kmh: float = 20.0, road_avoidance: dict[str, AvoidanceLevel] | None = None,
 ):
     """道路網を全体の配列として置き場へ置き、本物の`GraphService`とエンジンの上に戦略層（`RouteGenerator`）を組む。"""

@@ -9,9 +9,9 @@
 
 | レイヤー | ファイル |
 |---|---|
-| domain | `attributes.py`（`attributes.py: elevation_profile_sql`。区間の断面の点列を間引くSQLを組み立てる）・`elevation_profile.py`（断面から所要時間の点の間と標高・勾配の要約を出す） |
+| domain | `elevation_profile.py`（断面から所要時間の点の間と標高・勾配の要約を出す） |
 | infrastructure | `dem_elevation.py`（地点の標高を、取り込んだ標高タイルのまわりの4画素の双線形補間で、製品の優先の順に引く。値の無い点だけを次の製品で引く） |
-| batch | `source_adapters/gsi_dem_tile.py`（取込と取得。取得はプロファイルが挙げた製品ごとに全タイルを置き場へ写し、取込は写したタイルを製品ごとに読んでint32へ詰める。取込は配信元を叩かない）・`dem_tile_store.py`（写したタイルの置き場と、その製品に無いことの印）・`source_adapters/raster_wkb.py`（画素の並びをPostGISの`raster`へ包む）・`derive_elevation.py`（派生） |
+| batch | `source_adapters/gsi_dem_tile.py`（取込と取得。取得はプロファイルが挙げた製品ごとに全タイルを置き場へ写し、取込は写したタイルを製品ごとに読んでint32へ詰める。取込は配信元を叩かない）・`dem_tile_store.py`（写したタイルの置き場と、その製品に無いことの印）・`source_adapters/raster_wkb.py`（画素の並びをPostGISの`raster`へ包む）・`derive_elevation.py`（派生。区間の断面の点列を間引くSQL`derive_elevation.py: elevation_profile_sql`も持つ） |
 
 ## 3段に分かれている
 
@@ -29,8 +29,8 @@ edge_elevation（断面の点の標高と位置）
 経路の集計（domain/route.py: elevation_gain）
 ```
 
-間引き方は`domain/attributes.py: elevation_profile_sql`が、要約の出し方は`domain/elevation_profile.py`が持つ。派生バッチは
-点の標高を引く関係を渡して実行するだけで、勾配の上限も欠測の扱いもそこには無い。
+間引き方は派生バッチの`batch/derive_elevation.py: elevation_profile_sql`が（呼び手が1つのSQL文の手順なので、実行する層が持つ）、
+要約の出し方は`domain/elevation_profile.py`が持つ。間引きの閾値は較正値から渡し、勾配の上限は派生バッチに無い。
 
 ## 断面の点の拾い方と間引き方
 
@@ -38,7 +38,7 @@ edge_elevation（断面の点の標高と位置）
 点の間隔が描き手ごとにばらつき、細かく描いた道ほど標高データの揺らぎを登りとして積む。間隔は標高データの格子（DEM5Aは約5m）に
 合わせる——格子より広げると、格子が持つ短い起伏を拾わない。
 
-拾った点は、較正値`elevation.profile_tolerance_m`の閾値で間引いてから残す（`domain/attributes.py: elevation_profile_sql`）。断面
+拾った点は、較正値`elevation.profile_tolerance_m`の閾値で間引いてから残す（`batch/derive_elevation.py: elevation_profile_sql`）。断面
 （横が道のり、縦が標高）に Douglas-Peucker をかけ、閾値以下の上下を揺れとして消す。残る点の間の勾配は元の点の間の一番急な
 勾配を越えない。閾値を十分に越える短い急坂はその急さのまま残り、高さが閾値の数倍に満たない短い段は前後と一緒になだらかに残ることがある。閾値は配信元が公表する標高の精度（DEM5Aは標準偏差0.3m以内。
 https://maps.gsi.go.jp/development/hyokochi.html ）に合わせる。平らな道ほど点が少なくなるので、点の数は拾った点の数より

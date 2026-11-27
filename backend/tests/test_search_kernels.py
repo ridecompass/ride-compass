@@ -12,7 +12,7 @@ from numba.core.registry import CPUDispatcher
 
 from app.domain import routing, search_kernels
 from app.domain.msm import MsmBlock, MsmGrid
-from tests.wind_forecast import wind_forecast
+from tests.weather_forecast import weather_forecast
 from tests.route_world import (
     BASE_LAT,
     BASE_LON,
@@ -88,7 +88,7 @@ async def test_route_generation_calls_from_python_only_the_jit_that_the_image_ba
     search_kernels.compile_search_kernels()
     baked, called = called, set()
 
-    wind = wind_forecast(datetime(2026, 9, 22), np.full((4, 24), 3.0), lattice=MsmBlock(
+    wind = weather_forecast(datetime(2026, 9, 22), np.full((4, 24), 3.0), lattice=MsmBlock(
         grid=MsmGrid(lat_min=BASE_LAT, lon_min=BASE_LON, d_lat=0.018, d_lon=0.022, n_lat=2, n_lon=2), row0=0, col0=0, rows=2, cols=2,
     ))
     generator = generator_for(road_network_root, network, wind)

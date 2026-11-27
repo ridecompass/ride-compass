@@ -86,7 +86,7 @@ from app.domain.wind import (
 )
 from app.infrastructure import detour_ratio_cache
 from app.services.graph_service import GraphService, network_burden_fills
-from app.domain.loop_routing import LoopTurnaround, TracedLoop
+from app.domain.loop_routing import LoopTurnaround, TracedLoop, waypoint_offsets_along
 from app.services.weather_service import WeatherService
 from app.services import road_graph_via_routes
 from app.services.road_graph_candidates import evaluate_routes
@@ -170,22 +170,6 @@ class _TurnaroundData:
     outbound_length_m: float
 
 
-def _waypoint_offsets_along(context: RoadGraphContext, nodes: list[int], waypoints: list[Coordinates]) -> list[int]:
-    """置いた経由地を、組んだ経路（通るノードの列`nodes`）が置いた順に通る所（`TracedLoop.waypoint_offsets`）。
-    1つでも通らなければ（乗り換えで経由地を飛ばした・寄せられない）空にする——並びの何番目が何番目の経由地かを
-    崩さないため、通らない経由地だけを抜かない。"""
-    offsets: list[int] = []
-    start = 0
-    for point in waypoints:
-        snapped = snap_point(context, point)
-        if snapped is None or snapped[0] not in nodes[start:]:
-            return []
-        # 同じNodeへ寄った経由地が続けば同じ所を通る（生成の前段の、長さ0の区間と同じ）。
-        start = nodes.index(snapped[0], start)
-        offsets.append(start)
-    return offsets
-
-
 class RoadGraphEngine:
     """評価条件は解決済みの値だけを受け取る（既定を持たない）。組み立ては
     `services/route_generation_setup.py: assemble_route_generation_setup`だけが行う。"""
@@ -239,8 +223,8 @@ class RoadGraphEngine:
             return None
 
         weather_started = start_timer()
-        # 探索範囲を覆う格子点ごとの時別風予報（MSMのローカルファイルから読む。外部API呼び出しは無い）。
-        wind_series = await self._weather_service.get_wind_forecast_lattice(bbox)
+        # 探索範囲を覆う格子点ごとの時別の風と気温の予報（MSMのローカルファイルから読む。外部API呼び出しは無い）。
+        weather_series = await self._weather_service.get_weather_forecast_lattice(bbox)
         weather_ms = elapsed_ms(weather_started)
 
         materials_started = start_timer()
@@ -271,7 +255,7 @@ class RoadGraphEngine:
                 self._avoidance_multipliers)
             composer = LegCostComposer(
                 materials, search_masks,
-                wind_series, start, self._assumed_speed_kmh, lazy_graph.edge_rows,
+                weather_series, start, self._assumed_speed_kmh, lazy_graph.edge_rows,
                 detour_ratio=detour_ratio_or_default(learned_detour_ratio),
                 material_fills=MaterialFills(numeric_means=road.network.numeric_means),
                 burden_fills=network_burden_fills(road.network, cost_axes),
@@ -733,7 +717,7 @@ class RoadGraphEngine:
         起点から始まり・終点（目的地、無ければ出発地）へ着く**ことをここで確かめる（送られた列をそのまま信じると、
         評価は成功するのに経路として成立しないルートが候補一覧へ並ぶ。周回どうしを乗り換えた経路が出発地へ戻ることもここで決まる）。
 
-        置いた経由地は生成と同じNodeへ寄せ、組んだ経路の中で置いた順に通る所を探す（`_waypoint_offsets_along`）。
+        置いた経由地は生成と同じNodeへ寄せ、組んだ経路の中で置いた順に通る所を探す（`domain/loop_routing.py: waypoint_offsets_along`）。
 
         終点（`resolve_end`の結果）は生成と同じ所で決めるため、比べる相手は元の候補が実際に終わったNodeになる。
 
@@ -784,9 +768,12 @@ class RoadGraphEngine:
         blocked = sum(not np.isfinite(context.legs[leg].cost_lazy[index]) for index, leg in zip(path, leg_of_edge, strict=True))
         if blocked:
             raise RoutingError(f"経路が、通る時間帯に探索から除く区間を通ります count={blocked}")
+        snapped = [snap_point(context, point) for point in waypoints]
         return TracedLoop(
             bearing=None, distance_km=round(total_m / 1000, DISTANCE_KM_DECIMALS), data=path, leg_of_edge=leg_of_edge,
-            waypoint_offsets=_waypoint_offsets_along(context, [tails[0], *heads], waypoints), reversible=False,
+            waypoint_offsets=waypoint_offsets_along(
+                [tails[0], *heads], [None if snap is None else snap[0] for snap in snapped]),
+            reversible=False,
         )
 
     def is_loop_too_similar(

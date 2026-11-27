@@ -1,6 +1,6 @@
 """`domain/wind.py`——格子点ごとの時別の予報、通過予定時刻の推定。
 
-入口は`WindForecastSeries`・`estimate_passage_hours`。
+入口は`WeatherForecastSeries`・`estimate_passage_hours`。
 
 ここで見ないもの:
 - 予報を引くMSMの格子点の並び（`MsmBlock`） → `test_msm.py`
@@ -19,10 +19,10 @@ from hypothesis import strategies as st
 from app.domain.geo import EARTH_RADIUS_KM
 from app.domain.route import Coordinates
 from app.domain.wind import (
-    WindForecastSeries,
+    WeatherForecastSeries,
     estimate_passage_hours,
 )
-from tests.wind_forecast import wind_forecast
+from tests.weather_forecast import weather_forecast
 
 #: 風速・走行速度の本番の範囲（m/s）。台風の暴風と、想定速度の上限60km/hを覆う。
 WIND_SPEEDS = st.floats(0.0, 40.0)
@@ -35,10 +35,10 @@ BEARINGS = st.floats(0.0, 360.0)
 T0 = datetime(2026, 7, 1, 9, 0)
 
 
-def _series() -> WindForecastSeries:
+def _series() -> WeatherForecastSeries:
     """格子点2つ・3時刻。風速は「点の番号×100＋時刻の番号」、風向は時刻の番号×10、気温は風速の10分の1。"""
     speed = np.array([[p * 100.0 + t for t in range(3)] for p in range(2)])
-    return wind_forecast(T0, speed, direction_deg=[t * 10.0 for t in range(3)], temperature_c=speed / 10.0)
+    return weather_forecast(T0, speed, direction_deg=[t * 10.0 for t in range(3)], temperature_c=speed / 10.0)
 
 
 @pytest.mark.parametrize(

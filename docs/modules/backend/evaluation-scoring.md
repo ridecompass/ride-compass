@@ -9,7 +9,7 @@
 
 | レイヤー | ファイル |
 |---|---|
-| domain | `hard_filters.py`（0次フィルタ）・`road_avoidance.py`（道の行ごとの避け方）・`cost_preference.py`（費用の式の利用者の値: 全体のつまみと費用の軸ごとの倍率と、その範囲）・`cost_axes.py`（費用の軸の定義の型・検証と、プロセス内の定義。体力の費目ごとの決まり［走りの内訳の欄・事実・地図のレンズの物差し・値が変わる走る条件・漕ぎ出し］の1つの表`cost_axes.py: EFFORT_ITEM_RULES`も持ち、費目を足すとそこへ1行足す。道のストレスの軸が材料の列から引く区間ごとの重さ［`cost_axes.py: CategoricalBurden.weights`・`cost_axes.py: LinearBurden.weights`］、画面へ配る軸の一覧［見せ方と識別色を軸の順で］`cost_axes.py: cost_axis_catalog`も持つ）・`ledger_costs.py`（費目の帳簿の式。代償の秒と、その較正値の束）・`axis_templates.py`（道のストレスの重さを材料から引く折れ線と表引き）・`search_materials.py`（探索の材料の表）・`material_catalog.py`・`material_coverage_spec.py`（材料の欠損率の測り方の型と、欠損率の見出し）・`material_value_labels.py`（材料のタグの値ごとの日本語の対訳表）・`material_sql.py`（材料の値をSQLで導出する式。道・ノードの生データを読む副問い合わせは`infrastructure/source_models.py`。SQLの値の綴り［`material_sql.py: sql_literals`］と、`LIKE`の型の中で文字として当てる式［`material_sql.py: like_escaped_sql`］も持つ）・`road_classes.py`（道の区分の全体の型と、区分に道を振り分ける式）・`road_class_catalog.py`（道の区分を画面の設定で配る形） |
+| domain | `hard_filters.py`（0次フィルタ）・`road_avoidance.py`（道の行ごとの避け方）・`cost_preference.py`（費用の式の利用者の値: 全体のつまみと費用の軸ごとの倍率と、その範囲）・`cost_axes.py`（費用の軸の定義の型・検証と、プロセス内の定義。体力の費目ごとの決まり［走りの内訳の欄・事実・地図のレンズの物差し・値が変わる走る条件・漕ぎ出し］の1つの表`cost_axes.py: EFFORT_ITEM_RULES`も持ち、費目を足すとそこへ1行足す。道のストレスの軸が材料の列から引く区間ごとの重さ［`cost_axes.py: CategoricalBurden.weights`・`cost_axes.py: LinearBurden.weights`］、画面へ配る軸の一覧［見せ方と識別色を軸の順で］`cost_axes.py: cost_axis_catalog`も持つ）・`axis_catalog.py`（`GET /api/cost-axes`が配る軸の一覧・総合のレンズ・レンズの段を、今の費用の軸の定義から1つに組む`axis_catalog.py: current_cost_axis_catalog`）・`ledger_costs.py`（費目の帳簿の式。代償の秒と、その較正値の束）・`axis_templates.py`（道のストレスの重さを材料から引く折れ線と表引き）・`search_materials.py`（探索の材料の表）・`material_catalog.py`・`material_coverage_spec.py`（材料の欠損率の測り方の型と、欠損率の見出し）・`material_value_labels.py`（材料のタグの値ごとの日本語の対訳表）・`material_sql.py`（材料の値をSQLで導出する式。道・ノードの生データを読む副問い合わせは`infrastructure/source_models.py`。SQLの値の綴り［`material_sql.py: sql_literals`］と、`LIKE`の型の中で文字として当てる式［`material_sql.py: like_escaped_sql`］も持つ）・`road_classes.py`（道の区分の全体の型と、区分に道を振り分ける式）・`road_class_catalog.py`（道の区分を画面の設定で配る形） |
 | services | `material_coverage_service.py`・`cost_axis_service.py`（費用の軸の定義の読み込みと管理APIの入れ替え）・`road_class_service.py`（道の区分の読み込みと管理APIの入れ替え） |
 | infrastructure | `material_coverage.py`（材料ごとの欠損割合の集計。DBの集計クエリと、道路網の配列の値の数え上げ）・`cost_axis_models.py`・`cost_axis_repository.py`・`road_class_models.py`・`road_class_repository.py` |
 | api | `material_catalog.py`（材料の欠損割合のエンドポイント）・`cost_axis_catalog.py`（`GET /api/cost-axes`で費用の軸の見せ方・総合のレンズ・色の物差しから刻んだ段を画面へ配る。地図のレンズの要求の利用者の値の受け口`cost_preference_query`も持つ）・`cost_axis_admin.py`・`road_class_admin.py`（どちらも全体の読みと入れ替えの管理API）・`client_config.py`（`GET /api/client-config`。較正値・事故の収録年・道の区分を画面へ配る） |
@@ -127,6 +127,9 @@
   強さは交換比α・βの較正値が持ち、つまみはそれに掛ける比で、帳簿の較正値の束（`domain/ledger_costs.py: ledger_parameters`）が
   入口の写した較正値で組む——較正値を変えても利用者の値は標準のまま。倍率は書いていない軸を標準とし、条件のエコーへは
   今の費用の軸を全部書いた形（`CostPreference.resolved`）を返す。
+- **費用を述べる文**: 費用の式と負担が何を数えるかを利用者に言う名詞句（`domain/ledger_costs.py: COST_WORDING`・
+  `domain/ledger_costs.py: PENALTY_WORDING`）と、避け方の倍率が何に掛かるかの名詞句（`domain/road_avoidance.py: AVOIDANCE_MULTIPLIER_WORDING`）は
+  式の横に置き、生成物`route-generate-config.json`で配る。式を変えるときは、同じファイルの文を直す。
 - **組み立ての部品**: 走行の模型の入力（転がり抵抗・止まる出来事の待ちと漕ぎ出し・断面。`domain/leg_costs.py: travel_inputs`）と
   道のストレスの1kmあたりの重さ（`domain/leg_costs.py: burden_weights`）は、材料の列（材料id→区間の列）から組む関数で、探索の合成と
   地図のレンズ（[レンズ・フィーチャー値配信](dynamic-way-values.md)「費用の軸のレンズ」）が同じものを呼ぶ。代償の秒は軸ごとの内訳

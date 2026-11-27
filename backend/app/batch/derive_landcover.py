@@ -9,8 +9,7 @@
 
 値の出た区間だけが行を持つ。
 
-値の出し方そのものはdomainが持つ（`class_percentages_sql`）。このバッチは画素の数え方を
-組み立てるだけで、有効画素数の下限を持たない。
+どの画素値を数えないか・クラスの並びはdomainが持ち、有効画素数の下限は較正値から渡す。
 """
 
 import logging
@@ -19,7 +18,7 @@ import time
 import asyncpg
 
 from app.batch.common import affected_rows
-from app.domain.landcover import PERCENT_CLASSES, class_percentages_sql, landcover_key
+from app.domain.landcover import PERCENT_CLASSES, landcover_key, valid_pixel_sql
 from app.infrastructure.source_models import LANDCOVER_TILES_SQL
 
 logger = logging.getLogger("ridecompass.derive_landcover")
@@ -44,6 +43,32 @@ FROM _rings r
 JOIN {LANDCOVER_TILES_SQL} t ON t.geom && r.ring4326
 CROSS JOIN LATERAL ST_ValueCount(ST_Clip(t.rast, 1, r.ring, true)) AS vc
 GROUP BY r.osm_way_id, r.segment_index, (vc).value
+"""
+
+
+def class_percentages_sql(counts: str, min_valid_pixels: float) -> str:
+    """クラスごとの画素数から割合(%)を出すSQL。
+
+    `counts`は`(osm_way_id, segment_index, cls, n)`を返す関係。有効画素数
+    （No Data・Cloudsを除いた合計）が`min_valid_pixels`（較正値`landcover.min_valid_pixels`）未満の区間は返らない——
+    帯がラスタの外へ大きくはみ出た・雲に覆われていた等、統計として信頼できないため。
+    """
+    tally = ",\n           ".join(
+        f"sum(n) FILTER (WHERE cls = {value}) AS {landcover_key(name)}"
+        for name, value in PERCENT_CLASSES)
+    percents = ",\n       ".join(
+        f"100.0 * coalesce({landcover_key(name)}, 0) / valid_pixels AS {name}"
+        for name, _ in PERCENT_CLASSES)
+    return f"""
+WITH counted AS ({counts}),
+agg AS (
+    SELECT osm_way_id, segment_index,
+           sum(n) FILTER (WHERE {valid_pixel_sql("cls")})::int AS valid_pixels,
+           {tally}
+    FROM counted GROUP BY osm_way_id, segment_index)
+SELECT osm_way_id, segment_index, valid_pixels,
+       {percents}
+FROM agg WHERE valid_pixels >= {float(min_valid_pixels)!r}
 """
 
 

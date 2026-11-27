@@ -1,4 +1,4 @@
-"""周回・目的地ルートの探索結果を運ぶ型。
+"""周回・目的地ルートの探索結果を運ぶ型と、その欄を組む計算。
 
 探索の実装（`services/road_graph_engine.py`）と、候補を並べる戦略
 （`services/route_generator.py`）の両方が読むため、どちらにも属さないここに置く。
@@ -43,3 +43,17 @@ class TracedLoop:
     # 1つ以下）だけ真（`road_graph_candidates.py: _build_best_candidate`）。置いた順は利用者の意図なので崩さない。
     reversible: bool
 
+
+def waypoint_offsets_along(nodes: list[int], waypoint_nodes: list[int | None]) -> list[int]:
+    """置いた経由地を、組んだ経路（通るノードの列`nodes`）が置いた順に通る所（`TracedLoop.waypoint_offsets`）。
+    `waypoint_nodes`は置いた順の経由地を寄せたNode（寄せられなければNone）。1つでも通らなければ（乗り換えで経由地を
+    飛ばした・寄せられない）空にする——並びの何番目が何番目の経由地かを崩さないため、通らない経由地だけを抜かない。"""
+    offsets: list[int] = []
+    start = 0
+    for node in waypoint_nodes:
+        if node is None or node not in nodes[start:]:
+            return []
+        # 同じNodeへ寄った経由地が続けば同じ所を通る（生成の前段の、長さ0の区間と同じ）。
+        start = nodes.index(node, start)
+        offsets.append(start)
+    return offsets

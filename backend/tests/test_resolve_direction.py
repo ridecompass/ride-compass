@@ -1,9 +1,9 @@
-"""`domain/traffic.py: direction_sql`——道のタグから、自転車が通れる向き（forward・backward・both）を決めるSQL。
+"""`batch/derive_way_directions.py: direction_sql`——道のタグから、自転車が通れる向き（forward・backward・both）を決めるSQL。
 
 式は派生の段がDBで実行するので、ここでもDBで実行して答えを見る。入力は`VALUES`で与え、表は使わない。
 
 ここで見ないもの:
-- 決めた向きを道の通行方向の表へ書くこと → 派生の段（`batch/derive_way_directions.py`）の責務
+- 決めた向きを道の通行方向の表へ書くこと → 派生の段の入口（`batch/derive_way_directions.py: derive`）
 """
 
 import json
@@ -11,7 +11,7 @@ import json
 import pytest
 from sqlalchemy import text
 
-from app.domain import traffic
+from app.batch.derive_way_directions import direction_sql
 
 pytestmark = pytest.mark.asyncio(loop_scope="module")
 
@@ -19,7 +19,7 @@ pytestmark = pytest.mark.asyncio(loop_scope="module")
 async def _direction(engine, tags: dict[str, str]) -> str:
     source = "SELECT * FROM (VALUES (CAST(1 AS bigint), CAST(:tags AS jsonb))) AS t(id, tags)"
     async with engine.connect() as conn:
-        result = (await conn.execute(text(traffic.direction_sql(source)), {"tags": json.dumps(tags)})).all()
+        result = (await conn.execute(text(direction_sql(source)), {"tags": json.dumps(tags)})).all()
     assert len(result) == 1, "道が結果から落ちたか、1本の道に向きが2つ付いた"
     return result[0].direction
 
