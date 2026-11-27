@@ -12,7 +12,6 @@ import type { HazardBadge, WeatherMark } from "@/lib/mapDisplay/weatherMarks";
 import { WIND_CALM_THRESHOLD_MS, WIND_SPEED_COLOR_STOPS } from "@/features/map/layers/windLayer";
 
 import type { MapSceneImage } from "@/features/map/scene/mapScene";
-import { AREA_OPACITY } from "./areaRasters";
 import { linearAt, zoomScaleExpression } from "@/features/map/scene/sceneBuilders";
 
 /** キキクルの危険度の段（源泉`domain/weather_display.py`）。洪水の線を、配信元のタイルが持つ段の番号で塗る。 */
@@ -20,6 +19,8 @@ const RISK_LEVELS = weatherScales.risk_levels;
 const LOWEST_RISK_LEVEL = RISK_LEVELS.reduce((lowest, level) => (level.level < lowest.level ? level : lowest));
 
 const WEATHER = mapDisplay.weather;
+/** 面の濃さ。段で塗る災害（`levelScale`を持つ要素）だけは、ほかの面より濃い。 */
+const { opacity: AREA_OPACITY, hazardOpacity: HAZARD_OPACITY } = mapDisplay.area;
 
 export type DeclaredElement = (typeof mapDisplay.weatherElements)[number];
 
@@ -46,7 +47,7 @@ type ElementKey<E> = E extends {
   ? `${G}/${S}/${K}`
   : never;
 
-/** 配信元が描いた画像は、どの要素も同じ濃さで重ねるだけなので個別の見た目を持たない。 */
+/** 配信元が描いた画像は、面の濃さで重ねるだけなので個別の見た目を持たない（濃さは`levelScale`を持つかで決まる）。 */
 type DrawnKey = ElementKey<Exclude<DeclaredElement, { kind: "rasterTile" }>>;
 
 /** 帯の下限と値の並びから、値→帯の値の段階式を作る。 */
@@ -69,6 +70,7 @@ function aboveFilter(property: string, min: number): FilterSpecification {
 }
 
 const RASTER_DRAWING: Drawing = { paint: { "raster-opacity": AREA_OPACITY } };
+const HAZARD_RASTER_DRAWING: Drawing = { paint: { "raster-opacity": HAZARD_OPACITY } };
 
 /** 線状降水帯の雨域の輪郭線。色・太さは配信元の公式の画面の描画定義の値で、塗らず、属性も読まない。 */
 const RAINBAND_OUTLINE_DRAWING: Drawing = {
@@ -208,7 +210,7 @@ const DRAWINGS: { readonly [K in DrawnKey]: Drawing } = {
 };
 
 export function drawingOf(element: DeclaredElement): Drawing {
-  if (element.kind === "rasterTile") return RASTER_DRAWING;
+  if (element.kind === "rasterTile") return element.levelScale === null ? RASTER_DRAWING : HAZARD_RASTER_DRAWING;
   return DRAWINGS[`${element.group}/${element.source}/${element.kind}` as DrawnKey];
 }
 

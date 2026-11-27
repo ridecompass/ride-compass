@@ -574,9 +574,15 @@ ROUTE_ARROW_HALO_SCALE = 1.5
 ROUTE_ARROW_SIZE_BY_ZOOM = zoom_curve((10, 0.6), (13, 0.8), (16, 1.2), (19, 1.6))
 
 
-#: 面の濃さ。下限は「最も薄い階級が背景に対してΔE（CIE76）15以上」、上限は面の下にある
-#: 土地の塗りが潰れない範囲。**上下から挟まれている**ので片側だけを見て動かさない。
-AREA_OPACITY = 0.55
+#: 面の濃さ（雨・色別標高図）。下限は最も薄い段が地からΔE（CIE76）15以上、上限は面の下の土地の塗り（水面・公園・建物）が
+#: 見分けられる範囲。**上下から挟まれている**ので片側だけを見て動かさない。
+AREA_OPACITY = 0.35
+#: 土地被覆の面の濃さ。分類を色で読む層なので、ほかの面より濃い。
+LANDCOVER_OPACITY = 0.55
+#: 段で塗る災害の面の濃さ。すぐ身を守る行動を求める段だけを塗る層なので、ほかの面より濃い。
+HAZARD_OPACITY = 0.55
+#: 色別標高図の彩度の下げ（MapLibreの`raster-saturation`。-1で灰）。配信元の色は彩度が高く、濃さだけでは道と地名より目立つ。
+ELEVATION_SATURATION = -0.4
 
 #: 陰影。北西からの斜め光（真上からだと起伏が出ない）。`igor`は傾きのarctanに比例する
 #: ——既定の`standard`はsinに比例し、平野部の数度では実効の濃さが0.03を下回って見えない。
@@ -586,8 +592,9 @@ HILLSHADE_METHOD = "igor"
 HILLSHADE_EXAGGERATION = 1
 #: 陰影の濃さは影・光の色のalphaで渡す（hillshadeは不透明度のプロパティを持たない）。傾きが0の画素は
 #: 影も光も出ないため、上げても平地は濁らない。
-HILLSHADE_SHADOW_COLOR = f"rgba(60, 50, 40, {AREA_OPACITY})"
-HILLSHADE_HIGHLIGHT_COLOR = f"rgba(255, 252, 245, {AREA_OPACITY})"
+_HILLSHADE_ALPHA = 0.55
+HILLSHADE_SHADOW_COLOR = f"rgba(60, 50, 40, {_HILLSHADE_ALPHA})"
+HILLSHADE_HIGHLIGHT_COLOR = f"rgba(255, 252, 245, {_HILLSHADE_ALPHA})"
 #: 標高の強調。**タイルの値は実際の標高のままで、読み方（復元式の係数）へ掛ける**
 #: ——タイル側を書き換えると、同じタイルを別の倍率で読み直せなくなる。
 #: 上げるほど緩い斜面が読めるが、上げすぎると急斜面との差が潰れる。
