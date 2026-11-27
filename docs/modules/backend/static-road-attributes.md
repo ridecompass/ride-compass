@@ -276,7 +276,7 @@ domainの判断へは値で渡す。
 - **言語違いの同じ場所は、連絡先で日本語の名前の地点へ寄せる**（群ごとの較正値`place.contact_merge_radius_m.<群>`）。Overtureは同じ場所を出どころの中で
   言語違いの別の行（別々のFacebookのページ等）として持つことがあり、重なりを結ぶIDも言語ごとの名前（`names.common`）も無い。
   チェーンの分からない地点のうち名前に日本語の文字が無いもの（`japanese_name_sql`）は、同じ群で同じ連絡先（ウェブサイト・電話。
-  `contacts_sql`が書き方の揺れを除く）を持つ、チェーンの分からない日本語の名前の地点があれば落とす。寄せ先の名前・位置・確からしさは
+  書き方の揺れは`infrastructure/source_models.py: OVERTURE_PLACES_SOURCE_SQL`が外し、比べる形は`stop_place.py: contacts_sql`が出す）を持つ、チェーンの分からない日本語の名前の地点があれば落とす。寄せ先の名前・位置・確からしさは
   そのまま。使う連絡先は、持つ地点（群を問わない）の経度・緯度の外接の矩形の対角が群の距離以内のものだけ——遠くの地点とも
   共有する連絡先は会社・一覧のページや百貨店・管理事務所の代表の電話で、その場所のものでない。日本語の名前どうしは寄せない
   （同じ連絡先を持つ同じ公園の中の博物館等を残す）。飲食は入れない（同じ連絡先の組の約15%が別の店）。景色・名所の距離は200m、
@@ -383,7 +383,7 @@ OpenStreetMapの寺社の分類は、伝統的な寺社と新しい宗教団体�
 **地図の説明の収録年は、点のタイルが読むのと同じ取込が読んだ年**（成功した最新の事故の取込の素性の`years`。
 `road_graph_repository.py: get_accident_years`）。実データの発生年を数えると、事故が1件も無かった年が落ちる。
 
-### 通行方向の解決（`domain/traffic.py: direction_sql`）
+### 通行方向の解決（`batch/derive_way_directions.py: direction_sql`）
 
 `oneway:bicycle`が`oneway`本体より優先し（自転車だけ逆走可という表現があるため）、
 どちらも無い・解釈できないときだけ`junction`を見る——環状交差点は構造として一方向にしか
@@ -587,7 +587,7 @@ z9で約3MB（28万本・167万点）。z9より引くと1画面で数十MBに�
 - POIのタイルは`node_kinds`の種別に、補給休憩のコンビニとして地点の群「コンビニ」の行（`places`）を足して焼く
   （コンビニの出どころはOverture。上の「立ち寄り先」）。コンビニの点だけが店の名前（`name`）を持ち、OpenStreetMapの点は名前を焼かない。
   取込範囲の判定はPOIのまま当てる。地点の群をどちらのタイルが焼くかは、補給のタイルが出す群の宣言（`domain/primary_attributes.py: SUPPLY_PLACE_GROUPS`）で決め、ほかの群は立ち寄り先のタイルが焼く。
-- **どのレイヤーも、近い点を代表点に束ねて焼く**（`point_tile_layers.py: _clustered_mvt_sql`）。タイルを升目に切り
+- **どのレイヤーも、近い点を代表点に束ねて焼く**（`domain/map_display.py: point_cluster_sql`。どの点のレイヤーのSQL文も使う手順なので domain が持ち、タイルへ焼くのは`point_tile_layers.py: _clustered_mvt_sql`）。タイルを升目に切り
   （一辺の数は`domain/map_display.py: POINT_CLUSTER_CELLS_PER_TILE`で、配る一番寄ったズームも同じ。それより寄った地図はそのタイルを引き伸ばして描くので、細かく切ると代表点の絵が重なる）、
   凡例の同じ行に入る点だけを升目ごとに1つへ束ねる。升目はタイルの端に揃えるので、隣り合うタイルの縁で同じ点が別々に束ねられて食い違わない。
   代表点は束ねた点の1つで（位置を重心へ動かさない。名前と位置で外の地図を開くため）、選ぶ順はレイヤーごとの宣言（事故は新しい年、
@@ -708,9 +708,9 @@ PBF取込時にしか変わらないため、再訪時の同一タイル再取�
 | ファイル | 役割 |
 |---|---|
 | `attributes.py` | `attributes.py: ElevationAttribute`（同じ地形を逆方向に走った値も自分で導く`attributes.py: reversed_as`）・DBと道路網の置き場が運ぶ材料の配列（`attributes.py: EdgeMaterialArrays`）と、静的スコア行列を組む入力（`attributes.py: EdgeMaterialColumns`）と標高計算のSQL（[elevation.md](elevation.md)が主に扱う） |
-| `stop_place.py` | 立ち寄り先の群（`stop_place.py: StopPlaceGroup`。点のタイルの属性`stop_place.py: group`の値）・文化財の所有者から寺社を見分ける語と式・寺社をまとめる距離（`stop_place.py: TEMPLE_SHRINE_SUFFIXES`・`stop_place.py: temple_shrine_owner_sql`・較正値`place.heritage_merge_radius_m`等）・Overtureの分類の語から群への表と式（`stop_place.py: OVERTURE_GROUP_WORDS`・`stop_place.py: overture_group_sql`）・同じ店をまとめる距離とチェーンの見分け方（較正値`place.chain_merge_radius_m`・`stop_place.py: CHAIN_WORDS`・`stop_place.py: chain_text_sql`・`stop_place.py: chain_sql`）・群の決め直し（`stop_place.py: CONVENIENCE_CHAINS`・`stop_place.py: BIKE_SHARE_CHAINS`・`stop_place.py: place_group_sql`）・言語違いの同じ場所を連絡先で寄せる群と距離・日本語の名前か・連絡先の比べる形（`stop_place.py: CONTACT_MERGE_GROUPS`・`stop_place.py: japanese_name_sql`・`stop_place.py: contacts_sql`）・ATMの地点の名前の直し（`stop_place.py: store_name_sql`）・外の地図へ渡す住所（`stop_place.py: address_sql`）・名前の揃え方（`stop_place.py: normalized_sql`）・地点の検索で打った語を群・チェーンとして読む語と判断と、検索に出さない分類（`stop_place.py: PLACE_GROUP_WORDS`・`stop_place.py: queried_group`・`stop_place.py: queried_chain`・`stop_place.py: SEARCH_EXCLUDED_CATEGORIES`。使い方は[地点の検索](place-search.md)「引き方」）。配布の列と JSON の読み替え（分類の道筋・連絡先の配列・住所の最初の1件）は`infrastructure/source_models.py: OVERTURE_PLACES_SOURCE_SQL`・`BUNKA_HERITAGES_SOURCE_SQL`が持つ |
+| `stop_place.py` | 立ち寄り先の群（`stop_place.py: StopPlaceGroup`。点のタイルの属性`stop_place.py: group`の値）・文化財の所有者から寺社を見分ける語と式・寺社をまとめる距離（`stop_place.py: TEMPLE_SHRINE_SUFFIXES`・`stop_place.py: temple_shrine_owner_sql`・較正値`place.heritage_merge_radius_m`等）・Overtureの分類の語から群への表と式（`stop_place.py: OVERTURE_GROUP_WORDS`・`stop_place.py: overture_group_sql`）・同じ店をまとめる距離とチェーンの見分け方（較正値`place.chain_merge_radius_m`・`stop_place.py: CHAIN_WORDS`・`stop_place.py: chain_text_sql`・`stop_place.py: chain_sql`）・群の決め直し（`stop_place.py: CONVENIENCE_CHAINS`・`stop_place.py: BIKE_SHARE_CHAINS`・`stop_place.py: place_group_sql`）・言語違いの同じ場所を連絡先で寄せる群と距離・日本語の名前か・連絡先の比べる形（`stop_place.py: CONTACT_MERGE_GROUPS`・`stop_place.py: japanese_name_sql`・`stop_place.py: contacts_sql`）・ATMの地点の名前の直し（`stop_place.py: store_name_sql`）・外の地図へ渡す住所（`stop_place.py: address_sql`）・名前の揃え方（`stop_place.py: normalized_sql`）・地点の検索で打った語を群・チェーンとして読む語と判断と、検索に出さない分類（`stop_place.py: PLACE_GROUP_WORDS`・`stop_place.py: queried_group`・`stop_place.py: queried_chain`・`stop_place.py: SEARCH_EXCLUDED_CATEGORIES`。使い方は[地点の検索](place-search.md)「引き方」）。配布の列と JSON の読み替え（分類の道筋・連絡先の配列と書き方の揺れ・住所の最初の1件）は`infrastructure/source_models.py: OVERTURE_PLACES_SOURCE_SQL`・`BUNKA_HERITAGES_SOURCE_SQL`が持つ |
 | `accident.py` | 警察庁の事故を地図の点に出すときの判断。生データの列から判定を組み立てるSQL断片・自転車とみなす当事者種別（本票の度分秒の読み取りは取込のアダプタ`npa_honhyo.py`が、本票の列名と当事者種別のコードの読み替えは`infrastructure/source_models.py`の事故の副問い合わせ（全件の`infrastructure/source_models.py: ACCIDENTS_SOURCE_SQL`と範囲で絞る`infrastructure/source_models.py: accidents_within_sql`が共有する）が持つ） |
-| `traffic.py` | OSMタグの解釈。停止要因POI・補給休憩POIの種別の引き当て（`traffic.py: TAG_KIND_RULES`・`traffic.py: tag_kind_sql`）、信号の判定（`traffic.py: TRAFFIC_SIGNAL_SQL`）、取込が道の頂点でなくても採る補給・休憩のタグ（`traffic.py: SUPPLY_POI_TAGS`・`traffic.py: has_supply_poi_tag`）、停止要因の数える種別への畳み方と信号の読み替え（`traffic.py: COUNT_KIND_OF`・`traffic.py: count_kind_sql`・`traffic.py: stop_kind_sql`・`traffic.py: kinds_shown_as`）、通行方向の解決（`traffic.py: DIRECTION_RULES`・`traffic.py: direction_sql`）と片方向にだけ通れるかの式（`traffic.py: one_way_sql`）・道の形の向きと逆向きのそれぞれに通れるか（`traffic.py: travel_allowed`）、交差点判定の次数しきい値、停止要因の場所・交差点を端で分け持つ割合（`traffic.py: PLACE_SHARE_PER_END`・`traffic.py: place_count_sql`）、停止要因の点のまとめ方（`traffic.py: stop_cluster_sql`）、交差点の階級（`traffic.py: HIGHWAY_RANK`）。取込のタグ（取込のアダプタが1件ずつ当てる）を除き、派生バッチへSQLとして渡す表と式で、タグを読むためだけに行を取り出さない |
+| `traffic.py` | OSMタグの解釈。停止要因POI・補給休憩POIの種別の引き当ての表と式（`traffic.py: TAG_KIND_RULES`・`traffic.py: rule_match_sql`・`traffic.py: first_rule_sql`・`traffic.py: vending_kind_sql`。文は`derive_nodes.py: tag_kind_sql`）、信号の判定（`traffic.py: TRAFFIC_SIGNAL_SQL`）、取込が道の頂点でなくても採る補給・休憩のタグ（`traffic.py: SUPPLY_POI_TAGS`・`traffic.py: has_supply_poi_tag`）、停止要因の数える種別への畳み方と信号の読み替え（`traffic.py: COUNT_KIND_OF`・`traffic.py: count_kind_sql`・`traffic.py: stop_kind_sql`・`traffic.py: kinds_shown_as`）、通行方向の解決の表と式（`traffic.py: DIRECTION_RULES`・`traffic.py: direction_or_default_sql`。文は`derive_way_directions.py: direction_sql`）と片方向にだけ通れるかの式（`traffic.py: one_way_sql`）・道の形の向きと逆向きのそれぞれに通れるか（`traffic.py: travel_allowed`）、交差点判定の次数しきい値、停止要因の場所・交差点を端で分け持つ割合（`traffic.py: PLACE_SHARE_PER_END`・`traffic.py: place_count_sql`）、停止要因の点のまとめ方と、範囲の境目の外へ読む幅（`traffic.py: stop_cluster_sql`・`traffic.py: STOP_CLUSTER_REACH_STEPS`）、交差点の階級（`traffic.py: HIGHWAY_RANK`）。取込のタグ（取込のアダプタが1件ずつ当てる）を除き、派生バッチへSQLとして渡す表と式で、タグを読むためだけに行を取り出さない |
 | `stop_events.py` | 止まる出来事（停止要因と曲がる所）の種類の宣言（`stop_events.py: STOP_EVENT_KINDS`）。種類ごとの置き場・名前・止まるか減速するだけか・待ちの較正値の説明を持つ。曲がる所の待ちの表の鍵（`stop_events.py: SIGNALS`・`SIZES`・`STANDINGS`・`MOVEMENTS`）と、そこから導く升（`stop_events.py: WAIT_PASSAGES`。基準の通り方`REFERENCE_PASSAGES`は升を持たない）も持つ（使い方は[探索](routing-engine.md)「探索の状態」）。較正値のidの綴り（`stop_events.py: event_share_parameter_id`・`event_seconds_parameter_id`）も持つ |
 | `divided_carriageway.py` | 上下線が分かれた道の片側かのしきい値と判定のSQL式（`divided_carriageway.py: divided_sql`）。材料`oneway`の値式（`divided_carriageway.py: oneway_material_sql`。地図の一方通行と評価が同じ式を読む）は、片方向にだけ通れる道（`traffic.py: one_way_sql`）から上下線の片側を外す |
 
@@ -725,7 +725,7 @@ PBF取込時にしか変わらないため、再訪時の同一タイル再取�
 （`kerb`）・料金所（`toll_booth`）・塀の開口部（`entrance`）等は対象外
 （`_BARRIER_STOP_VALUES`）。
 
-**自販機は`vending`（何を売るか）で3つへ分ける**（`tag_kind_sql`の自販機の分岐。`vending`の値は
+**自販機は`vending`（何を売るか）で3つへ分ける**（`traffic.py: vending_kind_sql`。`vending`の値は
 `;`で連なるため表に落とせず、式で当てて全群の後に見る）。補給レイヤーの
 点は「ここで飲み物が買える」という約束として読まれるため、たばこ・切符・パーキング券の機械は
 **補給の点にしない**（取込は何を売るかによらず自販機を採り、種別を付けない）。飲食物と分かるものと、`vending`が無く分からないものは別の種別にして、

@@ -5,9 +5,10 @@
 """
 
 from collections import Counter
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from typing import Literal, NamedTuple, get_args
 
+from app.domain.geo import COORDINATE_DECIMALS
 from app.domain.landcover import LANDCOVER_TILE_MIN_ZOOM
 from app.domain.msm_grid import MSM_GRID_MIN_ZOOM
 from app.domain.place_search import ADDRESS_AREA_ATTRIBUTIONS
@@ -652,6 +653,54 @@ POINT_MEMBERS_PROPERTY = "members"
 #: 区間を選んでいる間、地図の点のうち区間の近くに数える、区間の線からの地上の距離（m）。
 SEGMENT_NEARBY_POINT_MAX_DISTANCE_M = 100.0
 
+
+
+def point_cluster_sql(points: str, envelope: str, cells: str, rows: tuple[str, ...], properties: tuple[str, ...],
+                      preference: str, place: Callable[[str], str]) -> str:
+    """タイルの中の点を、凡例の行ごと・升目ごとに1つの代表点へ束ねた行を返すSQL。
+
+    `points`はタイルの中の点の行を返すSQLで、列`geom`（経度・緯度の点）・`name`（名前。無ければNULL）と、`rows`
+    （凡例の行を決める列）・`properties`（代表点が出す列）・`preference`（代表点の選び順の式。列は`celled.`で読む）が読む列を持つ。
+    升目はタイル`envelope`（EPSG:3857の矩形の式）の一辺を`cells`（式）等分したもの。返す行は、列`geom`（代表点の EPSG:3857 の
+    点の式を`place`へ通したもの）・`properties`・`name`と、束ねた点の数`POINT_COUNT_PROPERTY`・束ねた点`POINT_MEMBERS_PROPERTY`を持つ。
+
+    行をまたいで束ねない——凡例で行を隠したときに、代表点ごと消えたり件数が合わなくなったりする。代表点は束ねた点の1つで、
+    重心へ動かさない（名前と位置で外の地図を開く）。選び順が同じ点は、経度・緯度の小さい方を選ぶ。
+    """
+    row_columns = ", ".join(f"celled.{c}" for c in rows)
+    selected = ", ".join(f"celled.{c} AS {c}" for c in properties)
+    return f"""
+        WITH points AS ({points}),
+        grid AS (
+            SELECT {envelope} AS env, {cells} AS cells
+        ),
+        celled AS (
+            SELECT points.*, m.geom AS geom_3857,
+                   floor((ST_X(m.geom) - ST_XMin(grid.env)) * grid.cells
+                         / (ST_XMax(grid.env) - ST_XMin(grid.env))) AS cell_x,
+                   floor((ST_Y(m.geom) - ST_YMin(grid.env)) * grid.cells
+                         / (ST_YMax(grid.env) - ST_YMin(grid.env))) AS cell_y
+            FROM points CROSS JOIN grid CROSS JOIN LATERAL (SELECT ST_Transform(points.geom, 3857) AS geom) m
+        )
+        -- 升ごとの件数と中身は、升の点の行へ窓関数で載せる。升の集計と点を結び付け直すと、凡例の行（NULLを含みうる）を
+        -- IS NOT DISTINCT FROM で比べることになり、PostgreSQL は総当たりでしか結べず、点の密なタイルで時間切れになる。
+        SELECT DISTINCT ON ({row_columns}, celled.cell_x, celled.cell_y)
+            {place("celled.geom_3857")} AS geom,
+            {selected},
+            celled.name AS name,
+            count(*) OVER cell AS {POINT_COUNT_PROPERTY},
+            CASE WHEN count(*) OVER cell > 1 THEN
+                (json_agg(json_build_array(celled.name, round(ST_X(celled.geom)::numeric, {COORDINATE_DECIMALS}),
+                                           round(ST_Y(celled.geom)::numeric, {COORDINATE_DECIMALS})))
+                     FILTER (WHERE celled.name IS NOT NULL) OVER members)::text
+            END AS {POINT_MEMBERS_PROPERTY}
+        FROM celled
+        WINDOW cell AS (PARTITION BY {row_columns}, celled.cell_x, celled.cell_y),
+               members AS (cell ORDER BY celled.name, ST_X(celled.geom), ST_Y(celled.geom)
+                           ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING)
+        ORDER BY {row_columns}, celled.cell_x, celled.cell_y,
+                 {preference}, ST_X(celled.geom), ST_Y(celled.geom)
+"""
 
 def _point_opacities() -> dict[str, float]:
     """地図に点で出す一次属性（点の幾何・行の定義・タイルの系統を持つもの）ごとの不透明度。行が宣言しなければ既定。"""

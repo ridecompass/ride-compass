@@ -1,4 +1,4 @@
-"""区間の断面の点を揺れの閾値で間引く派生の段のSQL（`domain/attributes.py: elevation_profile_sql`）と、間引いたあとの点から
+"""区間の断面の点を揺れの閾値で間引く派生の段のSQL（`batch/derive_elevation.py: elevation_profile_sql`）と、間引いたあとの点から
 区間の標高と勾配の要約を出す`domain/elevation_profile.py: profile_summaries`（道路網の配列を作るときに出す）。
 
 間引き・行の有無を見るテストはSQLをPostGISで実行して返った行を見て、要約のテストは`profile_summaries`へ点を通す（`summarize`）。
@@ -12,7 +12,7 @@
 
 from functools import partial
 
-from app.domain.attributes import elevation_profile_sql
+from app.batch.derive_elevation import elevation_profile_sql
 from app.domain.elevation_profile import (
     FLAT,
     along_fractions,
