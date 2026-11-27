@@ -14,12 +14,12 @@ export const CANDIDATE_MARKS_WORDING =
 export function CandidateFiguresInfo() {
   const costAxes = useCostAxisCatalog();
   return (
-    <InfoPopover triggerAriaLabel="所要時間と負担の説明">
+    <InfoPopover triggerAriaLabel="所要時間と走りにくさの説明">
       <p>
-        <GuideText text={`・上の段: 距離\n・下の段: 所要時間と負担\n${CANDIDATE_MARKS_WORDING}`} />
+        <GuideText text={`・上の段: 距離\n・下の段: 所要時間と走りにくさ\n${CANDIDATE_MARKS_WORDING}`} />
       </p>
       <p>{`所要時間: ${routeGenerateConfig.duration_estimate_wording}`}</p>
-      <p>{`負担${costAxisNamesNote(costAxes)}: ${routeGenerateConfig.penalty_wording}です。`}</p>
+      <p>{`走りにくさ${costAxisNamesNote(costAxes)}: ${routeGenerateConfig.penalty_wording}です。`}</p>
       <p>{`並び: 先頭は最速、残りは${routeGenerateConfig.candidate_order_wording}です。`}</p>
     </InfoPopover>
   );

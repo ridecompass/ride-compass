@@ -183,7 +183,7 @@ export function useGenerationConditions({ onOriginPlace }: GenerationConditionsI
   // 代償の全体に掛けるつまみと、費用の軸ごとの倍率。選んだまま送る（標準のままでも、標準として送る）。
   const [costPreference, setCostPreference] = useStoredState<CostPreference>(
     COST_PREFERENCE_STORAGE_KEY,
-    "負担の好み",
+    "走りにくさの好み",
     STANDARD_COST_PREFERENCE,
   );
   // 道の区分の行ごとに選んだ避け方。選んだ段だけを覚え、常に送る。

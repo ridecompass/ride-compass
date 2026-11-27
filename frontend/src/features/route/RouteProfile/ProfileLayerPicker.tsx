@@ -17,7 +17,7 @@ interface ProfileLayerPickerProps {
   children: ReactNode;
 }
 
-/** 道のりのグラフの右上の、図に出すものを選ぶ一覧（「表示」の重ねる情報と、「走りにくさを色で見る」の積む負担）。ボタンに今出している数を出す。 */
+/** 道のりのグラフの右上の、図に出すものを選ぶ一覧（「表示」の重ねる情報と、「走りにくさを色で見る」の積む走りにくさ）。ボタンに今出している数を出す。 */
 export default function ProfileLayerPicker({ title, usage, count, children }: ProfileLayerPickerProps) {
   return (
     <Popover>

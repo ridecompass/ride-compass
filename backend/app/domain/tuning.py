@@ -384,13 +384,13 @@ TUNING_PARAMETERS: tuple[TuningParameter, ...] = (
         "cost.effort_alpha",
         "体力の換算", "倍", TuningEffect.IMMEDIATE,
         "平地の出力を超えて使った体力を、平地を何秒走る分に当たるかに換算し、その秒に掛ける倍率（費用の式のα）。"
-        "標準の人が、体力の1秒分を何秒の所要時間と引き換えにするかの交換比。体力の負担のすべての種類に共通。"
+        "標準の人が、体力の1秒分を何秒の所要時間と引き換えにするかの交換比。体力の軸のすべてに共通。"
         + _PREFERENCE_DEFINITION,
     ),
     TuningParameter(
         "cost.burden_seconds_per_km",
         "道のストレスの換算", "秒/km", TuningEffect.IMMEDIATE,
-        "道のストレスの基準の重さ（1）の道を1km走ることを、何秒の負担とみなすか（費用の式のβ）。標準の人が、その1kmを何秒の"
+        "道のストレスの基準の重さ（1）の道を1km走ることを、何秒の走りにくさとみなすか（費用の式のβ）。標準の人が、その1kmを何秒の"
         "所要時間と引き換えにするかの交換比。道のストレスのすべての種類に共通。" + _PREFERENCE_DEFINITION,
     ),
     TuningParameter(

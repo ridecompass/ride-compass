@@ -56,7 +56,7 @@ interface RouteSettingsPanelProps {
   onCostPreferenceChange: (next: CostPreference) => void;
 }
 
-/** 「ルート設定」の「負担」タブ。一番上の「全体」で負担の全部を数える割合を選び、その下で費用の軸ごとに、割合の段か無効（数えない）を選ぶ。 */
+/** 「ルート設定」の「走りにくさ」タブ。一番上の「全体」で走りにくさの全部を数える割合を選び、その下で費用の軸ごとに、割合の段か無効（数えない）を選ぶ。 */
 export default function RouteSettingsPanel({ costPreference, onCostPreferenceChange }: RouteSettingsPanelProps) {
   const catalog = useCostAxisCatalog();
   const catalogFailure = costAxisCatalogFetchFailure(catalog);
@@ -94,11 +94,11 @@ export default function RouteSettingsPanel({ costPreference, onCostPreferenceCha
           <InfoPopover triggerAriaLabel="全体の説明">
             <GuideText
               text={[
-                "負担の全部を、どれだけの割合で数えるかを決めます。",
-                `・負担${costAxisNamesNote(catalog)}は、${routeGenerateConfig.penalty_wording}です。`,
+                "走りにくさの全部を、どれだけの割合で数えるかを決めます。",
+                `・走りにくさ${costAxisNamesNote(catalog)}は、${routeGenerateConfig.penalty_wording}です。`,
                 `・道は、${routeGenerateConfig.cost_wording}が小さくなるように選びます。`,
-                `・${STANDARD_LABEL} が標準で、大きくすると所要時間が延びても負担の小さい道を選びやすくなります。`,
-                `・${DISABLED_LABEL}にすると負担を数えず、所要時間だけで選びます[結果にも地図にも負担を出しません]。`,
+                `・${STANDARD_LABEL} が標準で、大きくすると所要時間が延びても走りにくさの小さい道を選びやすくなります。`,
+                `・${DISABLED_LABEL}にすると走りにくさを数えず、所要時間だけで選びます[結果にも地図にも走りにくさを出しません]。`,
                 "・下の種類ごとの割合は、この割合にさらに掛かります。",
               ].join("\n")}
             />
@@ -106,7 +106,7 @@ export default function RouteSettingsPanel({ costPreference, onCostPreferenceCha
         </span>
         <LevelScale
           aria-label="全体の割合"
-          usage="負担の全部を、どれだけの割合で数えるかを選びます。"
+          usage="走りにくさの全部を、どれだけの割合で数えるかを選びます。"
           levels={STRENGTH_SCALE}
           value={String(costPreference.strength)}
           onChange={(key) => onCostPreferenceChange({ ...costPreference, strength: Number(key) })}
@@ -135,7 +135,7 @@ export default function RouteSettingsPanel({ costPreference, onCostPreferenceCha
               <LevelScale
                 aria-label={`${axis.label}の割合`}
                 usage={
-                  "この種類の負担を、どれだけの割合で数えるかを、目盛りの点を押して選びます。\n・長い目盛りが標準です。\n・左ほどこの負担を軽く見て通りやすくし、右ほど重く見て避けます。\n・左端の「–」はこの負担を数えず、結果にも地図にも出しません。"
+                  "この種類の走りにくさを、どれだけの割合で数えるかを、目盛りの点を押して選びます。\n・長い目盛りが標準です。\n・左ほどこの走りにくさを軽く見て通りやすくし、右ほど重く見て避けます。\n・左端の「–」はこの走りにくさを数えず、結果にも地図にも出しません。"
                 }
                 levels={AXIS_SCALE}
                 value={String(setting)}
@@ -151,7 +151,7 @@ export default function RouteSettingsPanel({ costPreference, onCostPreferenceCha
       </ul>
       {catalog.axes.length > 0 && (
         <Button
-          usage={`負担の種類ごとの割合と無効を、すべて標準[${STANDARD_LABEL}]に戻します。全体の割合は変えません。`}
+          usage={`走りにくさの種類ごとの割合と無効を、すべて標準[${STANDARD_LABEL}]に戻します。全体の割合は変えません。`}
           variant="secondary"
           className="self-end"
           disabled={standard}

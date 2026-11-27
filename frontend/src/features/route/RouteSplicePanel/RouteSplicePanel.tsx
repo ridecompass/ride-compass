@@ -45,12 +45,12 @@ interface RouteSplicePanelProps {
   catalog: PenaltyCatalog;
 }
 
-/** 負担の差（分）がこれ未満の軸は差分バーへ出さない（1pxの破片が並ぶと読めない）。 */
+/** 走りにくさの差（分）がこれ未満の軸は差分バーへ出さない（1pxの破片が並ぶと読めない）。 */
 const MIN_PENALTY_DELTA_MINUTES = 0.1;
 /** 差分バーの下へ数値を書く軸の数。大きい順。 */
 const LABELLED_DELTA_COUNT = 2;
 
-/** 元→編集後で負担（分）が動いた軸（大きい順）。減った軸は負、増えた軸は正。片側にしか無い軸は、無い側を0と数える。 */
+/** 元→編集後で走りにくさ（分）が動いた軸（大きい順）。減った軸は負、増えた軸は正。片側にしか無い軸は、無い側を0と数える。 */
 function penaltyDeltas(base: RouteCandidate, after: RouteCandidate, catalog: PenaltyCatalog): AxisDelta[] {
   const seconds = (route: RouteCandidate, axisId: string) => route.penalty.axis_seconds[axisId] ?? 0;
   const axisIds = new Set([...Object.keys(base.penalty.axis_seconds), ...Object.keys(after.penalty.axis_seconds)]);
@@ -114,7 +114,7 @@ export default function RouteSplicePanel({
           <GuideText
             text={
               "地図の破線は、いまの道から乗り換えられる道です。\n・破線をタップすると乗り換え、先に分かれ道があれば次の破線が出ます。" +
-              "\n・太い線は、いま作っているルートです。\n・負担の棒は真ん中が0で、左[−]ほど負担が減り、右[＋]ほど増えます。"
+              "\n・太い線は、いま作っているルートです。\n・走りにくさの棒は真ん中が0で、左[−]ほど走りにくさが減り、右[＋]ほど増えます。"
             }
           />
         </InfoPopover>
@@ -149,7 +149,7 @@ export default function RouteSplicePanel({
               disabled={appliedCount === 0}
               aria-busy={previewing}
               aria-label="差分を見る"
-              usage="いまの乗り換えで、距離・所要時間・負担が元の候補からどう変わるかを出します。"
+              usage="いまの乗り換えで、距離・所要時間・走りにくさが元の候補からどう変わるかを出します。"
             >
               <RouteDiffIcon size={18} />
             </Button>
@@ -207,7 +207,7 @@ export default function RouteSplicePanel({
               ))
             ) : preview ? (
               // 評価済みで棒が空なのは、どの軸の差も棒に出す下限に届かないとき。押す案内を残すと押しても変わらない。
-              "どの種類の負担も、元のルートとほぼ変わりません"
+              "どの種類の走りにくさも、元のルートとほぼ変わりません"
             ) : appliedCount > 0 ? (
               <GuideText text="「差分を見る」を押すと、乗り換えた結果が出ます" />
             ) : hasAlternatives ? (

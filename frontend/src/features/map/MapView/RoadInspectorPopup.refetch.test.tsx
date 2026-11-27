@@ -1,8 +1,8 @@
 /**
- * `RoadInspectorPopup.tsx`——開いている間に利用者の値・走行の条件が変わったとき、押した道の負担を取り直すか、前の負担を
+ * `RoadInspectorPopup.tsx`——開いている間に利用者の値・走行の条件が変わったとき、押した道の走りにくさを取り直すか、前の走りにくさを
  * 出し続けるか。
  *
- * ここで見ないもの: 負担と事実の中身の出し方 → `RoadInspectorPopup.test.tsx`
+ * ここで見ないもの: 走りにくさと事実の中身の出し方 → `RoadInspectorPopup.test.tsx`
  */
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
@@ -19,8 +19,8 @@ const props = {
 /** 既定の応答（道の向きの合計が12秒）が出たときの合計の文。 */
 const SHOWN = "+12秒";
 
-describe("負担の利用者の値", () => {
-  it("つまみや倍率を変えたら、前の値で取った負担を見せずに取り直す", async () => {
+describe("走りにくさの利用者の値", () => {
+  it("つまみや倍率を変えたら、前の値で取った走りにくさを見せずに取り直す", async () => {
     serveInspector(inspectorResult());
     const { rerender } = render(<RoadInspectorPopup {...props} />);
     await screen.findByText(SHOWN);
@@ -32,10 +32,10 @@ describe("負担の利用者の値", () => {
   });
 });
 
-describe("負担の走行の条件", () => {
+describe("走りにくさの走行の条件", () => {
   const CONDITIONS = RIDE.conditions;
 
-  it("開いている間に出発時刻のコマが進んでも、開いたときの条件で取った負担を出し続ける", async () => {
+  it("開いている間に出発時刻のコマが進んでも、開いたときの条件で取った走りにくさを出し続ける", async () => {
     serveInspector(inspectorResult());
     const { rerender } = render(<RoadInspectorPopup {...props} conditions={CONDITIONS} />);
     await screen.findByText(SHOWN);
@@ -45,7 +45,7 @@ describe("負担の走行の条件", () => {
     expect(screen.getByText(SHOWN)).toBeInTheDocument();
   });
 
-  it("同じ道を同じ条件・利用者の値で開き直したときは、取り直さずに前の負担を出す", async () => {
+  it("同じ道を同じ条件・利用者の値で開き直したときは、取り直さずに前の走りにくさを出す", async () => {
     serveInspector(inspectorResult());
     const first = render(<RoadInspectorPopup {...props} conditions={CONDITIONS} />);
     await screen.findByText(SHOWN);

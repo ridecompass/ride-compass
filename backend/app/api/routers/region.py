@@ -139,7 +139,7 @@ async def region_lens(
     async with region_tile_semaphore:
         body = await service.way_materials(lens_id, z, x, y, frame, speed_kmh, preference)
     if body is None:
-        raise HTTPException(status_code=404, detail="この負担の種類の値はありません。")
+        raise HTTPException(status_code=404, detail="この走りにくさの種類の値はありません。")
     return Response(body, media_type="application/json")
 
 

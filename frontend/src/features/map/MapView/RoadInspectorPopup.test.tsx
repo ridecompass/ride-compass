@@ -1,10 +1,10 @@
 /**
- * `RoadInspectorPopup.tsx`——開いたら道の負担を取りに行き、地図が塗る向きの区間の合計・負担のある軸ごとの秒と、切り替えで元の事実を出すこと。
+ * `RoadInspectorPopup.tsx`——開いたら道の走りにくさを取りに行き、地図が塗る向きの区間の合計・走りにくさのある軸ごとの秒と、切り替えで元の事実を出すこと。
  *
  * ここで見ないもの:
- * - 負担を利用者のいまの値で取りに行くこと → 受けた値をそのまま取得の口へ渡す1行の委譲（testing.md「そのテストは
+ * - 走りにくさを利用者のいまの値で取りに行くこと → 受けた値をそのまま取得の口へ渡す1行の委譲（testing.md「そのテストは
  *   要るか」の1問目）。値を要求の項目へ載せることは`features/map/regionApi.test.ts`が見る
- * - 利用者の値・走行の条件が変わったときに負担を取り直すか → `RoadInspectorPopup.refetch.test.tsx`
+ * - 利用者の値・走行の条件が変わったときに走りにくさを取り直すか → `RoadInspectorPopup.refetch.test.tsx`
  */
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -53,7 +53,7 @@ describe("RoadInspectorPopup", () => {
     expect(screen.getByRole("group", { name: "道の小窓の上の帯" }).textContent).toBe(header);
   });
 
-  it("開いたら負担を取りに行き、地図が塗る向きの区間の合計と負担のある軸ごとの秒を出し、「換算前」に切り替えると軸ごとの元の事実を出す", async () => {
+  it("開いたら走りにくさを取りに行き、地図が塗る向きの区間の合計と走りにくさのある軸ごとの秒を出し、「換算前」に切り替えると軸ごとの元の事実を出す", async () => {
     const user = userEvent.setup();
     const direction = (climb: number) =>
       lensDirection(7, {
@@ -79,16 +79,18 @@ describe("RoadInspectorPopup", () => {
       ),
     );
     renderPopup();
-    expect(screen.getByText("負担を読み込んでいます")).toBeInTheDocument();
-    // 軸は絵で出し、名前は読み上げに残す。負担の無い軸は出さない。軸の名前は一覧の応答から引くので、負担と別に届くのを待つ。
+    expect(screen.getByText("走りにくさを読み込んでいます")).toBeInTheDocument();
+    // 軸は絵で出し、名前は読み上げに残す。走りにくさの無い軸は出さない。軸の名前は一覧の応答から引くので、走りにくさと別に届くのを待つ。
     await waitFor(() =>
-      expect(screen.getByRole("group", { name: "負担の内訳" })).toHaveTextContent(
-        /^負担 \+7秒登坂\+4秒路面の抵抗\+2秒向かい風\+1秒$/,
+      expect(screen.getByRole("group", { name: "走りにくさの内訳" })).toHaveTextContent(
+        /^走りにくさ \+7秒登坂\+4秒路面の抵抗\+2秒向かい風\+1秒$/,
       ),
     );
     expect(screen.getByText("逆向き")).toBeInTheDocument();
     await user.click(screen.getByRole("radio", { name: "換算前" }));
-    expect(await screen.findByRole("group", { name: "負担の内訳" })).toHaveTextContent(/^登坂登り 0m路面の抵抗砂利$/);
+    expect(await screen.findByRole("group", { name: "走りにくさの内訳" })).toHaveTextContent(
+      /^登坂登り 0m路面の抵抗砂利$/,
+    );
   });
 
   it("属性は畳み、日本語の値だけを項目ごとに1度出し、英語の生の値と登録外のタグは「その他のタグ」にさらに畳む", async () => {
@@ -98,12 +100,12 @@ describe("RoadInspectorPopup", () => {
 
     const attributes = screen.getByText("この道の属性").closest("details")!;
     expect(screen.getByText(SURFACE.name)).not.toBeVisible();
-    // 畳みを開くと、負担を取る前からタイルの事実が読める。
+    // 畳みを開くと、走りにくさを取る前からタイルの事実が読める。
     await user.click(screen.getByText("この道の属性"));
     expect(screen.getByText(SURFACE.name)).toBeVisible();
 
     const others = (await screen.findByText("その他のタグ")).closest("details")!;
-    // 道路種別は負担と一緒に届き、対訳で出す。タイルとタグの両方が持つ路面は1度だけ。
+    // 道路種別は走りにくさと一緒に届き、対訳で出す。タイルとタグの両方が持つ路面は1度だけ。
     const facts = attributes.querySelector(":scope > dl")!;
     const labels = Array.from(facts.querySelectorAll("dt")).map((dt) => dt.textContent);
     expect(labels).toContain("道路種別");
@@ -115,7 +117,7 @@ describe("RoadInspectorPopup", () => {
   });
 });
 
-describe("負担を取れなかったとき", () => {
+describe("走りにくさを取れなかったとき", () => {
   it("取れなかったと出し、再試行で取り直す（開いたままで止まらない）", async () => {
     const user = userEvent.setup();
     serveCostAxisCatalog();
@@ -127,7 +129,7 @@ describe("負担を取れなかったとき", () => {
 
     await user.click(await screen.findByRole("button", { name: "再試行" }));
 
-    expect(await screen.findByRole("group", { name: "負担の内訳" })).toHaveTextContent("+12秒");
+    expect(await screen.findByRole("group", { name: "走りにくさの内訳" })).toHaveTextContent("+12秒");
   });
 
   it("出発時刻の風の予報が無ければ、今の風で求めずに取れなかったと出す（地図のレンズと同じ）", async () => {
@@ -141,7 +143,7 @@ describe("負担を取れなかったとき", () => {
       />,
     );
 
-    expect(await screen.findByText(/負担を取得できませんでした/)).toBeInTheDocument();
+    expect(await screen.findByText(/走りにくさを取得できませんでした/)).toBeInTheDocument();
     expect(sent).toEqual([]);
   });
 });

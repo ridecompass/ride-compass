@@ -68,7 +68,7 @@ describe("走行モード", () => {
     await user.click(screen.getByRole("button", { name: "走行モード" }));
     expect(screen.getByRole("group", { name: "走りの数字" })).toBeInTheDocument();
     expect(shownWhileIdle()).toEqual([null, null, null]);
-    const chart = within(rideProfile()!).getByRole("slider", { name: /^道のりに沿った負担/ });
+    const chart = within(rideProfile()!).getByRole("slider", { name: /^道のりに沿った走りにくさ/ });
     expect(selectedSectionOnMap()).toEqual([]);
     fireEvent.keyDown(chart, { key: "Home" });
     expect(selectedSectionOnMap()).toEqual(linesOn("route-segments"));

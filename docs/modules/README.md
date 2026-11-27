@@ -87,7 +87,7 @@
 
 | モジュール | 内容 |
 |---|---|
-| [ルート設定・結果パネル](frontend/route-settings-and-results.md) | 負担の倍率・候補一覧・負担の内訳 |
+| [ルート設定・結果パネル](frontend/route-settings-and-results.md) | 走りにくさの倍率・候補一覧・走りにくさの内訳 |
 | [地図: 軸・ルート色分け](frontend/map-axis-coloring.md) | 式の木と道ごとの材料で塗るレンズの描画 |
 | [地図: 動的気象レイヤー](frontend/dynamic-weather-layers.md) | 降水・キキクル等の地図表示 |
 | [地図: 静的レイヤー・道路表示](frontend/static-map-layers.md) | 路面・道路種別・自転車レーン・POI・事故の地図表示 |
