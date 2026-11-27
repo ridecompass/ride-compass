@@ -12,7 +12,7 @@ import io
 import pytest
 from PIL import Image, ImageColor
 
-from app.domain.map_display import AREA_OPACITY
+from app.domain.map_display import HAZARD_OPACITY
 from app.domain.weather_display import (
     ATTENTION_LEVEL_OPACITY,
     PRECIPITATION_COLOR_STOPS,
@@ -78,7 +78,7 @@ def test_attention_levels_are_thinned_and_painted_levels_are_kept(path, tile, le
         if level.painted:
             assert pixel[3] == 255
         else:
-            assert pixel[3] / 255 * AREA_OPACITY == pytest.approx(ATTENTION_LEVEL_OPACITY, abs=0.005)
+            assert pixel[3] / 255 * HAZARD_OPACITY == pytest.approx(ATTENTION_LEVEL_OPACITY, abs=0.005)
 
 
 def test_attention_pixels_already_fainter_than_the_target_stay_faint():
