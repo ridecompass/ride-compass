@@ -1,7 +1,7 @@
 """道1本の性質（通行方向・上下線分離）を`way_directions`へ書く。区間粒度の対応物を持たない値。
 
-**通行方向はここでタグから決める**。引き当ての表は`domain/traffic.py`が持ち、
-このバッチはそれをSQLへ渡すだけで、タグを読むために行を取り出さない。
+**通行方向はここでタグから決める**。引き当ての表と式は`domain/traffic.py`が持ち、
+このバッチはそれを差し込んだSQL文を組むだけで、タグを読むために行を取り出さない。
 
 **全部の道（`road_ways`）が行を持つ**——探索は区間の道の通行方向を読んで逆向きの枝を作るかを決め、行の無い道は
 通行方向を持たない。
@@ -15,9 +15,20 @@ import asyncpg
 from app.batch.common import affected_rows
 from app.domain import divided_carriageway as dc
 from app.infrastructure.source_models import WAYS_SOURCE_SQL
-from app.domain.traffic import direction_sql
+from app.domain.traffic import DIRECTION_RULES, direction_or_default_sql, first_rule_sql, rule_match_sql
 
 logger = logging.getLogger("ridecompass.derive_way_directions")
+
+
+def direction_sql(source: str) -> str:
+    """`source`（`id`・`tags`を返す関係）の各行へ通行方向を付ける。どれにも当たらない行も返る——道は必ずどちらかに通れる。"""
+    return f"""
+WITH src AS ({source}),
+matched AS ({rule_match_sql("src", DIRECTION_RULES)}),
+best AS ({first_rule_sql("matched")})
+SELECT s.id, {direction_or_default_sql("b.result")} AS direction
+FROM src s LEFT JOIN best b ON b.id = s.id
+"""
 
 
 #: 引き当てる側が期待する形（`id`・`tags`）へ生データを写す。

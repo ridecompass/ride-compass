@@ -431,6 +431,15 @@ def candidate_order(candidate: EvaluatedRoute, *, loop: bool) -> float:
     return float(_per_km_key(seconds_per_km(candidate.cost_seconds, candidate.distance_km * 1000.0)))
 
 
+def quickest_route(drafts: list[EvaluatedRoute]) -> EvaluatedRoute | None:
+    """最速の印を付ける1本。見積もりの所要時間がいちばん短い候補（同着は並びの先の方）。所要時間のある候補が2本に満たない
+    なら、比べる相手が無いのでNone。"""
+    timed = [(draft, draft.estimated_duration_seconds) for draft in drafts if draft.estimated_duration_seconds is not None]
+    if len(timed) < 2:
+        return None
+    return min(timed, key=lambda pair: pair[1])[0]
+
+
 def keep_routes_with_baseline(
     candidates: list[EvaluatedRoute], baseline: EvaluatedRoute | None, max_routes: int, *, loop: bool
 ) -> list[EvaluatedRoute]:

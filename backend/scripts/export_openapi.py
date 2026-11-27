@@ -121,6 +121,7 @@ from app.domain.weather_display import (
     PRECIPITATION_COLOR_STOPS,
     WIND_CALM_BELOW_MS,
     WIND_SPEED_COLOR_STOPS,
+    tile_pixel_colors,
 )
 from app.domain.display_palette import (
     BASEMAP_DARK_ICON_OPACITY_SCALE,
@@ -142,7 +143,7 @@ from app.domain.landcover import (
     LANDCOVER_TILE_MIN_ZOOM,
 )
 from app.infrastructure.cache_identity import LANDCOVER_TILE_VERSION
-from app.domain.jma_tile_specs import JMA_ELEMENTS, JMA_TILE_MIN_ZOOM, effective_max_zoom
+from app.domain.jma_tile_specs import JMA_ELEMENTS, JMA_RASTER_TILE_SIZE_PX, JMA_TILE_MIN_ZOOM, effective_max_zoom
 from app.domain.material_catalog import MATERIAL_CATALOG, display_axis_missing_semantics
 from app.domain.material_coverage_spec import MISSING_SEMANTICS_DISPLAY, POPULATION_LABELS
 from app.domain.primary_attributes import PRIMARY_ATTRIBUTES
@@ -295,6 +296,8 @@ def _weather_element_entry(element: WeatherElement) -> dict:
             "minZoom": JMA_TILE_MIN_ZOOM,
             "maxZoom": effective_max_zoom(tile),
             "vectorLayer": tile.vector_layer,
+            # ラスタのタイルの一辺（画素）。ベクタのタイルはNone。
+            "rasterSizePx": JMA_RASTER_TILE_SIZE_PX if element.kind == "rasterTile" else None,
         },
     }
 
@@ -514,7 +517,14 @@ def main() -> None:
             "wind_speed": [s._asdict() for s in WIND_SPEED_COLOR_STOPS],
             "linear_rainband_outline_color": LINEAR_RAINBAND_OUTLINE_COLOR,
             "linear_rainband_outline_casing_color": LINEAR_RAINBAND_OUTLINE_CASING_COLOR,
-            **{scale: [level._asdict() for level in levels] for scale, levels in LEVELS_OF_SCALE.items()},
+            # 段ごとの`pixel_color`は、配信元のタイルの画素をその段と見分ける色の[R, G, B]（`domain/weather_display.py: tile_pixel_colors`。描かない段はNone）。
+            **{
+                scale: [
+                    {**level._asdict(), "pixel_color": color}
+                    for level, color in zip(levels, tile_pixel_colors(levels), strict=True)
+                ]
+                for scale, levels in LEVELS_OF_SCALE.items()
+            },
             "wind_calm_below_ms": WIND_CALM_BELOW_MS,
             "precipitation_none_below_mm": PRECIPITATION_MIN_MM,
         },

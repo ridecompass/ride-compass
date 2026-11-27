@@ -333,7 +333,7 @@ class RouteCandidate(EvaluatedRoute):
     # 終点が出発地なら`loop`、ほかの所なら`destination`、区間を乗り換えて作った経路は`spliced`。
     kind: RouteKind
     # 返す候補のうち見積もりの所要時間がいちばん短い1本。所要時間のある候補が2本以上あるときだけ1本に付く
-    # （`services/route_generator.py: _quickest`）。
+    # （`domain/route_search.py: quickest_route`）。
     is_fastest: bool
     # 探索が区間を切り出した道路網の世代（`RoadNetwork.revision`）。`edge_ids`がどの版の道路網の区間かを、後から照らすときに
     # 分ける。候補を組み立てる途中はNoneで、候補を返す生成の入口が付ける。

@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo } from "react";
 import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/Popover/Popover";
 import { GuideText } from "@/components/ui/GuideText/GuideText";
 import { TAP_SLOP_PX } from "@/lib/tapSlop";
-import { iconTargetOf, type UsageTarget } from "./usageTarget";
+import { iconTargetOf, useLiveTarget } from "./usageTarget";
 
 /** 押し続けて（マウスは重ねて）からツールチップを出すまでの時間。 */
 export const LONG_PRESS_MS = 500;
@@ -18,7 +18,8 @@ const PRESS_EVENTS = ["pointerup", "mousedown", "mouseup", "click", "contextmenu
  * マウスは重ねて出し、外す・押すと消す。文字を出す部品は、名前が見えているので出さない。
  */
 export default function UsageTooltip() {
-  const [target, setTarget] = useState<UsageTarget | null>(null);
+  // 文字が出てアイコンだけでなくなったら閉じる。
+  const [target, setTarget] = useLiveTarget(iconTargetOf);
 
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -100,7 +101,7 @@ export default function UsageTooltip() {
       listening.abort();
       clearTimeout(timer);
     };
-  }, []);
+  }, [setTarget]);
 
   const anchor = useMemo(() => ({ current: target?.element ?? null }), [target]);
 

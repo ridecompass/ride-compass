@@ -164,10 +164,14 @@ def get_landcover_tile_reader() -> LandcoverTileReader:
     return get_landcover_tile
 
 
+def _region_service(session: AsyncSession) -> RegionService:
+    return RegionService(repository=RoadGraphRepository(session))
+
+
 @asynccontextmanager
 async def _open_region_service(tile_sessions: async_sessionmaker[AsyncSession]) -> AsyncIterator[RegionService]:
     async with tile_sessions() as session:
-        yield RegionService(repository=RoadGraphRepository(session))
+        yield _region_service(session)
 
 
 async def get_region_service(tile_sessions: TileSessions):
@@ -178,7 +182,7 @@ async def get_region_service(tile_sessions: TileSessions):
 @asynccontextmanager
 async def _open_place_search_reads(tile_sessions: async_sessionmaker[AsyncSession]) -> AsyncIterator[PlaceSearchReads]:
     async with tile_sessions() as session:
-        yield PlaceSearchReads(RegionService(repository=RoadGraphRepository(session)), AddressSearchQuery(session),
+        yield PlaceSearchReads(_region_service(session), AddressSearchQuery(session),
                                FacilitySearchQuery(session), PlaceAreaQuery(session), PlaceAddressQuery(session))
 
 
@@ -203,13 +207,10 @@ def get_lens_service(weather_service: WeatherService = Depends(get_weather_servi
     return LensService(weather_service, _lens_responses, time_frames)
 
 
-async def get_road_inspector_service(tile_sessions: TileSessions,
-                                     weather_service: WeatherService = Depends(get_weather_service),
-                                     time_frames: TimeFrameService = Depends(get_time_frame_service)):
+async def get_road_inspector_service(tile_sessions: TileSessions, lens_service: LensService = Depends(get_lens_service)):
     """道の窓。道の一次属性をDBから引く。"""
-    async with tile_sessions() as session:
-        yield RoadInspectorService(RegionService(repository=RoadGraphRepository(session)),
-                                   LensService(weather_service, _lens_responses, time_frames))
+    async with _open_region_service(tile_sessions) as region_service:
+        yield RoadInspectorService(region_service, lens_service)
 
 
 def get_jma_tile_client():
