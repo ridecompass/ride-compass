@@ -48,14 +48,15 @@ def test_the_catalog_lists_the_effort_axes_in_the_code_order_then_the_burden_axe
 
 @pytest.mark.parametrize(("lens_id", "material_conditions", "reads_bearing"), [
     ("total", ["speed_kmh", "at"], True),
-    ("ascent", ["speed_kmh", "at"], True),
+    ("ascent", ["speed_kmh"], True),
+    ("headwind", ["speed_kmh", "at"], True),
     ("stopping", ["speed_kmh"], False),
     ("steep", [], True),
     ("vibration", [], False),
 ])
 def test_each_lens_carries_only_the_ride_conditions_that_change_its_value(cost_axes, lens_id, material_conditions,
                                                                            reads_bearing):
-    """止まる回数の慣性は速度だけで変わり、道のストレスの軸は区分の材料ならどの走る条件でも変わらず数値の材料なら向きだけで変わり、ほかの体力の軸（登坂が代表）と総合は向き・速度・時刻で変わる。材料の
+    """止まる回数の慣性は速度だけで変わり、道のストレスの軸は区分の材料ならどの走る条件でも変わらず数値の材料なら向きだけで変わり、坂と路面の体力の軸（登坂が代表）は向き・速度で変わり（同じ坂は時刻で色が変わらない）、向かい風と総合は向き・速度・時刻で変わる。材料の
     要求へ載せる条件（時刻・速度）と、塗る向きを走行方位で選ぶか（式が走行方位を読むか）を、レンズごとに配る。"""
     body = TestClient(app).get("/api/cost-axes").json()
     lenses = {body["total_lens"]["lens_id"]: body["total_lens"], **{axis["axis_id"]: axis for axis in body["axes"]}}

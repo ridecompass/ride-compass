@@ -5,7 +5,9 @@
 区間ごとの値を足して1kmあたりにする。区間ごとの値は探索と同じ部品（`domain/leg_costs.py: travel_inputs`・`burden_weights`、
 `domain/ledger_costs.py: LedgerCosts.penalty_by_axis`）で求める——レンズ・探索・ルートは同じ量を同じ所から読む。
 
-レンズはどれも1kmあたりの代償の秒で塗る: 軸ごとのレンズはその軸の分だけ、総合（`TOTAL_LENS_ID`）はその和。避け方の倍率は
+レンズはどれも1kmあたりの代償の秒で塗る: 軸ごとのレンズはその軸の分だけ、総合（`TOTAL_LENS_ID`）は予報の風と気温で解いた軸の和。
+値が時刻で変わらない軸（`lens_conditions`に時刻が無い）は無風・標準の気温で解くので、風の強い時刻には軸のレンズの和が総合と
+ずれる（同じ坂は時刻を変えても同じ色で、総合はルートと同じ空気で塗る）。避け方の倍率は
 道の区分の指定で、道の値ではないので入れない。レンズは通る道筋に依らない道の値なので、来た道と曲がる向きで決まる曲がる所の
 漕ぎ出しは入れない（ルートの内訳では、その費目を持つ軸の秒に入る）。
 """
@@ -157,6 +159,8 @@ class LensFactInputs:
     distance_m: np.ndarray
     #: 数える軸id→行ごとの代償の秒（レンズの値と同じ秒）。
     penalties: Mapping[str, np.ndarray]
+    #: 行ごとの総合の秒（総合のレンズと同じ秒）。
+    total: np.ndarray
     #: 行の向きの登り（m、NaNは標高が無い）。
     elevation_gain_m: np.ndarray
     #: 止まってから漕ぎ出す回数（探索・停止の軸と同じ量。`domain/leg_costs.py: TravelInputs.stops`）。
@@ -178,11 +182,18 @@ def lens_table(features: LensFeatures, materials: Mapping[str, MaterialColumn], 
     ledger = LedgerCosts.for_model(axes, parameters, travel.model, burden_weights(axes, parameters, materials, burden_fills))
     calm = (np.zeros(len(distance_m)), np.zeros(len(distance_m)), np.full(len(distance_m), STANDARD_TEMPERATURE_C))
     _, penalties = ledger.row_seconds(travel.model, *(calm if weather is None else weather))
+    total = lens_values_with_total(penalties, np.zeros(len(distance_m)))[TOTAL_LENS_ID]
+    timeless = {axis_id for axis_id, conditions in lens_conditions(axes).items() if "at" not in conditions}
+    if weather is not None:
+        _, calm_penalties = ledger.row_seconds(travel.model, *calm)
+        penalties = {axis_id: calm_penalties[axis_id] if axis_id in timeless else seconds
+                     for axis_id, seconds in penalties.items()}
     km = _summed_by_direction(features, travel.model.distance_m) / 1000.0
     with np.errstate(invalid="ignore", divide="ignore"):
         per_km = {axis_id: _summed_by_direction(features, seconds) / km for axis_id, seconds in penalties.items()}
-    return (LensTable(features=features, values=lens_values_with_total(per_km, np.zeros_like(km))),
-            LensFactInputs(settings, materials, travel.model.distance_m, penalties, elevation_gain_m, travel.stops,
+        total_per_km = _summed_by_direction(features, total) / km
+    return (LensTable(features=features, values={TOTAL_LENS_ID: total_per_km, **per_km}),
+            LensFactInputs(settings, materials, travel.model.distance_m, penalties, total, elevation_gain_m, travel.stops,
                            None if weather is None else weather[0]))
 
 
@@ -213,7 +224,7 @@ class LensDirection(StrictModel):
     """押したフィーチャーを1つの向きに辿ったときの代償の秒（地図のレンズと同じ秒を、区間の長さぶん足したもの）と、その元の事実。"""
 
     total_seconds: float
-    #: 数える軸ごとの秒（体力の軸をコードの表の順、続けて道のストレスの軸。和が総合）。
+    #: 数える軸ごとの秒（体力の軸をコードの表の順、続けて道のストレスの軸。予報が無風・標準の気温なら和が総合）。
     axes: list[LensAxisSeconds]
     #: 軸id→その軸の事実（`domain/leg_costs.py: axis_facts`。ルートの事実と同じ作り方）。
     facts: dict[str, AxisFact]
@@ -260,7 +271,7 @@ def lens_inspection(features: LensFeatures, index: int, painted: Literal["along"
         seconds = {axis_id: per_row[rows] for axis_id, per_row in facts.penalties.items()}
         sums = {axis_id: float(values.sum()) for axis_id, values in seconds.items()}
         return LensDirection(
-            total_seconds=lens_values_with_total(sums, 0.0)[TOTAL_LENS_ID],
+            total_seconds=float(facts.total[rows].sum()),
             axes=[LensAxisSeconds(axis_id=axis_id, seconds=value) for axis_id, value in sums.items()],
             facts=axis_facts(facts.settings, facts.materials, rows, facts.distance_m[rows], seconds,
                              elevation_gain(facts.elevation_gain_m[rows]),

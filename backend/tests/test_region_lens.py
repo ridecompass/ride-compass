@@ -178,26 +178,28 @@ async def test_the_route_and_the_map_lens_count_the_same_seconds_on_the_same_roa
         assert candidate.estimated_duration_seconds + penalty.total_seconds == pytest.approx(candidate.cost_seconds, abs=0.5)
 
 
-async def test_the_route_and_the_map_lens_climb_in_the_same_air_of_the_forecast(
+async def test_the_map_paints_a_climb_alike_at_any_hour_and_the_total_in_the_air_of_the_route(
         client, cost_axes, road_network_root, override_dependency):
-    """ルートと地図のレンズは、同じ区間・同じ時刻の予報の気温（空気の濃さ）で解く。暑い日のルートが坂の道を登る区間の登坂の秒は、
-    暑い日のレンズの値に道の長さを掛けたものと同じで、標準の気温の日のレンズとは違う（違わなければ、気温を読まずに解いている）。"""
+    """地図の登坂は、同じ坂なら予報の空気（暑い日の気温）に依らず同じ値で塗る（時刻で坂の色が変わらない）。総合はルートと同じ区間・
+    同じ時刻の予報の空気で解き、暑い日のルートが坂の道を登る区間の秒の和は、暑い日の総合のレンズの値に道の長さを掛けたものと同じ
+    （違えば、ルートの線と周りの道が総合で違う色になる）。"""
     network = road_network(WAYS, COORDINATES, gradient_of={CLIMBING_WAY: 6.0})
     candidates = (await generator_for(road_network_root, network, HOT).generate_via_waypoints(
         at(NODE_OF[0, 1]), [], destination=at(CENTER), max_routes=3, start_time=datetime(2026, 5, 1, 9, tzinfo=JST))).candidates
-    standard = (await _lens(client, "ascent"))[str(CLIMBING_WAY)][LENS_ALONG_LEAF]
+    standard = {lens_id: (await _lens(client, lens_id))[str(CLIMBING_WAY)][LENS_ALONG_LEAF] for lens_id in ("ascent", "total")}
     override_dependency(dependencies.get_lens_service, lambda: _lens_service(Weather(HOT)))
-    hot = (await _lens(client, "ascent"))[str(CLIMBING_WAY)][LENS_ALONG_LEAF]
+    hot = {lens_id: (await _lens(client, lens_id))[str(CLIMBING_WAY)][LENS_ALONG_LEAF] for lens_id in ("ascent", "total")}
     (row,) = np.flatnonzero((network.edge_way_id == CLIMBING_WAY) & network.edge_forward)
     km = float(network.distance_m[row]) / 1000.0
-    climbs = [segment.penalty.axis_seconds["ascent"] for candidate in candidates
+    climbs = [sum(segment.penalty.axis_seconds.values()) for candidate in candidates
               for segment, (way, _, forward) in zip(candidate.segments, edges_of(candidate), strict=True)
               if way == CLIMBING_WAY and forward]
 
+    assert hot["ascent"] == pytest.approx(standard["ascent"])
     assert climbs
-    # ルートの区間の秒は0.1秒に丸めて返る。
-    assert climbs == pytest.approx([hot * km] * len(climbs), abs=0.05)
-    assert abs(hot - standard) * km > 0.5
+    # ルートの区間の秒は軸ごとに0.1秒に丸めて返る。
+    assert climbs == pytest.approx([hot["total"] * km] * len(climbs), abs=0.5)
+    assert abs(hot["total"] - standard["total"]) * km > 0.5
 
 
 async def test_the_route_and_the_map_lens_lower_the_forecast_wind_to_the_rider_by_the_same_factor(cost_axes, road_network_root):
