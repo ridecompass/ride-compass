@@ -202,8 +202,8 @@ async def test_the_route_and_the_map_lens_climb_in_the_same_air_of_the_forecast(
 
 async def test_the_route_and_the_map_lens_lower_the_forecast_wind_to_the_rider_by_the_same_factor(cost_axes, road_network_root):
     """ルートと地図のレンズは、同じ区間で同じ倍率で予報の10mの風を乗り手の高さへ下ろす。森の中の道（周りの道は水辺で、格子の側の
-    粗度はそれらの平均）を北風に向かって走る区間の向かい風の秒は、地図のレンズの値に道の長さを掛けたものと同じで、ルートの事実と
-    道の窓の向かい風も同じ値（違えば、ルートの線と周りの道が同じ道で違う色と違う風になる）。"""
+    粗度はそれらの平均）を北風に向かって走る区間の向かい風の秒は、地図のレンズの値に道の長さを掛けたものと同じ（違えば、ルートの線と
+    周りの道が同じ道で違う色になる）。"""
     def cover(field: str) -> dict[str, float]:
         return {cls.percent_field: 100.0 if cls.percent_field == field else 0.0 for cls in LANDCOVER_CLASSES}
 
@@ -216,17 +216,14 @@ async def test_the_route_and_the_map_lens_lower_the_forecast_wind_to_the_rider_b
     service = LensService(Weather(NORTH_WIND), new_response_cache(), time_frames)
     frame = await _lens_frame_at(time_frames, departure)
     lens = await _materials(service, "headwind", frame)
-    inspection = await service.inspect(str(CLIMBING_WAY), Z, X, Y, 0.0, frame, ASSUMED_SPEED_KMH, CostPreference())
     (row,) = np.flatnonzero((network.edge_way_id == CLIMBING_WAY) & network.edge_forward)
     km = float(network.distance_m[row]) / 1000.0
     north = [candidate for candidate in candidates if ways_of(candidate) == [CLIMBING_WAY]]
 
-    assert lens is not None and inspection is not None and inspection.along is not None and north
+    assert lens is not None and north
     (route,) = north
     assert route.segments[0].penalty.axis_seconds["headwind"] == pytest.approx(
         lens.materials[str(CLIMBING_WAY)][LENS_ALONG_LEAF] * km, abs=0.05)
-    assert inspection.along.facts["headwind"] == route.facts.axes["headwind"]
-    assert 0 < route.facts.axes["headwind"].value < 6.0 * 0.5
 
 
 async def test_the_lens_paints_with_the_users_strength_and_multipliers_like_the_route(client, cost_axes, road_network_root):

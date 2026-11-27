@@ -161,8 +161,6 @@ class LensFactInputs:
     elevation_gain_m: np.ndarray
     #: 止まってから漕ぎ出す回数（探索・停止の軸と同じ量。`domain/leg_costs.py: TravelInputs.stops`）。
     stops: np.ndarray
-    #: 向かい風の成分。フィーチャーが無く風を求めなかったときはNone。
-    headwind_ms: np.ndarray | None
 
 
 def lens_table(features: LensFeatures, materials: Mapping[str, MaterialColumn], distance_m: np.ndarray,
@@ -182,8 +180,7 @@ def lens_table(features: LensFeatures, materials: Mapping[str, MaterialColumn], 
     with np.errstate(invalid="ignore", divide="ignore"):
         per_km = {axis_id: _summed_by_direction(features, seconds) / km for axis_id, seconds in penalties.items()}
     return (LensTable(features=features, values=lens_values_with_total(per_km, np.zeros_like(km))),
-            LensFactInputs(settings, materials, travel.model.distance_m, penalties, elevation_gain_m, travel.stops,
-                           None if weather is None else weather[0]))
+            LensFactInputs(settings, materials, travel.model.distance_m, penalties, elevation_gain_m, travel.stops))
 
 
 def _summed_by_direction(features: LensFeatures, per_row: np.ndarray) -> np.ndarray:
@@ -263,8 +260,7 @@ def lens_inspection(features: LensFeatures, index: int, painted: Literal["along"
             total_seconds=lens_values_with_total(sums, 0.0)[TOTAL_LENS_ID],
             axes=[LensAxisSeconds(axis_id=axis_id, seconds=value) for axis_id, value in sums.items()],
             facts=axis_facts(facts.settings, facts.materials, rows, facts.distance_m[rows], seconds,
-                             elevation_gain(facts.elevation_gain_m[rows]),
-                             None if facts.headwind_ms is None else facts.headwind_ms[rows], float(facts.stops[rows].sum())),
+                             elevation_gain(facts.elevation_gain_m[rows]), float(facts.stops[rows].sum())),
         )
 
     return LensInspection(painted=painted, along=direction(ALONG), against=direction(AGAINST))
