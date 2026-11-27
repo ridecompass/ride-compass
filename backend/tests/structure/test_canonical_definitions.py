@@ -52,9 +52,10 @@ def test_the_badge_vocabulary_is_not_redefined_elsewhere():
 
 def test_loggers_use_the_documented_prefix():
     """`ridecompass.`以外が混ざると、接頭辞単位のレベル制御を入れたときにそちらだけ漏れる
-    （規約は`.claude/rules/logging.md`）。許可した名前が実態から消えたときも落とす。
+    （規約は`.claude/rules/logging.md`）。引数が文字列の綴りでない名前（`__name__`等）も、接頭辞の外として落とす。
+    引数の無いもの（ルートのロガー）は名前を持たないので見ない。許可した名前が実態から消えたときも落とす。
     """
-    pattern = re.compile(r'getLogger\("(?!ridecompass\.)([^"]+)"\)')
+    pattern = re.compile(r'getLogger\((?!"ridecompass\.)([^)]+)\)')
     named = {name for _, src in _sources() for name in pattern.findall(src)}
 
-    assert named == EXTERNAL_LIBRARY_LOGGERS
+    assert named == {f'"{name}"' for name in EXTERNAL_LIBRARY_LOGGERS}

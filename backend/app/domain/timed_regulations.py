@@ -94,12 +94,12 @@ class TimedRegulations:
         network = self._network
         bicycle, excepted = active_kinds(
             self._network_rows, network.edge_regulation_start, network.edge_regulation_count, network.regulation_index,
-            network.regulation_slot_start, network.regulation_slot_count, network.regulation_slot_values, active,
+            network.regulation_slot_count, network.regulation_slot_values, active,
             slotless_active=True)
         n = len(self.rows)
         timed_bicycle, timed_excepted = active_kinds(
             self._network_rows, network.edge_regulation_start, network.edge_regulation_count, network.regulation_index,
-            network.regulation_slot_start, network.regulation_slot_count, network.regulation_slot_values,
+            network.regulation_slot_count, network.regulation_slot_values,
             active & ~invariant_slots(network.regulation_slot_values), slotless_active=False)
         variants = []
         # 両方効く区間は、変種ごとに片方の値を採る。片方だけ効く区間は、どちらの変種も同じ値になる。
@@ -118,7 +118,7 @@ class TimedRegulations:
         full_deciding[self.rows] = np.where(take_other, other.deciding_row, strict.deciding_row)
         return RegulationJudgement(
             key=key, masks=replace(base, excluded=full_excluded, cost_scale=full_scale, deciding_row=full_deciding),
-            rows=self.rows, layers=layer_columns(self._definitions, {**facts, **classes}, n),
+            rows=self.rows, layers=layer_columns(self._definitions, {**facts, **classes}),
             timed=timed_bicycle | timed_excepted)
 
 
@@ -180,7 +180,7 @@ def pedestrian_road_codes_at(network: RoadNetwork, rows: np.ndarray, at: datetim
     active = active_slots(network.regulation_slot_values, at, at)
     bicycle, excepted = active_kinds(
         network_rows, network.edge_regulation_start, network.edge_regulation_count, network.regulation_index,
-        network.regulation_slot_start, network.regulation_slot_count, network.regulation_slot_values, active,
+        network.regulation_slot_count, network.regulation_slot_values, active,
         slotless_active=True)
     return pedestrian_road_codes(bicycle, excepted)
 
