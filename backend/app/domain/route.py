@@ -24,8 +24,6 @@ ELEVATION_M_DECIMALS = 1
 COST_SECONDS_DECIMALS = 1
 #: 応答の止まる回数の見込みの桁。
 STOP_COUNT_DECIMALS = 1
-#: 応答の風の速さ（m/s）の桁。
-WIND_MS_DECIMALS = 1
 #: 応答の道の向き（度）の桁。
 ROAD_BEARING_DEG_DECIMALS = 0
 

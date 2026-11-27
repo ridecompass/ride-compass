@@ -5,7 +5,6 @@
 `/health`が経過時間を作る所（`test_health.py`）。
 """
 
-import io
 import json
 import urllib.error
 import urllib.request
@@ -13,16 +12,7 @@ import urllib.request
 import pytest
 
 from scripts import prod_marker_check as check
-from tests.bound_fake import bound
-
-
-def _answering(body: bytes | Exception):
-    def urlopen(url, data=None, timeout=None, *, context=None):
-        if isinstance(body, Exception):
-            raise body
-        return io.BytesIO(body)
-
-    return bound(urllib.request.urlopen, urlopen)
+from tests.fake_urlopen import urlopen_answering
 
 
 def _health(**ages: float | None) -> bytes:
@@ -51,6 +41,6 @@ LIMIT = check.MAX_AGE_HOURS
     ],
 )
 def test_reports_a_stopped_host_job(monkeypatch, field, answer, stopped):
-    monkeypatch.setattr(urllib.request, "urlopen", _answering(answer))
+    monkeypatch.setattr(urllib.request, "urlopen", urlopen_answering(answer))
 
     assert (check.problem("https://backend.invalid", field) is not None) == stopped

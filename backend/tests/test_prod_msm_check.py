@@ -5,7 +5,6 @@
 `msm`の値を作る所（`healthy`の判定は`test_msm_client.py`）。
 """
 
-import io
 import json
 import urllib.error
 import urllib.request
@@ -13,16 +12,7 @@ import urllib.request
 import pytest
 
 from scripts import prod_msm_check as check
-from tests.bound_fake import bound
-
-
-def _answering(body: bytes | Exception):
-    def urlopen(url, data=None, timeout=None, *, context=None):
-        if isinstance(body, Exception):
-            raise body
-        return io.BytesIO(body)
-
-    return bound(urllib.request.urlopen, urlopen)
+from tests.fake_urlopen import urlopen_answering
 
 
 def _stats(healthy: bool | None) -> bytes:
@@ -49,6 +39,6 @@ def _stats(healthy: bool | None) -> bytes:
     ],
 )
 def test_reports_a_stale_forecast(monkeypatch, answer, stale):
-    monkeypatch.setattr(urllib.request, "urlopen", _answering(answer))
+    monkeypatch.setattr(urllib.request, "urlopen", urlopen_answering(answer))
 
     assert (check.problem("https://backend.invalid") is not None) == stale

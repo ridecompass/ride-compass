@@ -1,25 +1,25 @@
 "use client";
 
-import { type RefObject, useMemo, useRef, useState } from "react";
-import { createPortal } from "react-dom";
+import { type RefObject, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/Button/Button";
 import { LocateIcon, LoopRouteIcon } from "@/components/ui/icons/icons";
-import { ReorderHandleIcon, SavedPlaceIcon, SelectedSpotIcon } from "@/components/ui/icons/lucideIcons";
-import { Popover, PopoverAnchor } from "@/components/ui/Popover/Popover";
+import { ReorderHandleIcon } from "@/components/ui/icons/lucideIcons";
+import { Popover } from "@/components/ui/Popover/Popover";
 import { textVariants } from "@/components/ui/Text/Text";
 import PointMark from "@/components/PinMark/PointMark";
 import PointSearch from "@/features/route/PlaceSearch/PointSearch";
 import type { usePlaceLookup } from "@/features/route/PlaceSearch/usePlaceLookup";
-import { chooseResultOf, placeOnMapUsage, pointNames, pointTitle } from "@/features/route/pointNames";
+import { chooseResultOf, pointNames, pointTitle } from "@/features/route/pointNames";
 import { waypointsFull, type GenerationConditionsState } from "@/features/route/useGenerationConditions";
 import { usePlaceAreas } from "@/features/route/usePlaceAreas";
 import type { SavedPlacesState } from "@/features/route/useSavedPlaces";
-import { useVisualViewport } from "@/hooks/useVisualViewport";
 import { cn } from "@/lib/cn";
 import { pointCandidate } from "@/lib/placeCandidate";
 import type { Coordinates, PlaceCandidate, PointTarget } from "@/types/route";
 
+import PointRow from "./PointRow";
+import { PointPopoverAnchor, usePointPopoverFocus } from "./PointPopoverPlacement";
 import { useReorderDrag } from "./useReorderDrag";
 
 type PointListConditions = Pick<
@@ -98,8 +98,6 @@ export default function PointList({
   // 開いている小窓（住所・施設で探すか、保存した地点から選ぶか）。閉じていれば null。
   const [opened, setOpened] = useState<"search" | "saved" | null>(null);
   const searching = opened !== null;
-  // 小窓を開いた行の操作（☆）。閉じたらここへフォーカスを戻す（無ければ選んでいる行の名前へ）。
-  const openerRef = useRef<HTMLElement | null>(null);
   // 置き方の文。見える文（出発地が仮の地点のままの間の出発地の行と、足そうとしている経由地の行の名前の所）と使い方の文が読み、
   // 地図で置けない間は地図を言わない。
   const howToPlace = placing
@@ -140,6 +138,7 @@ export default function PointList({
   const movable = (index: number) => index >= first && rowNames[index] !== null && count - first >= 2;
 
   const listRef = useRef<HTMLOListElement>(null);
+  const focus = usePointPopoverFocus(listRef);
   const rowRects = () =>
     [...(listRef.current?.querySelectorAll("[data-point-row]") ?? [])].map((row) => row.getBoundingClientRect());
   const drag = useReorderDrag({ count, first, onReorder: (from, to) => reorderPoints(from, to, origin) });
@@ -148,18 +147,11 @@ export default function PointList({
     target.role === selected.role &&
     (target.role !== "waypoint" || (selected.role === "waypoint" && target.index === selected.index));
 
-  function open(target: PointTarget, kind: "search" | "saved" = "search", opener: HTMLElement | null = null) {
-    openerRef.current = opener;
-    conditions.selectPoint(target);
-    setOpened(kind);
-  }
-
   const full = waypointsFull(waypoints);
   const newWaypoint: PointTarget = { role: "waypoint", index: null };
   const adding = isSelected(newWaypoint) && !full;
   // スマホは開くと欄へ移ってキーボードを出すので、小窓ははじめからキーボードのすぐ上へ置く（行はキーボードに隠れる）。
   const aboveKeyboard = isMobile && opened === "search";
-  const visible = useVisualViewport(aboveKeyboard);
 
   const markOf = (target: PointTarget, size: number) => (
     <PointMark
@@ -182,81 +174,33 @@ export default function PointList({
     return pointCandidate(at, area ?? name, area);
   })();
 
-  // 選んだ行を、小窓の目印にする（スマホは、キーボードの上の線を目印にする）。行を目印の部品で包むと、選び直すたびに
-  // 行が作り直されて押したボタンのフォーカスが外れるので、位置だけを指す。
-  const selectedRow = useMemo(
-    () => ({
-      current: {
-        getBoundingClientRect: () =>
-          listRef.current?.querySelector('button[aria-pressed="true"]')?.closest("li")?.getBoundingClientRect() ??
-          new DOMRect(),
-      },
-    }),
-    [],
-  );
-
-  const rowClass = (target: PointTarget) =>
-    cn(
-      "relative flex min-h-8 items-center gap-0.5 rounded-sm border border-transparent",
-      isSelected(target) && "border-[var(--color-accent)] bg-[var(--color-accent-bg)]",
-    );
-  const nameButtonClass =
-    "flex min-h-8 min-w-0 flex-auto cursor-pointer items-center gap-1.5 bg-transparent py-0 pl-1.5 text-left";
-
-  // 行の右の、小窓の検索の欄を開かずに置く2つ。「地図で置く」は小窓のチップと同じく、地図で置ける間だけ出す。
-  const noSaved = savedPlaces.places.length === 0;
-  const placeOnMap = (target: PointTarget, title: string) =>
-    placing && (
-      <Button
-        variant="ghost"
-        size="icon"
-        className="flex-none"
-        aria-label={`${title}を地図で置く`}
-        onClick={() => {
-          conditions.selectPoint(target);
-          setOpened(null);
-        }}
-        usage={`${title}を選びます。${placeOnMapUsage(title)}`}
-      >
-        <SelectedSpotIcon size={18} />
-      </Button>
-    );
-  const chooseSaved = (target: PointTarget, title: string) => (
-    <Button
-      variant="ghost"
-      size="icon"
-      className="flex-none"
-      aria-label={`${title}を保存した地点から選ぶ`}
-      disabled={noSaved}
-      onClick={(event) => open(target, "saved", event.currentTarget)}
-      usage={
-        noSaved
-          ? "保存した地点がありません。地点を探す小窓の候補の☆で保存すると、ここから選べます。"
-          : `保存した地点の一覧を開きます。選ぶと${chooseResultOf(target)}。`
-      }
-    >
-      <SavedPlaceIcon size={18} />
-    </Button>
-  );
+  // 行の共通の操作（名前のボタン・地図で置く・☆）に渡すもの。
+  const rowOf = (target: PointTarget) => ({
+    target,
+    selected: isSelected(target),
+    mark: markOf(target, 22),
+    placing,
+    noSaved: savedPlaces.places.length === 0,
+    onOpen: (kind: "search" | "saved", opener: HTMLElement | null) => {
+      focus.remember(opener);
+      conditions.selectPoint(target);
+      setOpened(kind);
+    },
+    onPlaceOnMap: () => {
+      conditions.selectPoint(target);
+      setOpened(null);
+    },
+  });
 
   const newRow = adding && (
-    <li key="new" className={rowClass(newWaypoint)}>
-      <button
-        type="button"
-        className={nameButtonClass}
-        aria-label="新しい経由地 未設定"
-        aria-pressed
-        onClick={() => open(newWaypoint)}
-        data-usage={`足す経由地を、${howToPlace.sentence}`}
-      >
-        {markOf(newWaypoint, 22)}
-        <span className={cn(textVariants({ variant: "note" }), "w-12 flex-none")}>経由地</span>
-        <span className={cn(textVariants({ variant: "body" }), "min-w-0 flex-auto text-[var(--color-muted)]")}>
-          {`探す${howToPlace.short}`}
-        </span>
-      </button>
-      {placeOnMap(newWaypoint, "新しい経由地")}
-      {chooseSaved(newWaypoint, "新しい経由地")}
+    <PointRow
+      key="new"
+      {...rowOf(newWaypoint)}
+      title="新しい経由地"
+      name={null}
+      placeholder={`探す${howToPlace.short}`}
+      usage={`足す経由地を、${howToPlace.sentence}`}
+    >
       <Button
         variant="ghost"
         size="icon"
@@ -271,7 +215,7 @@ export default function PointList({
         ✕
       </Button>
       <span className="size-8 flex-none" />
-    </li>
+    </PointRow>
   );
 
   return (
@@ -306,19 +250,22 @@ export default function PointList({
         />
         {targets.map((target, index) => {
           const title = pointTitle(target);
-          const label = target.role === "waypoint" ? "経由地" : title;
           const name = rowNames[index];
           const isOrigin = target.role === "origin";
           const asked = isOrigin && originAsks > 0;
           const row = (
-            <li
+            <PointRow
               key={index}
+              {...rowOf(target)}
+              title={title}
+              name={name}
+              placeholder={isOrigin ? `押して探す${howToPlace.short}` : ""}
+              usage={`${title}を選び、${howToPlace.sentence}`}
               ref={isOrigin ? originRowRef : undefined}
               tabIndex={asked ? -1 : undefined}
               data-point-row
               data-asked={asked}
               className={cn(
-                rowClass(target),
                 "data-[asked=true]:border-[var(--color-warning)]! data-[asked=true]:shadow-[inset_0_0_0_1px_var(--color-warning)]",
                 drag.dragging === index
                   ? "z-10 bg-[var(--color-surface)] shadow-md"
@@ -326,28 +273,6 @@ export default function PointList({
               )}
               style={{ translate: `0 ${drag.offsetOf(index)}px` }}
             >
-              <button
-                type="button"
-                className={nameButtonClass}
-                aria-label={`${title} ${name ?? "未設定"}`}
-                aria-pressed={isSelected(target)}
-                onClick={() => open(target)}
-                data-usage={`${title}を選び、${howToPlace.sentence}`}
-              >
-                {markOf(target, 22)}
-                <span className={cn(textVariants({ variant: "note" }), "w-12 flex-none")}>{label}</span>
-                <span
-                  className={cn(
-                    textVariants({ variant: "body" }),
-                    "min-w-0 flex-auto truncate",
-                    name === null && "text-[var(--color-muted)]",
-                  )}
-                >
-                  {name ?? (isOrigin ? `押して探す${howToPlace.short}` : "")}
-                </span>
-              </button>
-              {placeOnMap(target, title)}
-              {chooseSaved(target, title)}
               {isOrigin ? (
                 <Button
                   variant="ghost"
@@ -391,7 +316,7 @@ export default function PointList({
               >
                 <ReorderHandleIcon size={18} />
               </Button>
-            </li>
+            </PointRow>
           );
           // 足そうとしている経由地の行は、最後の経由地（無ければ出発地）のすぐ下（目的地の手前）に出す。
           const rows = [row];
@@ -408,18 +333,7 @@ export default function PointList({
           </li>
         )}
       </ol>
-      {searching && !aboveKeyboard && <PopoverAnchor virtualRef={selectedRow} />}
-      {aboveKeyboard &&
-        createPortal(
-          <PopoverAnchor asChild>
-            <div
-              aria-hidden="true"
-              className="pointer-events-none fixed inset-x-2 bottom-0 h-0"
-              style={visible === null ? undefined : { top: visible.top + visible.height, bottom: "auto" }}
-            />
-          </PopoverAnchor>,
-          document.body,
-        )}
+      {searching && <PointPopoverAnchor listRef={listRef} aboveKeyboard={aboveKeyboard} />}
       {searching && (
         <PointSearch
           title={pointTitle(selected)}
@@ -442,15 +356,7 @@ export default function PointList({
                 : () => onPlace(selected, pointCandidate(here, "現在地"))
           }
           onClose={closeSearch}
-          onCloseAutoFocus={(event) => {
-            // 閉じたら開いた操作か選んでいる行へ戻す（欄は小窓と一緒に消えるので、戻さないとフォーカスが一覧の外へ落ちる）。
-            // 開いた行が消えていれば（足した経由地の行が置いた行に替わった等）、選んでいる行へ戻す。
-            event.preventDefault();
-            const opener = openerRef.current?.isConnected ? openerRef.current : null;
-            (opener ?? listRef.current?.querySelector<HTMLElement>('button[aria-pressed="true"]'))?.focus({
-              preventScroll: true,
-            });
-          }}
+          onCloseAutoFocus={focus.restore}
         />
       )}
     </Popover>

@@ -12,7 +12,7 @@
 分類の材料は文字列のまま持たず、列ごとの語彙への番号で持つ（番号0は値なし）。
 """
 
-from collections.abc import Iterable, Iterator, Mapping
+from collections.abc import Iterable, Iterator, Mapping, Sequence
 import logging
 import threading
 from dataclasses import dataclass, fields
@@ -27,9 +27,10 @@ from app.domain.attributes import (
     MaterialColumn,
 )
 from app.domain.elevation_profile import ProfileSpans
-from app.domain.geo import LatLonPoint
+from app.domain.geo import LatLon, LatLonPoint
 from app.domain.material_catalog import GRADIENT_PERCENT
 from app.domain.msm import MsmGrid
+from app.domain.region import BoundingBox, bbox_covering_points
 from app.domain.road_classes import RoadClassDefinitions, class_columns, layer_columns
 from app.domain.search_graph import EdgeValues, run_starts
 from app.domain.stopwatch import elapsed_ms, start_timer
@@ -466,16 +467,20 @@ def edge_row_of(network: RoadNetwork, osm_way_id: int, segment_index: int, forwa
     return None
 
 
-def edge_endpoint_points(network: RoadNetwork, edges: Iterable[tuple[int, int, bool]]) -> list[LatLonPoint]:
-    """`(道, 区間番号, 向き)`の区間の両端の地点。道路網に無い区間は飛ばす。"""
-    points: list[LatLonPoint] = []
+def bbox_covering_edges(
+    network: RoadNetwork, points: Sequence[LatLon], edges: Iterable[tuple[int, int, bool]], margin_km: float,
+) -> BoundingBox:
+    """`points`と、`(道, 区間番号, 向き)`の区間`edges`の両端を覆う矩形に`margin_km`の余裕を足したもの（`bbox_covering_points`）。
+    道路網に無い区間は飛ばす。区間の形は両端を含むので、この矩形で切り出す範囲（`rows_in_bbox`）は、道路網にある`edges`の
+    区間を必ず含む。"""
+    ends: list[LatLon] = []
     for edge in edges:
         row = edge_row_of(network, *edge)
         if row is None:
             continue
         for node in (int(network.edge_from[row]), int(network.edge_to[row])):
-            points.append(LatLonPoint(float(network.node_lat[node]), float(network.node_lon[node])))
-    return points
+            ends.append(LatLonPoint(float(network.node_lat[node]), float(network.node_lon[node])))
+    return bbox_covering_points([*points, *ends], margin_km)
 
 
 # --- 区間の鍵と、昇順の鍵の中の位置 --------------------------------------------------------------------------

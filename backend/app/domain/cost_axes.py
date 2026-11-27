@@ -26,7 +26,7 @@ from app.domain.display_palette import cost_series_colors
 from app.domain.lens_total import TOTAL_LENS_ID
 from app.domain.material_catalog import MATERIAL_CATALOG
 from app.domain.road_classes import CLASS_MATERIAL_PREFIX, RoadClassDefinitions
-from app.domain.route import STOP_COUNT_DECIMALS, WIND_MS_DECIMALS
+from app.domain.route import STOP_COUNT_DECIMALS
 from app.domain.strict_model import StrictModel
 from app.domain.way_value_formula import RIDE_CONDITION_ORDER, WayValueConditionName
 
@@ -45,19 +45,24 @@ class EffortFactInputs(NamedTuple):
     """体力の費目の数で言う事実の元（区間かルートのまとまり1つ）。"""
 
     ascent_m: float | None
-    #: 向かい風の成分の、長さで重みを付けた平均（風を読めなければNone）。
-    mean_headwind_ms: float | None
     stops: float
+
+
+@dataclass(frozen=True)
+class EffortShownFact:
+    """ルートの事実と道の窓が出す、数で言う体力の費目の事実の名前・単位・値。"""
+
+    label: str
+    unit: str
+    value: Callable[[EffortFactInputs], float | None]
 
 
 @dataclass(frozen=True)
 class EffortNumberFact:
     """数で言う体力の費目の事実（ルートの事実・道の窓）と、地図のレンズの色の物差しの事実（1kmの道の値）。"""
 
-    #: ルートの事実と道の窓が出す名前と単位。
-    label: str
-    unit: str
-    value: Callable[[EffortFactInputs], float | None]
+    #: Noneの費目は、ルートの事実と道の窓に事実を出さない（秒だけを出す）。
+    shown: EffortShownFact | None
     lens_unit: str
     #: 物差しの事実の値を、`domain/lens_equivalents.py`の1kmの道のどの事実として渡すか。
     lens_road: Literal["grade_percent", "headwind_ms", "kickoffs"]
@@ -82,23 +87,22 @@ class EffortItemRule:
 #: 決まる。ほかの費目は、平地を越えて踏む出力を勾配（走る向き）・空気（風と気温、つまり時刻）・転がりの増えた抵抗の比で分け合うので、
 #: ルートではどれも向き・速度・時刻で変わる。地図では、坂と路面は時刻で変わらない道の性質として塗る（同じ坂は時刻を変えても同じ色）
 #: ので、登りと転がりは時刻を持たない。止まる回数は、止まる出来事（と、ルートなら曲がる所）を止まってから漕ぎ出す回数に換えたもの
-#: （`domain/traffic.py: StopEvent.kickoffs`）。向かい風は乗り手の高さの風の成分で、予報の地上10mの風速と別の値だと名前で分かるようにする。
+#: （`domain/traffic.py: StopEvent.kickoffs`）。向かい風は予報の風を乗り手の高さへ直して区間で平均した、格子点に無い値なので、事実に出さない
+#: （`docs/architecture/data-sources.md`「今の扱い」。地図のレンズの物差しの m/s は、1kmの道の仮の値で予報の値ではない）。
 _TIMELESS = tuple(name for name in RIDE_CONDITION_ORDER if name != "at")
 EFFORT_ITEM_RULES: dict[EffortItem, EffortItemRule] = {
     "gravity": EffortItemRule(
         ride_j=lambda ride: ride.gravity_extra_j, conditions=_TIMELESS,
-        number=EffortNumberFact(label="登り", unit="m", value=lambda inputs: inputs.ascent_m,
+        number=EffortNumberFact(shown=EffortShownFact(label="登り", unit="m", value=lambda inputs: inputs.ascent_m),
                                 lens_unit="%", lens_road="grade_percent")),
     "air": EffortItemRule(
         ride_j=lambda ride: ride.air_extra_j, conditions=RIDE_CONDITION_ORDER,
-        number=EffortNumberFact(
-            label="向かい風[乗り手の高さ]", unit="m/s",
-            value=lambda inputs: None if inputs.mean_headwind_ms is None else round(inputs.mean_headwind_ms, WIND_MS_DECIMALS),
-            lens_unit="m/s", lens_road="headwind_ms")),
+        number=EffortNumberFact(shown=None, lens_unit="m/s", lens_road="headwind_ms")),
     "inertia": EffortItemRule(
         ride_j=lambda ride: ride.inertia_extra_j, conditions=("speed_kmh",), kickoff=True,
-        number=EffortNumberFact(label="止まる回数", unit="回", value=lambda inputs: round(inputs.stops, STOP_COUNT_DECIMALS),
-                                lens_unit="回/km", lens_road="kickoffs")),
+        number=EffortNumberFact(
+            shown=EffortShownFact(label="止まる回数", unit="回", value=lambda inputs: round(inputs.stops, STOP_COUNT_DECIMALS)),
+            lens_unit="回/km", lens_road="kickoffs")),
     "rolling": EffortItemRule(ride_j=lambda ride: ride.rolling_extra_j, conditions=_TIMELESS, number=None),
 }
 if set(EFFORT_ITEM_RULES) != set(get_args(EffortItem)) or set(EFFORT_AXES.values()) != set(get_args(EffortItem)):

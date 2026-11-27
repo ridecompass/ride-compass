@@ -39,19 +39,9 @@ from app.domain.road_network import RoadNetwork, edge_shape
 from app.domain.traffic import highway_rank
 from app.infrastructure import road_network_store
 from app.infrastructure.road_graph_repository import RoadGraphRepository
-from tests.conftest import postgis_database_url, raw_connection
+from tests.conftest import on_test_db, postgis_database_url, raw_connection
 from tests.source_ingest import abr_prefecture_record, ingest_records, point_record, way_record, zigzag_point
 from tests.road_network_fixture import road_network
-
-#: DBから組むテストの印（テスト用DBへ繋ぎ、接続とイベントループをファイルで共有する。testing-backend.md パターン2）。
-_ON_TEST_DB = (pytest.mark.asyncio(loop_scope="module"), pytest.mark.usefixtures("road_graph_session"))
-
-
-def _on_test_db(test):
-    for mark in _ON_TEST_DB:
-        test = mark(test)
-    return test
-
 
 @pytest.fixture(autouse=True)
 def store(road_network_root):
@@ -239,7 +229,7 @@ async def _derive(ways=_WAYS) -> None:
     shutil.rmtree(road_network_store.ROOT)
 
 
-@_on_test_db
+@on_test_db
 async def test_the_network_is_built_from_the_derived_tables_with_one_row_per_drivable_direction(
         road_graph_engine, caplog):
     await _derive()
@@ -329,7 +319,7 @@ def _bearing(a: int, b: int) -> float:
     return math.degrees(math.atan2(x, y)) % 360
 
 
-@_on_test_db
+@on_test_db
 async def test_each_directed_edge_carries_the_bearings_beside_the_node_it_leaves_and_the_node_it_enters(
         road_graph_engine):
     """折れた1区間（ノード2で曲がり、分かれ道は無い）は、出る点のそばと入る点のそばで別の向きを持つ。
@@ -345,7 +335,7 @@ async def test_each_directed_edge_carries_the_bearings_beside_the_node_it_leaves
     assert network.edge_end_bearing_deg.tolist() == pytest.approx([_bearing(2, 3), _bearing(2, 1)], abs=0.5)
 
 
-@_on_test_db
+@on_test_db
 async def test_a_network_already_placed_for_the_current_revision_is_not_built_again(road_graph_engine):
     await _derive()
     session_factory = async_sessionmaker(road_graph_engine)

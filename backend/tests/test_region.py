@@ -11,13 +11,13 @@
 """
 
 import math
-from typing import NamedTuple
 
 import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 from pydantic import ValidationError
 
+from app.domain.geo import LatLonPoint
 from app.domain.region import (
     BoundingBox,
     bbox_covering_points,
@@ -28,11 +28,6 @@ from app.domain.region import (
 
 WGS84_SEMI_MAJOR_AXIS_M = 6378137.0
 KM_PER_DEGREE_ON_A_6371KM_SPHERE = 2 * math.pi * 6371.0 / 360
-
-
-class Point(NamedTuple):
-    latitude: float
-    longitude: float
 
 
 def box(min_lat: float, min_lon: float, max_lat: float, max_lon: float) -> BoundingBox:
@@ -58,7 +53,7 @@ def test_a_box_with_empty_sides_is_rejected(corners, message):
 
 
 def test_the_margin_extends_every_side_by_about_that_many_kilometers_converting_longitude_at_the_mean_latitude():
-    covering = bbox_covering_points([Point(30.0, 139.0), Point(40.0, 140.0)], margin_km=10.0)
+    covering = bbox_covering_points([LatLonPoint(30.0, 139.0), LatLonPoint(40.0, 140.0)], margin_km=10.0)
 
     km_per_degree_longitude = KM_PER_DEGREE_ON_A_6371KM_SPHERE * math.cos(math.radians(35.0))
     assert (30.0 - covering.min_latitude) * KM_PER_DEGREE_ON_A_6371KM_SPHERE == pytest.approx(10.0, rel=0.01)
@@ -122,7 +117,7 @@ def test_the_tiles_are_exactly_the_block_of_tiles_the_box_touches(bbox, z):
     # 四隅はどれも、覆うタイルのどれかの中（境目を含む）にある。
     for latitude in (bbox.min_latitude, bbox.max_latitude):
         for longitude in (bbox.min_longitude, bbox.max_longitude):
-            assert any(tile_bounds_lonlat(z, x, y).contains(Point(latitude, longitude)) for x, y in covering)
+            assert any(tile_bounds_lonlat(z, x, y).contains(LatLonPoint(latitude, longitude)) for x, y in covering)
     # 四方の端の列・行は、どれも矩形に触れている（余分な列・行が無い）。境目の上の点は東・南のタイルに入る。
     north_west, south_east = tile_bounds_lonlat(z, xs[0], ys[0]), tile_bounds_lonlat(z, xs[-1], ys[-1])
     assert north_west.max_longitude > bbox.min_longitude and south_east.min_longitude <= bbox.max_longitude

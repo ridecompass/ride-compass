@@ -58,8 +58,8 @@ z0g は中点に一番近い MSM の格子点が同じ区間どうしの z0r の
 どの区間にも土地被覆が無い道路網は開けた平地（0.03m）とする。粗度長は較正値の頭打ち（WMO-No.8 が式5.3 で補正してよいとする粗度長の上限。標準の模型ではない仮の定義）で抑える。格子の側の粗度が
 全区間から決まるので、倍率は道路網が格子ごとに1回だけ求めて持ち（`domain/road_network.py: RoadNetwork.wind_height_factors`。
 同時に来た要求も1本に並べて求める）、探索と地図のレンズは切り出した区間の材料（`domain/attributes.py: EdgeMaterialColumns.wind_heights`）
-から同じ区間の同じ値を引く。ルートの事実と道の窓の向かい風は、走行モデルが使う乗り手の高さの値を、そうと分かる名前
-（`domain/cost_axes.py: EFFORT_ITEM_RULES`の向かい風の事実の名前）で出す（地図のレンズの段の名前は短く保つため、値と単位だけを出す）。地図に出す風（矢印）は予報の10mの値のまま。
+から同じ区間の同じ値を引く。乗り手の高さへ直した風は格子点に無い値なので、画面に数で出さず（ルートの事実と道の窓は向かい風の
+秒だけを出す。[外部データソース](../../architecture/data-sources.md)「今の扱い」）、所要時間・費用・道の色分けにだけ使う。地図に出す風（矢印）は予報の10mの格子点の値のまま。
 
 Edgeコストは「探索の材料の表（[費用・材料](evaluation-scoring.md)「探索の材料の表」）＋リクエスト時ベクトル計算」方式で
 算出する——探索が実際に訪れたEdgeに対してPythonのコスト計算コールバックを都度呼ぶのでは
@@ -144,9 +144,9 @@ Edgeコストは「探索の材料の表（[費用・材料](evaluation-scoring.
 
 `TracedLoop.leg_of_edge`が経路上の各Edgeのレグ添字を運び、`_build_segment_details`は
 そのレグのビンの時刻で合成し直した値を読む（探索と表示の一致、[設計原則](../../architecture/design-principles.md)10）。
-区間の代償の内訳（軸ごと・好む道で下げた秒・避ける道で上乗せした秒）と向かい風の成分は、経路上の行だけをそのビンの時刻で解き直して求め
+区間の代償の内訳（軸ごと・好む道で下げた秒・避ける道で上乗せした秒）は、経路上の行だけをそのビンの時刻で解き直して求め
 （`LegCostComposer.values_at_rows`。`road_graph_candidates.py: _build_segment_details`が経路上の行でまとめて読む）。
-候補の事実は、その区間の内訳と向かい風の成分と、時刻に依らない列から求める（`LegCostComposer.axis_facts`。作り方は道の窓と
+候補の事実は、その区間の内訳と、時刻に依らない列から求める（`LegCostComposer.axis_facts`。作り方は道の窓と
 同じ`domain/leg_costs.py: axis_facts`）。
 逆回り候補はレグ割当ても反転する（先に走る側が往路配列、`reverse_leg_assignment`）。レグ番号は走行順に振られるため、Edge列の反転と同時に番号自体も`max_leg - leg`へ振り直す。探索範囲を覆う格子点ごとの時別の風と気温の予報
 （`WeatherService.get_weather_forecast_lattice`。格子点はMSMの格子点そのもの（`domain/msm.py: MsmBlock`）で、

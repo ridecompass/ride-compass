@@ -4,12 +4,13 @@
  * - `editDifference`: 距離・所要（分）・負担（内訳の和の分）の元・編集後と差（編集後 − 元。どちらかに値が無ければnull）と、
  *   2本のEdgeの差から求めた変えた区間（元の始点からの位置と、長さの差）。指標は編集面と同じ1つの表（`metricDifferences`）から作る
  * - `formatDelta`: 差を表示の桁で丸めて符号付きで書く。丸めて0なら「±0」
+ * - `deltaTone`: 差の増減の印。表示する桁で丸めた差で決める
  *
  * 経路はbackendの契約どおりの形を`testing/routeFixtures.ts: routeThrough`で地点の並びから組む。
  *
  * ここで見ないもの:
  * - 区間を対応づける規則（本数が食い違う・同じ道） → `routeSplice.test.ts`
- * - 差を並べて色を付けること → `EditDifference/EditDifference.test.tsx`・`RouteSplicePanel/RouteSplicePanel.test.tsx`
+ * - 差を並べて印を付けること → `EditDifference/EditDifference.test.tsx`・`RouteSplicePanel/RouteSplicePanel.test.tsx`
  */
 import { describe, expect, it } from "vitest";
 
@@ -17,7 +18,7 @@ import { routeStretches } from "@/lib/routeDistance";
 import { makeRouteCandidate, routeThrough, type Places } from "@/testing/routeFixtures";
 import type { RouteCandidate } from "@/types/route";
 
-import { editDifference, formatDelta, type MetricDifference } from "./routeEditDiff";
+import { deltaTone, editDifference, formatDelta, type MetricDifference } from "./routeEditDiff";
 
 // 東西に並ぶ元の道（A〜F）と、その北の地点（P〜R）。
 const PLACES: Places = {
@@ -113,5 +114,18 @@ describe("formatDelta", () => {
     [0.04, 1, "±0"],
   ])("%sを小数%s桁で書くと「%s」（減りはマイナス記号、丸めて0なら±0）", (value, digits, text) => {
     expect(formatDelta(value, digits)).toBe(text);
+  });
+});
+
+describe("deltaTone", () => {
+  it.each([
+    [0.05, 1, "悪い"],
+    [-0.05, 1, "良い"],
+    [0.04, 1, "なし"],
+    [null, 1, "なし"],
+  ])("差%sを小数%s桁で出すときの印は「%s」（丸めて0か、値が無ければ印を付けない）", (delta, digits, expected) => {
+    const tone = deltaTone({ delta, digits });
+
+    expect(tone["data-worse"] ? "悪い" : tone["data-better"] ? "良い" : "なし").toBe(expected);
   });
 });

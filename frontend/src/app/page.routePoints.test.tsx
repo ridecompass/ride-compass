@@ -194,7 +194,6 @@ describe("ルートの近くの点", () => {
     clickMap(ELSEWHERE, [drawn(undefined)]);
     const popup = screen.getByRole("group", { name: "点の小窓の上の帯" }).parentElement!;
     expect(within(popup).getByText("トイレ")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "ここのストリートビューを開く" })).toBeInTheDocument();
   });
 
   it("走行中は、点の小窓の位置を現在地からの残りで出し、同じ道を2度通るルートでは現在地から続く側で数える", async () => {
