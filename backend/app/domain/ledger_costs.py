@@ -23,6 +23,12 @@ from app.domain.cost_axes import EFFORT_AXES, EFFORT_ITEM_RULES
 from app.domain.cycling_speed import SegmentRide, SegmentSpeedModel
 from app.domain.tuning import Tuning
 
+#: 代償（利用者には負担と呼ぶ）が何を数えるかを、利用者に言う文（名詞句）。体力と道のストレスの項を変えたら、ここも変える。
+PENALTY_WORDING = "平地を走るより余分に踏む力と、避けたい道を通る道のりを、時間に直したもの"
+#: 費用の式（所要時間と代償の和）を、利用者に言う名詞句。式の項を足す・消すなら、ここも変える。
+COST_WORDING = "所要時間と負担の和"
+
+
 #: 曲がる所の漕ぎ出しを数える体力の費目（決まりのうち1つだけ。2つ以上か0なら読み込みで落ちる）。
 (_KICKOFF_ITEM,) = [item for item, rule in EFFORT_ITEM_RULES.items() if rule.kickoff]
 

@@ -146,7 +146,7 @@ describe("候補の一覧", () => {
     const items = (await screen.findAllByRole("listitem")).map((item) => item.textContent);
     expect(items).toEqual(expect.arrayContaining(["・上の段: 距離", "・稲妻の印: 最速ルート"]));
     expect(screen.getByText(`所要時間: ${routeGenerateConfig.duration_estimate_wording}`)).toBeInTheDocument();
-    expect(screen.getByText("負担: 避けたいもの[軸ア・軸イ]を通る分を時間に直したものです。")).toBeInTheDocument();
+    expect(screen.getByText(`負担[軸ア・軸イ]: ${routeGenerateConfig.penalty_wording}です。`)).toBeInTheDocument();
     expect(
       screen.getByText(`並び: 先頭は最速、残りは${routeGenerateConfig.candidate_order_wording}です。`),
     ).toBeInTheDocument();
