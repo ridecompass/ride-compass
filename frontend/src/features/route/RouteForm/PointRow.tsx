@@ -22,8 +22,9 @@ interface PointRowProps extends Omit<ComponentProps<"li">, "children"> {
   mark: ReactNode;
   /** 地図で置けるか（置けない間は「地図で置く」を出さない）。 */
   placing: boolean;
+  /** 保存した地点が無いか（地点を置いていない行なら☆を押せない）。 */
   noSaved: boolean;
-  /** 小窓を開く（名前のボタンは探す小窓を、☆は保存した地点だけの小窓を開き、☆なら閉じたあとにフォーカスを戻す先を渡す）。 */
+  /** 小窓を開く（名前のボタンは探す小窓を、☆は保存した地点の小窓を開き、☆なら閉じたあとにフォーカスを戻す先を渡す）。 */
   onOpen: (kind: "search" | "saved", opener: HTMLElement | null) => void;
   /** 小窓を開かずにこの地点を選ぶ。 */
   onPlaceOnMap: () => void;
@@ -31,7 +32,7 @@ interface PointRowProps extends Omit<ComponentProps<"li">, "children"> {
   children: ReactNode;
 }
 
-/** 地点の一覧の1行: 印・呼び名・名前のボタンと、右の「地図で置く」・☆と、行ごとの残りの操作。 */
+/** 地点の一覧の1行: 印・呼び名・名前のボタンと、右の「地図で置く」・☆（保存した地点から選ぶ・いまの地点を保存する）と、行ごとの残りの操作。 */
 export default function PointRow({
   target,
   title,
@@ -48,6 +49,8 @@ export default function PointRow({
   className,
   ...rowProps
 }: PointRowProps) {
+  // 地点を置いていない行で保存した地点も無ければ、☆で選ぶ地点も保存する地点も無い。
+  const nothingToStar = noSaved && name === null;
   return (
     <li
       {...rowProps}
@@ -96,12 +99,12 @@ export default function PointRow({
         size="icon"
         className="flex-none"
         aria-label={`${title}を保存した地点から選ぶ`}
-        disabled={noSaved}
+        disabled={nothingToStar}
         onClick={(event) => onOpen("saved", event.currentTarget)}
         usage={
-          noSaved
-            ? "保存した地点がありません。地点を探す小窓の候補の☆で保存すると、ここから選べます。"
-            : `保存した地点の一覧を開きます。選ぶと${chooseResultOf(target)}。`
+          nothingToStar
+            ? "保存した地点がありません。地点を置くと、ここから保存できます。"
+            : `保存した地点の一覧を開きます。選ぶと${chooseResultOf(target)}。${name === null ? "" : "一覧の上の☆で、いま置いている地点を保存できます。"}`
         }
       >
         <SavedPlaceIcon size={18} />
