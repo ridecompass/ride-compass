@@ -19,21 +19,12 @@ from dataclasses import dataclass
 import numpy as np
 
 from app.domain.cost_preference import STANDARD_COST_FACTOR, CostPreference
-from app.domain.cost_axes import EFFORT_AXES, CostAxisDefinitions, EffortItem
+from app.domain.cost_axes import EFFORT_AXES, EFFORT_ITEM_RULES, CostAxisDefinitions
 from app.domain.cycling_speed import SegmentRide, SegmentSpeedModel
 from app.domain.tuning import Tuning
 
-
-#: 曲がる所の漕ぎ出しを数える体力の費目。
-_KICKOFF_ITEM: EffortItem = "inertia"
-
-#: 体力の費目 → 走りの内訳のその費目の欄（`EFFORT_AXES`の費目と1対1）。
-_EFFORT_ITEM_J: dict[EffortItem, Callable[[SegmentRide], np.ndarray]] = {
-    "gravity": lambda ride: ride.gravity_extra_j,
-    "air": lambda ride: ride.air_extra_j,
-    "inertia": lambda ride: ride.inertia_extra_j,
-    "rolling": lambda ride: ride.rolling_extra_j,
-}
+#: 曲がる所の漕ぎ出しを数える体力の費目（決まりのうち1つだけ。2つ以上か0なら読み込みで落ちる）。
+(_KICKOFF_ITEM,) = [item for item, rule in EFFORT_ITEM_RULES.items() if rule.kickoff]
 
 
 @dataclass(frozen=True)
@@ -107,7 +98,7 @@ class LedgerCosts:
         重さ×km）。数える軸だけを、体力の軸を`EFFORT_AXES`の順、続けて道のストレスの軸で、和が`penalty_seconds`。`ride`は重みを掛けた体力の内訳で、
         区間の行`rows`だけを走ったもの（`domain/cycling_speed.py: SegmentSpeedModel.ride`に`rows`を渡したもの）なら`rows`も渡す。"""
         effort = {
-            axis_id: self._seconds_per_j * self._item_multipliers[item] * _EFFORT_ITEM_J[item](ride)
+            axis_id: self._seconds_per_j * self._item_multipliers[item] * EFFORT_ITEM_RULES[item].ride_j(ride)
             for axis_id, item in self._effort_axes.items()
         }
         burden = self._burden_axis_seconds if rows is None else {
