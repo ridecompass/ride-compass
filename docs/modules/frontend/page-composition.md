@@ -272,7 +272,7 @@ backendも日本時間で扱う。`domain/time_zone.py`）。暦と時刻の取�
 | 地図本体 | `features/map/MapView/MapView`（全静的/動的レイヤーのMapLibre実装本体） |
 | 地図オーバーレイ制御 | `MapOverlayControls`（地図の上端の段の左の「表示」のボタンと一覧）・`MapNavigationControl`（地図右上の拡大・縮小と方位磁針）・`LensControl`（地図の上端の段の中央のレンズ選択ピル）・`RideConditionBar`（方位磁針の直下、地図右上の走行条件アイコン列、出発時刻・想定速度） |
 | ルート設定 | `RouteForm`（周回か目的地か・距離の目標・地点の一覧と探す小窓）・`GenerateRouteActions`（見出しの行の候補数と「ルート生成」）・`RouteSettingsPanel`（費用の軸ごとの倍率）・`HardFilterPanel`（道路） |
-| ルート結果 | `features/route/RouteOutcome/RouteOutcome.tsx`（「ルート結果」の中身: 空の状態・候補の一覧［横に並ぶカード］・区間の詳細・編集面）・`RouteCandidateActions`（選んでいる候補1本への操作。見出しの行に置く）・`RouteOutcome/CandidateFigureNotes.tsx: CandidateFiguresInfo`（カードの所要時間と負担の説明）・`RouteOutcome/CandidateFigureNotes.tsx: MissingTravelDataNotice`（選んだ候補の平均で計算した道のりの注意） |
+| ルート結果 | `features/route/RouteOutcome/RouteOutcome.tsx`（「ルート結果」の中身: 空の状態・候補の一覧［横に並ぶカード］・区間の詳細・編集面）・`RouteCandidateActions`（選んでいる候補1本への操作。見出しの行に置く）・`RouteOutcome/CandidateFigureNotes.tsx: CandidateFiguresInfo`（カードの所要時間と負担の説明）・`RouteOutcome/CandidateFigureNotes.tsx: MissingTravelDataNotice`（選んだ候補のデータが欠けた道のりの注意） |
 | レイアウト | `BottomSheet`（モバイル下部シート） |
 
 ## page.tsxの状態管理
@@ -682,7 +682,7 @@ BottomSheetの`headerAction`propとして同じヘルパーを渡す（`routes.l
 地図には元のルートだけを参考線として重ねる（`useRoutePlanner.ts: mapRoutes`。ほかの候補まで並ぶと、変えた区間がどれとの差か
 読めない）。編集している間は乗り換え先を探すため、全部の候補を参考線にする。
 
-候補タブの中身（`Tabs.Content`）は、上から平均で計算した道のりの注意（出るときだけ。カードのすぐ下の1行）・道のりのグラフ・元との違いの順に置く——シートが開いたときに合わせる高さ（グラフの下端）の中にカードと注意を入れ、スクロールせずに見せるため。結果の中のグラフは、図の名前を図の枠の上の端の帯に書いて見出しの段を取らず、中身を走行中の地図の下の図より低く描く（CSS の変数`--profile-chart-height`。走行中は走りながら読めるよう高くする）。負担の種類ごとの内訳と事実は、道のりのグラフの右上の一覧が出す（[ルート設定と結果](route-settings-and-results.md)「CandidateFigureNotes.tsx」）。地図の色分け（レンズ）を選ぶ操作はここには無い（`LensControl`）。
+候補タブの中身（`Tabs.Content`）は、上からデータが欠けた道のりの注意（出るときだけ。カードのすぐ下の1行）・道のりのグラフ・元との違いの順に置く——シートが開いたときに合わせる高さ（グラフの下端）の中にカードと注意を入れ、スクロールせずに見せるため。結果の中のグラフは、図の名前を図の枠の上の端の帯に書いて見出しの段を取らず、中身を走行中の地図の下の図より低く描く（CSS の変数`--profile-chart-height`。走行中は走りながら読めるよう高くする）。負担の種類ごとの内訳と事実は、道のりのグラフの右上の一覧が出す（[ルート設定と結果](route-settings-and-results.md)「CandidateFigureNotes.tsx」）。地図の色分け（レンズ）を選ぶ操作はここには無い（`LensControl`）。
 
 ## `MapView`（`features/map/MapView/MapView.tsx`）との境界
 

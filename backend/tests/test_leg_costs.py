@@ -73,8 +73,10 @@ def _column(values, n: int) -> np.ndarray:
 
 
 def _matrix(n: int, *, distance=1000.0, gradient=0.0, bearing=NORTH, surface="paved",
-            materials: dict | None = None, categories: dict | None = None, mid_lat=35.0) -> SearchMaterials:
-    """`n`区間の材料の表。引数は全区間に同じ値か、区間ごとの並び。停止の密度は`materials`で渡さなければ0。"""
+            materials: dict | None = None, categories: dict | None = None, mid_lat=35.0,
+            landcover_filled=False) -> SearchMaterials:
+    """`n`区間の材料の表。引数は全区間に同じ値か、区間ごとの並び。停止の密度は`materials`で渡さなければ0。
+    `landcover_filled`は、土地被覆の割合が欠けて埋めた値で風の高さの倍率を求めた区間。"""
     materials = {**dict.fromkeys(STOP_DENSITY.values(), 0.0), **(materials or {})}
     categories = {SURFACE: [surface] * n if isinstance(surface, str) else surface, **(categories or {})}
     return SearchMaterials(
@@ -85,7 +87,8 @@ def _matrix(n: int, *, distance=1000.0, gradient=0.0, bearing=NORTH, surface="pa
         categorical_material_columns=[CategoricalColumn.encode(v) for v in categories.values()],
         elevation_spans=grade_spans(_column(gradient, n), _column(distance, n)),
         # 予報の風をそのまま乗り手の風として解く（高さの換算は`test_wind_height.py`）。
-        wind_heights=WindHeights(lambda _grid: np.ones((n, 2)), np.arange(n)),
+        wind_heights=WindHeights(lambda _grid: np.ones((n, 2)), np.arange(n),
+                                 lambda: _column(landcover_filled, n).astype(bool)),
     )
 
 
@@ -345,14 +348,15 @@ _PARTLY_UNMEASURED = dataclasses.replace(
 
 
 @pytest.mark.parametrize(("matrix", "expected"), [
-    # 標高の無い区間（1000m）と停止要因の件数の無い区間（3000m）は、区間の全体を平均で埋める。
-    (_matrix(3, distance=[1000.0, 3000.0, 6000.0], gradient=[np.nan, 0.0, 0.0],
-             materials={STOP_DENSITY["signal"]: [0.0, np.nan, 0.0]}), 0.4),
+    # 標高の無い区間（1000m）と停止要因の件数の無い区間（3000m）と土地被覆の割合の無い区間（2000m）は、区間の全体を数える。
+    (_matrix(4, distance=[1000.0, 3000.0, 2000.0, 4000.0], gradient=[np.nan, 0.0, 0.0, 0.0],
+             materials={STOP_DENSITY["signal"]: [0.0, np.nan, 0.0, 0.0]},
+             landcover_filled=[False, False, True, False]), 0.6),
     # 坂を測れない間が区間の一部だけなら、その間の長さだけを数える。区間の長さで数えると、1か所の揺れで画面が
     # 平均で計算した道のりを何倍にも大きく知らせる。
     (_PARTLY_UNMEASURED, 0.05),
 ])
-def test_the_share_of_distance_timed_with_averages(matrix, expected):
+def test_the_share_of_distance_timed_with_filled_values(matrix, expected):
     composer = _composer(matrix)
 
     assert composer.missing_travel_data_share(np.arange(len(matrix.distance_m))) == expected

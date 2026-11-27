@@ -39,7 +39,7 @@
 | `features/route/useSavedConditions.ts` | 保存した条件の一覧（この端末の`localStorage`）と、いまの条件（`useGenerationConditions.ts: snapshot`）の保存（出発地を固定するかを受け取る）・呼び出し・削除。呼び出すと`useGenerationConditions.ts: restore`で条件を入れ替え、出発地は位置の持ち主（`hooks/useLocation.ts`）へ渡す |
 | `features/route/savedConditions.ts` | 生成の条件の形（`features/route/savedConditions.ts: GenerationConditionsSnapshot`。いまの条件・保存・呼び出しが同じ形を使い、保存の1件はそれに名前と出発地を足す）と、仮の名前・何が保存されるかの説明（`features/route/savedConditions.ts: describeConditions`）・同じ名前の上書き。距離の刻み（`DISTANCE_STEP_KM`。5km刻みで、下限も1刻み分）は画面だけの値で、`RouteForm`のルーラーのコマも読む。候補数の下限・上限は生成物`route-generate-config.json`から読む |
 | `lib/cardinalLabel.ts` | 角度を方位の呼び名へ（天気欄等が使う）と、気象の風向（吹いてくる向き）を矢印が指す吹いていく向きへ（`lib/cardinalLabel.ts: downwindDeg`。地図の風の矢印が使う）と、それを回った地図の上の向きへ（`lib/cardinalLabel.ts: downwindOnMapDeg`。走りの帯と天気欄の矢印が使う）。呼び名の並びはbackend（`domain/geo.py: COMPASS_LABELS`）が配り、丸めは画面が持つ。区分の境界を含む角度でbackendと同じ呼び名になることは、backendが出す表（生成物`geo-expectations.json`）をテストが通して確かめる |
-| `features/route/RouteOutcome/CandidateFigureNotes.tsx` | カードの所要時間と負担の説明の(i)と、選んだ候補の平均で計算した道のりの注意（下記「CandidateFigureNotes.tsx」）。置き場は`RouteOutcome.tsx`が決める |
+| `features/route/RouteOutcome/CandidateFigureNotes.tsx` | カードの所要時間と負担の説明の(i)と、選んだ候補のデータが欠けた道のりの注意（下記「CandidateFigureNotes.tsx」）。置き場は`RouteOutcome.tsx`が決める |
 | `components/MapPopup/PenaltyBreakdown.tsx` | 区間の小窓と道の小窓の負担の内訳（合計と、軸ごとの絵と値の1行。下記「PenaltyBreakdown.tsx」） |
 | `lib/routePenalty.ts` | 応答の代償の内訳を画面が読む形にする純関数（内訳の和・行の並べ方・「+N分」の書き方・1kmあたりの代償の秒）。候補・区間・編集の差・ルートの線の塗りが同じ関数を読む |
 | `features/route/routeTabLabel.ts` | 一覧の並び・群・名前（`features/route/routeTabLabel.ts: routeListEntries`。最速ルート・生成した候補・合成ルートの分け方は[ページ全体構成・状態管理](page-composition.md)「ルート結果の中身」）。種類と最速の印はbackendが付ける値（`route_generator.py: _label`）を読むだけで、idの文字列や要求の形から決め直さない。タブ列自体は`RouteOutcome.tsx`が組み立てる |
@@ -74,7 +74,7 @@
 | `features/route/RouteSplicePanel/SpliceMetricGrid.tsx` | 編集面の指標の表。ルート結果と同じ指標（`features/route/routeEditDiff.ts: metricDifferences`。距離・所要・負担）で元と編集後を並べる（1セルに「元→編集後 差」を収め、列見出しを持たない） |
 | `features/route/RouteSplicePanel/SpliceDeltaBar.tsx` | 編集面の軸別の負担の差（`features/route/RouteSplicePanel/SpliceDeltaBar.tsx: AxisDelta`。分）。軸別は2本並べず**差だけの1本**（中央が0・左が楽になった側・長さが変化量・色は軸チップと同じ） |
 | `features/route/useRouteResults.ts` | 「ルート結果」の状態: 生成した候補・編集で作ったルート（作った順の番号と元にしたルートのid）・選んだ候補・地図で押した区間。生成の結果で入れ替えると先頭を選び、編集で作ったルート・押した区間を外す。編集で作ったルートは元を上書きせず別の1本として足して選ぶ（編集で作ったルートをさらに編集したものも、元はその編集）。そのidは作った順の番号で画面が振る（backendは合成のルートへ毎回同じidを返すため、同じ生成へ何本も足すと重なる）。タブを選び替えると押した区間を外す。乗り換えで作った経路が既にある候補と同じ道だったときは、その候補を「同じ道だったので選んだ」と分かる形で選ぶ（`features/route/useRouteResults.ts: reusedRouteId`）——選択と1つの状態に持ち、どの操作で選び直しても外れる |
-| `features/route/RouteOutcome/RouteOutcome.tsx` | 「ルート結果」の中身: 生成前・生成中・候補0件・失敗の案内、候補の一覧（横に並ぶカード。並びの先頭に、カードと同じ高さで枠を点線にした数字の見方の見本［上の段に「距離」、下の段に「所要」と負担の印の「負担」を、カードの数字と同じ位置に置く。押しても候補は選ばれない］と、その中のカードの数字と印の説明の(i)。群の印と区切りの線・名前・距離・所要時間・負担［内訳の和を「+N分」。名前は文字にせず重りの印（`lucideIcons.tsx: BurdenIcon`）で示し、カードを狭く保つ］と、候補を並べるのと同じルート全体の1kmあたりの負担を地図の総合のレンズと同じ段の色で塗る下端の帯）、選んだ候補の中身（平均で計算した道のりの注意・道のりのグラフ［シートが開いたときに合わせる高さの下端の印を持つ］・編集で作ったルートなら`EditDifference`）と地図で押した区間の詳細、編集中は`RouteSplicePanel.tsx: RouteSplicePanel`（[ページ全体構成・状態管理](page-composition.md)「ルート結果の中身」）。費用の軸の一覧（`hooks/useCostAxisCatalog.ts: useCostAxisCatalog`）を読み、内訳の行の名前と色・帯の段を引いて、子と編集面へ渡す。乗り換えで作った経路が既にある候補と同じ道で、その候補を選んだときは、一覧の上にそのことを候補の名前で出す。選んだカードは、一覧の横だけを送って見える範囲へ出す |
+| `features/route/RouteOutcome/RouteOutcome.tsx` | 「ルート結果」の中身: 生成前・生成中・候補0件・失敗の案内、候補の一覧（横に並ぶカード。並びの先頭に、カードと同じ高さで枠を点線にした数字の見方の見本［上の段に「距離」、下の段に「所要」と負担の印の「負担」を、カードの数字と同じ位置に置く。押しても候補は選ばれない］と、その中のカードの数字と印の説明の(i)。群の印と区切りの線・名前・距離・所要時間・負担［内訳の和を「+N分」。名前は文字にせず重りの印（`lucideIcons.tsx: BurdenIcon`）で示し、カードを狭く保つ］と、候補を並べるのと同じルート全体の1kmあたりの負担を地図の総合のレンズと同じ段の色で塗る下端の帯）、選んだ候補の中身（データが欠けた道のりの注意・道のりのグラフ［シートが開いたときに合わせる高さの下端の印を持つ］・編集で作ったルートなら`EditDifference`）と地図で押した区間の詳細、編集中は`RouteSplicePanel.tsx: RouteSplicePanel`（[ページ全体構成・状態管理](page-composition.md)「ルート結果の中身」）。費用の軸の一覧（`hooks/useCostAxisCatalog.ts: useCostAxisCatalog`）を読み、内訳の行の名前と色・帯の段を引いて、子と編集面へ渡す。乗り換えで作った経路が既にある候補と同じ道で、その候補を選んだときは、一覧の上にそのことを候補の名前で出す。選んだカードは、一覧の横だけを送って見える範囲へ出す |
 | `features/route/RouteCandidateActions/RouteCandidateActions.tsx` | 選んでいる候補1本への操作（「このルートで走る」［その候補で走行モードを始める。走っている間は出さない］・合成［始められるときだけ。押すと区間の選択を外す］・GPX出力。走るはアイコンに文字「走る」を添え、ほかはアイコンだけのボタン）。`RouteOutcomeHeaderActions.tsx`が全消去の手前に置き、編集の間は出さない |
 | `features/route/RouteOutcome/RouteOutcomeHeaderActions.tsx` | 「ルート結果」の見出しの行の操作: 選んでいる候補1本への操作と、全消去（確認の窓で「消す」を押したときだけ消す） |
 | `features/route/useGenerationConditions.ts` | 生成の条件（「ルート設定」の入力）: 周回か・距離の目標を決めるか・距離・候補数・経由地と目的地（周回の間は置いた目的地を覚えておくだけで、返す`features/route/useGenerationConditions.ts: destination`はnull）・通る順の入れ替え（出発地・経由地・目的地を1つの並びとして動かし、置いた位置の役割にする。先頭が変わると新しい先頭を出発地として呼び出し側へ渡す。選んでいる地点は同じ地点に付けたまま。`features/route/useGenerationConditions.ts: reorderPoints`）・地図のタップで置ける役割・住所の検索と地図の点の小窓で選んだ地点の置き方（`features/route/useGenerationConditions.ts: placeFound`）・つまみと倍率・除外・道の行ごとの避け方と、保存した条件での入れ替え（`features/route/useGenerationConditions.ts: restore`）。いまの条件を保存と同じ形1つ（`features/route/useGenerationConditions.ts: snapshot`）で返し、保存・生成の入力はそれを読む。入れ替えは項目ごとの入れ方の表で書き、形に項目を足すと、いまの条件・保存値の読み方・入れ方のどれが欠けても型の誤りになる。保存する値は読むときに今の画面が受け付ける範囲・今の項目へ揃え、倍率は今の費用の軸のものだけを送る（下記「RouteSettingsPanel.tsx」）。出発地は位置の取得と同じ持ち主（`hooks/useLocation.ts`）が持ち、地図で置いた出発地は呼び出し側へ渡す |
@@ -154,10 +154,10 @@
 - **所要時間と負担の説明**: カードの並びの先頭の見本の中の1つの(i)が、カードの段と印の読み方・所要時間・負担・候補の並びを、見出しを付けて1つずつ1文で説明する
   （読み方だけを短く言い、負担の種類ごとの内訳は道のりのグラフの右上の一覧が出す）。(i)の文のうち backend の宣言から決まる部分（所要時間の見積もり方・候補の並べ方は生成物
   `route-generate-config.json`、費用の軸の名前は`/api/cost-axes`）は、配られた文と名前を差し込み、画面で書き直さない。
-- **所要時間の前提が崩れたことの注意**: 選んだ候補の`missing_travel_data_share`（所要時間の計算で全体の平均で埋めた長さの、
-  距離に対する割合）が丸めて1%以上なら「◯%の道のりはデータが欠けていて、平均の値で計算しています」の1行をカードのすぐ下に出し、どう推定したかは
-  隣の(i)の中に生成物`route-generate-config.json`の`missing_travel_data_wording`で出す——平均で埋めた所要時間を
-  黙って見せない。0%は判断の材料にならないため出さない。backendがEdge単位で数えた値をそのまま使う。
+- **所要時間の前提が崩れたことの注意**: 選んだ候補の`missing_travel_data_share`（所要時間の計算で値が欠けて埋めた道のりの割合）が
+  丸めて1%以上なら、その百分率に生成物`route-generate-config.json`の`missing_travel_data_heading`を続けた1行をカードのすぐ下に出し、どう埋めたかは
+  隣の(i)の中に同じ生成物の`missing_travel_data_wording`で出す——埋めた値で出した所要時間を黙って見せない。文は画面で書き直さない。
+  0%は判断の材料にならないため出さない。
 - 候補タブの並び順は、最速の印の1本が比べる基準として先頭、残りはbackendの費用の順（`routeTabLabel.ts: routeListEntries`。
   [ページ全体構成・状態管理](page-composition.md)参照）。
 

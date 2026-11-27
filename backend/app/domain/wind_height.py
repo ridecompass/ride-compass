@@ -85,11 +85,17 @@ def seasonal_factors(factors: np.ndarray, day_of_year: int | np.ndarray) -> np.n
 @dataclass(frozen=True)
 class WindHeights:
     """区間の行の倍率（`height_factors`）の引き口。倍率は格子で決まり、格子は風の予報を読むまで決まらないので、格子を渡されたときに
-    引く。`factors_of`は格子 → 全区間の倍率、`rows`はそのうちのこの区間の行。"""
+    引く。`factors_of`は格子 → 全区間の倍率、`rows`はそのうちのこの区間の行、`filled_of`は全区間の、土地被覆の割合が欠けて
+    埋めた値で倍率を求めるか（bool）。"""
 
     factors_of: Callable[[MsmGrid], np.ndarray]
     rows: np.ndarray
+    filled_of: Callable[[], np.ndarray]
 
     def of_grid(self, grid: MsmGrid) -> np.ndarray:
         """格子`grid`での、`rows`の並びの倍率。"""
         return self.factors_of(grid)[self.rows]
+
+    def filled(self) -> np.ndarray:
+        """`rows`の並びの、土地被覆の割合が欠けて埋めた値で倍率を求める区間（bool）。"""
+        return self.filled_of()[self.rows]

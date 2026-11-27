@@ -209,6 +209,12 @@ class RoadNetwork:
         first = self.edge_first_rows
         return edge_key(self.edge_way_id[first], self.edge_segment[first])
 
+    @cached_property
+    def landcover_filled(self) -> np.ndarray:
+        """区間ごとの、土地被覆の割合のどれかが欠けていて、`wind_height_factors`が埋めた値で倍率を求めるか（区間の順の bool）。"""
+        columns = [self.numeric_ids.index(field) for field in ROUGHNESS_LENGTH_M]
+        return np.isnan(self.numeric_values[:, columns]).any(axis=1)
+
     def wind_height_factors(self, grid: MsmGrid, tuning: Tuning) -> np.ndarray:
         """全区間の、予報の10mの風を乗り手の高さへ直す倍率（`domain/wind_height.py: height_factors`）。土地被覆の割合の欠けは、
         ほかの数値の材料と同じく取込範囲全体の平均で埋める（`MaterialFills`）。格子の側の粗度が全区間から決まるので、格子ごとに
@@ -398,7 +404,8 @@ def material_arrays_of(road: RoadSlice, tuning: Tuning) -> EdgeMaterialColumns:
         mid_lat=np.asarray(network.mid_lat[rows]),
         mid_lon=np.asarray(network.mid_lon[rows]),
         elevation_spans=network.elevation_spans.take(rows),
-        wind_heights=WindHeights(lambda grid: network.wind_height_factors(grid, tuning), rows),
+        wind_heights=WindHeights(lambda grid: network.wind_height_factors(grid, tuning), rows,
+                                 lambda: network.landcover_filled),
     )
 
 
