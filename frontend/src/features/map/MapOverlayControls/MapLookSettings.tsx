@@ -14,7 +14,7 @@ export interface MapLookSettingsProps {
   mapTheme: { value: MapTheme; onChange: (theme: MapTheme) => void };
 }
 
-/** 範囲を切り替える層（「負担で塗る」の道の塗りと、スポットのまとまりの層）。 */
+/** 範囲を切り替える層（「走りにくさを色で見る」の道の塗りと、スポットのまとまりの層）。 */
 const RANGE_TARGETS = `「${BURDEN_PAINT_NAME}」の道と${SPOT_GROUP_NAME}`;
 const RANGE_DESCRIPTION = `ルートを選んでいる間、${RANGE_TARGETS}を、ルート沿いだけに表示するか、地図全体に表示するかを選びます。\n・ルートを選ぶまでは、地図全体に表示します。`;
 const THEME_DESCRIPTION = "暗い色にすると、夜のまぶしさと、有機ELの画面での電池の減りを抑えます。";

@@ -43,7 +43,7 @@ interface RideConditionBarProps {
   /** 想定速度（km/h）。 */
   speedKmh: number;
   onSpeedKmhChange: (speedKmh: number) => void;
-  /** いまの「負担で塗る」の周りの道の塗りが、出発時刻・想定速度で決まっている。 */
+  /** いまの「走りにくさを色で見る」の周りの道の塗りが、出発時刻・想定速度で決まっている。 */
   linkedDeparture: boolean;
   linkedSpeed: boolean;
 }

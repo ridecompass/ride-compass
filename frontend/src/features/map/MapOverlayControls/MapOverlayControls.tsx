@@ -169,7 +169,7 @@ export default function MapOverlayControls({
           variant="float"
           size="bare"
           shape="pill"
-          // アイコンだけの、右の縦の列と同じ幅で「負担で塗る」のピルと同じ高さ（文字1行＋上下の余白）のボタン。件数と絞り込みの印は角に置く。
+          // アイコンだけの、右の縦の列と同じ幅で「走りにくさを色で見る」のピルと同じ高さ（文字1行＋上下の余白）のボタン。件数と絞り込みの印は角に置く。
           className="pointer-events-auto relative w-[var(--map-ctrl-column-width)] flex-none justify-center border-0 py-1 text-[length:var(--font-size-sm)]"
           aria-label={LIST_SCREEN_NAME}
           aria-description={[

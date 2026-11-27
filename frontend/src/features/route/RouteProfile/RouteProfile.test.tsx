@@ -1,5 +1,5 @@
 /**
- * `features/route/RouteProfile/RouteProfile.tsx`——道のりのグラフの「表示」「負担で塗る」のタブ（名前は地図の2つの入口と同じ `lib/screenNames.ts`）と、
+ * `features/route/RouteProfile/RouteProfile.tsx`——道のりのグラフの「表示」「走りにくさを色で見る」のタブ（名前は地図の2つの入口と同じ `lib/screenNames.ts`）と、
  * 地点を選んでいる間の「区間を地図で見る」。
  *
  * 差し替えたもの: グラフの実寸（`getBoundingClientRect`。テスト環境は実寸を返さない）。道の区分の層は画面の設定の応答としてテストが組む
@@ -31,7 +31,7 @@ beforeEach(serveProfileCatalog);
 
 describe("RouteProfile", () => {
   it.each([{ riding: false }, { riding: true }])(
-    "結果も走行中（$riding）も、はじめは「負担で塗る」で、負担の大きい2つを積む。右上の「グラフに積む負担」の一覧は軸ごとに事実と負担の分を並べ、チェックで積む軸を足し・外して端末に覚え、避ける道で上乗せした分は行に出さない",
+    "結果も走行中（$riding）も、はじめは「走りにくさを色で見る」で、負担の大きい2つを積む。右上の「グラフに積む負担」の一覧は軸ごとに事実と負担の分を並べ、チェックで積む軸を足し・外して端末に覚え、避ける道で上乗せした分は行に出さない",
     async ({ riding }) => {
       window.localStorage.clear();
       const catalog = {

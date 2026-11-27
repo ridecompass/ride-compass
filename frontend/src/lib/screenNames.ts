@@ -10,7 +10,7 @@ export const APP_NAME = "RideCompass";
 export const FACT_DISPLAY_NAME = "表示";
 
 /** 選んだレンズの負担で、道・ルートの線・道のりのグラフを塗る所。 */
-export const BURDEN_PAINT_NAME = "負担で塗る";
+export const BURDEN_PAINT_NAME = "走りにくさを色で見る";
 
 /** 「ルート設定」の、道の区分ごとの避け方を選ぶタブ。行は地図の道路のまとまりの層の区分なので、まとまりの名前を使う。 */
 export const ROAD_SETTINGS_TAB_NAME = mapDisplay.overlayGroups.find((group) => group.key === "road")!.label;

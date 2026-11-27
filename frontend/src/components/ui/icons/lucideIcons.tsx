@@ -111,7 +111,7 @@ export const ChooseItemsIcon = fromLucide(ListChecks);
 /** 項目を選ぶ間の、一覧に並べる項目（`UnlistedIcon`と対で、並べるかを形で見分ける）。 */
 export const ListedIcon = fromLucide(Eye);
 export const UnlistedIcon = fromLucide(EyeOff);
-/** 負担で道を塗る（「負担で塗る」の入口）。 */
+/** 負担で道を塗る（「走りにくさを色で見る」の入口）。 */
 export const BurdenPaintIcon = fromLucide(Paintbrush);
 /** 負担（所要時間に足す代償）の量。 */
 export const BurdenIcon = fromLucide(Weight);

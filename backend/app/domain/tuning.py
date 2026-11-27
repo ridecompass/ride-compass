@@ -514,7 +514,7 @@ TUNING_PARAMETERS: tuple[TuningParameter, ...] = (
     ),
     TuningParameter(
         LENS_SCALE_STEPS_ID, "色の物差しを刻む数", "段", TuningEffect.IMMEDIATE,
-        "負担で塗る色を、緑の端から赤の端までこの数に刻む。",
+        "地図の「走りにくさを色で見る」の色を、緑の端から赤の端までこの数に刻む。",
     ),
     # --- 画面が使う値（カタログ取得でフロントへ配る） ---
     TuningParameter(

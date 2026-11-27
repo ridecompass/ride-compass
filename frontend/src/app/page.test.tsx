@@ -64,7 +64,7 @@ describe("ルートを作る", () => {
     await user.click(section("ルート結果"));
     expect(section("ルート結果")).toHaveAttribute("aria-expanded", "false");
 
-    await user.click(screen.getByRole("button", { name: /^負担で塗る: / }));
+    await user.click(screen.getByRole("button", { name: /^走りにくさを色で見る/ }));
     await user.click(await screen.findByRole("radio", { name: /登坂/ }));
     await user.keyboard("{Escape}");
     expect(paints("ascent")).toBe(true);
@@ -230,18 +230,20 @@ describe("ルートを作る", () => {
 
     jobs.respond([FIRST], LOOP_CONDITIONS);
     await generate(user);
-    expect(await screen.findByRole("button", { name: "負担で塗る: 全部（タップで変更）" })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("button", { name: "走りにくさを色で見る: 全部（タップで変更）" }),
+    ).toBeInTheDocument();
   });
 
-  it("「負担」タブで無効にした軸は、「負担で塗る」の一覧に出ない", async () => {
+  it("「負担」タブで無効にした軸は、「走りにくさを色で見る」の一覧に出ない", async () => {
     const { user } = renderHome();
     await user.click(screen.getByRole("tab", { name: "負担" }));
     await user.click(
       within(await screen.findByRole("radiogroup", { name: "振動の割合" })).getByRole("radio", { name: "無効" }),
     );
     await user.click(screen.getByRole("button", { name: "パネルを閉じる" }));
-    await user.click(screen.getByRole("button", { name: /^負担で塗る: / }));
-    const options = await screen.findByRole("radiogroup", { name: "負担で塗る" });
+    await user.click(screen.getByRole("button", { name: /^走りにくさを色で見る/ }));
+    const options = await screen.findByRole("radiogroup", { name: "走りにくさを色で見る" });
     const names = within(options)
       .getAllByRole("radio")
       .map((row) => row.textContent ?? "")

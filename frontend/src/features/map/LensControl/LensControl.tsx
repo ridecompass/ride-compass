@@ -38,9 +38,6 @@ interface LensControlProps {
 /** 画面の名前。コードの「レンズ」は画面には出さない（利用者が見る名前はこれだけ）。 */
 const LENS_SCREEN_NAME = BURDEN_PAINT_NAME;
 
-/** レンズを選んでいないルートの前のピルの名前（道路は塗らない）。 */
-const UNSELECTED_LABEL = "負担を色で見る";
-
 /**
  * レンズ（地図を何で塗るか）の唯一の入口。地図の上のピルが今のレンズを示し、押すと一覧を開く。置き場は呼び出し側が決める。
  * 一覧は選んでも閉じず、選んでいる行をもう一度押すと外れる。
@@ -62,10 +59,11 @@ export default function LensControl({
   // レンズを選んでいないときは、ルートの前は道路を塗らず、ルートの後はルートの線を総合で塗る（費用の軸の一覧が届く前と、取れない間は1色）。
   const unselected = lens === UNSELECTED_LENS_ID;
   const selected = axisOptions.find((option) => option.id === lens);
+  // ルートの前に選んでいなければ（道路を塗らない）、ピルは画面の名前そのものを出す。
   const pillLabel = unselected
     ? hasDetail && totalLabel !== null
       ? totalLabel
-      : UNSELECTED_LABEL
+      : LENS_SCREEN_NAME
     : (selected?.label ?? lens);
   const pillColor = selected?.color ?? LENS_NEUTRAL_COLOR;
   // 帯は色の段だけを並べ（受け皿の「データなし」等は除く）、右端の段の名前（一番濃い色の値）を帯の右に添える。
@@ -82,11 +80,11 @@ export default function LensControl({
             size="bare"
             shape="pill"
             className="max-w-full flex-row items-center gap-1.5 border-0 px-2.5 py-1 text-[length:var(--font-size-sm)] whitespace-nowrap focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-accent-strong)]"
-            aria-label={`${LENS_SCREEN_NAME}: ${pillLabel}（タップで変更）`}
+            aria-label={`${pillLabel === LENS_SCREEN_NAME ? LENS_SCREEN_NAME : `${LENS_SCREEN_NAME}: ${pillLabel}`}（タップで変更）`}
             title={statusLabel}
             usage={`選んだ負担の種類の${LENS_QUANTITY_LABEL}で、地図の道路[ルートを作った後はルートの線]を塗ります。\n・横の帯は左ほど小さく、右ほど大きい負担です（右に値があれば、その値から一番濃い色）。\n・道を押すと、その道の値が出ます。`}
           >
-            {/* 道のりのグラフの「負担で塗る」の切り替えと同じ絵で、どちらも同じ入口と分かるようにする。 */}
+            {/* 道のりのグラフの「走りにくさを色で見る」の切り替えと同じ絵で、どちらも同じ入口と分かるようにする。 */}
             <BurdenPaintIcon size={14} />
             <span
               aria-hidden="true"

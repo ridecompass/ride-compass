@@ -60,7 +60,7 @@ interface RouteProfileProps {
   riding?: boolean;
 }
 
-/** 道のりのグラフ。地図の2つの入口と同じ名前のタブで、「負担で塗る」は区間の1kmあたりの負担を、「表示」は選んだ情報（標高の折れ線・道の区分の帯等）を、
+/** 道のりのグラフ。地図の2つの入口と同じ名前のタブで、「走りにくさを色で見る」は区間の1kmあたりの負担を、「表示」は選んだ情報（標高の折れ線・道の区分の帯等）を、
  * 同じ横軸で出す。選んだ地点の中身は地図の区間の小窓が出す。 */
 export default function RouteProfile({
   segments,
@@ -127,7 +127,7 @@ export default function RouteProfile({
     <Tabs value={tab} onValueChange={setTab} className="relative flex flex-col gap-1">
       {/* 切り替えと見方・出す情報のボタンは右上に重ねる。結果の図では図の上の端の名前の帯に載って中身に掛からず、帯の無い走行中の図では
           図に重なる（低い高さで図を大きく見せる）。図の左上は値の目盛りに空けておく。重ねた部品の外では、図をなぞって地点を選べる。切り替えは地図の「表示」の
-          ボタンと「負担で塗る」のピルと同じ絵だけで出し、名前は読み上げに残す。 */}
+          ボタンと「走りにくさを色で見る」のピルと同じ絵だけで出し、名前は読み上げに残す。 */}
       <div className="pointer-events-none absolute top-0.5 right-1 z-10 flex items-start gap-1 [&>*]:pointer-events-auto">
         <TabsList aria-label="道のりのグラフ" variant="overlay">
           <TabsTrigger value="layer" usage="選んだ情報[標高・道の区分等]を、道のりに沿って出します。">

@@ -417,7 +417,7 @@ _LAYER_SPECS: dict[str, MapLayerSpec] = {
             "・取得に失敗することがあります。",
         ),
     ),
-    # 「負担で塗る」の道路の塗り（向かい風・追い風）と見分けられる名前にする。
+    # 「走りにくさを色で見る」の道路の塗り（向かい風・追い風）と見分けられる名前にする。
     "windVector": MapLayerSpec(
         "msmGrid",
         "weather",
