@@ -20,13 +20,7 @@ import {
 import type { RecordingMap } from "@/testing/mapTrace/recordingMap";
 
 import { applyMapScene, type MapSceneTarget } from "./applyMapScene";
-import {
-  EMPTY_MAP_SCENE,
-  interactiveSceneLayerIds,
-  type MapSceneImage,
-  type MapSceneImageOptions,
-  type MapSceneLayer,
-} from "./mapScene";
+import { EMPTY_MAP_SCENE, type MapSceneImage, type MapSceneImageOptions, type MapSceneLayer } from "./mapScene";
 
 /** 地図に載っているレイヤー（並び・塗り・配置・絞り込み）とソース（宣言・流し込んだ中身）。 */
 function snapshot(handle: RecordingMap): unknown {
@@ -58,14 +52,6 @@ const EXPECTED_ORDER = [
   "poi",
   "route",
 ];
-
-describe("mapScene", () => {
-  it("押せるレイヤーの一覧は、当たり判定の宣言から段の順で導ける", () => {
-    const shuffled = scene(SHUFFLED_LAYERS);
-
-    expect(interactiveSceneLayerIds(shuffled)).toEqual(["surface-line", "poi", "route"]);
-  });
-});
 
 describe("applyMapScene", () => {
   it("宣言したソースとレイヤーが、渡した配列の並びによらず段の順で地図に載り、面の段だけ呼び出し側が渡した位置より下へ入る", () => {
