@@ -1,8 +1,25 @@
 import { expect, type BrowserContext, type Locator, type Page } from "@playwright/test";
 
+import { openMapApp } from "./fixtures";
+
 // 走行モードの e2e が地図を読む段取り（画面の位置・倍率・現在地の印）と、ブラウザへ位置を届ける段取り。
 
 export const START = { latitude: 35.7536, longitude: 139.7378 };
+
+/** 現在地を`at`に置いてアプリを開く。画面を点けたままにする頼みは通す: 断られたときの知らせは返事が来てから地図に重なり、見えている
+ * 所の中ほど（届いた位置を描く所）を、テストが基準を読んだあとに動かしうる。Playwright の許しの口は画面を点けたままにする頼みを
+ * 持たないので、口ごと置く。 */
+export async function openRideMapApp(
+  page: Page,
+  context: BrowserContext,
+  at: { latitude: number; longitude: number; accuracy?: number },
+) {
+  await page.addInitScript(() => {
+    const request = async () => Object.assign(new EventTarget(), { release: async () => {} });
+    Object.defineProperty(navigator, "wakeLock", { configurable: true, value: { request } });
+  });
+  await openMapApp(page, { routes: () => context.setGeolocation(at) });
+}
 
 /** 地図が止まっていれば、その地点を地図が描く画面の位置。動いている間はnull。 */
 export async function screenPointOf(page: Page, at: { latitude: number; longitude: number }) {

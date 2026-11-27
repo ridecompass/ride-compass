@@ -81,7 +81,7 @@ def test_layer_values_split_roads_outside_classes_by_the_no_data_fact() -> None:
         {"k": classification({"is_a": [{"cat_a": _term(["a"])}]})},
         map_layers={"k": map_layer().model_copy(update={"no_data_fact_key": "cat_a"})},
     )
-    (column,) = layer_columns(definitions, {**COLUMNS, **class_columns(definitions, COLUMNS, N)}, N).values()
+    (column,) = layer_columns(definitions, {**COLUMNS, **class_columns(definitions, COLUMNS, N)}).values()
     assert [column.value_at(i) for i in range(N)] == [NO_DATA_VALUE, "is_a", None]
 
 

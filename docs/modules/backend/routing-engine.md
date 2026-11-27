@@ -130,7 +130,7 @@ Edgeコストは「探索の材料の表（[費用・材料](evaluation-scoring.
 依らない抵抗（`domain/cycling_speed.py: SegmentSpeedModel`）・停止の待ち・道のストレスの代償——はリクエストに1回だけ求めて
 使い回す。ビンの中身を決めるのは風の予報が引く時刻だけなので、同じ時刻のビン（`domain/leg_costs.py: BinTime`）はレグの向き・開始時刻が違っても1回だけ合成して使い回す。レグは表示の値を持たず、区間の表示（`domain/leg_costs.py: LegValues`）は、経路をたどって決めたビンの時刻（`LegCostArrays.bin_times`）で経路上の行だけを合成し直して読む（`domain/leg_costs.py: LegCostComposer.values_at_rows`）——全区間ぶんの表示の値をレグごとに持つと、区間数×レグ数ぶん膨らむ。区間ごとの通過時刻で合成したレグも、その時刻を区間ごとの配列で持つ同じ形（`BinTime`）で表す。レグのビンの配列は使い回すビンを指すことがあるので、探索はどのレグの配列も書き換えない。1ビンの中でも、
 予報の引き当て（風と気温）と乗り手の高さへの換算と風の分解（方位との差の三角関数）は、走行モデルと区間の表示（向かい風の成分）と地図のレンズが同じ値を読む
-（`domain/wind_context.py: WindContext`）。合成結果`LegCostArrays`は通過予定時刻で決まる配列（ビンごとのコスト・所要時間と各ビンの時刻）だけを持ち、
+（`domain/wind_context.py: WeatherContext`）。合成結果`LegCostArrays`は通過予定時刻で決まる配列（ビンごとのコスト・所要時間と各ビンの時刻）だけを持ち、
 時刻で変わらない列（区分の材料・道のストレスの重さ）は合成器（`domain/leg_costs.py: LegCostComposer`）が
 1つだけ持つ。レグは`RoadGraphContext.legs`に添字順で並ぶ:
 
@@ -149,7 +149,7 @@ Edgeコストは「探索の材料の表（[費用・材料](evaluation-scoring.
 候補の事実は、その区間の内訳と、時刻に依らない列から求める（`LegCostComposer.axis_facts`。作り方は道の窓と
 同じ`domain/leg_costs.py: axis_facts`）。
 逆回り候補はレグ割当ても反転する（先に走る側が往路配列、`reverse_leg_assignment`）。レグ番号は走行順に振られるため、Edge列の反転と同時に番号自体も`max_leg - leg`へ振り直す。探索範囲を覆う格子点ごとの時別の風と気温の予報
-（`WeatherService.get_wind_forecast_lattice`。格子点はMSMの格子点そのもの（`domain/msm.py: MsmBlock`）で、
+（`WeatherService.get_weather_forecast_lattice`。格子点はMSMの格子点そのもの（`domain/msm.py: MsmBlock`）で、
 探索範囲に依らない。各Edgeは中点に最も近い格子点の値を変えずに引く——ルートを出す前の地図も同じ点を引く。
 中点が並びの外にあるEdgeは、端の格子点の値で計算する）で、利用者の値に依らず時刻で合成する。予報が読めなければ
 生成は失敗する（無風で探さない）。
@@ -968,8 +968,8 @@ numbaでJITする探索と、探索の中へ展開する部品を置く。JITの
   必ず持つ。形（`geometry`）と断面の点（`profile`）は、作るときに道路網の配列の行から付ける
   （`domain/road_network.py: edge_shape`・`edge_profile`）。
 - 区間とノードの文字列の鍵（`edge_key`・`node_key`）と、区間の鍵の読み戻し（`parse_edge_key`）は
-  ここだけが持つ。路面タイルのフィーチャーの鍵（向きを持たない区間。`edge_feature_key_sql`）も同じ場所に置く
-  ——`edge_key`とは別の鍵で、タイルのSQLが組み立てる。APIが運ぶ鍵とDBの`(osm_way_id, segment_index, forward)`の対応がここで決まる。
+  ここだけが持つ。路面タイルのフィーチャーの鍵（向きを持たない区間。`domain/graph.py: edge_feature_key`）も同じ場所に置く
+  ——`edge_key`とは別の鍵で、タイルの線は1本の区間を往復で共有する。APIが運ぶ鍵とDBの`(osm_way_id, segment_index, forward)`の対応がここで決まる。
 
 ### `domain/route.py`
 
@@ -1017,7 +1017,7 @@ numbaでJITする探索と、探索の中へ展開する部品を置く。JITの
 ### `domain/geo.py`・`domain/errors.py`
 
 `geo.py`は球面三角法の地理計算——2地点の球面距離と初期方位角、それを多数の地点へまとめて求める配列版、
-角度から方位の呼び名への変換（例: `haversine_distance_km`・`compass_label`）、距離を度の幅へ直す目安（`KM_PER_DEGREE_LATITUDE`・`km_per_degree_longitude`と、SQLの前置フィルタの箱を距離の判定より必ず広くする`degrees_covering_m`）——と、多数の地点それぞれに最も近い点を球面の距離で選ぶ`nearest_point_indices`（1地点の口`nearest_point_index`。雨の材料・アメダス・暑さ指数の最寄りがすべてここを通る。点が1つも無ければ断るので、無いときの答えは呼び手が決める）を持つ。緯度・経度の値の範囲（`Latitude`・`Longitude`）と走行方位の範囲（`BearingDeg`、0以上360未満）もここが持ち、`Coordinates`・`BoundingBox`・HTTPの要求の緯度経度・走行方位がこの型で書く。方位の呼び名は
+角度から方位の呼び名への変換（例: `haversine_distance_km`・`compass_label`）、距離を度の幅へ直す目安（`KM_PER_DEGREE_LATITUDE`・`km_per_degree_longitude`と、SQLの前置フィルタの箱を距離の判定より必ず広くする`degrees_covering_m`）——と、1地点に最も近い点を球面の距離で選ぶ`nearest_point_index`（観測所・情報提供地点の最寄りはここを通る。点が1つも無ければNone）を持つ。緯度・経度の値の範囲（`Latitude`・`Longitude`）と走行方位の範囲（`BearingDeg`、0以上360未満）もここが持ち、`Coordinates`・`BoundingBox`・HTTPの要求の緯度経度・走行方位がこの型で書く。方位の呼び名は
 16方位の並び（`SIXTEEN_POINT_LABELS`）1つだけを持ち、8方位（`COMPASS_LABELS`）はその1つおきとして導く——アメダスの
 16方位の風向（`infrastructure/jma_amedas_client.py`）もこの並びを引くので、同じ向きが画面の場所によって違う名前にならない。`LatLon`（`Protocol`）・
 `LatLonPoint`（`NamedTuple`）は`Coordinates`（Pydantic、API境界の入力検証用）を経由

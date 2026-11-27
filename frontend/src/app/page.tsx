@@ -52,7 +52,7 @@ export default function Home() {
   const [focusPoint, setFocusPoint] = useState<Coordinates | null>(null);
   const ride = useRideConditions();
   const ridingWayConditions = useRideWayConditions(riding.map, ride.speedKmh);
-  // 名前を付けて保存した生成の条件（保存は「条件」タブ、呼び出しは「保存済み」タブ）。
+  // 名前を付けて保存した生成の条件（保存も呼び出しも「保存済み」タブ）。
   const savedConditions = useSavedConditions({
     conditions,
     origin: originLocated ? location : null,

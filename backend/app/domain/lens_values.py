@@ -173,7 +173,7 @@ def lens_table(features: LensFeatures, materials: Mapping[str, MaterialColumn], 
     レンズの値と、道の窓が出す区間の秒と事実の入力を求める。"""
     travel = travel_inputs(materials, distance_m, spans, speed_kmh, fills, settings)
     axes = settings.cost_axes
-    ledger = LedgerCosts.for_model(axes, parameters, travel.model, burden_weights(axes, parameters, materials, burden_fills))
+    ledger = LedgerCosts.for_model(parameters, travel.model, burden_weights(axes, parameters, materials, burden_fills))
     calm = (np.zeros(len(distance_m)), np.zeros(len(distance_m)), np.full(len(distance_m), STANDARD_TEMPERATURE_C))
     _, penalties = ledger.row_seconds(travel.model, *(calm if weather is None else weather))
     km = _summed_by_direction(features, travel.model.distance_m) / 1000.0
