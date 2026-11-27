@@ -314,7 +314,8 @@ export const mapDisplay = {
       "tile": {
         "minZoom": 4,
         "maxZoom": 10,
-        "vectorLayer": null
+        "vectorLayer": null,
+        "rasterSizePx": 256
       }
     },
     {
@@ -364,7 +365,8 @@ export const mapDisplay = {
       "tile": {
         "minZoom": 4,
         "maxZoom": 10,
-        "vectorLayer": null
+        "vectorLayer": null,
+        "rasterSizePx": 256
       }
     },
     {
@@ -472,7 +474,8 @@ export const mapDisplay = {
       "tile": {
         "minZoom": 4,
         "maxZoom": 10,
-        "vectorLayer": null
+        "vectorLayer": null,
+        "rasterSizePx": 256
       }
     },
     {
@@ -505,7 +508,8 @@ export const mapDisplay = {
       "tile": {
         "minZoom": 4,
         "maxZoom": 10,
-        "vectorLayer": null
+        "vectorLayer": null,
+        "rasterSizePx": 256
       }
     },
     {
@@ -538,7 +542,8 @@ export const mapDisplay = {
       "tile": {
         "minZoom": 4,
         "maxZoom": 10,
-        "vectorLayer": null
+        "vectorLayer": null,
+        "rasterSizePx": 256
       }
     },
     {
@@ -571,7 +576,8 @@ export const mapDisplay = {
       "tile": {
         "minZoom": 4,
         "maxZoom": 8,
-        "vectorLayer": null
+        "vectorLayer": null,
+        "rasterSizePx": 256
       }
     },
     {
@@ -604,7 +610,8 @@ export const mapDisplay = {
       "tile": {
         "minZoom": 4,
         "maxZoom": 8,
-        "vectorLayer": null
+        "vectorLayer": null,
+        "rasterSizePx": 256
       }
     },
     {
@@ -637,7 +644,8 @@ export const mapDisplay = {
       "tile": {
         "minZoom": 4,
         "maxZoom": 10,
-        "vectorLayer": "flood"
+        "vectorLayer": "flood",
+        "rasterSizePx": null
       }
     },
     {

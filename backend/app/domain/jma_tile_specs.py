@@ -42,6 +42,9 @@ class JmaTileSpec:
 #: どの要素も配信元に実データがある最小ズーム。
 JMA_TILE_MIN_ZOOM = 4
 
+#: 配信元のラスタのタイルの一辺の画素の数。どの要素も同じ。
+JMA_RASTER_TILE_SIZE_PX = 256
+
 
 def effective_max_zoom(spec: JmaTileSpec) -> int:
     """実データが存在する最大ズーム。
