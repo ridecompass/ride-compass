@@ -70,7 +70,7 @@ def test_the_kinds_of_regulations_active_on_each_edge():
     規制1、区間2は規制が無い。効いている組だけが種類を決める。"""
     slots = np.array([DAYTIME.as_values(), RegulationSlot(False, hours_from=8 * 60, hours_to=20 * 60).as_values()],
                      dtype=np.int16)
-    arrays = (np.array([0, 1, 2]), np.array([1, 1, 0]), np.array([0, 1]), np.array([0, 2]), np.array([2, 0]), slots)
+    arrays = (np.array([0, 1, 2]), np.array([1, 1, 0]), np.array([0, 1]), np.array([2, 0]), slots)
 
     def kinds(slot_active):
         bicycle, excepted = active_kinds(np.arange(3), *arrays, np.array(slot_active), slotless_active=True)

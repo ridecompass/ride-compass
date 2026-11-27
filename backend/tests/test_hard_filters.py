@@ -28,7 +28,8 @@ def edge(facts: dict[str, str] | None = None) -> EdgeMaterialColumns:
         columns={GRADIENT_PERCENT: np.zeros(1), **{m: CategoricalColumn.encode([v]) for m, v in facts.items()}},
         distance_m=np.full(1, 100.0), bearing_deg=nan, mid_lat=nan, mid_lon=nan,
         elevation_spans=grade_spans(np.zeros(1), np.full(1, 100.0)),
-        wind_heights=WindHeights(lambda _grid: np.ones((1, 2)), np.zeros(1, dtype=np.int64)),
+        wind_heights=WindHeights(lambda _grid: np.ones((1, 2)), np.zeros(1, dtype=np.int64),
+                                 lambda: np.zeros(1, dtype=bool)),
     )
 
 

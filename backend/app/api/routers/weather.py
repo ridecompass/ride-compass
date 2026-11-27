@@ -15,7 +15,7 @@ from app.api.rate_limit import enforce_rate_limit
 from app.config import settings
 from app.domain.geo import Latitude, Longitude
 from app.domain.jma_amedas import AmedasObservation
-from app.domain.msm_grid import MSM_GRID_MAX_AREA_SQ_DEG, MsmGridForecast
+from app.domain.msm_grid import MsmGridForecast
 from app.domain.region import BoundingBox
 from app.domain.route import Coordinates
 from app.domain.time_zone import JST
@@ -130,6 +130,7 @@ async def get_msm_grid(
         bbox = BoundingBox(min_latitude=min_lat, min_longitude=min_lon, max_latitude=max_lat, max_longitude=max_lon)
     except ValidationError:
         raise HTTPException(status_code=400, detail="表示範囲の指定が正しくありません。") from None
-    if (max_lat - min_lat) * (max_lon - min_lon) > MSM_GRID_MAX_AREA_SQ_DEG:
+    forecast = await weather_service.get_msm_grid(bbox)
+    if forecast is None:
         raise HTTPException(status_code=400, detail="表示範囲が広すぎます。ズームインしてください。")
-    return await weather_service.get_msm_grid(bbox)
+    return forecast

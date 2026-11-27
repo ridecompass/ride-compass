@@ -18,7 +18,7 @@
 | `lib/mapDisplay/costLensPaint.ts` | 費用のレンズの段の塗りの宣言（`lib/mapDisplay/costLensPaint.ts: costLensPaint`）と、レンズの値と事実の数の書き方。地図の道・ルートの線・候補の帯・道の窓が同じ段と同じ書き方にする |
 | `hooks/useCostAxisCatalog.ts` | 費用の軸の一覧（`GET /api/cost-axes`）を画面が読む形で共有する取得（`services/costAxisCatalogApi.ts: getCostAxisCatalog`） |
 | `lib/mapDisplay/valueScale.ts` | 地図が値を塗る宣言（`lib/mapDisplay/valueScale.ts: MapPaintDeclaration`）・段の並び（`lib/mapDisplay/valueScale.ts: valueBands`）・値が段に入るかの式（`lib/mapDisplay/valueScale.ts: bandCondition`・`lib/mapDisplay/valueScale.ts: bandStep`）・数の値が入る段（`lib/mapDisplay/valueScale.ts: bandAt`）。ルート前の道の線・ルート後の色分け・凡例・候補の帯が共有する（下記「valueScale.ts」） |
-| `features/map/scene/groups/axisLines.ts` | ルート確定前にレンズの値で道を塗る線の宣言。道ごとの材料のfeature-stateと走る条件のglobal-state、段の色、値が無い道・取得中の道の色と濃さ、値が無い道の破線、凡例で隠した段の落とし方（下記「レンズの線」） |
+| `features/map/scene/groups/axisLines.ts` | ルート確定前にレンズの値で道を塗る線の宣言。道ごとの材料のfeature-stateと走る条件のglobal-state、段の色、値が無い道・取得中の道の色と濃さ、値が無い道の破線（下記「レンズの線」） |
 | `features/map/scene/wayValueFormula.ts` | 式の木をMapLibreの式へ置き換える唯一の所（下記「レンズの線」）。木の中身は持たず、節の種類ごとの置き換え方だけを持つ |
 | `features/map/layers/dynamicWayValues.ts` | 材料を引く道路タイルの選び方（地図のズームをタイルのある範囲へ丸め、画面を覆うタイルを並べる。1回の数の上限を超える傾けた・回した大きな画面では、画面の中心に近いタイルから上限まで取り、端を落としたことを返す）・複数タイル応答の統合 |
 | `features/map/layers/webMercatorTile.ts` | Web MercatorのXYZタイルと緯度経度の行き来（点のタイル座標・点を含むタイル（世界の端はタイルの番号の範囲へ寄せる）・タイルが覆う範囲）。backendと同じ式で、一致は表の組`region`で照らす。道路タイルの値を引くタイルと、気象庁のタイルの在否の判定（`jmaTileIndex.ts`）が同じ式を通る |
@@ -103,7 +103,7 @@
   **ルート前の道の線（`scene/sceneInputs.ts`）・ルート後のルート線（`routeStyleModes.ts`）・凡例（`features/map/view/lens.ts`）・候補の帯
   （`bandAt`）がすべてこの1つの関数を通る**ため、同じレンズの同じ段はどこでも同じ鍵・色になる。
 - `bandCondition(bands, index, value)`: 値（MapLibreの式）が段に入るときに真になる式（`>= 下限`・`< 次の下限`）。
-  ルート後のルート線の色・ルート後の凡例の絞り込みはこれで段を引き、ルート前の道の線の色は下の`bandStep`で引く。どれも
+  ルート後のルート線の色はこれで段を引き、ルート前の道の線の色は下の`bandStep`で引く。どれも
   `>= 下限`で分けるので、**境界ちょうどの値はどこでも上の段に入る**。値が無い場合は呼ぶ側が先に分ける（欠損との大小比較は評価時エラーになる）。
 - `bandStep(bands, value, output)`: 値が入る段の出力を、値を1回だけ読む`step`で選ぶ式。ルート前の道の値の式は木を
   置き換えた大きな式で、MapLibre は式を読む所ごとに写して運ぶため、段ごとに値を読む`bandCondition`を使わない。
@@ -153,10 +153,6 @@
   `domain/gradient.py: travel_direction_formula`の`undetermined`が真）が街区の半分近くを占めうる。値と真偽は別の式で求め、真偽を
   先に分ける——段の大小比較は値のある道でだけ評価させる。凡例の行は`mapColorLegend.ts: UNDETERMINED_LEGEND_BAND`（鍵
   `LEGEND_UNDETERMINED_KEY`）で、ルート前の凡例にだけ足す（`view/lens.ts`。ルートの線は実際に走る向きで決まるので持たない）。
-- **凡例で隠した段は、色を透明にして下の路面レイヤーを見せる。** **feature-state経由の値はMapLibreの`filter`から読めない**ので、
-  絞り込みでは落とさない。レンズの線は当たり判定を持たない（道を押すと下の路面の線が受ける）ので、透明にした線が押せてしまう
-  ことは起きない。「データなし」を隠すと値の無い道の破線も出さない。取得中の色だけは「データなし」を隠していても残す
-  （「まだ来ていない」と「隠した」が区別できなくなるため）。
 
 ## routeStyleModes.ts（ルート確定後）
 
@@ -167,8 +163,6 @@
 **ルート確定の前と後は同じ段で塗る**（どちらも同じレンズの`lens`の境界）。同じ理由で段の識別子も前後で共通
 （`mapColorLegend.ts: legendBandKey`＝`step-N`、値を持たない道の受け皿は`LEGEND_NO_DATA_KEY`）。値を持たない道・区間の行は、
 道の属性の凡例も含めてどこでも`mapColorLegend.ts: NO_DATA_LEGEND_BAND`の1行（「データなし」）で、前後で呼び方が変わらない。
-**レンズのidを綴りへ混ぜない**——非表示にした段の保存先は前後で同じ鍵（レンズのid）のため、別の綴りにすると隠した段がルート
-生成で黙って戻る。
 
 値を持たない区間（「データなし」）はルート前の道と同じく破線で描く。モードは色の式と同じ「値が無い」の判定を
 `noDataExpression`として持ち、区間の線（役割`detailLine`）がそれで破線にする。
@@ -208,17 +202,6 @@
 - **当たり判定どうしの前後は、重なった場所で押したときにどちらが勝つかで決める。** 区間の
   当たり判定は太く（幅24px）ルート全体を覆うため、乗り換え区間の帯の当たり判定はその前面へ
   置く——後ろだと帯を一度も押せない。
-
-### 段階の表示ON/OFF（凡例のチェック）
-
-保存先はレンズを問わず隠した行の保存先（`useMapView`が持つ1つの表）の同じ鍵（レンズのid）で、
-「表示」の一覧の▶の内訳の絞り込み・「絞り込みをすべて解除」もこの同じ場所を読み書きする。
-段階キーは`mapColorLegend.ts: legendBandKey`/`LEGEND_NO_DATA_KEY`が唯一の出どころで、ルート前とルート後が同じキーを使う
-——**ルート生成をまたいでも同じ段階が隠れたまま**になる。効かせ方だけが前後で異なる。
-
-| ルート確定前 | ルート確定後 |
-|---|---|
-| 色式で透明にする（`scene/groups/axisLines.ts`） | ルート線モードのfilter（`scene/groups/routes.ts`） |
 
 ## useWayMaterials.ts（道ごとの材料のフェッチ・状態管理）
 
@@ -283,7 +266,7 @@ features/map/view/useMapView.ts
 <MapView look={{ …, lens, surroundingsShown, wayMaterials: 上のMapそのもの, wayConditions: 走る条件 }} .../>
   │   （レンズの一覧は MapView が地図の一覧の共有ストアから読む）
   ├─ sceneInputsFrom(...)（scene/sceneInputs.ts）がレンズごとの段（レンズのdisplayから）・式の木・材料・
-  │   隠した段と走る条件をレンズの線の入力へ移す
+  │   走る条件をレンズの線の入力へ移す
   ├─ buildMapScene → レンズの線（scene/groups/axisLines.ts）が、路面タイルのソースへ
   │   レンズごとのfeature-state（キーはレンズのidと材料の名前から機械的に決まる）と、地図全体のglobal-stateと、
   │   レンズごとの線レイヤーを宣言する

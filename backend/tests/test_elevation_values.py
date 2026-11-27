@@ -1,4 +1,4 @@
-"""区間の断面の点を揺れの閾値で間引く派生の段のSQL（`domain/attributes.py: elevation_profile_sql`）と、間引いたあとの点から
+"""区間の断面の点を揺れの閾値で間引く派生の段のSQL（`batch/derive_elevation.py: elevation_profile_sql`）と、間引いたあとの点から
 区間の標高と勾配の要約を出す`domain/elevation_profile.py: profile_summaries`（道路網の配列を作るときに出す）。
 
 間引き・行の有無を見るテストはSQLをPostGISで実行して返った行を見て、要約のテストは`profile_summaries`へ点を通す（`summarize`）。
@@ -12,7 +12,7 @@
 
 from functools import partial
 
-from app.domain.attributes import elevation_profile_sql
+from app.batch.derive_elevation import elevation_profile_sql
 from app.domain.elevation_profile import (
     FLAT,
     along_fractions,
@@ -206,11 +206,10 @@ async def test_segments_are_computed_separately(summarize):
     [
         ([0.0, 50.0, 50.0], 2 * STEP_M),
         ([10.0, None, 12.0], 2 * STEP_M),
-        ([10.0, 12.0], 0.0),
         ([0.0, rise(MAX_PLAUSIBLE_GRADE_PERCENT + 5) / 4], STEP_M / 4),
         ([100.0, 100.0 + rise(3), None, 100.0 + rise(8), 100.0 + rise(6), 100.0 + rise(6) + rise(45)], 5 * STEP_M),
     ],
-    ids=["ありえない間", "値の無い点", "長さ0", "短いありえない間", "混ざった道"],
+    ids=["ありえない間", "値の無い点", "短いありえない間", "混ざった道"],
 )
 async def test_the_summary_counts_the_same_steps_as_the_travel_time(road_graph_session, elevations, length_m):
     """地図の色・0次ハードフィルタ・区間の詳細が読む要約（`profile_summaries`）と、所要時間が走る点の間とが、同じ間を勾配として

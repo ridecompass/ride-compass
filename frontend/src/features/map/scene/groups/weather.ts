@@ -66,7 +66,7 @@ function sourceOf(element: DeclaredElement): Pick<WeatherElement, "sourceSpec" |
       return {
         sourceSpec: {
           type: "raster",
-          tileSize: 256,
+          tileSize: element.tile.rasterSizePx,
           minzoom: element.tile.minZoom,
           maxzoom: element.tile.maxZoom,
         },

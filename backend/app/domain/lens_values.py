@@ -5,7 +5,9 @@
 区間ごとの値を足して1kmあたりにする。区間ごとの値は探索と同じ部品（`domain/leg_costs.py: travel_inputs`・`burden_weights`、
 `domain/ledger_costs.py: LedgerCosts.penalty_by_axis`）で求める——レンズ・探索・ルートは同じ量を同じ所から読む。
 
-レンズはどれも1kmあたりの代償の秒で塗る: 軸ごとのレンズはその軸の分だけ、総合（`TOTAL_LENS_ID`）はその和。避け方の倍率は
+レンズはどれも1kmあたりの代償の秒で塗る: 軸ごとのレンズはその軸の分だけ、総合（`TOTAL_LENS_ID`）は予報の風と気温で解いた軸の和。
+値が時刻で変わらない軸（`lens_conditions`に時刻が無い）は無風・標準の気温で解くので、風の強い時刻には軸のレンズの和が総合と
+ずれる（同じ坂は時刻を変えても同じ色で、総合はルートと同じ空気で塗る）。避け方の倍率は
 道の区分の指定で、道の値ではないので入れない。レンズは通る道筋に依らない道の値なので、来た道と曲がる向きで決まる曲がる所の
 漕ぎ出しは入れない（ルートの内訳では、その費目を持つ軸の秒に入る）。
 """
@@ -17,7 +19,7 @@ from typing import Literal
 import numpy as np
 
 from app.domain.attributes import MaterialColumn
-from app.domain.cost_axes import EFFORT_AXES, CostAxisDefinitions, EffortItem
+from app.domain.cost_axes import EFFORT_AXES, EFFORT_ITEM_RULES, CostAxisDefinitions
 from app.domain.road_classes import CLASS_MATERIAL_PREFIX
 from app.domain.cycling_speed import STANDARD_TEMPERATURE_C
 from app.domain.lens_total import TOTAL_LENS_ID, lens_values_with_total
@@ -35,6 +37,7 @@ from app.domain.tuning import Tuning
 from app.domain.route import AxisFact, elevation_gain
 from app.domain.way_value_formula import (
     FALSE,
+    RIDE_CONDITION_ORDER,
     Unary,
     WayValueConditionName,
     WayValueFormula,
@@ -47,17 +50,6 @@ from app.domain.way_value_formula import (
 #: 道ごとの材料の名前（地図の式の木の葉）。道の向きに辿った値・逆向きに辿った値。
 LENS_ALONG_LEAF = "lens_along"
 LENS_AGAINST_LEAF = "lens_against"
-#: 走る条件の並び（レンズの条件はこの順に並べる）。走行方位は式の木が読み、ほかは道ごとの材料の要求へ載せる。
-_CONDITION_ORDER: tuple[WayValueConditionName, ...] = ("bearing_deg", "speed_kmh", "at")
-#: 体力の費目ごとの、値が変わる走る条件（`domain/cycling_speed.py: SegmentSpeedModel.ride`が読む入力）。漕ぎ出しの慣性は、止まる
-#: 回数と巡航速度（½mv² と平地の出力）だけで決まる。ほかの費目は、平地を越えて踏む出力を勾配（走る向き）・空気（風と気温、つまり
-#: 時刻）・転がりの増えた抵抗の比で分け合うので、どれも向き・速度・時刻で変わる。
-_EFFORT_ITEM_CONDITIONS: dict[EffortItem, tuple[WayValueConditionName, ...]] = {
-    "gravity": _CONDITION_ORDER,
-    "air": _CONDITION_ORDER,
-    "rolling": _CONDITION_ORDER,
-    "inertia": ("speed_kmh",),
-}
 
 
 class MapLens(StrictModel):
@@ -72,10 +64,10 @@ def lens_conditions(definitions: CostAxisDefinitions) -> dict[str, tuple[WayValu
     """レンズid（総合と軸id）→ そのレンズの値が変わる走る条件。道のストレスの軸は材料 × 1kmあたりの重さ × 距離で、速度と時刻では
     変わらない。区分の材料（道の区分は道1本の性質）なら向きでも変わらず、数値の材料は勾配のように進む向きで値が変わりうるので
     向きで変わるとみなす。総合は、どれかの軸の値が変わる条件（利用者が無効にした軸も数える。一覧は利用者に依らない）。"""
-    by_axis = {axis_id: _EFFORT_ITEM_CONDITIONS[item] for axis_id, item in EFFORT_AXES.items()}
+    by_axis = {axis_id: EFFORT_ITEM_RULES[item].conditions for axis_id, item in EFFORT_AXES.items()}
     by_axis |= {axis_id: () if axis.burden.material.startswith(CLASS_MATERIAL_PREFIX) else ("bearing_deg",)
                 for axis_id, axis in definitions.burden.items()}
-    total = tuple(name for name in _CONDITION_ORDER if any(name in names for names in by_axis.values()))
+    total = tuple(name for name in RIDE_CONDITION_ORDER if any(name in names for names in by_axis.values()))
     return {TOTAL_LENS_ID: total, **by_axis}
 
 
@@ -167,6 +159,8 @@ class LensFactInputs:
     distance_m: np.ndarray
     #: 数える軸id→行ごとの代償の秒（レンズの値と同じ秒）。
     penalties: Mapping[str, np.ndarray]
+    #: 行ごとの総合の秒（総合のレンズと同じ秒）。
+    total: np.ndarray
     #: 行の向きの登り（m、NaNは標高が無い）。
     elevation_gain_m: np.ndarray
     #: 止まってから漕ぎ出す回数（探索・停止の軸と同じ量。`domain/leg_costs.py: TravelInputs.stops`）。
@@ -185,14 +179,21 @@ def lens_table(features: LensFeatures, materials: Mapping[str, MaterialColumn], 
     レンズの値と、道の窓が出す区間の秒と事実の入力を求める。"""
     travel = travel_inputs(materials, distance_m, spans, speed_kmh, fills, settings)
     axes = settings.cost_axes
-    ledger = LedgerCosts.for_model(axes, parameters, travel.model, burden_weights(axes, parameters, materials, burden_fills))
+    ledger = LedgerCosts.for_model(parameters, travel.model, burden_weights(axes, parameters, materials, burden_fills))
     calm = (np.zeros(len(distance_m)), np.zeros(len(distance_m)), np.full(len(distance_m), STANDARD_TEMPERATURE_C))
     _, penalties = ledger.row_seconds(travel.model, *(calm if weather is None else weather))
+    total = lens_values_with_total(penalties, np.zeros(len(distance_m)))[TOTAL_LENS_ID]
+    timeless = {axis_id for axis_id, conditions in lens_conditions(axes).items() if "at" not in conditions}
+    if weather is not None:
+        _, calm_penalties = ledger.row_seconds(travel.model, *calm)
+        penalties = {axis_id: calm_penalties[axis_id] if axis_id in timeless else seconds
+                     for axis_id, seconds in penalties.items()}
     km = _summed_by_direction(features, travel.model.distance_m) / 1000.0
     with np.errstate(invalid="ignore", divide="ignore"):
         per_km = {axis_id: _summed_by_direction(features, seconds) / km for axis_id, seconds in penalties.items()}
-    return (LensTable(features=features, values=lens_values_with_total(per_km, np.zeros_like(km))),
-            LensFactInputs(settings, materials, travel.model.distance_m, penalties, elevation_gain_m, travel.stops,
+        total_per_km = _summed_by_direction(features, total) / km
+    return (LensTable(features=features, values={TOTAL_LENS_ID: total_per_km, **per_km}),
+            LensFactInputs(settings, materials, travel.model.distance_m, penalties, total, elevation_gain_m, travel.stops,
                            None if weather is None else weather[0]))
 
 
@@ -223,7 +224,7 @@ class LensDirection(StrictModel):
     """押したフィーチャーを1つの向きに辿ったときの代償の秒（地図のレンズと同じ秒を、区間の長さぶん足したもの）と、その元の事実。"""
 
     total_seconds: float
-    #: 数える軸ごとの秒（体力の軸をコードの表の順、続けて道のストレスの軸。和が総合）。
+    #: 数える軸ごとの秒（体力の軸をコードの表の順、続けて道のストレスの軸。予報が無風・標準の気温なら和が総合）。
     axes: list[LensAxisSeconds]
     #: 軸id→その軸の事実（`domain/leg_costs.py: axis_facts`。ルートの事実と同じ作り方）。
     facts: dict[str, AxisFact]
@@ -270,7 +271,7 @@ def lens_inspection(features: LensFeatures, index: int, painted: Literal["along"
         seconds = {axis_id: per_row[rows] for axis_id, per_row in facts.penalties.items()}
         sums = {axis_id: float(values.sum()) for axis_id, values in seconds.items()}
         return LensDirection(
-            total_seconds=lens_values_with_total(sums, 0.0)[TOTAL_LENS_ID],
+            total_seconds=float(facts.total[rows].sum()),
             axes=[LensAxisSeconds(axis_id=axis_id, seconds=value) for axis_id, value in sums.items()],
             facts=axis_facts(facts.settings, facts.materials, rows, facts.distance_m[rows], seconds,
                              elevation_gain(facts.elevation_gain_m[rows]),

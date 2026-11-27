@@ -12,54 +12,15 @@ from fastapi import APIRouter, Query
 from fastapi.exceptions import RequestValidationError
 from pydantic import TypeAdapter, ValidationError
 
-from app.domain.cost_axes import CostAxisCatalogEntry, LensBands, cost_axis_catalog
+from app.domain.axis_catalog import CostAxisCatalogResponse, current_cost_axis_catalog
 from app.domain.cost_preference import STANDARD_COST_FACTOR, CostPreference, RequestedCostPreference
-from app.domain.lens_total import TOTAL_LENS_ID
-from app.domain.lens_equivalents import lens_bands
-from app.domain.lens_values import MapLens, lens_conditions, map_lens
-from app.domain.model_settings import current_model_settings
-from app.domain.strict_model import StrictModel
 
 router = APIRouter()
 
 
-class CostAxisCatalogItem(CostAxisCatalogEntry):
-    """費用の軸1本の見せ方と、地図がその軸のレンズ（`lens_id`は軸id）で道を塗る決まり。"""
-
-    map_lens: MapLens
-
-
-class TotalLens(StrictModel):
-    """総合のレンズ（軸ごとの代償の秒の和）。軸ではないので倍率を持たない。"""
-
-    lens_id: str
-    label: str
-    description: str
-    icon_id: str
-    lens: LensBands
-    map_lens: MapLens
-
-
-class CostAxisCatalogResponse(StrictModel):
-    axes: list[CostAxisCatalogItem]
-    total_lens: TotalLens
-
-
 @router.get("/api/cost-axes", response_model=CostAxisCatalogResponse)
 async def get_cost_axis_catalog() -> CostAxisCatalogResponse:
-    settings = current_model_settings()
-    definitions = settings.cost_axes
-    conditions = lens_conditions(definitions)
-    # 段は合成の道で走行の模型を解くので、イベントループの外で求める。
-    bands = await asyncio.to_thread(lens_bands, settings)
-    total = definitions.total_lens
-    return CostAxisCatalogResponse(
-        axes=[CostAxisCatalogItem(**entry.model_dump(), map_lens=map_lens(conditions[entry.axis_id], settings.tuning))
-              for entry in cost_axis_catalog(definitions, bands)],
-        total_lens=TotalLens(lens_id=TOTAL_LENS_ID, label=total.label, description=total.description,
-                             icon_id=total.icon_id, lens=bands[TOTAL_LENS_ID],
-                             map_lens=map_lens(conditions[TOTAL_LENS_ID], settings.tuning)),
-    )
+    return await asyncio.to_thread(current_cost_axis_catalog)
 
 
 _REQUESTED_COST_PREFERENCE: TypeAdapter[CostPreference] = TypeAdapter(RequestedCostPreference)
@@ -72,7 +33,7 @@ def cost_preference_query(
     multipliers: Annotated[str | None, Query(description="軸id→倍率のJSONの object（書いていない軸は標準）")] = None,
     disabled_axes: Annotated[str | None, Query(description="数えない（無効にした）軸idのJSONの array")] = None,
 ) -> CostPreference:
-    """地図のレンズ（タイル）と凡例の目安の要求の利用者の値（ルート生成の`cost_preference`と同じ型・同じ検証。範囲と軸idは型が
+    """地図のレンズ（タイル）の要求の利用者の値（ルート生成の`cost_preference`と同じ型・同じ検証。範囲と軸idは型が
     検め、誤りは型の検査と同じ形の422）。URL がそのまま応答のキャッシュの鍵になるので、クエリで受ける。"""
     try:
         parsed = {} if multipliers is None else _MULTIPLIERS.validate_json(multipliers)

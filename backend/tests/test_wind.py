@@ -1,6 +1,6 @@
 """`domain/wind.py`——格子点ごとの時別の予報、通過予定時刻の推定。
 
-入口は`WindForecastSeries`・`estimate_passage_hours`。
+入口は`WeatherForecastSeries`・`estimate_passage_hours`。
 
 ここで見ないもの:
 - 予報を引くMSMの格子点の並び（`MsmBlock`） → `test_msm.py`
@@ -20,7 +20,7 @@ from app.domain.geo import EARTH_RADIUS_KM
 from app.domain.msm import MsmBlock, MsmGrid
 from app.domain.route import Coordinates
 from app.domain.wind import (
-    WindForecastSeries,
+    WeatherForecastSeries,
     estimate_passage_hours,
 )
 
@@ -35,7 +35,7 @@ BEARINGS = st.floats(0.0, 360.0)
 T0 = datetime(2026, 7, 1, 9, 0)
 
 
-def _series() -> WindForecastSeries:
+def _series() -> WeatherForecastSeries:
     """格子点2つ・3時刻。風速は「点の番号×100＋時刻の番号」、風向は時刻の番号×10。"""
     hours = 3
     lattice = MsmBlock(
@@ -44,7 +44,7 @@ def _series() -> WindForecastSeries:
     points = lattice.size
     speed = np.array([[p * 100.0 + t for t in range(hours)] for p in range(points)])
     direction = np.array([[t * 10.0 for t in range(hours)] for _ in range(points)])
-    return WindForecastSeries(
+    return WeatherForecastSeries(
         times=[T0 + timedelta(hours=t) for t in range(hours)], speed_ms=speed, direction_deg=direction,
         temperature_c=speed / 10.0, lattice=lattice,
         latest_run_end=T0 + timedelta(hours=hours),

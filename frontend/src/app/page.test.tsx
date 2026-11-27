@@ -225,7 +225,7 @@ describe("ルートを作る", () => {
     );
     await user.click(screen.getByRole("tab", { name: "負担" }));
     await user.click(screen.getByRole("button", { name: "全体の説明を表示" }));
-    expect(await screen.findByText(/余分にかかるもの\[甲・乙\]を時間に直した/)).toBeInTheDocument();
+    expect(await screen.findByText(/負担\[甲・乙\]は、/)).toBeInTheDocument();
     await user.keyboard("{Escape}");
 
     jobs.respond([FIRST], LOOP_CONDITIONS);

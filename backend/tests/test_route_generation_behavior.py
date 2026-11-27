@@ -23,11 +23,11 @@ from itertools import accumulate
 import pytest
 
 from app.domain.geo import KM_PER_DEGREE_LATITUDE, haversine_distance_km, km_per_degree_longitude
-from app.domain.graph import edge_key, node_key
+from app.domain.graph import edge_id_of, node_key
 from app.domain.road_classes import TRUE_FACT_VALUE
 from app.domain.road_network import RoadNetwork
 from app.domain.route import Coordinates
-from app.domain.wind import WindForecastSeries
+from app.domain.wind import WeatherForecastSeries
 from tests.cost_axes_fixture import cost_axes, cost_axes_declared
 from app.domain.road_classes import AvoidanceClassification, ConditionTerm
 from tests.road_class_fixture import classification, fact_is, map_layer, replaced_road_classes, road_classes
@@ -84,7 +84,7 @@ def engine_over(road_network_root):
     1kmあたり`avoid_weight × BAD_PER_KM_PER_WEIGHT`の重さと数える道のストレスの軸を置く。"""
     with ExitStack() as declared:
 
-        def build(network: RoadNetwork, *, avoid_weight: float = 0.0, wind: WindForecastSeries = CALM,
+        def build(network: RoadNetwork, *, avoid_weight: float = 0.0, wind: WeatherForecastSeries = CALM,
                   **conditions):
             if avoid_weight:
                 declared.enter_context(cost_axes_declared(cost_axes(BAD_MATERIAL, avoid_weight * BAD_PER_KM_PER_WEIGHT)))
@@ -205,7 +205,7 @@ async def test_a_spliced_route_the_road_network_cannot_trace_is_refused(
 async def test_a_spliced_route_through_a_road_the_search_excludes_is_refused(engine_over):
     """管理APIで区分を書き換えた直後等に、通れない道を含む経路を送られても、普通の道として所要時間を付けて返さない。"""
     generator = engine_over(grid_network(motorway_ways={100}))
-    through_motorway = (edge_key(100, 0, True), edge_key(101, 0, True), edge_key(202, 0, True), edge_key(205, 0, True))
+    through_motorway = (edge_id_of(100, 0, True), edge_id_of(101, 0, True), edge_id_of(202, 0, True), edge_id_of(205, 0, True))
 
     assert (await generator.generate_spliced_route(
         at(SOUTH_WEST), FixedPoints(waypoints=[], destination=at(NORTH_EAST)), through_motorway,
@@ -331,7 +331,7 @@ def _clustered_ring_network() -> tuple[RoadNetwork, Coordinates]:
     easy_bearing = 4
     for spoke in range(16):
         angle = math.radians(spoke * 22.5)
-        steps = [1.0, 2.0, 3.0, 4.0, 4.6] if spoke == easy_bearing else [1.0, 2.0, 3.0, 4.0, 5.0, 6.0]
+        steps = [1.0, 2.0, 3.0, 4.0] if spoke == easy_bearing else [1.0, 2.0, 3.0, 4.0, 5.0, 6.0]
         previous = 1
         for step, km in enumerate(steps):
             node = 100 + spoke * 10 + step
@@ -356,7 +356,7 @@ def _clustered_ring_network() -> tuple[RoadNetwork, Coordinates]:
                 ways[len(ways) + 1] = (patch_node(row, col), patch_node(row, col + 1))
             if row + 1 < side:
                 ways[len(ways) + 1] = (patch_node(row, col), patch_node(row + 1, col))
-    ways[len(ways) + 1] = (100 + easy_bearing * 10 + 4, patch_node(40, 40))
+    ways[len(ways) + 1] = (100 + easy_bearing * 10 + 3, patch_node(40, 40))
     return road_network(ways, coordinates, bad_ways=bad_ways), Coordinates(latitude=origin[0], longitude=origin[1])
 
 

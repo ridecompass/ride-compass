@@ -204,13 +204,10 @@ def japanese_name_sql(name_expr: str) -> str:
 
 
 def contacts_sql(websites_expr: str, phones_expr: str) -> str:
-    """地点の連絡先（ウェブサイト・電話。文字列の配列か NULL）を、1つずつ比べられる形の行に出す副問い合わせ
-    （列`contact`）。ウェブサイトは小文字にして`http(s)://`・`www.`・末尾の`/`を除き、電話は数字だけにして頭の国番号を0にする
-    （配布には`+81339412222`と`03-3941-2222`の両方の書き方がある）。"""
-    website = "regexp_replace(lower(trim(w)), '^https?://(www\\.)?|^www\\.|/+$', '', 'g')"
-    phone = "regexp_replace(regexp_replace(t, '[^0-9]', '', 'g'), '^81', '0')"
-    return (f"SELECT 'w:' || {website} AS contact FROM unnest({websites_expr}) w WHERE {website} <> ''"
-            f" UNION SELECT 't:' || {phone} FROM unnest({phones_expr}) t WHERE {phone} <> ''")
+    """地点の連絡先（ウェブサイト・電話。書き方の揺れを外した文字列の配列か NULL）を、1つずつ比べられる形の行に出す副問い合わせ
+    （列`contact`）。ウェブサイトと電話は別の連絡先として比べ、空の値は連絡先に数えない。"""
+    return (f"SELECT 'w:' || w AS contact FROM unnest({websites_expr}) w WHERE w <> ''"
+            f" UNION SELECT 't:' || t FROM unnest({phones_expr}) t WHERE t <> ''")
 
 
 def store_name_sql(name_expr: str) -> str:

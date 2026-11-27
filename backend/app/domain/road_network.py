@@ -48,7 +48,11 @@ _POINT_PREFIXES = ("profile_", "shape_", "span_", "regulation_")
 
 @dataclass(frozen=True, eq=False)
 class RoadNetwork:
-    """`revision`は作った時点の派生データの世代（`derived_data_meta.revision`）。"""
+    """`revision`は作った時点の派生データの世代（`derived_data_meta.revision`）。
+
+    区間の長さ（`distance_m`）は全行が0より大きく、断面の点の位置（`profile_position`）は標高の点と同じ数だけある（DBの表
+    `road_edges`・`edge_elevation`の制約が保証する）。読む側は長さ0・位置の欠けを扱わない。
+    """
 
     revision: int
 
@@ -139,7 +143,7 @@ class RoadNetwork:
     way_categorical_codes: np.ndarray  # (道, 列) int16。0は値なし
 
     def __post_init__(self) -> None:
-        """行数と列数が揃っていることを、組み立てた場所で確かめる。
+        """行数と列数が揃い、区間の長さが0より大きいことを、組み立てた場所で確かめる。
 
         揃わないまま使うと、別の区間の材料・別のノードの座標を黙って読む。
         """
@@ -181,6 +185,8 @@ class RoadNetwork:
                 f"道路網の配列の形が揃っていません ノード={node_count} 区間={edge_count} "
                 f"行数={wrong} 列数={wrong_columns}"
             )
+        if not np.all(self.distance_m > 0):
+            raise ValueError(f"道路網の配列に長さが0より大きくない区間があります 行={np.flatnonzero(~(self.distance_m > 0))[:10].tolist()}")
 
     @property
     def edge_count(self) -> int:
@@ -202,6 +208,12 @@ class RoadNetwork:
         """`edge_first_rows`の区間の鍵（`edge_key`。昇順）。道路網と同じ寿命で1回だけ求める。"""
         first = self.edge_first_rows
         return edge_key(self.edge_way_id[first], self.edge_segment[first])
+
+    @cached_property
+    def landcover_filled(self) -> np.ndarray:
+        """区間ごとの、土地被覆の割合のどれかが欠けていて、`wind_height_factors`が埋めた値で倍率を求めるか（区間の順の bool）。"""
+        columns = [self.numeric_ids.index(field) for field in ROUGHNESS_LENGTH_M]
+        return np.isnan(self.numeric_values[:, columns]).any(axis=1)
 
     def wind_height_factors(self, grid: MsmGrid, tuning: Tuning) -> np.ndarray:
         """全区間の、予報の10mの風を乗り手の高さへ直す倍率（`domain/wind_height.py: height_factors`）。土地被覆の割合の欠けは、
@@ -290,7 +302,7 @@ def road_class_columns(
         },
     }
     classes = class_columns(definitions, facts, network.edge_count)
-    return classes, layer_columns(definitions, {**facts, **classes}, network.edge_count)
+    return classes, layer_columns(definitions, {**facts, **classes})
 
 
 def slice_network(
@@ -392,7 +404,8 @@ def material_arrays_of(road: RoadSlice, tuning: Tuning) -> EdgeMaterialColumns:
         mid_lat=np.asarray(network.mid_lat[rows]),
         mid_lon=np.asarray(network.mid_lon[rows]),
         elevation_spans=network.elevation_spans.take(rows),
-        wind_heights=WindHeights(lambda grid: network.wind_height_factors(grid, tuning), rows),
+        wind_heights=WindHeights(lambda grid: network.wind_height_factors(grid, tuning), rows,
+                                 lambda: network.landcover_filled),
     )
 
 

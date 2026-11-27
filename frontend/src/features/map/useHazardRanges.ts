@@ -32,7 +32,7 @@ export function useHazardRanges(
       if (!state?.visible || state.payload === undefined || !isTilePayload(state.payload)) return [];
       const tiles = jmaTileMasksOf(state.payload.tileUrlTemplate);
       if (tiles === undefined) return [];
-      const z = jmaTileZoomAt(viewport.zoom, element.tile.minZoom, element.tile.maxZoom);
+      const z = jmaTileZoomAt(viewport.zoom, element.tile);
       const levels = weatherScales[element.levelScale];
       return hazardMarkPoints(tiles, z, viewport, viewport.zoom, spacing, index * shift).map(
         ({ at, level }): GeoJSON.Feature => ({

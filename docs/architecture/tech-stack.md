@@ -221,7 +221,7 @@ Next.jsのHTMLの404が返る（backendの404はJSON）。本番のAPIを手で�
 
 本番へ届くファイル（`deploy_gate.py: deploy_paths`。gitのpathspecとして`git diff --name-only`に当てさせる）は、
 イメージに入るもの——`backend/Dockerfile`と、出したいコミットのそのDockerfileがCOPYするもの——と、イメージの外から届くもの
-（`deploy_gate.py: HOST_PATHS`）である。イメージに入らないもの（テスト・lint設定・ベンチマーク等）は、COPYしないことで外れ、
+（`deploy_gate.py: HOST_PATHS`）である。イメージに入らないもの（テスト・lint設定等）は、COPYしないことで外れ、
 別の一覧を持たない。`backend/ops/`（VMのホストで動くsystemdのユニットとシェル）はイメージに入らないが`HOST_PATHS`に入る
 ——デプロイがVMの作業コピーをそのコミットへ揃えて`systemctl daemon-reload`を打つことでだけ届く。イメージには入るが本番
 プロセスが読まないもの（`export_openapi.py`とそれだけが読む表示値の宣言）は`deploy_gate.py: NOT_DEPLOYED`が外す。

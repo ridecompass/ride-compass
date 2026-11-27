@@ -1,7 +1,7 @@
 // 出発時刻ピッカー（RideConditionBar）のドラッグタイムライン用の目盛り生成。気象レイヤーの
 // 取得結果に依存しない理由と刻みの粒度はdocs/modules/frontend/dynamic-weather-layers.md
 // 「共有タイムラインのラベル」節が持つ。
-import { HOUR_MS } from "@/lib/duration";
+import { HOUR_MS, MINUTE_MS, MINUTE_UNIT } from "@/lib/duration";
 import { formatJstDateTime, formatJstHourMinute, formatJstMinute, jstParts } from "@/lib/time";
 import type { RulerFrame } from "@/components/ui/Ruler/Ruler";
 import { DEPARTURE_STEP_MS, floorToDepartureStep } from "@/features/conditions/rideConditions";
@@ -10,10 +10,15 @@ import { mapDisplay } from "@/types/generated/mapDisplay";
 /** 目盛りの刻み。5分刻みは直近だけを、1時間刻みはMSMの予報を読む先までを並べる。 */
 export type DepartureStep = "5min" | "hour";
 
-export const DEPARTURE_STEPS: readonly { value: DepartureStep; label: string }[] = [
-  { value: "5min", label: "5分" },
-  { value: "hour", label: "1時間" },
-];
+/** 刻みの幅（ms）。札はこの幅から書く。 */
+const STEP_MS: Record<DepartureStep, number> = { "5min": DEPARTURE_STEP_MS, hour: HOUR_MS };
+
+export const DEPARTURE_STEPS: readonly { value: DepartureStep; label: string }[] = (
+  Object.keys(STEP_MS) as DepartureStep[]
+).map((value) => {
+  const ms = STEP_MS[value];
+  return { value, label: ms % HOUR_MS === 0 ? `${ms / HOUR_MS}時間` : `${ms / MINUTE_MS}${MINUTE_UNIT}` };
+});
 
 export function isDepartureStep(value: string): value is DepartureStep {
   return DEPARTURE_STEPS.some((step) => step.value === value);

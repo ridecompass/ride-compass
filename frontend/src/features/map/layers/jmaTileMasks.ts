@@ -2,7 +2,6 @@
 // 同じ中身から作って覚え、範囲の印の置き場（`hazardRanges.ts`）が読む——印のために配信元へ取りに行き直さない。
 
 import type { JmaTileRef } from "@/features/map/layers/jmaDelivery";
-import { hexToRgb } from "@/lib/rgbHsl";
 import { mapDisplay } from "@/types/generated/mapDisplay";
 import weatherScales from "@/types/generated/weather-scales.json";
 
@@ -15,26 +14,15 @@ export interface TileMask {
   readonly levels: Uint8Array;
 }
 
-type Rgb = readonly [number, number, number];
+/** 色の[R, G, B]。 */
+type Rgb = readonly number[];
 
-/** 配信元のタイルが描かない段（危険度の「平常」。タイルは透明）。画素の見分けの候補にも、凡例の印にも入れない。 */
-export function isUndrawnLevel(level: object): boolean {
-  return "level" in level && level.level === 0;
-}
-
-/** 段で塗る災害の配信要素id → 段の表の並びの順の、段を見分ける色（配信元のタイルの色を測ってあればその色、無ければ凡例の色。
- * 描かない段はnull）。 */
+/** 段で塗る災害の配信要素id → 段の表の並びの順の、画素を段と見分ける色（宣言の`pixel_color`。描かない段はnull）。 */
 const LEVEL_COLORS_OF_DELIVERY: ReadonlyMap<string, readonly (Rgb | null)[]> = new Map(
   mapDisplay.weatherElements.flatMap((element) =>
     element.levelScale !== null && element.kind === "rasterTile"
       ? element.jmaElements.map(
-          (jma) =>
-            [
-              jma.id,
-              weatherScales[element.levelScale].map((level) =>
-                isUndrawnLevel(level) ? null : hexToRgb(level.tile_color ?? level.color),
-              ),
-            ] as const,
+          (jma) => [jma.id, weatherScales[element.levelScale].map((level) => level.pixel_color)] as const,
         )
       : [],
   ),
@@ -46,10 +34,10 @@ export function remembersJmaTile(deliveryId: string): boolean {
 }
 
 /**
- * 色`rgb`の画素の段（`colors`の並びの番号＋1）。いちばん近い色の段にする——配信元は配色を公開しておらず、測れていない段は
- * 凡例の近い色で見分ける。中継が注意の段を薄くした画素も、色は変えていないので同じに見分けられる。
+ * 色`rgb`の画素の段（`colors`の並びの番号＋1。見分ける色が無ければ0）。いちばん近い色の段にし、近さが同じなら先の段にする
+ * （見分け方は backend と答え合わせする。生成物`jma-expectations.json`の`tile_pixel_level`）。
  */
-function nearestLevel(rgb: Rgb, colors: readonly (Rgb | null)[]): number {
+export function tilePixelLevel(rgb: Rgb, colors: readonly (Rgb | null)[]): number {
   let best = 0;
   let bestDistance = Infinity;
   colors.forEach((color, index) => {
@@ -149,7 +137,7 @@ async function pixelLevels(
       const key = (rgba[i * 4] << 16) | (rgba[i * 4 + 1] << 8) | rgba[i * 4 + 2];
       let level = known.get(key);
       if (level === undefined) {
-        level = nearestLevel([rgba[i * 4], rgba[i * 4 + 1], rgba[i * 4 + 2]], colors);
+        level = tilePixelLevel([rgba[i * 4], rgba[i * 4 + 1], rgba[i * 4 + 2]], colors);
         known.set(key, level);
       }
       levels[i] = level;

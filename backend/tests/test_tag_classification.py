@@ -1,4 +1,4 @@
-"""`domain/traffic.py`のうち、点の種別を決めるSQL——タグからの引き当て（`tag_kind_sql`）・信号の判定
+"""点の種別を決めるSQL——タグからの引き当て（`batch/derive_nodes.py: tag_kind_sql`）と、`domain/traffic.py`の信号の判定
 （`TRAFFIC_SIGNAL_SQL`）・地図へ出す種別と数える種別への読み替え（`stop_kind_sql`・`count_kind_sql`・`kind_map_sql`）。
 
 式はどれも派生の段がDBで実行するので、ここでもDBで実行して答えを見る。入力は`VALUES`で与え、表は使わない。
@@ -13,6 +13,7 @@ import json
 import pytest
 from sqlalchemy import text
 
+from app.batch.derive_nodes import tag_kind_sql
 from app.domain import traffic
 
 pytestmark = pytest.mark.asyncio(loop_scope="module")
@@ -22,7 +23,7 @@ async def _kind(engine, tags: dict[str, str]) -> str | None:
     """点を`tag_kind_sql`へ通し、種別を返す。当たらない点は None。"""
     source = "SELECT * FROM (VALUES (CAST(1 AS bigint), CAST(:tags AS jsonb))) AS t(id, tags)"
     async with engine.connect() as conn:
-        result = (await conn.execute(text(traffic.tag_kind_sql(source)), {"tags": json.dumps(tags)})).all()
+        result = (await conn.execute(text(tag_kind_sql(source)), {"tags": json.dumps(tags)})).all()
     assert len(result) <= 1, "1つの点に種別が2つ付いた"
     return result[0].kind if result else None
 
