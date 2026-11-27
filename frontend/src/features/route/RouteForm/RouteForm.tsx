@@ -144,7 +144,7 @@ export default function RouteForm({
                 ...(distanceToleranceRatio === undefined
                   ? []
                   : [toleranceSentence(distanceToleranceRatio, distanceInput)]),
-                "・「距離を決める」を外すと、距離を決めません。所要時間と負担の和が小さい道で目的地へ向かいます[周回なら、経由地を回って出発地へ]。",
+                `・「距離を決める」を外すと、距離を決めません。${routeGenerateConfig.cost_wording}が小さい道で目的地へ向かいます[周回なら、経由地を回って出発地へ]。`,
                 `・${routeGenerateConfig.busy_safe_distance_km}kmより長い目標は、混み合っているときに作れないことがあります。`,
               ].join("\n")}
             />

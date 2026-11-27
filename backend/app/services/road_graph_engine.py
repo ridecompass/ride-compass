@@ -223,8 +223,8 @@ class RoadGraphEngine:
             return None
 
         weather_started = start_timer()
-        # 探索範囲を覆う格子点ごとの時別風予報（MSMのローカルファイルから読む。外部API呼び出しは無い）。
-        wind_series = await self._weather_service.get_wind_forecast_lattice(bbox)
+        # 探索範囲を覆う格子点ごとの時別の風と気温の予報（MSMのローカルファイルから読む。外部API呼び出しは無い）。
+        weather_series = await self._weather_service.get_weather_forecast_lattice(bbox)
         weather_ms = elapsed_ms(weather_started)
 
         materials_started = start_timer()
@@ -255,7 +255,7 @@ class RoadGraphEngine:
                 self._avoidance_multipliers)
             composer = LegCostComposer(
                 materials, search_masks,
-                wind_series, start, self._assumed_speed_kmh, lazy_graph.edge_rows,
+                weather_series, start, self._assumed_speed_kmh, lazy_graph.edge_rows,
                 detour_ratio=detour_ratio_or_default(learned_detour_ratio),
                 material_fills=MaterialFills(numeric_means=road.network.numeric_means),
                 burden_fills=network_burden_fills(road.network, cost_axes),

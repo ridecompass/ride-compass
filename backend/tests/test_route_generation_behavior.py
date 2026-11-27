@@ -27,7 +27,7 @@ from app.domain.graph import edge_id_of, node_key
 from app.domain.road_classes import TRUE_FACT_VALUE
 from app.domain.road_network import RoadNetwork
 from app.domain.route import Coordinates
-from app.domain.wind import WindForecastSeries
+from app.domain.wind import WeatherForecastSeries
 from tests.cost_axes_fixture import cost_axes, cost_axes_declared
 from app.domain.road_classes import AvoidanceClassification, ConditionTerm
 from tests.road_class_fixture import classification, fact_is, map_layer, replaced_road_classes, road_classes
@@ -84,7 +84,7 @@ def engine_over(road_network_root):
     1kmあたり`avoid_weight × BAD_PER_KM_PER_WEIGHT`の重さと数える道のストレスの軸を置く。"""
     with ExitStack() as declared:
 
-        def build(network: RoadNetwork, *, avoid_weight: float = 0.0, wind: WindForecastSeries = CALM,
+        def build(network: RoadNetwork, *, avoid_weight: float = 0.0, wind: WeatherForecastSeries = CALM,
                   **conditions):
             if avoid_weight:
                 declared.enter_context(cost_axes_declared(cost_axes(BAD_MATERIAL, avoid_weight * BAD_PER_KM_PER_WEIGHT)))

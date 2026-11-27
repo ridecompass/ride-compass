@@ -132,7 +132,7 @@ def _axis_seconds_per_km(settings: ModelSettings, parameters: LedgerParameters, 
            else crr_for_surface(surface, settings.road_classes, tuning))
     model = SegmentSpeedModel(RiderProfile.standard(ASSUMED_SPEED_KMH, tuning), _uniform_slopes(grade),
                               np.full(n, _ROAD_M), crr, np.zeros(n) if kickoffs is None else kickoffs, tuning)
-    ledger = LedgerCosts.for_model(axes, parameters, model, {
+    ledger = LedgerCosts.for_model(parameters, model, {
         burden_id: burden if burden is not None and burden_id == axis_id else np.zeros(n) for burden_id in axes.burden})
     wind = np.zeros(n) if headwind_ms is None else np.asarray(headwind_ms, dtype=np.float64)
     return ledger.row_seconds(model, wind, np.zeros(n), np.full(n, STANDARD_TEMPERATURE_C))[1][axis_id]

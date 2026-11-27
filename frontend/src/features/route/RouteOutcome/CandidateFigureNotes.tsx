@@ -19,7 +19,7 @@ export function CandidateFiguresInfo() {
         <GuideText text={`・上の段: 距離\n・下の段: 所要時間と負担\n${CANDIDATE_MARKS_WORDING}`} />
       </p>
       <p>{`所要時間: ${routeGenerateConfig.duration_estimate_wording}`}</p>
-      <p>{`負担: 避けたいもの${costAxisNamesNote(costAxes)}を通る分を時間に直したものです。`}</p>
+      <p>{`負担${costAxisNamesNote(costAxes)}: ${routeGenerateConfig.penalty_wording}です。`}</p>
       <p>{`並び: 先頭は最速、残りは${routeGenerateConfig.candidate_order_wording}です。`}</p>
     </InfoPopover>
   );

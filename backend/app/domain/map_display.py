@@ -413,7 +413,7 @@ _LAYER_SPECS: dict[str, MapLayerSpec] = {
         description=("雨の降っている所と、この先の雨雲を、時刻を動かして見られます",),
         panel_hint=(
             f"・{_NOWCAST_REACH}先までは実況に近い予測、{_SHORT_RANGE_REACH}先までは短時間予報、"
-            f"{_MSM_REACH}先までは数値予報モデルの値で、赤は線状降水帯です。\n・{MODEL_VALUE_DISCLAIMER}\n"
+            f"{_MSM_REACH}先までは数値予報モデルの値です。\n・{MODEL_VALUE_DISCLAIMER}\n"
             "・取得に失敗することがあります。",
         ),
     ),
@@ -423,7 +423,7 @@ _LAYER_SPECS: dict[str, MapLayerSpec] = {
         "weather",
         data_nature="dynamic",
         label="風",
-        description=("風の向きと強さを、約5kmごとの矢印で見られます",),
+        description=("風の向きと強さを、矢印で見られます",),
         panel_hint=(
             "・矢印は風の吹いていく向きで、長く太いほど強い風です。\n"
             f"・{_MSM_REACH}先まで時刻で切り替えられます。\n・{MODEL_VALUE_DISCLAIMER}",

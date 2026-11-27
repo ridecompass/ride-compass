@@ -124,6 +124,7 @@ function LensValues({ lens }: { lens: LensInspection }) {
   const values = lens[slot];
   if (values === null) return <p className={hintClass}>この向きには走れません。</p>;
   const rows = penaltyRows(Object.fromEntries(values.axes.map((axis) => [axis.axis_id, axis.seconds])), costCatalog);
+  const factLabels = rows.flatMap((row) => values.facts[row.id]?.label ?? []);
   return (
     <div className="flex flex-col gap-1">
       <div className="flex flex-wrap items-center gap-1.5">
@@ -135,7 +136,7 @@ function LensValues({ lens }: { lens: LensInspection }) {
           value={view}
           onValueChange={setView}
           aria-label="負担の出し方"
-          usage="軸ごとの負担を、秒で出すか、秒にする前の事実[登り・止まる回数等]で出すかを切り替えます。"
+          usage={`軸ごとの負担を、秒で出すか、秒にする前の事実${factLabels.length === 0 ? "" : `[${factLabels.join("・")}]`}で出すかを切り替えます。`}
           className="ml-auto"
         >
           <ToggleGroupItem value="seconds" className="py-0.5">
