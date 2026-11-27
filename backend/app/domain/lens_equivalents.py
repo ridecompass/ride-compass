@@ -6,9 +6,9 @@
 舗装・無風・止まらない1kmの道。事実の値の道を費用の式（`domain/leg_costs.py: travel_inputs`と同じ走行の模型と
 `domain/ledger_costs.py: LedgerCosts.penalty_by_axis`）へ通して秒を求める——別の換算の式を持たない。
 
-- 登坂は一様な坂の斜度（%）、向かい風は向かい風の強さ（m/s）、停止は漕ぎ出す回数（回/km）、数値の材料の道のストレスの軸は材料の値、
+- 数で言う体力の費目は費目の決まりの物差しの事実（`domain/cost_axes.py: EffortNumberFact.lens_road`）、数値の材料の道のストレスの軸は材料の値、
   総合は秒そのもので、緑の端から赤の端までを等分に刻む（秒は事実に比例しないので、事実の値で均等に色が変わるよう、刻みごとに境目を置く）。
-- 路面の抵抗と区分の材料の道のストレスの軸は、緑の端の区分から赤の端の区分までの区分の秒に境目を置く。
+- ほかの体力の費目（転がり抵抗の分け方）と区分の材料の道のストレスの軸は、緑の端の区分から赤の端の区分までの区分の秒に境目を置く。
 - 物差しの無い軸（物差しを書く前の定義）は、定義の段をそのまま使う。
 """
 
@@ -18,7 +18,7 @@ import numpy as np
 
 from app.domain.attributes import CategoricalColumn
 from app.domain.axis_templates import evaluate_breakpoint_linear
-from app.domain.cost_axes import EFFORT_AXES, AxisPresentation, CategoricalBurden, LensBands, LensScale
+from app.domain.cost_axes import EFFORT_AXES, EFFORT_ITEM_RULES, AxisPresentation, CategoricalBurden, LensBands, LensScale
 from app.domain.cost_preference import CostPreference
 from app.domain.cycling_speed import STANDARD_TEMPERATURE_C, RiderProfile, SegmentSpeedModel, crr_for_surface
 from app.domain.elevation_profile import FLAT, NO_GRADE_LIMIT, ElevationProfiles, ProfileSpans, along_fractions, profile_spans
@@ -48,13 +48,11 @@ def lens_bands(settings: ModelSettings) -> dict[str, LensBands]:
     result = {TOTAL_LENS_ID: _unnamed(_bands_of(axes.total_lens, lambda scale: _numeric(scale, steps, "", lambda v: v)))}
     for axis_id, item in EFFORT_AXES.items():
         seconds = seconds_of(axis_id)
+        number = EFFORT_ITEM_RULES[item].number
         facts: _Facts
-        if item == "gravity":
-            facts = lambda scale: _numeric(scale, steps, "%", lambda v: seconds(grade_percent=v))  # noqa: E731
-        elif item == "air":
-            facts = lambda scale: _numeric(scale, steps, "m/s", lambda v: seconds(headwind_ms=v))  # noqa: E731
-        elif item == "inertia":
-            facts = lambda scale: _numeric(scale, steps, "回/km", lambda v: seconds(kickoffs=v))  # noqa: E731
+        if number is not None:
+            facts = lambda scale: _numeric(  # noqa: E731
+                scale, steps, number.lens_unit, lambda v: seconds(**{number.lens_road: v}))
         else:
             classification = road_classes.rolling_resistance_classification or ""
             keys = list(road_classes.rolling_resistance_classes.get(classification, {}))
