@@ -9,7 +9,7 @@
  */
 import { describe, expect, it } from "vitest";
 
-import { closestPointOnSegment, longitudeScale, nearerSide, nearestEdge } from "./localPlane";
+import { closestPointOnSegment, longitudeScale, nearestEdge } from "./localPlane";
 
 describe("longitudeScale", () => {
   it("緯度60度では経度1度を緯度1度の半分に縮める", () => {
@@ -49,14 +49,5 @@ describe("nearestEdge", () => {
         [139, 35],
       ),
     ).toBeNull();
-  });
-});
-
-describe("nearerSide", () => {
-  it("軸とその逆向きのうち、向きに近い側を出し、直角なら軸のまま", () => {
-    expect(nearerSide(90, 300)).toBe(270);
-    expect(nearerSide(90, 10)).toBe(90);
-    expect(nearerSide(350, 100)).toBe(170);
-    expect(nearerSide(90, 180)).toBe(90);
   });
 });
