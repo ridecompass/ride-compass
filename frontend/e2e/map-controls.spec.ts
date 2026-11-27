@@ -10,12 +10,12 @@ import { WIDTHS } from "./states";
 // ボタンの数が変わったのに積み始めの位置が追わなければ、方位磁針の下の継ぎ目が広がるか重なる。
 
 const RIGHT_COLUMN =
-  /^(拡大|縮小|縮尺|地図の向き|北を上にする|進む向きを上にする|出発時刻|想定速度|現在地に移動|走行モード)/;
+  /^(拡大|縮小|縮尺|地図の向き|北を上にする|進む向きを上にする|出発時刻|想定速度|現在地に移動|ストリートビューの地点と向きを決める|走行モード)/;
 
 type ColumnButton = { name: string; onTop: boolean; top: number; bottom: number };
 
-/** 走っていない間の列: 拡大・縮小と方位磁針の下に、出発時刻・想定速度・現在地に移動・走行モードを積む。 */
-const NOT_RIDING = { head: ["拡大", "縮小"], compass: "地図の向き", stacked: 4 };
+/** 走っていない間の列: 拡大・縮小と方位磁針の下に、出発時刻・想定速度・現在地に移動・ストリートビュー・走行モードを積む。 */
+const NOT_RIDING = { head: ["拡大", "縮小"], compass: "地図の向き", stacked: 5 };
 
 /** 右の列のボタンの名前・押す点で最前面にあるか・上端と下端（上から順）。 */
 async function rightColumnButtons(page: Page): Promise<ColumnButton[]> {
