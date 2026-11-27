@@ -61,10 +61,10 @@ class ElevationProfiles:
 
 
 def along_fractions(along_m: ArrayLike, points: int) -> np.ndarray:
-    """1区間の点の道のりの位置（m）を、区間の長さに対する割合（float32）にする。位置が点の数と合わない（持たない）か区間の
-    長さが0なら、`points`個の点を等しい間隔に置く。"""
+    """1区間の点の道のりの位置（m。最後の点が区間の終わり）を、区間の長さに対する割合（float32）にする。位置を持たなければ、
+    `points`個の点を等しい間隔に置く。"""
     along = np.asarray(along_m, dtype=np.float32)
-    if len(along) == points >= 2 and along[-1] > 0:
+    if len(along):
         return along / along[-1]
     return np.linspace(0.0, 1.0, points, dtype=np.float32)
 

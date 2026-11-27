@@ -1,7 +1,7 @@
 """`domain/road_network.py`——取込範囲全体の道路網を番号で引く配列と、その切り出し。
 
 入口は次のとおり。
-- `RoadNetwork`: 組み立てた時点で行数・列数の食い違いを断る
+- `RoadNetwork`: 組み立てた時点で行数・列数の食い違いと長さ0の区間を断る
 - `slice_network`: 範囲に掛かる区間と、その両端のノードを取り出す
 - `bbox_covering_edges`: 探索の範囲を、送られた区間を取りこぼさずに組む
 - `road_class_columns`・`material_arrays_of`: 区分の列と、切り出した区間の材料
@@ -50,10 +50,11 @@ from tests.tuning_fixture import TUNED
         {"distance_m": np.zeros(len(EDGES) + 1)},  # 区間の列が1行多い
         {"numeric_ids": ("num_a",)},  # 材料の行列の列数と名前の数が合わない
         {"categorical_vocab": ()},  # 分類の列に語彙が無い
+        {"distance_m": np.zeros(len(EDGES))},  # 区間の長さが0
     ],
 )
-def test_arrays_of_mismatched_shape_are_refused_where_they_are_built(broken):
-    with pytest.raises(ValueError, match="道路網の配列の形"):
+def test_arrays_breaking_the_contract_are_refused_where_they_are_built(broken):
+    with pytest.raises(ValueError, match="道路網の配列"):
         replace(network(), **broken)
 
 

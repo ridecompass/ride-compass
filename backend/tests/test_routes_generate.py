@@ -31,7 +31,7 @@ from app.services.generation_slots import GenerationSlots
 from app.config import settings
 from app.domain.cost_axes import EFFORT_AXES
 from app.domain.errors import GENERATION_BUSY_MESSAGE
-from app.domain.graph import node_key, parse_edge_key
+from app.domain.graph import node_key, parse_edge_id
 from app.domain.road_network import RoadNetwork
 from app.domain.road_classes import AvoidanceClassification
 from app.domain.route_request import ASSUMED_SPEED_KMH, DEFAULT_MAX_ROUTES, MAX_SPLICED_EDGES, MAX_WAYPOINTS
@@ -325,7 +325,7 @@ async def test_the_strength_and_the_multipliers_weigh_the_cost_of_the_roads(clie
         client, destination=_point(SOUTH_EAST), distance_km=None, max_routes=1, cost_preference=cost_preference,
     ))["result"]["routes"]
 
-    assert any(not {parse_edge_key(edge_id)[0] for edge_id in route["edge_ids"]} & bad for route in routes) == avoided
+    assert any(not {parse_edge_id(edge_id)[0] for edge_id in route["edge_ids"]} & bad for route in routes) == avoided
 
 
 async def test_a_disabled_axis_appears_nowhere_in_the_routes(client, world, bad_axis):

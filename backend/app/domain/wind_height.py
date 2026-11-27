@@ -66,8 +66,7 @@ def height_factors(percent: Mapping[str, np.ndarray], distance_m: np.ndarray, mi
         total = sum(np.asarray(percent[field], dtype=np.float64) for field in ROUGHNESS_LENGTH_M)
         road = np.divide(weighted, total, out=np.full(len(distance), math.log(OPEN_TERRAIN_ROUGHNESS_M)),
                          where=total > 0)  # NaNの割合は偽
-        mean = np.divide(np.bincount(points, weights=distance * road), lengths, out=np.zeros_like(lengths), where=lengths > 0)
-        grid_side = np.where(lengths[points] > 0, mean[points], road)  # 長さ0の区間だけの格子点は、その区間の粗度
+        grid_side = (np.bincount(points, weights=distance * road) / lengths)[points]
         factors[:, season] = ((blending - grid_side) / (math.log(FORECAST_HEIGHT_M) - grid_side)
                               * (rider - road) / (blending - road))
     return factors

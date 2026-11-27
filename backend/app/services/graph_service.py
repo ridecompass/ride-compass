@@ -5,7 +5,7 @@ from collections.abc import Mapping, Sequence
 from app.domain.stopwatch import elapsed_ms, start_timer
 from app.domain.errors import SearchAreaTooLargeError, SearchMemoryBusyError
 from app.domain.geo import LatLon
-from app.domain.graph import parse_edge_key
+from app.domain.graph import parse_edge_id
 from app.domain.region import BoundingBox, tiles_covering_bbox
 from app.domain.attributes import CategoricalColumn
 from app.domain.cost_axes import Burden, CostAxisDefinitions
@@ -166,5 +166,5 @@ class GraphService:
     def bbox_covering(self, points: Sequence[LatLon], edge_ids: Sequence[str], margin_km: float) -> BoundingBox:
         """`points`と、区間の鍵の列`edge_ids`の区間を覆う探索の矩形（`domain/road_network.py: bbox_covering_edges`）。
         形の合わない鍵と道路網に無い区間は飛ばす。"""
-        edges = [parsed for edge_id in edge_ids if (parsed := parse_edge_key(edge_id)) is not None]
+        edges = [parsed for edge_id in edge_ids if (parsed := parse_edge_id(edge_id)) is not None]
         return bbox_covering_edges(self._network, points, edges, margin_km)

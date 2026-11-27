@@ -49,7 +49,11 @@ _POINT_PREFIXES = ("profile_", "shape_", "span_", "regulation_")
 
 @dataclass(frozen=True, eq=False)
 class RoadNetwork:
-    """`revision`は作った時点の派生データの世代（`derived_data_meta.revision`）。"""
+    """`revision`は作った時点の派生データの世代（`derived_data_meta.revision`）。
+
+    区間の長さ（`distance_m`）は全行が0より大きく、断面の点の位置（`profile_position`）は標高の点と同じ数だけある（DBの表
+    `road_edges`・`edge_elevation`の制約が保証する）。読む側は長さ0・位置の欠けを扱わない。
+    """
 
     revision: int
 
@@ -140,7 +144,7 @@ class RoadNetwork:
     way_categorical_codes: np.ndarray  # (道, 列) int16。0は値なし
 
     def __post_init__(self) -> None:
-        """行数と列数が揃っていることを、組み立てた場所で確かめる。
+        """行数と列数が揃い、区間の長さが0より大きいことを、組み立てた場所で確かめる。
 
         揃わないまま使うと、別の区間の材料・別のノードの座標を黙って読む。
         """
@@ -182,6 +186,8 @@ class RoadNetwork:
                 f"道路網の配列の形が揃っていません ノード={node_count} 区間={edge_count} "
                 f"行数={wrong} 列数={wrong_columns}"
             )
+        if not np.all(self.distance_m > 0):
+            raise ValueError(f"道路網の配列に長さが0より大きくない区間があります 行={np.flatnonzero(~(self.distance_m > 0))[:10].tolist()}")
 
     @property
     def edge_count(self) -> int:
