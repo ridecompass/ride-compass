@@ -37,7 +37,8 @@ from app.domain.way_value_formula import (
     evaluate_formula,
     feature,
 )
-from app.domain.weather_elements import stage_first_frames
+from app.domain.weather_display import RGB, tile_pixel_colors, tile_pixel_level
+from app.domain.weather_elements import LEVELS_OF_SCALE, stage_first_frames
 from app.infrastructure.jma_tile_client import parse_target_times
 from app.infrastructure.jma_tile_paths import read_jma_tile_path
 
@@ -238,6 +239,22 @@ _READ_PATHS = [
 ]
 
 
+def _pixel_level_rows() -> list[dict]:
+    """段で塗る災害の段の表ごとに、見分ける色そのもの・隣り合う色の中ほど（近さが並びうる）・どの色からも遠い色の画素の段。
+    段は並びの番号＋1で、見分けられない画素は0。"""
+    rows = []
+    for scale, levels in LEVELS_OF_SCALE.items():
+        colors = tile_pixel_colors(levels)
+        drawn = [color for color in colors if color is not None]
+        midpoints: list[RGB] = [
+            ((a[0] + b[0]) // 2, (a[1] + b[1]) // 2, (a[2] + b[2]) // 2) for a, b in zip(drawn, drawn[1:], strict=False)
+        ]
+        for rgb in [*drawn, *midpoints, (255, 255, 255), (0, 0, 0), (128, 128, 128)]:
+            level = tile_pixel_level(rgb, colors)
+            rows.append({"scale": scale, "rgb": list(rgb), "level": 0 if level is None else level + 1})
+    return rows
+
+
 def jma_expectations() -> dict[str, list[dict]]:
     return {
         "read_target_times": [
@@ -275,6 +292,7 @@ def jma_expectations() -> dict[str, list[dict]]:
             {"path": path, "tile": None if (tile := read_jma_tile_path(path)) is None else _tile_row(tile)}
             for path in _READ_PATHS
         ],
+        "tile_pixel_level": _pixel_level_rows(),
     }
 
 

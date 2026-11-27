@@ -5,6 +5,7 @@
 風速は自前のグリッドで、どちらも利用者が気象庁の地図と並べて見るため同じ向き（弱い＝寒色、強い＝暖色）へ揃える。
 """
 
+from collections.abc import Sequence
 from typing import NamedTuple
 
 
@@ -37,8 +38,10 @@ class LevelColor(NamedTuple):
     #: ごく薄く（`ATTENTION_LEVEL_OPACITY`）見せる。境は気象庁が段ごとに求める行動の説明から決めた。
     painted: bool
     #: 配信元のタイルがこの段を塗る色（実物の画素を数えた値か、気象庁の「雨雲の動き」の画面の凡例の色）。分からない段は
-    #: Noneで、その段の画素は塗り替えない。
+    #: Noneで、その段の画素は凡例の色で見分ける（`tile_pixel_colors`）。
     tile_color: str | None
+    #: 配信元のタイルがこの段を描くか。描かない段（タイルは透明）は、画素の段の候補に入れない。
+    tile_drawn: bool = True
 
 
 class RiskLevel(NamedTuple):
@@ -53,6 +56,8 @@ class RiskLevel(NamedTuple):
     painted: bool
     #: `LevelColor.tile_color`と同じ。
     tile_color: str | None
+    #: `LevelColor.tile_drawn`と同じ。
+    tile_drawn: bool = True
 
 
 #: 降水の強さ（mm/h）で、塗る段だけを持つ。段の区切りは気象庁の降水のタイルと同じで、気象庁のタイルもここの色へ
@@ -102,7 +107,7 @@ LINEAR_RAINBAND_OUTLINE_CASING_COLOR = "#ffffff"
 #: 赤（警戒・警戒レベル3相当。高齢者等は避難、ほかの人も普段の行動を見合わせ始める）から塗る。タイルの黄は、
 #: 2026-09-07 に東京湾岸で大雨キキクルの黄・赤が出ていた時刻のタイルの画素で`rgb(242,231,0)`だった。
 RISK_LEVEL_COLORS: tuple[RiskLevel, ...] = (
-    RiskLevel(0, "level0", "平常[危険度なし]", "#ffffff", painted=False, tile_color=None),
+    RiskLevel(0, "level0", "平常[危険度なし]", "#ffffff", painted=False, tile_color=None, tile_drawn=False),
     RiskLevel(1, "level1", "注意[黄]", "#f2e700", painted=False, tile_color="#f2e700"),
     RiskLevel(2, "level2", "警戒[赤]", "#ff2800", painted=True, tile_color=None),
     RiskLevel(3, "level3", "危険[紫]", "#aa00aa", painted=True, tile_color=None),
@@ -136,6 +141,30 @@ TORNADO_POTENTIAL_LEVELS: tuple[LevelColor, ...] = (
         tile_color="#ff2800",
     ),
 )
+
+RGB = tuple[int, int, int]
+
+
+def _hex_rgb(color: str) -> RGB:
+    return (int(color[1:3], 16), int(color[3:5], 16), int(color[5:7], 16))
+
+
+def tile_pixel_colors(levels: Sequence[LevelColor | RiskLevel]) -> tuple[RGB | None, ...]:
+    """段の並びの順の、配信元のタイルの画素をその段と見分ける色。タイルの色を測ってあればその色、無ければ凡例の色
+    （配信元は配色を公開していない）。配信元が描かない段はNone。"""
+    return tuple(_hex_rgb(level.tile_color or level.color) if level.tile_drawn else None for level in levels)
+
+
+def tile_pixel_level(rgb: RGB, colors: Sequence[RGB | None]) -> int | None:
+    """色`rgb`の画素の段（`colors`の並びの番号）。いちばん近い色の段にし、近さが同じなら先の段にする——測れていない段も
+    凡例の近い色で見分け、注意の段を薄くした画素も色は変えていないので同じに見分けられる。見分ける色が無ければNone。"""
+    distances = [
+        (sum((a - b) ** 2 for a, b in zip(rgb, color, strict=True)), index)
+        for index, color in enumerate(colors)
+        if color is not None
+    ]
+    return min(distances)[1] if distances else None
+
 
 #: 注意の段（`painted`がFalseの段）を地図で見せる濃さ。塗る段（地図の面の濃さ`map_display.py: AREA_OPACITY`）より
 #: ずっと薄くし、範囲は分かるが下の道と地名が読めるようにする。

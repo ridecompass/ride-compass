@@ -185,6 +185,11 @@ export function wayValueExpressions(
   return { value: conversion.number(formula.value), undetermined: conversion.truth(formula.undetermined) };
 }
 
+/** 節`node`が、真偽として読むと、どの道でも偽か（値の無いこと・0の定数）。 */
+export function isConstantFalse(node: FormulaNode): boolean {
+  return node.op === "missing" || (node.op === "const" && !node.value);
+}
+
 /** 木が読む走る条件の名前（重ねずに、木で先に出た順）。条件の値が変わると、道の値も変わる。 */
 export function formulaConditions(formula: WayValueFormula): ConditionName[] {
   const names = new Set<ConditionName>();
