@@ -130,7 +130,7 @@ Edgeコストは「探索の材料の表（[費用・材料](evaluation-scoring.
 依らない抵抗（`domain/cycling_speed.py: SegmentSpeedModel`）・停止の待ち・道のストレスの代償——はリクエストに1回だけ求めて
 使い回す。ビンの中身を決めるのは風の予報が引く時刻だけなので、同じ時刻のビン（`domain/leg_costs.py: BinTime`）はレグの向き・開始時刻が違っても1回だけ合成して使い回す。レグは表示の値を持たず、区間の表示（`domain/leg_costs.py: LegValues`）は、経路をたどって決めたビンの時刻（`LegCostArrays.bin_times`）で経路上の行だけを合成し直して読む（`domain/leg_costs.py: LegCostComposer.values_at_rows`）——全区間ぶんの表示の値をレグごとに持つと、区間数×レグ数ぶん膨らむ。区間ごとの通過時刻で合成したレグも、その時刻を区間ごとの配列で持つ同じ形（`BinTime`）で表す。レグのビンの配列は使い回すビンを指すことがあるので、探索はどのレグの配列も書き換えない。1ビンの中でも、
 予報の引き当て（風と気温）と乗り手の高さへの換算と風の分解（方位との差の三角関数）は、走行モデルと区間の表示（向かい風の成分）と地図のレンズが同じ値を読む
-（`domain/wind_context.py: WindContext`）。合成結果`LegCostArrays`は通過予定時刻で決まる配列（ビンごとのコスト・所要時間と各ビンの時刻）だけを持ち、
+（`domain/wind_context.py: WeatherContext`）。合成結果`LegCostArrays`は通過予定時刻で決まる配列（ビンごとのコスト・所要時間と各ビンの時刻）だけを持ち、
 時刻で変わらない列（区分の材料・道のストレスの重さ）は合成器（`domain/leg_costs.py: LegCostComposer`）が
 1つだけ持つ。レグは`RoadGraphContext.legs`に添字順で並ぶ:
 
@@ -149,7 +149,7 @@ Edgeコストは「探索の材料の表（[費用・材料](evaluation-scoring.
 候補の事実は、その区間の内訳と向かい風の成分と、時刻に依らない列から求める（`LegCostComposer.axis_facts`。作り方は道の窓と
 同じ`domain/leg_costs.py: axis_facts`）。
 逆回り候補はレグ割当ても反転する（先に走る側が往路配列、`reverse_leg_assignment`）。レグ番号は走行順に振られるため、Edge列の反転と同時に番号自体も`max_leg - leg`へ振り直す。探索範囲を覆う格子点ごとの時別の風と気温の予報
-（`WeatherService.get_wind_forecast_lattice`。格子点はMSMの格子点そのもの（`domain/msm.py: MsmBlock`）で、
+（`WeatherService.get_weather_forecast_lattice`。格子点はMSMの格子点そのもの（`domain/msm.py: MsmBlock`）で、
 探索範囲に依らない。各Edgeは中点に最も近い格子点の値を変えずに引く——ルートを出す前の地図も同じ点を引く。
 中点が並びの外にあるEdgeは、端の格子点の値で計算する）で、利用者の値に依らず時刻で合成する。予報が読めなければ
 生成は失敗する（無風で探さない）。
