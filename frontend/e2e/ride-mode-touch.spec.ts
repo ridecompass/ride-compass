@@ -2,8 +2,8 @@ import { expect, test, type BrowserContext, type Page } from "@playwright/test";
 import { RIDE_ZOOM_STEPS } from "@/features/map/MapView/rideZoom";
 import { moved } from "@/testing/movedPoint";
 
-import { MAIN_MAP_CANVAS, MOBILE_VIEWPORT, openMapApp } from "./fixtures";
-import { START, deliverPosition, expectDrawnAt, settledScreenPoint, settledZoom } from "./rideMap";
+import { MAIN_MAP_CANVAS, MOBILE_VIEWPORT } from "./fixtures";
+import { START, deliverPosition, expectDrawnAt, openRideMapApp, settledScreenPoint, settledZoom } from "./rideMap";
 
 // 2本指でつまむ・広げる操作は、MapLibre が先に指の重心のずれを移動として受け、倍率が変わるのはそのあとになり、指がひねれば
 // 回し始める。出来事の並び（移動の始まり→拡大の始まり）と回すかどうかは実ブラウザの MapLibre でしか出ないので、ここで
@@ -19,7 +19,7 @@ test.describe("タッチ端末", () => {
     test.skip(browserName !== "chromium", "指ごとのタッチの列はCDP（Chromiumだけの口）でしか送れない");
     // 誤差の内の動きは地図へ流れないので、誤差を小さくし、それを超える数mずつの動きで届ける。
     const at = (point: { latitude: number; longitude: number }) => ({ ...point, accuracy: 1 });
-    await openMapApp(page, { routes: () => context.setGeolocation(at(START)) });
+    await openRideMapApp(page, context, at(START));
     await page.getByRole("button", { name: "走行モード" }).click();
     const anchor = await settledScreenPoint(page, START);
     const zoom = () => page.evaluate(() => window.__liveMap().getZoom());
@@ -99,7 +99,7 @@ test.describe("タッチ端末", () => {
     browserName,
   }) => {
     test.skip(browserName !== "chromium", "指ごとのタッチの列はCDP（Chromiumだけの口）でしか送れない");
-    await openMapApp(page, { routes: () => context.setGeolocation({ ...START, accuracy: 50 }) });
+    await openRideMapApp(page, context, { ...START, accuracy: 50 });
     await page.getByRole("button", { name: "走行モード" }).click();
     const anchor = await settledScreenPoint(page, START);
     const zoom = await settledZoom(page);
