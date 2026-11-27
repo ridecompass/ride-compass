@@ -62,7 +62,7 @@ https://maps.gsi.go.jp/development/hyokochi.html ）に合わせる。平らな�
 道路網の配列は、向きつきの行ごとの始まりの位置と点の数と、全行をつないだ標高と点の位置（区間の長さに対する割合）の配列で持ち、
 所要時間と体力を解く点の間（`domain/elevation_profile.py: ProfileSpans`）も、配列を作るときに全区間について1回だけ作って持つ
 （`domain/road_network.py: RoadNetwork.elevation_spans`）。
-長さ0の区間は、点を等しい間隔に置いて読む（`domain/elevation_profile.py: along_fractions`）。標高の無い点の間と
+区間の長さは0より大きく（`domain/road_network.py: RoadNetwork`が組むときに確かめる）、読む側は長さ0を扱わない。標高の無い点の間と
 点が2つ未満の区間は、道路網全体の点の間の勾配の分布どおりの坂として走る（`domain/elevation_profile.py`）。
 
 ## 勾配を出さない区間
