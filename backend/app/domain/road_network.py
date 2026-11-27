@@ -186,7 +186,7 @@ class RoadNetwork:
                 f"行数={wrong} 列数={wrong_columns}"
             )
         if not np.all(self.distance_m > 0):
-            raise ValueError(f"道路網に長さが0より大きくない区間があります 行={np.flatnonzero(~(self.distance_m > 0))[:10].tolist()}")
+            raise ValueError(f"道路網の配列に長さが0より大きくない区間があります 行={np.flatnonzero(~(self.distance_m > 0))[:10].tolist()}")
 
     @property
     def edge_count(self) -> int:
