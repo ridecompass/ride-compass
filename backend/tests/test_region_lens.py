@@ -17,6 +17,7 @@ import pytest
 
 from app.api import dependencies
 from app.domain.cost_preference import CostPreference
+from app.domain.model_settings import current_model_settings
 from app.domain.cost_axes import EFFORT_AXES, CostAxisDefinitions, LensScale, replace_cost_axes
 from app.domain.landcover import LANDCOVER_CLASSES
 from app.domain.region import tile_position
@@ -117,7 +118,8 @@ async def _lens_frame(client, hours_ahead: int) -> str:
 
 
 async def _materials(service: LensService, lens_id: str, frame: str | None) -> LensMaterials | None:
-    body = await service.way_materials(lens_id, Z, X, Y, frame, ASSUMED_SPEED_KMH, CostPreference())
+    body = await service.way_materials(lens_id, Z, X, Y, frame, ASSUMED_SPEED_KMH, CostPreference(),
+                                        current_model_settings())
     return None if body is None else LensMaterials.model_validate_json(body)
 
 
@@ -287,7 +289,8 @@ async def test_the_inspector_gives_both_directions_and_the_facts_behind_them(cos
     serve_road_network(road_network_root, network)
     service = _lens_service(Weather())
 
-    inspection = await service.inspect(str(CLIMBING_WAY), Z, X, Y, 0.0, None, ASSUMED_SPEED_KMH, CostPreference())
+    inspection = await service.inspect(str(CLIMBING_WAY), Z, X, Y, 0.0, None, ASSUMED_SPEED_KMH, CostPreference(),
+                                       current_model_settings())
     total = await _materials(service, "total", None)
 
     assert total is not None and inspection is not None and inspection.along is not None and inspection.against is not None
@@ -301,7 +304,7 @@ async def test_the_inspector_gives_both_directions_and_the_facts_behind_them(cos
     assert inspection.along.facts["rough"] == AxisFact(label=bad.label, value=1.0, unit=bad.unit)
 
     without_rough = await service.inspect(str(CLIMBING_WAY), Z, X, Y, 0.0, None, ASSUMED_SPEED_KMH,
-                                          CostPreference(disabled_axes=["rough"]))
+                                          CostPreference(disabled_axes=["rough"]), current_model_settings())
     assert without_rough is not None and without_rough.along is not None
     assert "rough" not in {axis.axis_id for axis in without_rough.along.axes} | set(without_rough.along.facts)
 

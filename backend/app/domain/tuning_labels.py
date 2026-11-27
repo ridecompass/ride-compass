@@ -4,10 +4,11 @@
 `domain/tuning.py`は値を使う側の宣言を読めない（循環する）ので、両方を読めるここで添える。
 """
 
-from app.domain.road_classes import RoadClassDefinitions, by_sort_order, current_road_classes
+from app.domain.model_settings import current_model_settings
+from app.domain.road_classes import RoadClassDefinitions, by_sort_order
 from app.domain.strict_model import StrictModel
 from app.domain.traffic import stop_parameter_subjects
-from app.domain.tuning import Tuning, TuningParameter, current_tuning, tuning_parameters_by_effect
+from app.domain.tuning import Tuning, TuningParameter, tuning_parameters_by_effect
 
 
 class TuningParameterView(StrictModel):
@@ -63,11 +64,12 @@ def _view(parameter: TuningParameter, subjects_by_id: dict[str, tuple[str, ...]]
 
 def tuning_parameter_views() -> list[TuningParameterView]:
     """較正値を効き方の順（`domain/tuning.py: tuning_parameters_by_effect`）に、いま効いている区分と値で。"""
-    subjects_by_id = tuning_subjects(current_road_classes())
-    tuning = current_tuning()
-    return [_view(parameter, subjects_by_id, tuning) for parameter in tuning_parameters_by_effect()]
+    settings = current_model_settings()
+    subjects_by_id = tuning_subjects(settings.road_classes)
+    return [_view(parameter, subjects_by_id, settings.tuning) for parameter in tuning_parameters_by_effect()]
 
 
 def tuning_parameter_view(parameter: TuningParameter) -> TuningParameterView:
     """較正値1件の、いま効いている区分と値での見せ方。"""
-    return _view(parameter, tuning_subjects(current_road_classes()), current_tuning())
+    settings = current_model_settings()
+    return _view(parameter, tuning_subjects(settings.road_classes), settings.tuning)

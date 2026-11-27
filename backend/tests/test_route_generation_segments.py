@@ -223,9 +223,8 @@ async def test_each_segment_carries_its_road_classes(engine_over):
         },
         map_layers={"kind": map_layer(0), "tunnel": map_layer(1)},
     )
-    generator = engine_over(grid_network(tunnel_ways={101}, landcover_of=landcover))
-
     with replaced_road_classes(definitions):
+        generator = engine_over(grid_network(tunnel_ways={101}, landcover_of=landcover))
         candidates = (await generator.generate_via_waypoints(
             at(SOUTH_WEST), [], destination=at(SOUTH_EAST), max_routes=3, start_time=DEPARTURE)).candidates
 

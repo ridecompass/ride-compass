@@ -73,7 +73,7 @@ class FakeRoadInspector:
         self._result = result
         self.request = None
 
-    async def inspect(self, osm_way_id, feature_key, tile, bearing_deg, at, speed_kmh, cost_preference):
+    async def inspect(self, osm_way_id, feature_key, tile, bearing_deg, at, speed_kmh, cost_preference, settings):
         self.request = (osm_way_id, feature_key, tile, bearing_deg, at, speed_kmh, cost_preference)
         return self._result
 

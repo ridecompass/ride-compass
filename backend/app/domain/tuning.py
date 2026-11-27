@@ -537,7 +537,7 @@ if _DUPLICATE_IDS:
 
 #: いま効いている値（id → 値）。起動時にDBの表から宣言の全idを読み込み、管理APIで書いたときに**中身だけ**を
 #: 差し替える（束縛済みの参照先が古いままにならないよう、`.update()`で更新する。`.clear()`は挟まない——理由は
-#: `services/tuning_service.py: refresh_tuning_values`）。計算はここを読まず、入口が`current_tuning`で写した束を受ける。
+#: `services/tuning_service.py: refresh_tuning_values`）。計算はここを読まず、入口が`domain/model_settings.py: current_model_settings`で写した束を受ける。
 TUNING_VALUES: dict[str, float] = {}
 
 
