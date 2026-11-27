@@ -143,6 +143,59 @@ TRAFFIC_REGULATION_ATTRIBUTION = (
     '交通規制: 公益財団法人日本道路交通情報センター「<a href="https://www.jartic.or.jp/service/opendata/" '
     'target="_blank" rel="noreferrer">交通規制情報</a>」を加工して作成'
 )
+
+
+class OverturePlaceSource(NamedTuple):
+    """Overture の地点の出どころ1つの表示。文言は公式の出典の文書（https://docs.overturemaps.org/attribution/ ）の places の節に従う。"""
+
+    #: 「Data from …」に続く名前。
+    label: str
+    #: ライセンスへのリンク（HTML）。
+    license: str
+    #: ライセンスの前と後に添える文（Foursquare の著作権の1行・変えた旨・NOTICE）。
+    before_license: str = ""
+    after_license: str = ""
+
+
+_CDLA_PERMISSIVE = '<a href="https://cdla.dev/permissive-2-0/" target="_blank" rel="noreferrer">CDLA Permissive 2.0</a>'
+_CC0 = '<a href="https://creativecommons.org/publicdomain/zero/1.0/" target="_blank" rel="noreferrer">CC0 1.0</a>'
+
+#: Overture の地点の出どころ（配布の`sources[].dataset`の綴り）→ 表示。出典はこの表の全部から組む。表に無い出どころは
+#: 表示の文言とライセンスが決まらないので、その地点を配れない。版が新しい出どころを持ってきたら、出典の文書の文言で行を足す。
+OVERTURE_PLACE_SOURCES: dict[str, OverturePlaceSource] = {
+    "meta": OverturePlaceSource("Meta", _CDLA_PERMISSIVE),
+    "Microsoft": OverturePlaceSource("Microsoft", _CDLA_PERMISSIVE),
+    "PinMeTo": OverturePlaceSource("PinMeTo", _CDLA_PERMISSIVE),
+    "Krick": OverturePlaceSource("Krick", _CDLA_PERMISSIVE),
+    "RenderSEO": OverturePlaceSource("RenderSEO", _CDLA_PERMISSIVE),
+    "DAC": OverturePlaceSource("DAC", _CDLA_PERMISSIVE),
+    "BrightQuery": OverturePlaceSource("BrightQuery", _CDLA_PERMISSIVE),
+    "Birdeye": OverturePlaceSource("Birdeye", _CDLA_PERMISSIVE),
+    "Uberall": OverturePlaceSource("Uberall", _CDLA_PERMISSIVE),
+    "OpenTravel": OverturePlaceSource("OpenTravel Alliance", _CDLA_PERMISSIVE),
+    # Apache 2.0 は、ライセンスの写し・変えた旨・NOTICE の全文を渡すことを求める。
+    "Foursquare": OverturePlaceSource(
+        "Foursquare", '<a href="{apache_license}" target="_blank" rel="noreferrer">Apache 2.0</a>',
+        before_license="Copyright 2024 Foursquare Labs, Inc. All rights reserved. Available under ",
+        after_license=". Foursquare data was transformed to the Overture schema. Changed: 2026-03-18. "
+                      '<a href="{foursquare_notice}" target="_blank" rel="noreferrer">NOTICE</a>'),
+    "AllThePlaces": OverturePlaceSource("AllThePlaces", _CC0),
+}
+#: Overture 自身が出どころの地点。出典の行の頭の Overture Maps Foundation が表示する。
+OVERTURE_OWN_DATASET = "Overture"
+
+
+def overture_places_attribution(sources: Iterable[OverturePlaceSource]) -> str:
+    """Overture の地点の出典（HTML）。ライセンスと添える文が同じ出どころを、最初に現れた順に1つの括弧へまとめる。"""
+    groups: dict[tuple[str, str, str], list[str]] = {}
+    for source in sources:
+        groups.setdefault((source.before_license, source.license, source.after_license), []).append(source.label)
+    credits = ", ".join(f"{', '.join(labels)} ({before}{license}{after})"
+                        for (before, license, after), labels in groups.items())
+    return ('地点: <a href="https://overturemaps.org/" target="_blank" rel="noreferrer">Overture Maps Foundation</a>'
+            f"の名前のある地点を、種類で分け近くの同じ店をまとめて加工。Data from {credits}")
+
+
 #: 派生データベース（道ごとの値の書き出し）の値を作った元のうち、OSM 以外のもの。OSM の表示は ODbL の文と一緒に README が持つ。
 #: 材料の元を足したら、ここにも足す。
 DERIVED_DATABASE_ATTRIBUTIONS: tuple[str, ...] = (
@@ -178,18 +231,7 @@ ALWAYS_SHOWN_ATTRIBUTIONS: tuple[str, ...] = (
     '暑さ指数: 出典 <a href="https://www.wbgt.env.go.jp/" target="_blank" rel="noreferrer">環境省熱中症予防情報サイト</a>',
     LANDCOVER_ATTRIBUTION,
     *ADDRESS_AREA_ATTRIBUTIONS,
-    # Overture の地点は出どころごとに表示が要る（公式の文書 https://docs.overturemaps.org/attribution/ ）。
-    # Foursquare の行は Apache 2.0 で、ライセンスの写し・変えた旨・NOTICE の全文を渡す。
-    '地点: <a href="https://overturemaps.org/" target="_blank" rel="noreferrer">Overture Maps Foundation</a>'
-    "の名前のある地点を、種類で分け近くの同じ店をまとめて加工。"
-    "Data from Meta, Microsoft, PinMeTo, DAC, Uberall, OpenTravel "
-    '(<a href="https://cdla.dev/permissive-2-0/" target="_blank" rel="noreferrer">CDLA Permissive 2.0</a>), '
-    "AllThePlaces "
-    '(<a href="https://creativecommons.org/publicdomain/zero/1.0/" target="_blank" rel="noreferrer">CC0 1.0</a>), '
-    "Foursquare (Copyright 2024 Foursquare Labs, Inc. All rights reserved. Available under "
-    '<a href="{apache_license}" target="_blank" rel="noreferrer">Apache 2.0</a>. '
-    "Foursquare data was transformed to the Overture schema. "
-    '<a href="{foursquare_notice}" target="_blank" rel="noreferrer">NOTICE</a>)',
+    overture_places_attribution(OVERTURE_PLACE_SOURCES.values()),
     # ジャパンサーチのサイトポリシーの出典の記載例（編集・加工して使う場合）の形。
     '寺社: ジャパンサーチ「<a href="https://jpsearch.go.jp/database/bunka" target="_blank" rel="noreferrer">'
     "文化遺産オンライン[文化庁・国立情報学研究所]</a>」のメタデータを改変して利用[所有者で寺社ごとにまとめた]",

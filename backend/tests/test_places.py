@@ -46,10 +46,12 @@ BIKE_STORE = ["shopping", "sporting_goods_store", "bike_store"]
 
 def _place(place_id: str, lon: float, hierarchy: list[str], *, confidence: float = 0.9,
            brand: str | None = None, lat: float = LAT, websites: list[str] | None = None,
-           phones: list[str] | None = None, address: dict | None = None) -> dict:
+           phones: list[str] | None = None, address: dict | None = None,
+           datasets: tuple[str, ...] = ("meta",)) -> dict:
     return {"id": place_id, "lon": lon, "lat": lat, "confidence": confidence, "name": place_id,
             "brand": brand, "hierarchy": hierarchy, "websites": websites, "phones": phones,
-            "addresses": None if address is None else [address]}
+            "addresses": None if address is None else [address],
+            "sources": [{"dataset": dataset} for dataset in datasets]}
 
 
 def _write_parquet(path: Path, places: list[dict]) -> None:
@@ -60,13 +62,14 @@ def _write_parquet(path: Path, places: list[dict]) -> None:
             " bbox STRUCT(xmin DOUBLE, xmax DOUBLE, ymin DOUBLE, ymax DOUBLE), confidence DOUBLE,"
             ' names STRUCT("primary" VARCHAR), brand STRUCT(names STRUCT("primary" VARCHAR)),'
             ' taxonomy STRUCT("primary" VARCHAR, hierarchy VARCHAR[]), websites VARCHAR[], phones VARCHAR[],'
-            ' addresses STRUCT(freeform VARCHAR, locality VARCHAR, region VARCHAR)[])')
+            ' addresses STRUCT(freeform VARCHAR, locality VARCHAR, region VARCHAR)[], sources STRUCT(dataset VARCHAR)[])')
         conn.executemany(
             "INSERT INTO p VALUES (?, ?::GEOMETRY, {'xmin': ?, 'xmax': ?, 'ymin': ?, 'ymax': ?}, ?,"
             " {'primary': ?}, {'names': {'primary': ?}}, {'primary': ?, 'hierarchy': ?::VARCHAR[]}, ?, ?,"
-            " ?::STRUCT(freeform VARCHAR, locality VARCHAR, region VARCHAR)[])",
+            " ?::STRUCT(freeform VARCHAR, locality VARCHAR, region VARCHAR)[], ?::STRUCT(dataset VARCHAR)[])",
             [[p["id"], f"POINT ({p['lon']} {p['lat']})", p["lon"], p["lon"], p["lat"], p["lat"], p["confidence"],
-              p["name"], p["brand"], p["hierarchy"][-1], p["hierarchy"], p["websites"], p["phones"], p["addresses"]]
+              p["name"], p["brand"], p["hierarchy"][-1], p["hierarchy"], p["websites"], p["phones"], p["addresses"],
+              p["sources"]]
              for p in places])
         conn.execute(f"COPY p TO '{path}' (FORMAT parquet)")
 
@@ -123,6 +126,15 @@ async def test_places_less_confident_than_the_declared_bound_are_not_taken(deriv
     ]
 
     assert await _places(derive_conn, places) == {"at_bound": "eat_drink"}
+
+
+async def test_a_place_from_a_source_without_an_attribution_stops_the_import(derive_conn, overture_dir):
+    """表示の文言とライセンスが決まらない出どころの地点を入れると、地図の出典に出ない出どころのデータを配ることになる。"""
+    places = [_place("known", LON, FOOD, datasets=("Foursquare", "Overture")),
+              _place("unknown", LON + APART, FOOD, datasets=("meta", "NewProvider"))]
+
+    with pytest.raises(ValueError, match="NewProvider"):
+        await _places(derive_conn, places)
 
 
 async def test_places_outside_the_import_area_are_not_taken(derive_conn, overture_dir):

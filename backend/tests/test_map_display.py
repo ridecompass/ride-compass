@@ -1,7 +1,8 @@
 """`domain/map_display.py`——地図に出すものの束ね方（グループ・種別・情報源・レイヤー）の宣言。
 
 入口は`map_layer_label`（レイヤーの名前）・説明の文を宣言から組む`size_sentence`・宣言どうしが名前（`key`）で指し合う先を
-確かめる`check_map_layer_declarations`・ズームの曲線を組む`zoom_curve`。描く寸法の値そのものは見ない（宣言の書き写しになる）。
+確かめる`check_map_layer_declarations`・ズームの曲線を組む`zoom_curve`・Overture の地点の出典を出どころから組む
+`overture_places_attribution`。描く寸法の値そのものは見ない（宣言の書き写しになる）。
 文を組む関数と検査には架空の行・宣言を渡す（本番の宣言は読み込みの時点で検査を通る）。
 
 ここで見ないもの:
@@ -15,7 +16,7 @@
 import pytest
 
 from app.domain import map_display
-from app.domain.map_display import MapLayerSpec, map_layer_label, size_sentence
+from app.domain.map_display import MapLayerSpec, OverturePlaceSource, map_layer_label, overture_places_attribution, size_sentence
 from app.domain.registry import DisplayAxisSpec, DisplayCategorySpec
 
 
@@ -96,3 +97,11 @@ def test_a_zoom_curve_not_strictly_ascending_is_refused(stops):
 
 def test_a_zoom_curve_strictly_ascending_is_kept_as_given():
     assert map_display.zoom_curve((10, 2), (13, 1)) == ((10, 2), (13, 1))
+
+
+def test_the_overture_attribution_names_every_source_beside_its_own_license():
+    """出どころの名前がライセンスと違う括弧に並ぶと、別のライセンスのデータとして表示してしまう。"""
+    sources = [OverturePlaceSource("A", "L1"), OverturePlaceSource("B", "L2", before_license="c ", after_license=" n"),
+               OverturePlaceSource("C", "L1")]
+
+    assert overture_places_attribution(sources).endswith("Data from A, C (L1), B (c L2 n)")
