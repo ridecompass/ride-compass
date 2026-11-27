@@ -23,13 +23,18 @@ import logging
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
-from typing import TYPE_CHECKING, Protocol, cast
+from typing import TYPE_CHECKING, Protocol
 
 from app.domain.stopwatch import elapsed_ms, start_timer, steps_note
 from app.domain.errors import GENERATION_BUSY_MESSAGE, RoutingError, SearchAreaTooLargeError, SearchMemoryBusyError
 from app.domain.geo import haversine_distance_km
-from app.domain.map_display import MAP_OVERLAY_GROUPS
 from app.domain.loop_routing import TracedLoop
+from app.domain.no_route_reasons import (
+    UNREACHABLE_DESTINATION_REASON,
+    UNREACHABLE_POINTS_REASON,
+    no_traced_reason,
+    no_turnaround_reason,
+)
 from app.domain.route_request import NOTHING_TO_GENERATE, FixedPoints
 from app.domain.tuning import Tuning
 from app.domain.route_search import (
@@ -37,6 +42,7 @@ from app.domain.route_search import (
     candidate_order,
     fits_loop_distance,
     keep_routes_with_baseline,
+    quickest_route,
     turnaround_ring_m,
 )
 
@@ -75,10 +81,10 @@ def _label(drafts: list[EvaluatedRoute], kind: RouteKind, name: str | None = Non
     """並べ終えた経路へ応答のid・種類・名前・最速の印を付けて候補にする。候補を返す経路はすべて最後にここを通る。
 
     idは種類と並びの位置から作り、応答の中で一意になる。`name`を渡さなければエンジンが方位から付けた名前のまま。
-    最速の印は、どの形でも返す候補のうち見積もりの所要時間がいちばん短い1本に付く（`_quickest`）——印と、画面の時間の列の
-    基準がいつも同じ1本になる。
+    最速の印は、どの形でも返す候補のうち見積もりの所要時間がいちばん短い1本に付く（`domain/route_search.py: quickest_route`）
+    ——印と、画面の時間の列の基準がいつも同じ1本になる。
     """
-    fastest = _quickest(drafts)
+    fastest = quickest_route(drafts)
     return [
         RouteCandidate(**{
             **dict(draft),
@@ -91,26 +97,9 @@ def _label(drafts: list[EvaluatedRoute], kind: RouteKind, name: str | None = Non
     ]
 
 
-def _quickest(drafts: list[EvaluatedRoute]) -> EvaluatedRoute | None:
-    """最速の印を付ける1本。見積もりの所要時間がいちばん短い候補（同着は並びの先の方）。所要時間のある候補が2本に満たない
-    なら、比べる相手が無いのでNone。"""
-    timed = [draft for draft in drafts if draft.estimated_duration_seconds is not None]
-    if len(timed) < 2:
-        return None
-    return min(timed, key=lambda draft: cast("float", draft.estimated_duration_seconds))
-
-
 def _origin_label(origin: Coordinates) -> str:
     """常時のサマリログに書く出発地。小数2桁（≈1km）へ丸める（logging.md 基本原則4）。"""
     return f"({origin.latitude:.2f},{origin.longitude:.2f})"
-
-
-#: 道の避け方を選ぶ「ルート設定」のタブの名前（地図の道路のまとまりの名前）。理由の文が、変えてみる設定として名指す。
-_ROAD_SETTINGS_TAB = next(group.label for group in MAP_OVERLAY_GROUPS if group.key == "road")
-#: 経由地・目的地を通る経路を結べなかったときの、利用者へ見せる理由。
-_UNREACHABLE_POINTS_REASON = (
-    f"指定した経由地・目的地を通る経路が見つかりませんでした。地点や「{_ROAD_SETTINGS_TAB}」の設定を変えてお試しください。"
-)
 
 
 @dataclass(frozen=True)
@@ -197,14 +186,13 @@ class _DistanceFinish:
         )
         select_ms = elapsed_ms(select_started)
         if not turnarounds:
-            ring_lower_m, ring_upper_m, _ = turnaround_ring_m(
-                self.distance_km, self.distance_tolerance_km, engine.settings.tuning)
+            ring_m = None
+            if not self.points.waypoints and fixed.closes:
+                ring_lower_m, ring_upper_m, _ = turnaround_ring_m(
+                    self.distance_km, self.distance_tolerance_km, engine.settings.tuning)
+                ring_m = (ring_lower_m, ring_upper_m)
             return _Selection.empty(
-                f"出発地から片道{ring_lower_m / 1000:.1f}〜{ring_upper_m / 1000:.1f}kmで到達できる折返し地点が見つかりませんでした。"
-                f"距離や「{_ROAD_SETTINGS_TAB}」の設定を変えてお試しください。"
-                if not self.points.waypoints and fixed.closes
-                else f"置いた地点を通って全長{self.distance_km:.1f}km前後になる経路が見つかりませんでした。"
-                f"距離や地点、「{_ROAD_SETTINGS_TAB}」の設定を変えてお試しください。",
+                no_turnaround_reason(self.distance_km, ring_m),
                 f"turnarounds=0 {_pool_note(0, pool_size)} select_ms={select_ms}",
             )
 
@@ -249,7 +237,8 @@ class _DistanceFinish:
             f"filtered_out={filtered_out} dedup_skipped={dedup_skipped} select_ms={select_ms} trace_ms={trace_ms}"
         )
         if not traced:
-            return _Selection.empty(self._describe_no_traced_reason(failed, filtered_out), summary)
+            return _Selection.empty(
+                no_traced_reason(failed, filtered_out, self.distance_km, self.distance_tolerance_km), summary)
 
         def arrange(drafts: list[EvaluatedRoute]) -> list[RouteCandidate]:
             # 同点は評価前に付けた「目標距離に近い順」を安定ソートで引き継ぐ。周回の名前はエンジンが方位から付けたもの
@@ -260,22 +249,6 @@ class _DistanceFinish:
             return _label(ordered, "destination", "目的地ルート")
 
         return _Selection(by_closeness_to_target(traced, self.distance_km), arrange, summary)
-
-    def _describe_no_traced_reason(self, failed: int, filtered_out: int) -> str:
-        """周回候補が1本も残らなかったときの、利用者へ見せる要約を組み立てる。
-
-        折返し地点が1つ以上あって1本も残らないのは、失敗か距離外れが1件以上あるときだけ
-        （1本目は似すぎを問わず、求める本数は1以上）なので、どちらも0で呼ばれることは無い。
-        """
-        parts = []
-        if failed:
-            parts.append(f"{failed}件の折り返し地点で、帰り道が見つかりませんでした[「{_ROAD_SETTINGS_TAB}」の設定をご確認ください]")
-        if filtered_out:
-            parts.append(
-                f"{filtered_out}件の周回候補は指定距離"
-                f"[{self.distance_km:.1f}km±{self.distance_tolerance_km:.1f}km]から外れました"
-            )
-        return "、".join(parts) + f"。距離や「{_ROAD_SETTINGS_TAB}」の設定を変えてお試しください。"
 
 
 @dataclass(frozen=True)
@@ -319,10 +292,7 @@ class _NoDistanceFinish:
         traced = await engine.select_via_nodes(context, fixed, self.max_routes)
         select_ms = elapsed_ms(select_started)
         if not traced:
-            if self.points.waypoints:
-                reason = _UNREACHABLE_POINTS_REASON
-            else:
-                reason = f"指定した目的地までの経路が見つかりませんでした。地点や「{_ROAD_SETTINGS_TAB}」の設定を変えてお試しください。"
+            reason = UNREACHABLE_POINTS_REASON if self.points.waypoints else UNREACHABLE_DESTINATION_REASON
             return _Selection.empty(reason, f"no via-node candidates select_ms={select_ms}")
         if fixed.closes:
             def arrange_loops(drafts: list[EvaluatedRoute]) -> list[RouteCandidate]:
@@ -482,7 +452,7 @@ class RouteGenerator:
             fixed = await self._engine.trace_fixed_points(context, points.waypoints, end)
         except RoutingError as exc:
             fixed_ms = elapsed_ms(fixed_started)
-            selection = _Selection.empty(_UNREACHABLE_POINTS_REASON, f"fixed points failed: {exc}")
+            selection = _Selection.empty(UNREACHABLE_POINTS_REASON, f"fixed points failed: {exc}")
         else:
             fixed_ms = elapsed_ms(fixed_started)
             finish_started = start_timer()

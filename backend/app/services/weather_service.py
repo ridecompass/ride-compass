@@ -11,6 +11,7 @@ from app.domain.msm_grid import (
     MsmGridForecast,
     MsmGridPointForecast,
     rounded_coordinates,
+    within_msm_grid_area,
     rounded_rows,
 )
 from app.domain.route import Coordinates
@@ -52,8 +53,11 @@ class WeatherService:
             series.latest_run_end,
         )
 
-    async def get_msm_grid(self, bbox: BoundingBox) -> MsmGridForecast:
-        """`bbox`の中のMSMの格子点（点の数が多ければ間引く）ごとの、時別の風と降水（格子点の値のまま）。読めなければ投げる。"""
+    async def get_msm_grid(self, bbox: BoundingBox) -> MsmGridForecast | None:
+        """`bbox`の中のMSMの格子点（点の数が多ければ間引く）ごとの、時別の風と降水（格子点の値のまま）。読めなければ投げる。
+        `bbox`が1回に読む広さの上限を超えれば、読まずにNone（読む量は、間引く前の矩形の中の格子点の数に比例する）。"""
+        if not within_msm_grid_area(bbox):
+            return None
         series = await msm_client.read_weather_grid(
             bbox.min_latitude, bbox.min_longitude, bbox.max_latitude, bbox.max_longitude, MSM_GRID_MAX_POINTS,
         )

@@ -37,9 +37,12 @@ class LayerCategory(NamedTuple):
     group: str
 
 
+#: 道路のまとまり。
+ROAD_OVERLAY_GROUP = OverlayGroup("road", "道路", initial_items=3)
+
 #: 並びがそのまま「表示」の一覧の群の並び順になる。
 MAP_OVERLAY_GROUPS: tuple[OverlayGroup, ...] = (
-    OverlayGroup("road", "道路", initial_items=3),
+    ROAD_OVERLAY_GROUP,
     OverlayGroup("environment", "天気と地形", initial_items=2),
     OverlayGroup("spot", "スポット", initial_items=3),
 )
