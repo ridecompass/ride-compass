@@ -50,13 +50,8 @@ def parse_edge_key(key: str) -> tuple[int, int, bool] | None:
 _FEATURE_KEY_SEPARATOR = "-"
 
 
-def edge_feature_key_sql(osm_way_id: str, segment_index: str) -> str:
-    """区間単位のフィーチャーの鍵をSQLで組み立てる式（引数は列の式）。"""
-    return f"{osm_way_id}::text || '{_FEATURE_KEY_SEPARATOR}' || {segment_index}::text"
-
-
 def edge_feature_key(osm_way_id: int, segment_index: int) -> str:
-    """区間単位のフィーチャーの鍵（`edge_feature_key_sql`と同じ形）。"""
+    """区間単位のフィーチャーの鍵。"""
     return f"{osm_way_id}{_FEATURE_KEY_SEPARATOR}{segment_index}"
 
 

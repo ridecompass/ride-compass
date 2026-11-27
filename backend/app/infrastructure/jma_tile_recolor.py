@@ -40,7 +40,7 @@ _PRECIPITATION_COLORS: dict[tuple[int, ...], tuple[int, ...]] = {
     for jma, stop in zip(JMA_PRECIPITATION_TILE_COLORS, PRECIPITATION_COLOR_STOPS, strict=True)
 }
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("ridecompass.jma_tile_recolor")
 
 RGB = tuple[int, ...]
 

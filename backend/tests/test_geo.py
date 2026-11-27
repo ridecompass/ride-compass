@@ -1,6 +1,6 @@
-"""`domain/geo.py`——方位とその呼び名と、多数の地点それぞれの最寄りの点。
+"""`domain/geo.py`——方位とその呼び名と、地点の最寄りの点。
 
-入口は`compass_label`・`compass_degrees`・`bearing_between_array`・`nearest_point_indices`・`nearest_point_index`。方位が別の道で求めた向きと合うこと・
+入口は`compass_label`・`compass_degrees`・`bearing_between_array`・`nearest_point_index`。方位が別の道で求めた向きと合うこと・
 最寄りが本当に最も近いことはhypothesisで任意の地点について確かめ、方位の呼び名は区分の表で確かめる。
 
 ここで見ないもの:
@@ -83,7 +83,7 @@ def test_the_bearing_agrees_with_the_direction_on_the_tangent_plane(origin, dest
         assert (length * np.cos(angle), length * np.sin(angle)) == pytest.approx((toward_north, toward_east), abs=1e-9)
 
 
-# --- nearest_point_indices・nearest_point_index ---
+# --- nearest_point_index ---
 
 
 # 最寄りは単位ベクトルの内積で比べるため、約10cmより近い差は区別しない（観測所の間隔に比べて無視できる）。
@@ -94,66 +94,20 @@ def brute_force_nearest_km(location: Point, candidates: list[Point]) -> float:
     return min(geo.haversine_distance_km(location, candidate) for candidate in candidates)
 
 
-def chosen_km(location: Point, candidates: list[Point], index: int) -> float:
-    return geo.haversine_distance_km(location, candidates[index])
+@given(location=points, candidates=st.lists(points, min_size=1, max_size=40))
+# 日付変更線の向こうが最寄り。
+@example(location=Point(0.0, 179.99), candidates=[Point(0.0, -179.99), Point(0.0, 179.0)])
+def test_location_gets_a_point_no_farther_than_any_other_anywhere_on_the_globe(location, candidates):
+    index = geo.nearest_point_index(location, candidates)
 
-
-def nearest(locations: list[Point], candidates: list[Point]) -> np.ndarray:
-    return geo.nearest_point_indices(
-        np.array([p.latitude for p in locations]),
-        np.array([p.longitude for p in locations]),
-        np.array([p.latitude for p in candidates]),
-        np.array([p.longitude for p in candidates]),
+    assert index is not None
+    assert geo.haversine_distance_km(location, candidates[index]) == pytest.approx(
+        brute_force_nearest_km(location, candidates), abs=RESOLUTION_KM
     )
 
 
-@given(locations=st.lists(points, min_size=1, max_size=40), candidates=st.lists(points, min_size=1, max_size=40))
-# 日付変更線の向こうが最寄り。
-@example(locations=[Point(0.0, 179.99)], candidates=[Point(0.0, -179.99), Point(0.0, 179.0)])
-def test_each_location_gets_a_point_no_farther_than_any_other_anywhere_on_the_globe(locations, candidates):
-    indices = nearest(locations, candidates)
-
-    assert indices.shape == (len(locations),)
-    for location, index in zip(locations, indices, strict=True):
-        assert chosen_km(location, candidates, index) == pytest.approx(brute_force_nearest_km(location, candidates), abs=RESOLUTION_KM)
-
-
-# 観測所の並び（十数km間隔）で、格子（0.01度）より細かく散らばる地点。最寄りが格子ごとに入れ替わる場面を作る。
-dense_locations = st.builds(
-    Point, latitude=st.floats(min_value=35.0, max_value=35.5), longitude=st.floats(min_value=139.0, max_value=139.5)
-)
-
-
-@given(locations=st.lists(dense_locations, min_size=1, max_size=200), candidates=st.lists(dense_locations, min_size=1, max_size=30))
-# 地点が格子（35.00〜35.01度・139.00〜139.01度）の北東の角にあり、最寄りの点が角の外に、格子の中心に最も近い点が
-# 南西にある。格子ごとの候補の余白が格子の1辺では最寄りを落とし、2辺で拾う。
-@example(locations=[Point(35.0099, 139.0099)], candidates=[Point(35.004, 139.004), Point(35.0135, 139.0145)])
-# 地点が格子の東の端にあり、最寄りの点が東の隣の格子のさらに外に、遠い点が西の隣の格子の中心にある（候補の余白を
-# 地点の格子の中心から測らないと最寄りを落とす）。
-@example(locations=[Point(35.005, 139.0099)], candidates=[Point(35.005, 138.995), Point(35.005, 139.021)])
-def test_each_location_gets_the_nearest_point_where_points_are_dense(locations, candidates):
-    indices = nearest(locations, candidates)
-
-    for location, index in zip(locations, indices, strict=True):
-        assert chosen_km(location, candidates, index) == pytest.approx(brute_force_nearest_km(location, candidates), abs=RESOLUTION_KM)
-
-
-def test_locations_spread_over_many_cells_each_get_their_nearest_point():
-    """格子をまとめて比べる刻み（数百の格子）を越える数の格子に地点が散らばっても、どの地点も最寄りを得る。"""
-    rng = np.random.default_rng(0)
-    locations = [Point(float(lat), float(lon)) for lat, lon in zip(rng.uniform(30, 40, 1500), rng.uniform(130, 140, 1500), strict=True)]
-    candidates = [Point(float(lat), float(lon)) for lat, lon in zip(rng.uniform(30, 40, 60), rng.uniform(130, 140, 60), strict=True)]
-
-    indices = nearest(locations, candidates)
-
-    for location, index in zip(locations, indices, strict=True):
-        assert chosen_km(location, candidates, index) == pytest.approx(brute_force_nearest_km(location, candidates), abs=RESOLUTION_KM)
-
-
-def test_no_locations_give_no_indices():
-    indices = geo.nearest_point_indices(np.array([]), np.array([]), np.array([35.0]), np.array([139.0]))
-
-    assert indices.shape == (0,)
+def test_no_points_give_no_index():
+    assert geo.nearest_point_index(Point(35.0, 139.0), []) is None
 
 
 @pytest.mark.parametrize("candidates", [[Point(0.0, 1.0), Point(0.0, -1.0)], [Point(0.0, -1.0), Point(0.0, 1.0)]])

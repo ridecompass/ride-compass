@@ -70,7 +70,7 @@ def regulation_arrays(edge_way_id: np.ndarray, edge_segment: np.ndarray, regulat
         "regulation_slot_values": regulations.slot_values,
     }
     bicycle, excepted = active_kinds(np.arange(len(row_key)), fields["edge_regulation_start"], count, regulation,
-                                     fields["regulation_slot_start"], slot_count, regulations.slot_values,
+                                     slot_count, regulations.slot_values,
                                      invariant_slots(regulations.slot_values), slotless_active=True)
     return fields, pedestrian_road_codes(bicycle, excepted)
 

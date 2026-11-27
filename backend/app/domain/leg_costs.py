@@ -609,7 +609,7 @@ class LegCostComposer:
     @cached_property
     def _ledger(self) -> LedgerCosts:
         """費目の帳簿の式。道のストレスは時刻に依らないので、ここで1回だけ求める。"""
-        return LedgerCosts.for_model(self._settings.cost_axes, self._parameters, self._travel_inputs.model, self._burden_per_km)
+        return LedgerCosts.for_model(self._parameters, self._travel_inputs.model, self._burden_per_km)
 
     @cached_property
     def _burden_per_km(self) -> dict[str, np.ndarray]:
