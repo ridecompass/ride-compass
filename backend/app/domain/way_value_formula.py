@@ -30,6 +30,8 @@ _FormulaConditionName = Literal["bearing_deg", "speed_kmh"]
 
 #: 地図の式の木が読む走る条件（条件の葉`condition`の名前）。地図のレンズの要求のクエリパラメータの名前でもある。
 WayValueConditionName = Literal["at", "bearing_deg", "speed_kmh"]
+#: 走る条件の並び（条件の一覧はこの順に並べる）。
+RIDE_CONDITION_ORDER: tuple[WayValueConditionName, ...] = ("bearing_deg", "speed_kmh", "at")
 
 
 class Constant(StrictModel):

@@ -59,7 +59,7 @@ z0g は中点に一番近い MSM の格子点が同じ区間どうしの z0r の
 全区間から決まるので、倍率は道路網が格子ごとに1回だけ求めて持ち（`domain/road_network.py: RoadNetwork.wind_height_factors`。
 同時に来た要求も1本に並べて求める）、探索と地図のレンズは切り出した区間の材料（`domain/attributes.py: EdgeMaterialColumns.wind_heights`）
 から同じ区間の同じ値を引く。ルートの事実と道の窓の向かい風は、走行モデルが使う乗り手の高さの値を、そうと分かる名前
-（`domain/cost_axes.py: HEADWIND_FACT_LABEL`）で出す（地図のレンズの段の名前は短く保つため、値と単位だけを出す）。地図に出す風（矢印）は予報の10mの値のまま。
+（`domain/cost_axes.py: EFFORT_ITEM_RULES`の向かい風の事実の名前）で出す（地図のレンズの段の名前は短く保つため、値と単位だけを出す）。地図に出す風（矢印）は予報の10mの値のまま。
 
 Edgeコストは「探索の材料の表（[費用・材料](evaluation-scoring.md)「探索の材料の表」）＋リクエスト時ベクトル計算」方式で
 算出する——探索が実際に訪れたEdgeに対してPythonのコスト計算コールバックを都度呼ぶのでは

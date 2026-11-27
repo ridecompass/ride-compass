@@ -30,17 +30,16 @@ from app.domain.cycling_speed import (
 )
 from app.domain.cost_axes import (
     EFFORT_AXES,
-    HEADWIND_FACT_LABEL,
-    STOPS_FACT_LABEL,
+    EFFORT_ITEM_RULES,
     Burden,
     CostAxisDefinitions,
-    EffortItem,
+    EffortFactInputs,
 )
 from app.domain.geo import length_weighted_mean
 from app.domain.material_catalog import MaterialSpec
 from app.domain.model_settings import ModelSettings
 from app.domain.road_classes import material_spec
-from app.domain.route import STOP_COUNT_DECIMALS, WIND_MS_DECIMALS, AxisFact
+from app.domain.route import AxisFact
 from app.domain.elevation_profile import FLAT, NO_GRADE_LIMIT, ElevationProfiles, ProfileSpans, along_fractions, profile_spans
 from app.domain.search_materials import SearchMaterials
 from app.domain.ledger_costs import LedgerCosts, LedgerParameters
@@ -229,26 +228,23 @@ def axis_facts(settings: ModelSettings, materials: Mapping[str, MaterialColumn],
     求められない事実は載せない。`materials`の列は行`rows`で引き、`distance_m`・`penalty_by_axis`・`headwind_ms`は`rows`の並び。
     ルートの事実と道の窓が、どちらもここで作る。
 
-    - 登坂は登り`ascent_m`、向かい風は向かい風の成分の長さで重みを付けた平均（風を読めなければNone）、停止は止まる回数`stops`。
-    - 路面の抵抗（転がり抵抗の分け方）と道のストレスの軸（定義の材料）は、読む材料の値（`_material_fact`）。
+    - 数で言う体力の費目は、費目の決まり（`domain/cost_axes.py: EffortItemRule.number`）が登り`ascent_m`・向かい風の成分の長さで
+      重みを付けた平均（風を読めなければNone）・止まる回数`stops`から取る値。
+    - ほかの体力の費目（転がり抵抗の分け方）と道のストレスの軸（定義の材料）は、読む材料の値（`_material_fact`）。
     """
     axes = settings.cost_axes
-    mean_headwind = None if headwind_ms is None else length_weighted_mean(headwind_ms, distance_m)
-    numbers: dict[EffortItem, tuple[str, float | None, str]] = {
-        "gravity": ("登り", ascent_m, "m"),
-        "air": (HEADWIND_FACT_LABEL, None if mean_headwind is None else round(mean_headwind, WIND_MS_DECIMALS), "m/s"),
-        "inertia": (STOPS_FACT_LABEL, round(stops, STOP_COUNT_DECIMALS), "回"),
-    }
+    inputs = EffortFactInputs(ascent_m, None if headwind_ms is None else length_weighted_mean(headwind_ms, distance_m), stops)
     facts: dict[str, AxisFact] = {}
     for axis_id, seconds in penalty_by_axis.items():
         item = EFFORT_AXES.get(axis_id)
+        number = None if item is None else EFFORT_ITEM_RULES[item].number
         fact: AxisFact | None
-        if item in numbers:
-            label, value, unit = numbers[item]
-            fact = None if value is None else AxisFact(label=label, value=value, unit=unit)
+        if number is not None:
+            value = number.value(inputs)
+            fact = None if value is None else AxisFact(label=number.label, value=value, unit=number.unit)
         else:
-            material = (rolling_resistance_material_id(settings.road_classes) if item == "rolling"
-                        else axes.burden[axis_id].burden.material)
+            material = (axes.burden[axis_id].burden.material if item is None
+                        else rolling_resistance_material_id(settings.road_classes))
             fact = None if material is None else _material_fact(material, settings, materials, rows, seconds, distance_m)
         if fact is not None:
             facts[axis_id] = fact
