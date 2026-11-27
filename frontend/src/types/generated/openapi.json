@@ -3913,7 +3913,14 @@
       "LensDirection": {
         "properties": {
           "total_seconds": {
-            "type": "number",
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Total Seconds"
           },
           "axes": {
@@ -5280,6 +5287,17 @@
             "minimum": 0.0,
             "title": "Bearing Deg"
           },
+          "lens_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lens Id"
+          },
           "frame": {
             "anyOf": [
               {
@@ -5293,6 +5311,11 @@
               }
             ],
             "title": "Frame"
+          },
+          "wind": {
+            "type": "boolean",
+            "title": "Wind",
+            "default": true
           },
           "speed_kmh": {
             "type": "number",

@@ -47,7 +47,7 @@
 | `features/map/MapView/mapTapHits.ts` | 地図を押したときの意味ごとに開ける対象と、押した所に重なった地物から開く1つを選ぶ判断 |
 | `features/map/MapView/useMapPopups.ts` | 地図の小窓（点・道・区間）の状態と開閉。**小窓はいつも1つ**で、点と道は押して開き、区間は選んでいる区間から導く（押して開いた中身が無ければ区間の中身。区間の選びが変わると、その区間に属さない中身を閉じる）。選択の持ち主が変わると押して開いた中身を閉じ、閉じる（×・何も無い所を押す）と区間の選びも外す |
 | `features/map/MapView/useMapPopupMount.tsx` | 小窓を地図へ載せて置くこと。MapLibreのPopupを1つ器にしてportalで描き、点と道の小窓は指す地点と間の幅だけで、区間の小窓は区間に重ならない点と向きで置く（決まりは下記「地図を押したときと地図の小窓」）。上の帯をつまんでずらすことと、見えている所の内側へ押し込めること |
-| `features/map/MapView/MapPopupContent.tsx` | 小窓の中身（点・道・区間）と、Street View のカメラの向き |
+| `features/map/MapView/MapPopupContent.tsx` | 小窓の中身（点・道・区間） |
 | `features/map/MapView/popupPlacement.ts` | 小窓を見えている所の内側へ押し込めたときの左上（画面のpx）。見えている所が無い地図（描く前・隠れている間）では動かさない。線（区間）に重ならない小窓の付け方（線の一番下の点の下か、一番上の点の上）も持つ |
 | `features/map/MapView/layerDataSources.ts` | レイヤーのデータ取得状態の算出元（`features/map/MapView/layerDataSources.ts: buildLayerDataSources`）。レイヤーカタログの情報源の名前を、取得を見るMapLibreのソースへ引く |
 | `features/map/baseMap.ts` | 基礎地図のスタイル・出典の表記・MapLibreの部品の日本語の文言で地図を作る（`features/map/baseMap.ts: createBaseMap`）。一般の地図（`MapView.tsx`）が使い、載せるものは場面で当てる。地図が今見ている範囲の読み取り（`features/map/baseMap.ts: viewportOf`）もここが持つ。俯瞰図（`features/map/MapOverview/MapOverview.tsx`）は`inset`で、操作を受けず出典の表記を持たない地図として作る（出典は同じ画面の本体の地図が出す）。基礎地図の文字は薄れさせずに出し入れする（MapLibre の`fadeDuration`を0にする）——薄れる間は地図全体を描き直し続けるので、ずらすたびに操作が重くなる |
@@ -58,7 +58,7 @@
 | `features/map/layers/routeArrowIcon.ts`・`components/ui/icons/icons.tsx`・`components/ui/icons/layerIcons.tsx`・`components/ui/icons/lucideIcons.tsx`・`components/ui/icons/mapLayerIcons.ts` | ルート矢印・アイコン集（下記「本モジュールとの関係」参照）。`icons.tsx`はアイコンの土台（大きさの受け口・線の様式）と、操作・地点の自前の形、`layerIcons.tsx`は地図のレイヤーと費用の軸の自前の形、`lucideIcons.tsx`はlucideの形の包み、`mapLayerIcons.ts`は源泉が宣言するレイヤーごとのアイコンの表（地図の「表示」の一覧と、区間の小窓の層の値のチップが同じ表を引く。レイヤーを足すと型が書き忘れを止める） |
 | `components/ui/icons/axisIconPalette.tsx` | 費用の軸のアイコンの固定のパレット（軸の定義が持つ`icon_id`→形。`components/ui/icons/axisIconPalette.tsx: axisIconFor`）。軸の定義はキーを選ぶだけで、形を足すにはここへ1件足す（任意のSVGの登録は意匠の揃いと無害化の費用が高い）。知らない・未設定の`icon_id`は汎用のアイコンにする。レンズの一覧の行・負担のタブの行・区間の小窓と道の小窓の負担・道のりのグラフの積む負担の一覧が引く（絵の部品は`components/ui/icons/axisIconPalette.tsx: AxisMark`） |
 | `features/map/layers/sdfIcon.ts` | 地図の記号に使う単色シルエット（例: ルート矢印・落雷の記号）の描画の土台。白で塗った絵を`sdf: true`で登録し、色はicon-colorで付ける。canvasの2D描画が使えなければ投げる——空の絵を黙って返すと記号が地図から消えるだけで誰も気づけない。**単体テストは持たない**（テスト環境のcanvasは2D描画を実装しない。絵の中身は座標の宣言そのもので、写してもなにも守らない） |
-| `components/MapPopup/MapPopupParts.tsx` | 地図の小窓（点・道・区間）を組む部品。どの小窓も「上の帯」（`components/MapPopup/MapPopupParts.tsx: PopupHeader`）と塊——施設の行（`components/MapPopup/MapPopupParts.tsx: FacilityRows`）・区間の小窓へ戻る「‹ 区間」（`components/MapPopup/MapPopupParts.tsx: BackToSegmentButton`）等——だけで組む。小窓ごとに別の組み方をすると、同じ値が小窓によって違う形に見える。上の帯は右端を Street View・寄せるアイコンと×の幅だけ空ける——×はMapLibreが本文の器の右上に置き、どの中身でも幅32px・高さ44pxの押す所を持つ（`app/globals.css`） |
+| `components/MapPopup/MapPopupParts.tsx` | 地図の小窓（点・道・区間）を組む部品。どの小窓も「上の帯」（`components/MapPopup/MapPopupParts.tsx: PopupHeader`）と塊——施設の行（`components/MapPopup/MapPopupParts.tsx: FacilityRows`）・区間の小窓へ戻る「‹ 区間」（`components/MapPopup/MapPopupParts.tsx: BackToSegmentButton`）等——だけで組む。小窓ごとに別の組み方をすると、同じ値が小窓によって違う形に見える。上の帯は右端を寄せるアイコンと×の幅だけ空ける——×はMapLibreが本文の器の右上に置き、どの中身でも幅32px・高さ44pxの押す所を持つ（`app/globals.css`） |
 | `components/MapPopup/facilityRows.ts` | 点データ（事故・POI・立ち寄り先）を1施設1行で見せる行の中身（`components/MapPopup/facilityRows.ts: facilityOf`）。区分の名前を凡例と同じ点の宣言（`POINT_LAYERS`の`display_axes`）から引き、宣言（`point_facts`）が点に添える事実（事故の発生年等）を値のあるものだけ並べる。宣言（`point_name_property`）が名前のプロパティを持ち、その点に名前があれば（立ち寄り先と補給のコンビニ）、名前を外の地図（Google マップの検索）を別の画面で開くリンクにする——閉店にデータが追いついていないことがあるので、営業を外で確かめられるようにする。リンクの先は行が出たときに名前と点の位置で backend に引く（`services/placeLinkApi.ts: placeLinkQuery`。押してから引くと iPhone の Safari が新しい窓を止める。所在の決め方と形は[地点の検索（backend）](../backend/place-search.md)「地図の点の名前から開くリンク」）。引けるまで・引けなければ名前だけを出す。行の位置は、ルートの始点からの道のりでなく、基準の地点から見た前後（「300m先」「100m手前」。走行中は現在地からの「あと1.2km」）で出す（`components/MapPopup/facilityRows.ts: facilityPosition`）。基準の地点は、見るだけの間は区間で押した地点を区間の道なりに当てた所、走行中は現在地で、ページ（`app/HomeMapPane.tsx`）が1つ決めて地図の点の小窓と区分の一覧へ渡す。名前は`lib/mapDisplay/pointLayers.ts: pointPlaceName`が引き、地点を置く意味の間に名前のある点を押して地点を置くとき（`features/map/MapView/mapTaps.ts`）も同じ名前を使う。同じ場所に重なった同じ施設は1行にし、道のりの順（同じ位置なら道に近い順）に並べる（`components/MapPopup/facilityRows.ts: distinctFacilities`） |
 | `services/placeLinkApi.ts` | 地図の点の名前から開く外の地図のリンクを backend（`GET /api/place-link`）に引く口と、点ごとに取得を共有する問い合わせ（`services/placeLinkApi.ts: placeLinkQuery`） |
 | `features/map/MapView/RoadInspectorPopup.tsx`（上の帯と属性の箇所） | 道をクリックしたときの詳細（**Reactで描き、MapLibreのPopupへportalで差し込む**）。上の帯に、道の層を出していればその先頭の層の線と同じ見本（`features/map/scene/groups/roadLines.ts: shownRoadTrackOf`）・名前（名前の無い道は出さない）・事実の要約（路面等）を出し、属性（タイルの事実と、負担を取ったときに届くタグ。**同じ項目は1度だけ**で、日本語の値だけを出し、英語の生の値と登録外のタグはその中の「その他のタグ」にさらに畳む）は畳む——地図の上の小さな枠に収めるため。中身の高さには上限を付けて中でスクロールさせ、中身が伸び縮みしたら置く向きを決め直す（MapLibreのPopupは地図が動いたときにしか決め直さず、開いた後に伸びた中身が画面の外へはみ出す）。道のストレス（開いたら取りに行く、地図のレンズと同じ値と事実）は[地図: レンズ・ルート色分け](map-axis-coloring.md)の同じファイルの行。**デバッグログONのときだけ`osm_way_id`を出す**——値がおかしい道を見つけたとき、地図で押した1本をそのままbackendの調査へ渡せるようにする。一般の利用者には読めない値のため常時は出さない |
@@ -239,7 +239,9 @@ DOM/MapLibreを一切知らない。`MapView.tsx`は画面の状態をsceneの�
 `prepareBasemap`がスタイルごとに1度、`mapStyleOps.ts: MINOR_ROAD_CASING_LAYER_ID`に当たる層の`line-color`を描き替える）。libertyは
 引いた縮尺（z13.5より手前）の細い道を白い線を描かずに縁取りの線だけで描き、配信元の縁取りの薄い灰は、雨・色別標高図の面を
 重ねた地とほぼ同じ明るさになる（面は道路網の下に入るので、縁取りは面を重ねた地に載る）。描き替えた色は、面なしの地と雨の各段を
-重ねた地に対して線が見えるコントラスト比を割らないことを`tests/test_display_palette.py`が測る。色別標高図はタイルの画素ごとに
+重ねた地と土地被覆を重ねた地に対して線が見えるコントラスト比を割らないことを`tests/test_display_palette.py`が測る。災害の塗る段は
+明るさが段ごとに大きく違い、どの1つの灰でも全部の段で比を保てないので測らない。暗くするほど主要な道（淡い縁取り）
+より細い道が目立って地図の釣り合いが崩れるので、その比を割らない範囲で明るさを留める。色別標高図はタイルの画素ごとに
 色が違うので、そこでは測らない。層はidで名指す——縁取りかどうかはスキーマの語彙（`class`）では分からず、配信元のスタイルの
 層の並びにしか無い。スタイルが層を改名すると黙って当たらなくなる。
 
@@ -331,14 +333,22 @@ MSMを配るOpen-MeteoのCC BY 4.0も、リンク付きのクレジット・ラ�
 （`features/map/baseMap.ts: createBaseMap`）。展開している間だけ、右下の出典の置き場を地図の下端の操作（元に戻すボタンの列・現在地ボタン）より
 前に出す（`globals.css`）——出典は数行に折り返し、そのままでは操作の下に隠れて読めない。
 
-## 面の濃さ（`scene/groups/areaRasters.ts: AREA_OPACITY`）
+## 面の濃さ（`domain/map_display.py: AREA_OPACITY`）
 
 **濃さは上下から挟まれている。** 下げると薄い階級が基礎地図の背景と区別できなくなり、
-上げると面の下にある土地の塗りが潰れる。片側だけを見て動かさない。
+上げると面の下にある土地の塗り（水面・公園・建物）が見分けられなくなる。片側だけを見て動かさない。
 
 **下限の決め方**: 最も薄い階級が、基礎地図の背景に対して**ΔE（CIE76）で15以上**離れること。
-値を動かすときはこの尺度で測り直す——「見た感じ薄い」で下げると、背景色の違う地域や
-ダークモードで区別できない階級が出る。
+雨・線状降水帯予測・災害の塗る段（地図に塗る配信元のタイルの色）は、明るい地で`tests/test_display_palette.py`が測る
+——「見た感じ薄い」で下げると、背景色の違う地域で区別できない階級が出る。色別標高図は画像で、画素ごとに色が違うので測らない。
+
+**土地被覆と災害はほかの面より濃い**（`domain/map_display.py: LANDCOVER_OPACITY`・`domain/map_display.py: HAZARD_OPACITY`）。
+土地被覆は分類を色で読む層で、草地・湿地のような地に近い色の分類は、ほかの面の濃さでは下限を割る（雪氷・裸地は分類の
+色そのものが地に近く、この濃さでも下限に届かないので測らない）。災害は、すぐ身を守る
+行動を求める段だけを塗る層で、雨より目立たせる。
+
+**色別標高図は彩度も下げる**（`domain/map_display.py: ELEVATION_SATURATION`を生成物で受け、MapLibreの`raster-saturation`へ渡す）。
+配信元の色は彩度が高く、濃さを下げても面の上の道と地名より目立つ。
 
 ## 起伏（陰影）の濃さ（`scene/groups/areaRasters.ts`）
 
@@ -418,9 +428,9 @@ MSMを配るOpen-MeteoのCC BY 4.0も、リンク付きのクレジット・ラ�
 近い順の先頭の道の小窓を開く。道の層を出していなくても、凡例で隠した行の道でも押せ、道のタイルを読まない。拾う幅は指の幅（`features/map/MapView/mapTaps.ts: ROAD_REACH_PX`）を
 押した所の緯度と倍率で地面の m に直したもので、道のタイルの無い引いた縮尺（`features/map/regionApi.ts: ROAD_TILE_MIN_ZOOM`より前）では問わない。
 小窓は押した直後に閉じ、道が返ってから開く（問うている間に押し直したら、前の答えは捨てる）。押した道の強調は、返った道の線の形で描く——
-区間で塗る倍率では区間、引いた倍率では道1本が光り、小窓の値と同じ単位になる。地点のピンは押せる物に数えない——上を押すと、下にある物がそのまま開く。点は名前の有無に関わらず押すと点の小窓を開き、名前の無い点は種類の名前で並べる（小窓の上の帯から Street View を開ける）。束ねた代表点は、名前のある点を1か所ずつ、名前の無い残りを種類の名前と数（「3か所」）の1行で並べる。
+区間で塗る倍率では区間、引いた倍率では道1本が光り、小窓の値と同じ単位になる。地点のピンは押せる物に数えない——上を押すと、下にある物がそのまま開く。点は名前の有無に関わらず押すと点の小窓を開き、名前の無い点は種類の名前で並べる。束ねた代表点は、名前のある点を1か所ずつ、名前の無い残りを種類の名前と数（「3か所」）の1行で並べる。
 
-**小窓はいつも1つで、作りは同じ。** 最後に押した物の中身を出す。どの小窓も上の帯と塊で組み、右上に Street View のリンク・地図を寄せるアイコン・×（幅32px・高さ44px。間を詰めて上の帯のつまめる所を広く残す）を置く。Street View のリンクは、小窓の地点（点は点の位置、道と区間は押した所）の Street View を別のタブの Google マップで開き（`lib/streetViewUrl.ts: streetViewUrl`）、カメラは押した物の線の、地点に最も近い辺の向き（`lib/localPlane.ts: nearestEdge`）を進む向きへ向ける（`MapView/MapPopupContent.tsx: lookingOf`）。区間はルートの一部なので、線の向きがそのまま進む向き。道は両向きに走れるので、辺の両向きのうち、押した道がルートと重なればルートの進む向きに、重ならず走行中なら今の進む向きに近い側（`lib/localPlane.ts: nearerSide`）にし、どちらでもなければ渡さない（Google が地点から決める）。点は道筋を持たないので渡さない。点と道の小窓は押した所を指し、向き（地点の上・下・左・右のどちらに出すか）は MapLibre の Popup が地図の枠に収まる側を選ぶ（`anchor`を指定しない）。区間の小窓は区間に重ねない——Popup は点を指すだけで線を避けないので、区間の一番下の点を指して下へ出し、下に入らなければ一番上の点を指して上へ出す（`MapView/popupPlacement.ts: popupBesideLine`）。どちらにも入らず、区間を地図で押した直後なら、区間の下に小窓の高さを空けて地図を区間へ寄せ（今より寄らず、向きも変えない）、寄せ終えると置き直す。寄せるのは押した直後の1回だけで、寄せても入らないときと、押したあとに利用者が地図を動かして入らなくなったときは、下の押し込めで重ねる。グラフで選んだ区間では寄せない（なぞるたびに地図が跳ぶ）。押した物に小窓がかぶったら、利用者が上の帯をつまんでずらす（`components/MapPopup/MapPopupParts.tsx: PopupHeader`。どの小窓も同じ）。ずらした小窓は、閉じるまで押した所からのずれを保ち、地図を動かすと一緒に動き、押した所を指さないので矢印を出さず、四隅を同じに丸める。ずらす前は、見えている所からはみ出す分を内側へ押し込める（`MapView/popupPlacement.ts: popupInsideVisible`）——Popup は向きを選ぶだけで中へはずらさないので、上にも下にも収まらない背の高い小窓や、端の近くで開いた小窓が画面の外へ出る。ずらした後は、上の帯の一部（`MapView/useMapPopupMount.tsx: DRAGGED_POPUP_KEEP_PX`）が見えている所に残る分だけ押し込め、左・右・下へは外へ出てよい——全体を押し込めると、地図の幅いっぱいの小窓は横へずらせない。地図が動き終えたときと中身の大きさが変わったときに置き直す。幅を中身に合わせること（`maxWidth`）と、地図の上に重ねた部品を避けること（`padding`）は Popup の標準の設定で済ませる。名前は折り返さず、小窓の幅を中身に合わせて広げ、地図の幅を超えるときだけ空白で折る。高さには上限があり、あふれたら中でスクロールする。×・何も無い所を押す・パネルを切り替えると閉じる。区間の小窓を出している間に点を押すと、区間の選びを残し、点の小窓の上の帯に「‹ 区間」を置いて戻れるようにする。点のほかの物を押すと、区間の選びを外す。
+**小窓はいつも1つで、作りは同じ。** 最後に押した物の中身を出す。どの小窓も上の帯と塊で組み、右上に地図を寄せるアイコン・×（幅32px・高さ44px。間を詰めて上の帯のつまめる所を広く残す）を置く。点と道の小窓は押した所を指し、向き（地点の上・下・左・右のどちらに出すか）は MapLibre の Popup が地図の枠に収まる側を選ぶ（`anchor`を指定しない）。区間の小窓は区間に重ねない——Popup は点を指すだけで線を避けないので、区間の一番下の点を指して下へ出し、下に入らなければ一番上の点を指して上へ出す（`MapView/popupPlacement.ts: popupBesideLine`）。どちらにも入らず、区間を地図で押した直後なら、区間の下に小窓の高さを空けて地図を区間へ寄せ（今より寄らず、向きも変えない）、寄せ終えると置き直す。寄せるのは押した直後の1回だけで、寄せても入らないときと、押したあとに利用者が地図を動かして入らなくなったときは、下の押し込めで重ねる。グラフで選んだ区間では寄せない（なぞるたびに地図が跳ぶ）。押した物に小窓がかぶったら、利用者が上の帯をつまんでずらす（`components/MapPopup/MapPopupParts.tsx: PopupHeader`。どの小窓も同じ）。ずらした小窓は、閉じるまで押した所からのずれを保ち、地図を動かすと一緒に動き、押した所を指さないので矢印を出さず、四隅を同じに丸める。ずらす前は、見えている所からはみ出す分を内側へ押し込める（`MapView/popupPlacement.ts: popupInsideVisible`）——Popup は向きを選ぶだけで中へはずらさないので、上にも下にも収まらない背の高い小窓や、端の近くで開いた小窓が画面の外へ出る。ずらした後は、上の帯の一部（`MapView/useMapPopupMount.tsx: DRAGGED_POPUP_KEEP_PX`）が見えている所に残る分だけ押し込め、左・右・下へは外へ出てよい——全体を押し込めると、地図の幅いっぱいの小窓は横へずらせない。地図が動き終えたときと中身の大きさが変わったときに置き直す。幅を中身に合わせること（`maxWidth`）と、地図の上に重ねた部品を避けること（`padding`）は Popup の標準の設定で済ませる。名前は折り返さず、小窓の幅を中身に合わせて広げ、地図の幅を超えるときだけ空白で折る。高さには上限があり、あふれたら中でスクロールする。×・何も無い所を押す・パネルを切り替えると閉じる。区間の小窓を出している間に点を押すと、区間の選びを残し、点の小窓の上の帯に「‹ 区間」を置いて戻れるようにする。点のほかの物を押すと、区間の選びを外す。
 
 **小窓の中身。**
 

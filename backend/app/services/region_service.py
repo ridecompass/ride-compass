@@ -246,15 +246,17 @@ class RoadInspectorService:
         self._lens = lens
 
     async def inspect(
-        self, osm_way_id: int, feature_key: str, tile: tuple[int, int, int], bearing_deg: float, frame: str | None,
-        speed_kmh: float, cost_preference: CostPreference, settings: ModelSettings,
+        self, osm_way_id: int, feature_key: str, tile: tuple[int, int, int], bearing_deg: float, lens_id: str | None,
+        frame: str | None, wind: bool, speed_kmh: float, cost_preference: CostPreference, settings: ModelSettings,
     ) -> RoadInspection | None:
         """押した道（osm_way_id）か、タイル`tile`（押したフィーチャー`feature_key`を焼いた`(z, x, y)`）にそのフィーチャーが
         見つからなければNone。"""
         road = await self._region_service.inspected_road(osm_way_id)
         if road is None:
             return None
-        lens = await self._lens.inspect(feature_key, *tile, bearing_deg, frame, speed_kmh, cost_preference, settings)
+        lens = await self._lens.inspect(
+            feature_key, *tile, bearing_deg, lens_id, frame, wind, speed_kmh, cost_preference, settings,
+        )
         if lens is None:
             return None
         return RoadInspection(highway=road.highway, tags=road.tags, lens=lens)

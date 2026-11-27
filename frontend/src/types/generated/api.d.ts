@@ -1167,7 +1167,7 @@ export interface components {
         /** LensDirection */
         LensDirection: {
             /** Total Seconds */
-            total_seconds: number;
+            total_seconds: number | null;
             /** Axes */
             axes: components["schemas"]["LensAxisSeconds"][];
             /** Facts */
@@ -1601,8 +1601,15 @@ export interface components {
             y: number;
             /** Bearing Deg */
             bearing_deg: number;
+            /** Lens Id */
+            lens_id?: string | null;
             /** Frame */
             frame?: string | null;
+            /**
+             * Wind
+             * @default true
+             */
+            wind: boolean;
             /** Speed Kmh */
             speed_kmh: number;
         };

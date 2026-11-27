@@ -73,8 +73,9 @@ class FakeRoadInspector:
         self._result = result
         self.request = None
 
-    async def inspect(self, osm_way_id, feature_key, tile, bearing_deg, at, speed_kmh, cost_preference, settings):
-        self.request = (osm_way_id, feature_key, tile, bearing_deg, at, speed_kmh, cost_preference)
+    async def inspect(self, osm_way_id, feature_key, tile, bearing_deg, lens_id, frame, wind, speed_kmh, cost_preference,
+                      settings):
+        self.request = (osm_way_id, feature_key, tile, bearing_deg, lens_id, frame, wind, speed_kmh, cost_preference)
         return self._result
 
 
@@ -186,8 +187,8 @@ def test_the_road_tile_hands_the_frame_of_the_departure_over(override_dependency
 
 
 def test_region_road_inspector_hands_the_pressed_feature_and_the_maps_conditions_over(override_dependency):
-    """押した道・フィーチャー・タイルと、地図が指定している走行方位・時刻・想定速度・利用者の値がサービスへ渡り、その結果が
-    応答になる。
+    """押した道・フィーチャー・タイルと、地図が指定している走行方位・塗っているレンズ・時刻・風を読むか・想定速度・利用者の値が
+    サービスへ渡り、その結果が応答になる。
 
     条件が届かないと、1本の道が往復2方向で違う値を持つレンズを地図と同じ値で出せない。フィーチャーが届かないと、押した物とは
     別の物の値が出る。
@@ -198,13 +199,14 @@ def test_region_road_inspector_hands_the_pressed_feature_and_the_maps_conditions
     override_dependency(get_road_inspector_service, lambda: fake)
     response = client.post(
         "/api/region/road-inspector",
-        json={**INSPECTED, "frame": "v1-2026092109", "cost_preference": {"strength": 2.0}},
+        json={**INSPECTED, "lens_id": "stopping", "frame": "v1-2026092109", "wind": False,
+              "cost_preference": {"strength": 2.0}},
     )
 
     assert response.status_code == 200
     assert response.json() == result.model_dump()
     assert fake.request == (
-        12345, "12345-0", (14, 14551, 6447), 90.0, "v1-2026092109", 20.0,
+        12345, "12345-0", (14, 14551, 6447), 90.0, "stopping", "v1-2026092109", False, 20.0,
         CostPreference(strength=2.0),
     )
 

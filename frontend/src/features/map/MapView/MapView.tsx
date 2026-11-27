@@ -32,9 +32,11 @@ import { useMapPopups } from "@/features/map/MapView/useMapPopups";
 import { useMapScene } from "@/features/map/MapView/useMapScene";
 import { useRideFollow, type RideFollow } from "@/features/map/MapView/useRideFollow";
 import { useSectionFocus } from "@/features/map/MapView/useSectionFocus";
+import { useStreetViewAim } from "@/features/map/MapView/useStreetViewAim";
 import { type TurnMarkPoint, useTurnMark } from "@/features/map/MapView/useTurnMark";
 import { routeSide } from "@/lib/mapDisplay/sidePoints";
 import { segmentPath } from "@/lib/routeDistance";
+import type { StreetViewAim } from "@/lib/streetViewUrl";
 
 interface MapViewProps {
   routes: RouteCandidate[];
@@ -101,6 +103,10 @@ interface MapViewProps {
   turnPoint: TurnMarkPoint | null;
   /** いまの「負担で塗る」の周りの道の塗りが地図の向きで決まる（方位磁針のボタンに印を付ける）。 */
   compassLinked: boolean;
+  /** Street View を開く地点と向きの矢印。出さなければnull。 */
+  streetViewAim: StreetViewAim | null;
+  /** 矢印の点をつまんで動かした・つまみを回したとき。 */
+  onStreetViewAimChange: (aim: StreetViewAim) => void;
 }
 
 /** ルートの線を薄める境目の刻み（m）。走った距離が変わるたびに薄める所を動かすと、走っている間ずっと地図の中身を組み直して
@@ -145,6 +151,8 @@ export default function MapView({
   travelledKm,
   turnPoint,
   compassLinked,
+  streetViewAim,
+  onStreetViewAimChange,
 }: MapViewProps) {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
@@ -246,6 +254,7 @@ export default function MapView({
 
   const rideControls = useRideFollow(mapRef, ride, here);
   const turnMarkContent = useTurnMark(mapRef, turnPoint);
+  useStreetViewAim(mapRef, streetViewAim, onStreetViewAimChange);
   const focus = useSectionFocus(mapRef, {
     sectionPath: selectedSectionPath,
     request: segmentFocus,
@@ -258,8 +267,6 @@ export default function MapView({
     controls: popups,
     segmentDetail,
     segmentPath: selectedSectionPath,
-    routePath: (selectedRoute?.geometry.coordinates as [number, number][] | undefined) ?? null,
-    travelBearing: ride?.bearing ?? null,
     rideConditions,
     costPreference,
     travelledKm,

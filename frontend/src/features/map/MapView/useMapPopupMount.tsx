@@ -28,7 +28,7 @@ const DRAGGED_POPUP_KEEP_PX = 128;
 /** 押した所を指さない（ずらした・押し込めた）小窓に付ける印。矢印を隠す（`app/globals.css`）。 */
 const FREE_POPUP_CLASS = "map-popup-free";
 
-type MapPopupMountOptions = Omit<MapPopupContentProps, "popup" | "target"> & {
+type MapPopupMountOptions = Omit<MapPopupContentProps, "popup" | "shape"> & {
   shown: MapPopup | null;
   controls: MapPopupControls;
   /** 選んでいる区間の形。形が引けなければnull。 */
@@ -53,8 +53,6 @@ export function useMapPopupMount(
     controls,
     segmentDetail,
     segmentPath,
-    routePath,
-    travelBearing,
     rideConditions,
     costPreference,
     travelledKm,
@@ -250,10 +248,8 @@ export function useMapPopupMount(
   return createPortal(
     <MapPopupContent
       popup={onMap}
-      target={targetOf(onMap, segmentPath)}
+      shape={targetOf(onMap, segmentPath).shape}
       segmentDetail={segmentDetail}
-      routePath={routePath}
-      travelBearing={travelBearing}
       rideConditions={rideConditions}
       costPreference={costPreference}
       travelledKm={travelledKm}
