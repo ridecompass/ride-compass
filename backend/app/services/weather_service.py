@@ -16,13 +16,13 @@ from app.domain.msm_grid import (
 from app.domain.route import Coordinates
 from app.domain.region import BoundingBox
 from app.domain.weather import GridPointToday, grid_point_today
-from app.domain.wind import WindForecastSeries
+from app.domain.wind import WeatherForecastSeries
 from app.infrastructure import msm_client
 from app.infrastructure.msm_client import MsmUnavailableError
 
 
 class WeatherService:
-    """風の予報を気象庁MSMから読む。"""
+    """天気の予報を気象庁MSMから読む。"""
 
     def forecast_version(self) -> str:
         """置き場の予報の版（同期が予報を入れ替えると変わる）。"""
@@ -84,7 +84,7 @@ class WeatherService:
             latest_run_end=series.latest_run_end,
         )
 
-    async def get_wind_forecast_lattice(self, bbox: BoundingBox) -> WindForecastSeries:
+    async def get_weather_forecast_lattice(self, bbox: BoundingBox) -> WeatherForecastSeries:
         """`bbox`を覆うMSMの格子点ごとの時別風向・風速・気温の予報系列（1時間刻み、JSTのローカル時刻、格子点の値のまま）。
         読めない・時刻が2つに満たなければ投げる。ルートの探索範囲にも、ルートを出す前の地図のタイルにも使う。
 
@@ -95,9 +95,9 @@ class WeatherService:
             bbox.min_latitude, bbox.min_longitude, bbox.max_latitude, bbox.max_longitude,
         )
         if len(series.times) < 2:
-            raise MsmUnavailableError(f"MSMの風の予報の時刻が足りません: {len(series.times)}件")
+            raise MsmUnavailableError(f"MSMの天気の予報の時刻が足りません: {len(series.times)}件")
         speed, direction = wind_speed_and_direction(series.wind_u_ms, series.wind_v_ms)
-        return WindForecastSeries(
+        return WeatherForecastSeries(
             times=series.times,
             speed_ms=speed,
             direction_deg=direction,

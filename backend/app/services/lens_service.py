@@ -14,7 +14,7 @@ import numpy as np
 from cachetools import LRUCache
 
 from app.domain.cost_preference import CostPreference
-from app.domain.wind_context import WindContext
+from app.domain.wind_context import WeatherContext
 from app.domain.gradient import ROAD_BEARING_LEAF
 from app.domain.ledger_costs import ledger_parameters
 from app.domain.model_settings import ModelSettings, current_model_settings
@@ -37,7 +37,7 @@ from app.domain.road_features import map_features_in
 from app.domain.road_network import MaterialFills, material_arrays_of, slice_rows
 from app.domain.attributes import EdgeMaterialColumns
 from app.domain.time_zone import JST, as_series_time
-from app.domain.wind import WindForecastSeries
+from app.domain.wind import WeatherForecastSeries
 from app.infrastructure import road_network_store
 from app.infrastructure.cache_identity import canonical_json, dynamic_tile_key, model_settings_signature
 from app.infrastructure.debug_log import log_external_call
@@ -123,25 +123,25 @@ class LensService:
             return None
         features, materials, fills, burden_fills, elevation_gain_m = prepared
         fields["features"] = len(features)
-        weather = await self._wind(z, x, y, at, materials.mid_lat, materials.mid_lon) if wind else None
+        weather = await self._weather(z, x, y, at, materials.mid_lat, materials.mid_lon) if wind else None
         return await asyncio.to_thread(_tile_lens, features, materials, settings, fills, burden_fills, speed_kmh,
                                        preference, weather, elevation_gain_m)
 
-    async def _wind(self, z: int, x: int, y: int, at: datetime | None, mid_lat: np.ndarray, mid_lon: np.ndarray,
-) -> tuple[WindForecastSeries, datetime] | None:
+    async def _weather(self, z: int, x: int, y: int, at: datetime | None, mid_lat: np.ndarray, mid_lon: np.ndarray,
+) -> tuple[WeatherForecastSeries, datetime] | None:
         if not len(mid_lat):
             return None
         target = as_series_time(at or datetime.now(JST))
         bbox = tile_bounds_lonlat(z, x, y)
         # 道1本のフィーチャーの区間はタイルの外にありうるため、格子はタイルと区間の中点の両方を覆う。
-        series = await self._weather_service.get_wind_forecast_lattice(BoundingBox(
+        series = await self._weather_service.get_weather_forecast_lattice(BoundingBox(
             min_latitude=min(bbox.min_latitude, float(mid_lat.min())),
             min_longitude=min(bbox.min_longitude, float(mid_lon.min())),
             max_latitude=max(bbox.max_latitude, float(mid_lat.max())),
             max_longitude=max(bbox.max_longitude, float(mid_lon.max())),
         ))
         if not series.covers(target):
-            raise MsmUnavailableError(f"MSMの風の予報が、求める時刻 {target.isoformat()} を含みません")
+            raise MsmUnavailableError(f"MSMの天気の予報が、求める時刻 {target.isoformat()} を含みません")
         return series, target
 
 
@@ -164,11 +164,11 @@ def _prepare(z: int, bounds: BoundingBox, settings: ModelSettings, only: str | N
 
 def _tile_lens(features: LensFeatures, materials: EdgeMaterialColumns, settings: ModelSettings, fills: MaterialFills,
                burden_fills: Mapping[str, float], speed_kmh: float, preference: CostPreference,
-               wind: tuple[WindForecastSeries, datetime] | None, elevation_gain_m: np.ndarray) -> _TileLens:
+               weather: tuple[WeatherForecastSeries, datetime] | None, elevation_gain_m: np.ndarray) -> _TileLens:
     components = previous_run_from = None
-    if wind is not None:
-        series, target = wind
-        components = WindContext.of(series, materials).components(series.time_index(target, 0.0))
+    if weather is not None:
+        series, target = weather
+        components = WeatherContext.of(series, materials).components(series.time_index(target, 0.0))
         previous_run_from = series.previous_run_from(target, 0.0)
     return _TileLens(*lens_table(features, materials.columns, materials.distance_m, materials.elevation_spans, settings,
                                  ledger_parameters(preference, settings.tuning), speed_kmh, fills, burden_fills, components,
@@ -195,7 +195,7 @@ def _response_inputs(conditions: Sequence[str], at: datetime | None, speed_kmh: 
     """地図の応答の値を変える入力。走る条件はレンズが依るものだけを入れる。利用者の値は受けたものを全部入れる。
 
     時刻は、引く予報の版と、時刻に最も近い予報の1時間のコマへ読み替える（同じコマの時刻は同じ風を引く。中間を後の時刻へ倒すのは
-    `domain/wind.py: WindForecastSeries.time_index`の決まり）。予報を読む範囲は今の正時から始まるので、その正時も入れる——
+    `domain/wind.py: WeatherForecastSeries.time_index`の決まり）。予報を読む範囲は今の正時から始まるので、その正時も入れる——
     入れないと、範囲の外へ出た時刻（断るべき要求）に前の正時の持ちを返す。"""
     inputs = [canonical_json(preference)]
     if "speed_kmh" in conditions:
