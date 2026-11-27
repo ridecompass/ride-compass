@@ -94,8 +94,6 @@ class BinTime(NamedTuple):
 class LegValues:
     """区間の表示が読む、ある時刻で経路上の行だけを合成した値（`LegCostComposer.values_at_rows`）。配列は渡した行の並び。"""
 
-    # 区間ごとの進行方向への向かい風成分（m/s、風が無ければ0）。
-    headwind_ms: np.ndarray
     # 軸id→区間ごとの代償の秒（`domain/ledger_costs.py: LedgerCosts.row_seconds`）と、避け方の倍率が区間の所要時間から
     # 下げた秒（0以下）と上乗せした秒（0以上）。
     penalty_by_axis: dict[str, np.ndarray]
@@ -226,25 +224,26 @@ def burden_weights(axes: CostAxisDefinitions, parameters: LedgerParameters, mate
 
 def axis_facts(settings: ModelSettings, materials: Mapping[str, MaterialColumn],
                rows: np.ndarray, distance_m: np.ndarray, penalty_by_axis: Mapping[str, np.ndarray],
-               ascent_m: float | None, headwind_ms: np.ndarray | None, stops: float) -> dict[str, AxisFact]:
+               ascent_m: float | None, stops: float) -> dict[str, AxisFact]:
     """費用の軸id→その軸の秒の元になった事実（その軸の換算ルールが読む値を1つ）。数える軸（`penalty_by_axis`の軸）だけで、
-    求められない事実は載せない。`materials`の列は行`rows`で引き、`distance_m`・`penalty_by_axis`・`headwind_ms`は`rows`の並び。
+    求められない事実は載せない。`materials`の列は行`rows`で引き、`distance_m`・`penalty_by_axis`は`rows`の並び。
     ルートの事実と道の窓が、どちらもここで作る。
 
-    - 数で言う体力の費目は、費目の決まり（`domain/cost_axes.py: EffortItemRule.number`）が登り`ascent_m`・向かい風の成分の長さで
-      重みを付けた平均（風を読めなければNone）・止まる回数`stops`から取る値。
+    - 数で言う体力の費目は、費目の決まり（`domain/cost_axes.py: EffortNumberFact.shown`）が登り`ascent_m`・止まる回数`stops`から
+      取る値（決まりが事実を出さない費目は載せない）。
     - ほかの体力の費目（転がり抵抗の分け方）と道のストレスの軸（定義の材料）は、読む材料の値（`_material_fact`）。
     """
     axes = settings.cost_axes
-    inputs = EffortFactInputs(ascent_m, None if headwind_ms is None else length_weighted_mean(headwind_ms, distance_m), stops)
+    inputs = EffortFactInputs(ascent_m, stops)
     facts: dict[str, AxisFact] = {}
     for axis_id, seconds in penalty_by_axis.items():
         item = EFFORT_AXES.get(axis_id)
         number = None if item is None else EFFORT_ITEM_RULES[item].number
         fact: AxisFact | None
         if number is not None:
-            value = number.value(inputs)
-            fact = None if value is None else AxisFact(label=number.label, value=value, unit=number.unit)
+            value = None if number.shown is None else number.shown.value(inputs)
+            fact = None if number.shown is None or value is None else AxisFact(
+                label=number.shown.label, value=value, unit=number.shown.unit)
         else:
             material = (axes.burden[axis_id].burden.material if item is None
                         else rolling_resistance_material_id(settings.road_classes))
@@ -565,7 +564,7 @@ class LegCostComposer:
         # 探索の費用（`_bin_costs`）のうち、避け方の倍率が所要時間から足し引きした分。探索と同じ式で、float64で求める。
         scaled = avoidance_seconds(avoidance.cost_scale[rows].astype(np.float64),
                                    np.asarray(travel_seconds + inputs.wait_seconds[rows], dtype=np.float64))
-        return LegValues(headwind_ms=headwind, penalty_by_axis=penalty_by_axis,
+        return LegValues(penalty_by_axis=penalty_by_axis,
                          preferred_seconds=np.minimum(scaled, 0.0), avoided_seconds=np.maximum(scaled, 0.0),
                          deciding_rows=avoidance.deciding_at(rows))
 
@@ -617,11 +616,11 @@ class LegCostComposer:
         return burden_weights(self._settings.cost_axes, self._parameters, self._materials, self._burden_fills)
 
     def axis_facts(self, rows: np.ndarray, penalty_by_axis: Mapping[str, np.ndarray], ascent_m: float | None,
-                   headwind_ms: np.ndarray, turn_kickoffs: float) -> dict[str, AxisFact]:
-        """切り出した区間の順の行`rows`を通る経路の、軸ごとの事実（`axis_facts`）。`penalty_by_axis`・`headwind_ms`は`rows`の
-        並び。止まる回数には、曲がる所の漕ぎ出し`turn_kickoffs`回を足す。"""
+                   turn_kickoffs: float) -> dict[str, AxisFact]:
+        """切り出した区間の順の行`rows`を通る経路の、軸ごとの事実（`axis_facts`）。`penalty_by_axis`は`rows`の並び。止まる回数には、
+        曲がる所の漕ぎ出し`turn_kickoffs`回を足す。"""
         return axis_facts(self._settings, self._materials, rows, self.distance_m[rows], penalty_by_axis,
-                          ascent_m, headwind_ms, float(self._travel_inputs.stops[rows].sum()) + turn_kickoffs)
+                          ascent_m, float(self._travel_inputs.stops[rows].sum()) + turn_kickoffs)
 
     def turn_penalty_by_axis(self, kickoffs: float) -> dict[str, float]:
         """曲がる所の漕ぎ出し`kickoffs`回の代償の秒（軸id → 秒。`LedgerCosts.turn_penalty_by_axis`）。"""

@@ -63,7 +63,7 @@ describe("RoadInspectorPopup", () => {
           { axis_id: "headwind", seconds: 0.6 },
           { axis_id: "vibration", seconds: 0 },
         ],
-        // 区分の事実は値を持たず、区分の名前だけを出す。求められない事実（風を読めないときの向かい風）は届かない。
+        // 区分の事実は値を持たず、区分の名前だけを出す。事実の無い軸（向かい風）は届かない。
         facts: {
           ascent: { label: "登り", value: climb, unit: "m" },
           friction: { label: "砂利", value: null, unit: "" },

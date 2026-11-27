@@ -217,7 +217,7 @@ def test_the_fact_of_a_numeric_axis_is_the_value_of_the_road_that_has_it_and_wei
     shown = composer.values_at_rows(rows, leg.bin_times[0], None)
     assert shown.penalty_by_axis[BAD_AXIS][0] > shown.penalty_by_axis[BAD_AXIS][1]  # 材料の無い区間のほうが重い
 
-    facts = composer.axis_facts(rows, shown.penalty_by_axis, None, shown.headwind_ms, 0.0)
+    facts = composer.axis_facts(rows, shown.penalty_by_axis, None, 0.0)
 
     bad = MATERIAL_CATALOG[BAD_MATERIAL]
     assert facts.get(BAD_AXIS) == (None if expected is None else AxisFact(label=bad.label, value=expected, unit=bad.unit))
@@ -333,7 +333,6 @@ def test_values_recomposed_for_the_rows_on_the_route_match_the_composition_used_
     assert leg.cost_lazy[[2, 0]] == pytest.approx(leg.travel_seconds_lazy[[2, 0]] + penalty, rel=1e-6)
     assert {a: v.tolist() for a, v in values.penalty_by_axis.items()} == {
         a: v[[2, 0]].tolist() for a, v in whole.penalty_by_axis.items()}
-    assert values.headwind_ms.tolist() == whole.headwind_ms[[2, 0]].tolist()
 
 
 # --- 所要時間の欠け ---------------------------------------------------
