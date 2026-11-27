@@ -12,6 +12,7 @@ from pydantic import Field
 from pydantic_core import PydanticCustomError
 
 from app.domain.cost_preference import CostPreference
+from app.domain.model_settings import ModelSettings
 from app.domain.road_avoidance import AvoidanceLevel
 from app.domain.route import Coordinates
 
@@ -127,3 +128,5 @@ class RequestedConditions:
     # 避け方を選べる行→段（`domain/road_avoidance.py: resolve_road_avoidance`が今の行へ揃える）。
     road_avoidance: Mapping[str, AvoidanceLevel]
     assumed_speed_kmh: float
+    # 生成が読む較正値・区分・軸の定義の写し。生成の間はこれだけを読み、管理APIが書いた全体を読み直さない。
+    settings: ModelSettings

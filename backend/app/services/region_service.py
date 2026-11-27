@@ -12,7 +12,8 @@ from app.domain.lens_values import RoadInspection
 from app.domain.region import ROAD_TILE_MIN_ZOOM, ROADS_AT_LIMIT, BoundingBox, RoadAt, tile_bounds_lonlat
 from app.domain.registry import TileKind
 from app.domain.feature_materials import FeatureMaterials
-from app.domain.road_classes import RoadClassDefinitions, current_road_classes
+from app.domain.road_classes import RoadClassDefinitions
+from app.domain.road_network import RoadNetwork
 from app.domain.road_features import (
     MapFeatures,
     feature_lines,
@@ -23,7 +24,7 @@ from app.domain.road_features import (
     road_layer_values,
 )
 from app.domain.timed_regulations import regulated_rows_within, regulation_variant
-from app.domain.model_settings import current_model_settings
+from app.domain.model_settings import ModelSettings, current_model_settings
 from app.domain.road_class_catalog import RoadClassCatalog, road_class_catalog
 from app.domain.strict_model import StrictModel
 from app.domain.tuning import REBUILT_CLIENT_TUNING_IDS, client_tuning_values
@@ -111,17 +112,21 @@ class RegionService:
         渡すと、道ごとの鍵を焼くズーム（`ROAD_TILE_MIN_ZOOM`以上）では、規制の当たる道の区分をそのコマの始まりの時刻に効く規制で
         焼き、持ちはタイルの規制の効き方（`domain/timed_regulations.py: regulation_variant`）で分ける。引いたズームは時刻で変わらない
         規制だけで焼き、印を確かめない（地図は時刻で変わる規制の層を、そのズームでは描かない）。今の一覧に無い印は投げる。"""
-        definitions = current_road_classes()
-        timed_at = await time_frames.road_surface_at(frame) if z >= ROAD_TILE_MIN_ZOOM else None
+        definitions = current_model_settings().road_classes
+        # 規制のコマ・規制の効き方・タイルの値が同じ世代を読むよう、道路網はここで1回だけ読む（ディスクの置き場なので、
+        # イベントループの外で）。
+        network = await asyncio.to_thread(road_network_store.current)
+        timed_at = await time_frames.road_surface_at(frame, network) if z >= ROAD_TILE_MIN_ZOOM else None
         variant = ""
         if timed_at is not None:
-            variant = await asyncio.to_thread(_regulation_variant, tile_bounds_lonlat(z, x, y), timed_at)
+            variant = await asyncio.to_thread(_regulation_variant, network, tile_bounds_lonlat(z, x, y), timed_at)
             if not variant:
                 timed_at = None
 
         async def read_tile(z: int, x: int, y: int, bbox: BoundingBox) -> bytes | None:
-            # 道路網を読むのと、引いたズームのタイルの数万本の道の値と形を並べるのは、イベントループの外で行う。
-            keys, shapes, layer_values = await asyncio.to_thread(_road_surface_features, z, bbox, definitions, timed_at)
+            # 引いたズームのタイルの数万本の道の値と形を並べるのは、イベントループの外で行う。
+            keys, shapes, layer_values = await asyncio.to_thread(_road_surface_features, network, z, bbox, definitions,
+                                                                 timed_at)
             return await self._repository.get_road_surface_tile_mvt(z, x, y, bbox, keys, shapes, layer_values)
 
         return await self._get_tile(
@@ -206,18 +211,16 @@ class RegionService:
             return area
 
 
-def _regulation_variant(bounds: BoundingBox, at: datetime) -> str:
-    """範囲`bounds`の路面タイルの、時刻`at`の規制の効き方の印。道路網を読むので、イベントループの外で呼ぶ。"""
-    network = road_network_store.current()
+def _regulation_variant(network: RoadNetwork, bounds: BoundingBox, at: datetime) -> str:
+    """道路網`network`の範囲`bounds`の路面タイルの、時刻`at`の規制の効き方の印。"""
     return regulation_variant(network, regulated_rows_within(
         network, bounds.min_longitude, bounds.min_latitude, bounds.max_longitude, bounds.max_latitude), at)
 
 
-def _road_surface_features(z: int, bbox: BoundingBox, definitions: RoadClassDefinitions,
+def _road_surface_features(network: RoadNetwork, z: int, bbox: BoundingBox, definitions: RoadClassDefinitions,
                            at: datetime | None) -> tuple[tuple[str, ...], list[bytes], dict[str, dict[str, str]]]:
-    """路面タイルの、ズーム`z`・範囲`bbox`のフィーチャーの鍵と線の形（WKB）と地図の線の層の値（`road_layer_values`）。道路網を
-    読むので、イベントループの外で呼ぶ。"""
-    network = road_network_store.current()
+    """道路網`network`の路面タイルの、ズーム`z`・範囲`bbox`のフィーチャーの鍵と線の形（WKB）と地図の線の層の値
+    （`road_layer_values`）。"""
     features = map_features_in(network, z, bbox.min_longitude, bbox.min_latitude, bbox.max_longitude, bbox.max_latitude)
     layer_values = road_layer_values(network, features.keys, features.way_ids, features.segment_indexes, definitions, at)
     return features.keys, shapely.to_wkb(feature_lines(network, features)).tolist(), layer_values
@@ -244,14 +247,16 @@ class RoadInspectorService:
 
     async def inspect(
         self, osm_way_id: int, feature_key: str, tile: tuple[int, int, int], bearing_deg: float, lens_id: str | None,
-        frame: str | None, wind: bool, speed_kmh: float, cost_preference: CostPreference,
+        frame: str | None, wind: bool, speed_kmh: float, cost_preference: CostPreference, settings: ModelSettings,
     ) -> RoadInspection | None:
         """押した道（osm_way_id）か、タイル`tile`（押したフィーチャー`feature_key`を焼いた`(z, x, y)`）にそのフィーチャーが
         見つからなければNone。"""
         road = await self._region_service.inspected_road(osm_way_id)
         if road is None:
             return None
-        lens = await self._lens.inspect(feature_key, *tile, bearing_deg, lens_id, frame, wind, speed_kmh, cost_preference)
+        lens = await self._lens.inspect(
+            feature_key, *tile, bearing_deg, lens_id, frame, wind, speed_kmh, cost_preference, settings,
+        )
         if lens is None:
             return None
         return RoadInspection(highway=road.highway, tags=road.tags, lens=lens)

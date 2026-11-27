@@ -19,6 +19,7 @@ from app.domain.graph import edge_id_of, node_key, parse_edge_id
 from app.domain.landcover import LANDCOVER_CLASSES
 from app.domain.traffic import stop_count_material_ids
 from app.domain.cost_preference import CostPreference
+from app.domain.model_settings import current_model_settings
 from app.domain.road_avoidance import AvoidanceLevel
 from app.domain.road_network import RoadNetwork
 from app.domain.route import Coordinates, EvaluatedRoute, PenaltyBreakdown, RouteFacts
@@ -188,6 +189,7 @@ def generator_for(
         GraphService(SearchMemory(), road_network_store.current()), Weather(wind),
         RequestedConditions(
             cost_preference=CostPreference(), road_avoidance=road_avoidance or {}, assumed_speed_kmh=assumed_speed_kmh,
+            settings=current_model_settings(),
         ),
     ).generator
 

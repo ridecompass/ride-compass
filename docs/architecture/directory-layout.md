@@ -74,6 +74,11 @@ CI・フック・開発環境の用意のスクリプト）・`tools/`（アプ�
   代償の秒の同点の刻み等）は持たず`domain/`から読む——同じ判断を別のサービスが要ったとき、写しが2つできる。
   何を持ってよいかは下の「判断の線」に従う。ルート探索のエンジンと戦略層も同じで、候補の選び方と並べ方は
   値も手順も`domain/route_search.py`が持つ（走ってみて決める値は`domain/tuning.py`の較正値で、`domain/route_search.py`がそれを読む）。
+  - **管理データ（較正値・道の区分・費用の軸の定義）と道路網の置き場は、1回の要求・生成の入口で1回だけ読み、その写しを
+    渡す**。管理APIと派生の作り直しは、要求の途中でもプロセス内の全体・置き場を差し替えるので、途中で読み直すと、検めた値と
+    計算する値、規制のコマとタイルの中身が別の世代になる。管理データの写しを取ってよい口は`domain/model_settings.py: current_model_settings`
+    だけ（利用者の値を受ける要求では、要求のモデルが受け取るときに取る`api/routers/cost_axis_catalog.py: CostPreferenceRequest`）、
+    道路網は`infrastructure/road_network_store.py: current`で、どちらも受け取った側は引数で回す。
 - **`batch/`**: 外部ソースの取込（`ingest*`・`source_adapters/`）と派生の生成
   （`derive_*`）。**実行順は`derive_cli.py`だけが持つ**。派生の作り直しは作り直した表を
   入れ替えるトランザクションで`derived_data_meta.revision`（DB）を進め、道路網全体の配列の置き場がこれに追随する——バッチはデプロイを伴わないため、

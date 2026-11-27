@@ -61,7 +61,7 @@ SQLと式の木の材料では作れない体力（走行の模型）を、backe
   （`domain/cost_axes.py: LENS_QUANTITY_LABEL`・`domain/cost_axes.py: LENS_UNIT`）は、生成物`route-generate-config.json`で画面へ配る。
 - **応答はプロセスの中で持つ**（`services/lens_service.py: new_response_cache`）: 応答のJSONのバイト列を、バイト数の上限つき
   （`services/lens_service.py: RESPONSE_CACHE_BYTES`。道路網の配列のためにとっておくメモリの内側）で持ち、使われていないものから
-  押し出す。鍵は`infrastructure/cache_identity.py: dynamic_tile_key`が組み、道路網の世代（`road_network_store.py: current_generation`）・
+  押し出す。鍵は`infrastructure/cache_identity.py: dynamic_tile_key`が組み、応答が読んだ道路網の置き場の名前（`road_network_store.py: directory_name`）・
   較正値と費用の軸・道の区分の定義の署名（`cache_identity.py: model_settings_signature`。管理APIで差し替えると変わる）・レンズ・タイル・
   値を変える入力（利用者の値と、レンズが依るときだけ想定速度と風）を入れる。風は予報のファイルの版（`msm_client.py: forecast_version`）と、
   時刻に最も近い予報の1時間のコマと、今の正時（予報を読む範囲の始まり。範囲の外へ出た時刻に前の持ちを返さない）で表す。

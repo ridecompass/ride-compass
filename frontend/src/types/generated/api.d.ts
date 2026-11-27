@@ -1588,6 +1588,7 @@ export interface components {
         };
         /** RoadInspectorRequest */
         RoadInspectorRequest: {
+            cost_preference?: components["schemas"]["CostPreference-Input"];
             /** Osm Way Id */
             osm_way_id: number;
             /** Feature Key */
@@ -1611,7 +1612,6 @@ export interface components {
             wind: boolean;
             /** Speed Kmh */
             speed_kmh: number;
-            cost_preference?: components["schemas"]["CostPreference-Input"];
         };
         /** RoadMapLayerView */
         RoadMapLayerView: {
@@ -1767,13 +1767,13 @@ export interface components {
         };
         /** RouteGenerateRequest */
         RouteGenerateRequest: {
+            cost_preference?: components["schemas"]["CostPreference-Input"];
             /** Latitude */
             latitude: number;
             /** Longitude */
             longitude: number;
             /** Distance Km */
             distance_km?: number | null;
-            cost_preference?: components["schemas"]["CostPreference-Input"];
             road_avoidance: components["schemas"]["RoadAvoidanceOverride"];
             /** Max Routes */
             max_routes: number;
