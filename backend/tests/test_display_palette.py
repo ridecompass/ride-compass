@@ -257,10 +257,12 @@ def test_a_road_without_a_value_is_still_visible_on_the_ground():
 def test_minor_road_casings_stay_visible_under_rain_and_landcover():
     """細い道の縁取りは面の上に描かれず、面を重ねた地に載る。割ると、雨・土地被覆を出した所で細い道の並びが消える。"""
     casing = SEMANTIC_COLORS["basemap_minor_road_casing"]
+    landcover = [cls.color for cls in LANDCOVER_CLASSES if cls.painted]
+    assert landcover, "塗る土地被覆の分類が1つも無い"
     grounds = [
         GROUND,
         *(over_ground(stop.color, AREA_OPACITY) for stop in PRECIPITATION_COLOR_STOPS),
-        *(over_ground(cls.color, LANDCOVER_OPACITY) for cls in LANDCOVER_CLASSES if cls.painted),
+        *(over_ground(color, LANDCOVER_OPACITY) for color in landcover),
     ]
 
     for ground in grounds:
@@ -270,15 +272,12 @@ def test_minor_road_casings_stay_visible_under_rain_and_landcover():
 def test_every_painted_weather_band_stands_out_from_the_ground():
     """雨の段と線状降水帯予測は`AREA_OPACITY`、災害の塗る段は配信元のタイルの色のまま`HAZARD_OPACITY`の濃さで地に
     重なる。割ると、その段の所が何も無い所と見分けられない。"""
+    hazards = [level.tile_color or level.color for levels in LEVELS_OF_SCALE.values() for level in levels if level.painted]
+    assert hazards, "塗る災害の段が1つも無い"
     painted = [
         *((stop.color, AREA_OPACITY) for stop in PRECIPITATION_COLOR_STOPS),
         (LINEAR_RAINBAND_COLOR, AREA_OPACITY),
-        *(
-            (level.tile_color or level.color, HAZARD_OPACITY)
-            for levels in LEVELS_OF_SCALE.values()
-            for level in levels
-            if level.painted
-        ),
+        *((color, HAZARD_OPACITY) for color in hazards),
     ]
 
     for color, opacity in painted:
