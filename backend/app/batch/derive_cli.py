@@ -141,9 +141,11 @@ STAGES: tuple[DeriveStage, ...] = (
                 ("traffic_regulations", "traffic_regulation_slots", "edge_traffic_regulations"),
                 {"line_half_width_m": REGULATION_LINE_HALF_WIDTH_ID, "edge_share": REGULATION_EDGE_SHARE_ID,
                  "max_angle_deg": REGULATION_MAX_ANGLE_ID}),
-    DeriveStage("directions", derive_way_directions, frozenset({Source.OSM_WAY}), ("topology",), ("way_directions",),
+    DeriveStage("directions", derive_way_directions, frozenset({Source.OSM_WAY, Source.JARTIC_REGULATION}), ("topology",),
+                ("way_directions",),
                 {"named_gap_m": DIVIDED_NAMED_GAP_ID, "geometric_gap_m": DIVIDED_GEOMETRIC_GAP_ID,
-                 "bearing_tolerance_deg": DIVIDED_BEARING_TOLERANCE_ID}),
+                 "bearing_tolerance_deg": DIVIDED_BEARING_TOLERANCE_ID, "line_half_width_m": REGULATION_LINE_HALF_WIDTH_ID,
+                 "edge_share": REGULATION_EDGE_SHARE_ID, "max_angle_deg": REGULATION_MAX_ANGLE_ID}),
     # 住所の区画は、道路（`osm_way`）のパーティションを読まず、取込の記録から範囲だけを読む（読んだ数の見張りに出ないので、
     # 手で挙げる）。
     DeriveStage("addresses", derive_addresses, frozenset({Source.ABR, Source.ISJ_BLOCK, Source.OSM_WAY}), (),

@@ -397,7 +397,8 @@ MATERIAL_CATALOG: dict[str, MaterialSpec] = {
     "oneway": MaterialSpec(
         material_id="oneway",
         label="一方通行",
-        description=f"OSMのタグから判定した一方通行の区間かどうか。{DIVIDED_ROAD_NOTE}の片側は一方通行に数えない。",
+        description=f"自転車が片方向にしか辿れない一方通行の区間かどうか。OSMのタグから判定し、JARTIC の一方通行の規制が道に当たれば、"
+                    f"自転車を除く規制かで決める。{DIVIDED_ROAD_NOTE}の片側は一方通行に数えない。",
         dtype="boolean",
         tile_property="oneway",
         primary_attribute=ATTR_ONEWAY,
