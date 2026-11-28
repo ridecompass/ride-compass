@@ -183,11 +183,6 @@ def _chunk(network: RoadNetwork, rows: np.ndarray
     return features, lines
 
 
-#: 置き場の名前の形の署名。列・値式・表示・行の選び方を変えたコードは、同じ世代でも別の名前に書く。
-EXPORT_SHAPE = shape_digest(WAY_NAMES_SQL, road_network_store.NETWORK_SHAPE, COLUMNS, README, inspect.getsource(_chunk),
-                            inspect.getsource(road_features))
-
-
 def _cell(materials: FeatureMaterials, material_id: str, row: int) -> str | float | bool | None:
     """材料の値の欄（値の無い材料は空）。真偽は真偽で書く（配列は1.0/0.0で持つ）。"""
     column = materials.columns[material_id]
@@ -197,6 +192,11 @@ def _cell(materials: FeatureMaterials, material_id: str, row: int) -> str | floa
     if value != value:  # NaN
         return None
     return bool(value) if MATERIAL_CATALOG[material_id].dtype == "boolean" else value
+
+
+#: 置き場の名前の形の署名。列・値式・表示・行の選び方を変えたコードは、同じ世代でも別の名前に書く。
+EXPORT_SHAPE = shape_digest(WAY_NAMES_SQL, road_network_store.NETWORK_SHAPE, COLUMNS, README, inspect.getsource(_chunk),
+                            inspect.getsource(_cell), inspect.getsource(road_features))
 
 
 def _require_free_space() -> None:

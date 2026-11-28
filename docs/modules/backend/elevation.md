@@ -24,7 +24,7 @@ source_features(source='dem')          ← 生データ。取り直さない限�
    ▼
 edge_elevation（断面の点の標高と位置）
    │ 道路網の配列を作るときに読み、要約（start/end・gain/loss・average・一番急な登りと下り）を出す
-   │ （road_network_store.py・domain/elevation_profile.py: profile_summaries）
+   │ （road_network_assembly.py・domain/elevation_profile.py: profile_summaries）
    ▼
 経路の集計（domain/route.py: elevation_gain）
 ```
