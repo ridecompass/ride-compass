@@ -27,8 +27,9 @@ jobs:
     # 判定・入れ替え・反映の待ちを1つのジョブにし、まとめて1本ずつ走らせる。反映を待たずに次の判定へ進むと、後から終わった
     # 古いCIの実行が新しいコミットを上書きしうる。どの ref から起こしても本番（公開先）は1つなので、
     # レーンの鍵は master に決めてある（レーンは docs/architecture/tech-stack.md「CIの実行枠」）。
+    # deploy-backend と同じレーンに置き、本番の VM の上の docker の操作（ビルド・取得・片付け）を重ねない。
     concurrency:
-      group: master-lane-4
+      group: master-lane-5
       queue: max
     env:
       IMAGE: ghcr.io/${{ github.repository_owner }}/ride-compass-frontend
