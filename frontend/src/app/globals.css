@@ -151,6 +151,12 @@
   }
 }
 
+/* 端末の覚え（lib/consentMark.ts）で同意済みと分かっている間は、自分の状態の読み込み中の最初の画面を隠す（開き直しのちらつきを
+   防ぐ）。最初の画面は Tailwind の`flex`で並べるので、どのレイヤーより強いレイヤーの外に置く。 */
+html[data-consented] [data-account-gate="loading"] {
+  display: none;
+}
+
 /* レイヤー指定の無いCSSは、詳細度に関係なくどのレイヤーのCSSより強い（CSS Cascade Layersの仕様）。
    汎用のリセットをレイヤーの外に置くと、Tailwindの`p-2`等が`padding:0`に潰されるので、Tailwindと
    同じ名前の`@layer base`へ入れる。一方、下のMapLibreのポップアップの上書きは、レイヤーの外にある

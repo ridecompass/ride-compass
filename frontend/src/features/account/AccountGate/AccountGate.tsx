@@ -3,7 +3,7 @@
 import { useMutation } from "@tanstack/react-query";
 import Image from "next/image";
 import Link from "next/link";
-import type { ReactNode } from "react";
+import { useEffect, type ReactNode } from "react";
 
 import GoogleSignInButton from "@/components/GoogleSignInButton/GoogleSignInButton";
 import { Button } from "@/components/ui/Button/Button";
@@ -14,6 +14,7 @@ import { ACCOUNT_KEY, useAccountStatus } from "@/hooks/useAccountStatus";
 import { ApiHttpError } from "@/lib/apiClient";
 import { errorMessage } from "@/lib/apiError";
 import { cn } from "@/lib/cn";
+import { rememberConsent } from "@/lib/consentMark";
 import { getQueryClient } from "@/lib/queryClient";
 import { endedRideIds, removeRideTrack } from "@/lib/rideTrackStore";
 import { APP_NAME } from "@/lib/screenNames";
@@ -23,12 +24,17 @@ import { consentToTerms, signInWithGoogle, type AccountStatus } from "@/services
  * Google でログインして今の規約の版に同意するまで、地図の画面の上に最初の画面を重ね、後ろの地図は触れなくする。最初の画面の
  * 「Google でログイン」は、規約への同意も兼ねる（押す前に、同意になることと集めるもの・使い道を同じ画面に書く）。ログインせずに使う
  * ボタンや、同意せずに使うボタンは置かない。同意のカードは、ログインしたあとに規約の版が上がった人にだけ出す。
- * `children` には済んだか（`open`）を渡す。
+ * `children` には済んだか（`open`）を渡す。自分の状態を読み終えたら同意済みかを端末に覚え、覚えている端末では、開き直したときの
+ * 読み込み中の最初の画面を隠す（`lib/consentMark.ts`。開き直すたびのちらつきを防ぐ）。
  */
 export default function AccountGate({ children }: { children: (open: boolean) => ReactNode }) {
   const account = useAccountStatus();
   const status = account.data;
   const open = Boolean(status?.signed_in && status.consented);
+  const known = status !== undefined;
+  useEffect(() => {
+    if (known) rememberConsent(open);
+  }, [known, open]);
 
   return (
     <>
@@ -36,7 +42,10 @@ export default function AccountGate({ children }: { children: (open: boolean) =>
         {children(open)}
       </div>
       {!open && (
-        <div className="fixed inset-0 z-[var(--z-floating-panel)] flex items-center justify-center overflow-y-auto bg-black/40 p-4">
+        <div
+          data-account-gate={known || account.error ? "shown" : "loading"}
+          className="fixed inset-0 z-[var(--z-floating-panel)] flex items-center justify-center overflow-y-auto bg-black/40 p-4"
+        >
           {status?.signed_in ? <ConsentCard status={status} /> : <Welcome status={status} account={account} />}
         </div>
       )}
