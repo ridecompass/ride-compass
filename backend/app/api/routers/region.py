@@ -128,7 +128,7 @@ async def region_lens(
     """ルートを出す前の地図がレンズ`lens_id`（総合`total`か費用の軸のid。`domain/lens_values.py`）で道を塗る、指定タイルの
     フィーチャーごとの道ごとの材料: 道の向きに辿った・逆向きに辿った1kmあたりの代償の秒（辿れない向きは載せない）と、
     道の向き。どちらの向きを塗るかは、`/api/cost-axes`のレンズの`map_lens.formula`が走行方位で選ぶ。値は出発の時刻を含むレンズの
-    コマの印`frame`（`/api/region/time-frames`の`lens`。省略すると今。風。今の一覧に無い印は409）と想定速度`speed_kmh`（省略すると画面の既定の速度。どちらもレンズの`map_lens.material_conditions`に無ければ値を変えない）と利用者の値（つまみ`strength`と、軸id→倍率のJSONの`multipliers`と、無効の軸idのJSONの
+    コマの印`frame`（`/api/region/time-frames`の`lens`。省略すると今。風。風に依るレンズで今の一覧に無い印は409）と想定速度`speed_kmh`（省略すると画面の既定の速度。どちらもレンズの`map_lens.material_conditions`に無ければ値を変えない）と利用者の値（つまみ`strength`と、軸id→倍率のJSONの`multipliers`と、無効の軸idのJSONの
     `disabled_axes`。ルート生成と同じ値）で決まり、探索と同じ部品で求める。前に出た風の予報を引いたなら、その素性も返す。
 
     鍵は路面タイル（`/api/region/road-surface-tiles`）の同じz/x/yのフィーチャーの鍵。知らないレンズと、無効にした軸のレンズは404。
