@@ -160,6 +160,7 @@ export function captureContext(
         throw new Error(`知らないレイヤー: ${unknown.join(" / ")}。選べるレイヤー: ${layerIds.join(" / ")}`);
       }
       if (mocked) await fixtures.installApiMocks(page);
+      else await fixtures.signInAsConsented(page);
       if (point || !mocked) {
         await page.context().grantPermissions(["geolocation"]);
         await page.context().setGeolocation(point ?? LIVE_POINT);

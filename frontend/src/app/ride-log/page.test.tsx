@@ -9,7 +9,8 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { RideDetail, RideSummary } from "@/services/accountApi";
-import { accountStatus, onBackend } from "@/testing/backendServer";
+import { accountStatus } from "@/testing/accountStatus";
+import { onBackend } from "@/testing/backendServer";
 import { installGoogleSignIn } from "@/testing/googleSignIn";
 import { mapOnScreen } from "@/testing/maplibre";
 
@@ -128,7 +129,7 @@ describe("走行ログ", () => {
     await user.click(await screen.findByRole("button", { name: "記録をやめる" }));
 
     expect(
-      await screen.findByText("記録をやめています。次に走りを残すときに、同意をもう一度聞きます。"),
+      await screen.findByText("記録をやめています。地図の画面を開くと、同意をもう一度聞きます。"),
     ).toBeInTheDocument();
     expect(withdrawn).toHaveLength(1);
     expect(rideButtons()).toHaveLength(1);

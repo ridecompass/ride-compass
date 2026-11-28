@@ -21,7 +21,7 @@ export function useFirstVisitIntro() {
   return { shown: !closed, close: () => setClosed(true), reopen: () => setClosed(false) };
 }
 
-/** 地図の上の中ほどに浮かべるカードの置き方（初回の案内と、案内を終えた走りを残すかのカードが同じ所に出る）。 */
+/** 地図の上の中ほどに浮かべるカードの置き方（初回の案内と、案内を終えた走りを送った結果のカードが同じ所に出る）。 */
 export const MAP_TOP_CARD_CLASS = cn(
   cardVariants({ variant: "float" }),
   "absolute top-16 left-1/2 z-[var(--z-map-detail)] flex w-[min(24rem,calc(100%-2*var(--space-3)))] -translate-x-1/2 flex-col gap-2 p-3",
