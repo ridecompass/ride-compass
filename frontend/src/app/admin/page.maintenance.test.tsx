@@ -3,6 +3,7 @@
  */
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { translate } from "@/i18n/config";
 import { describe, expect, it } from "vitest";
 
 import { onSameOrigin } from "@/testing/backendServer";
@@ -58,9 +59,9 @@ describe("AdminPage データ保守 本番DBの状態", () => {
     onSameOrigin("GET", "/admin/api/db-status", () => Response.json(report));
     const user = userEvent.setup();
     render(<AdminPage />);
-    await user.click(screen.getByRole("tab", { name: "データ保守" }));
-    const card = screen.getByText("本番DBの状態").closest<HTMLElement>("[class*='flex-col']")!;
-    await user.click(within(card).getByRole("button", { name: "集計する" }));
+    await user.click(screen.getByRole("tab", { name: translate("admin.tabs.maintenance") }));
+    const card = screen.getByText(translate("admin.dbStatus.title")).closest<HTMLElement>("[class*='flex-col']")!;
+    await user.click(within(card).getByRole("button", { name: translate("admin.report.run") }));
 
     expect(await within(card).findByText("osm")).toBeInTheDocument();
     for (const shown of ["hot", "VACUUMが遅れている", "calm"]) {

@@ -1,6 +1,8 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import { GuideText } from "@/components/ui/GuideText/GuideText";
+import { translate } from "@/i18n/config";
 import { vocabulary } from "@/types/generated/vocabulary";
 import { getDbStatus } from "@/features/admin/adminApi";
 import { formatMinutes, secondsToMinutes } from "@/lib/duration";
@@ -14,11 +16,12 @@ function formatBytes(value: number): string {
 }
 
 function rowsAndBytes(rows: number, bytes: number): string {
-  return `${formatCount(rows)}行 ・ ${formatBytes(bytes)}`;
+  return translate("admin.dbStatus.rowsAndBytes", { rows: formatCount(rows), bytes: formatBytes(bytes) });
 }
 
 function formatDuration(seconds: number): string {
-  if (secondsToMinutes(seconds) < 1) return `${Math.round(seconds)}秒`;
+  if (secondsToMinutes(seconds) < 1)
+    return translate("admin.dbStatus.seconds", { seconds: String(Math.round(seconds)) });
   return formatMinutes(seconds);
 }
 
@@ -40,26 +43,35 @@ function runStatusLabel(status: string): string {
 function groupsFromStatus(report: DbStatusResponse): StatusGroup[] {
   const imports: StatusRow[] = report.imports.map((entry) => ({
     name: entry.label,
-    scale: `#${entry.latest.id} ${runStatusLabel(entry.latest.status)}`,
+    scale: translate("admin.dbStatus.runScale", {
+      id: String(entry.latest.id),
+      status: runStatusLabel(entry.latest.status),
+    }),
     flagged: entry.needs_attention,
     detail: [
       {
-        label: "最終実行",
-        value: `#${entry.latest.id} ・ ${formatMoment(entry.latest.finished_at)}`,
+        label: translate("admin.dbStatus.latestRun"),
+        value: translate("admin.dbStatus.runAt", {
+          id: String(entry.latest.id),
+          at: formatMoment(entry.latest.finished_at),
+        }),
       },
       {
-        label: "成功した最新",
+        label: translate("admin.dbStatus.latestSucceeded"),
         value:
           entry.latest_succeeded === null
-            ? "なし"
-            : `#${entry.latest_succeeded.id} ・ ${formatMoment(entry.latest_succeeded.finished_at)}`,
+            ? translate("admin.dbStatus.none")
+            : translate("admin.dbStatus.runAt", {
+                id: String(entry.latest_succeeded.id),
+                at: formatMoment(entry.latest_succeeded.finished_at),
+              }),
       },
       ...(entry.latest.item_count === null
         ? []
         : [
             {
-              label: "取込件数",
-              value: `${formatCount(entry.latest.item_count)}件`,
+              label: translate("admin.dbStatus.itemCount"),
+              value: translate("admin.dbStatus.count", { count: formatCount(entry.latest.item_count) }),
             },
           ]),
       ...Object.entries(entry.latest.identity).map(([key, value]) => ({
@@ -73,23 +85,26 @@ function groupsFromStatus(report: DbStatusResponse): StatusGroup[] {
   const connectionCount = `${report.connections.total} / ${report.connections.max_connections}`;
   const connections: StatusRow = {
     // 見出しの「接続」と同じ名前にすると、群と行の区別がつかない。
-    name: "同時接続",
+    name: translate("admin.dbStatus.connectionsRow"),
     scale: connectionCount,
     flagged: report.connections.needs_attention,
     detail: [
-      { label: "接続数", value: connectionCount },
+      { label: translate("admin.dbStatus.connectionCount"), value: connectionCount },
       {
-        label: "未完了のまま放置",
+        label: translate("admin.dbStatus.idleInTransaction"),
         value:
           report.connections.idle_in_transaction === 0
-            ? "なし"
-            : `${report.connections.idle_in_transaction}件 ・ 最長 ${formatDuration(report.connections.longest_idle_transaction_seconds)}`,
+            ? translate("admin.dbStatus.none")
+            : translate("admin.dbStatus.idleInTransactionValue", {
+                count: String(report.connections.idle_in_transaction),
+                longest: formatDuration(report.connections.longest_idle_transaction_seconds),
+              }),
       },
       {
-        label: "実行中の最長",
+        label: translate("admin.dbStatus.longestQuery"),
         value:
           report.connections.longest_query_seconds <= 0
-            ? "なし"
+            ? translate("admin.dbStatus.none")
             : formatDuration(report.connections.longest_query_seconds),
       },
     ],
@@ -103,11 +118,21 @@ function groupsFromStatus(report: DbStatusResponse): StatusGroup[] {
     scale: rowsAndBytes(entry.row_count, entry.total_bytes),
     flagged: entry.needs_attention,
     detail: [
-      { label: "行数", value: `${formatCount(entry.row_count)}件（実数）` },
-      { label: "容量", value: formatBytes(entry.total_bytes) },
-      { label: "統計の取得", value: formatMoment(entry.analyzed_at) },
-      { label: "VACUUM", value: formatMoment(entry.vacuumed_at) },
-      ...(entry.dead_tuples > 0 ? [{ label: "不要行", value: `${formatCount(entry.dead_tuples)}件` }] : []),
+      {
+        label: translate("admin.dbStatus.rowCount"),
+        value: translate("admin.dbStatus.rowCountValue", { count: formatCount(entry.row_count) }),
+      },
+      { label: translate("admin.dbStatus.totalBytes"), value: formatBytes(entry.total_bytes) },
+      { label: translate("admin.dbStatus.analyzedAt"), value: formatMoment(entry.analyzed_at) },
+      { label: translate("admin.dbStatus.vacuumedAt"), value: formatMoment(entry.vacuumed_at) },
+      ...(entry.dead_tuples > 0
+        ? [
+            {
+              label: translate("admin.dbStatus.deadTuples"),
+              value: translate("admin.dbStatus.count", { count: formatCount(entry.dead_tuples) }),
+            },
+          ]
+        : []),
     ],
     note: entry.note || undefined,
   });
@@ -119,7 +144,7 @@ function groupsFromStatus(report: DbStatusResponse): StatusGroup[] {
   const restRow: StatusRow[] = rest.length
     ? [
         {
-          name: `注意なし ${rest.length}テーブル`,
+          name: translate("admin.dbStatus.calmTables", { count: String(rest.length) }),
           scale: rowsAndBytes(sumRows(rest), sumBytes(rest)),
           flagged: false,
           detail: rest.map((entry) => ({
@@ -132,9 +157,9 @@ function groupsFromStatus(report: DbStatusResponse): StatusGroup[] {
 
   const tables = [...flagged, ...restRow];
   return [
-    { title: "取込", rows: imports },
-    { title: "接続", rows: [connections] },
-    ...(tables.length ? [{ title: "テーブル（容量の大きい順）", rows: tables }] : []),
+    { title: translate("admin.dbStatus.imports"), rows: imports },
+    { title: translate("admin.dbStatus.connections"), rows: [connections] },
+    ...(tables.length ? [{ title: translate("admin.dbStatus.tables"), rows: tables }] : []),
   ];
 }
 
@@ -150,30 +175,19 @@ function sumBytes(entries: DbStatusResponse["tables"]): number {
  * 無いと読めない。 */
 function summaryOf(report: DbStatusResponse): string {
   return [
-    `${formatCount(report.tables.length)}テーブル`,
-    `${formatCount(sumRows(report.tables))}行`,
+    translate("admin.dbStatus.tableCount", { count: formatCount(report.tables.length) }),
+    translate("admin.dbStatus.totalRows", { count: formatCount(sumRows(report.tables)) }),
     formatBytes(report.database_bytes),
-  ].join(" ・ ");
+  ].join(translate("admin.separator"));
 }
 
 // 「データ保守」タブ（/admin）で、本番DBの土台の側を見る——取込runが
 // 失敗していないか、行が本当に入っているか、プランナが使う統計が取れているか、
 // トランザクションが放置されていないか。
 export default function DbStatusPanel() {
+  const t = useTranslations("admin.dbStatus");
   return (
-    <ReportCard
-      title="本番DBの状態"
-      info={
-        <GuideText
-          text={
-            "次を見る。\n・生データの取込そのものが失敗していないか\n・行が本当に入っているか\n・プランナが使う統計が取れているか\n" +
-            "・トランザクションが放置されていないか\n行数は統計値ではなく実数を数えるため、DB全体を走査し、集計に時間がかかる。"
-          }
-        />
-      }
-      load={getDbStatus}
-      summary={summaryOf}
-    >
+    <ReportCard title={t("title")} info={<GuideText text={t("info")} />} load={getDbStatus} summary={summaryOf}>
       {(report) => <StatusRows report={report} />}
     </ReportCard>
   );
@@ -181,14 +195,15 @@ export default function DbStatusPanel() {
 
 /** 行の描画。取得と分けてあるのは、認証の要る画面を通さずに見え方を確かめられるようにするため。 */
 function StatusRows({ report }: { report: DbStatusResponse }) {
+  const t = useTranslations("admin.dbStatus");
   const groups = groupsFromStatus(report);
   const attentionCount = groups.flatMap((group) => group.rows).filter((row) => row.flagged).length;
   return (
     <>
       <StatusVerdict flagged={attentionCount > 0}>
-        <span>{attentionCount > 0 ? `${attentionCount}件に注意` : "注意はなし"}</span>
+        <span>{attentionCount > 0 ? t("attention", { count: String(attentionCount) }) : t("noAttention")}</span>
       </StatusVerdict>
-      <StatusRowList groups={groups} flaggedLabel="注意が要る" okLabel="問題なし" />
+      <StatusRowList groups={groups} flaggedLabel={t("flagged")} okLabel={t("ok")} />
     </>
   );
 }
