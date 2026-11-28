@@ -1,11 +1,13 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import { type ReactNode, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/Button/Button";
 import { Card } from "@/components/ui/Card/Card";
 import InfoPopover from "@/components/ui/InfoPopover/InfoPopover";
 import { textVariants } from "@/components/ui/Text/Text";
+import { translate } from "@/i18n/config";
 import { formatJstDateTime } from "@/lib/time";
 import { errorMessage } from "@/lib/apiError";
 import { getQueryClient } from "@/lib/queryClient";
@@ -17,7 +19,7 @@ export function formatCount(value: number | null): string {
 
 /** backendが返した時点（ISO）を日本時間で。記録が無ければその旨。 */
 export function formatMoment(iso: string | null): string {
-  return iso ? formatJstDateTime(new Date(iso)) : "記録なし";
+  return iso ? formatJstDateTime(new Date(iso)) : translate("admin.report.noRecord");
 }
 
 /**
@@ -37,6 +39,7 @@ export function ReportCard<T extends { computed_at: string }>({
   summary?: (report: T) => string;
   children: (report: T) => ReactNode;
 }) {
+  const t = useTranslations("admin");
   // 集計し直す間と失敗したときも、前の集計を出したままにする（mutationの`data`は打ち直すと空になる）。
   const [report, setReport] = useState<T | null>(null);
   const fetchReport = useMutation({ mutationFn: load, onSuccess: setReport }, getQueryClient());
@@ -45,20 +48,22 @@ export function ReportCard<T extends { computed_at: string }>({
     <Card className="flex flex-col gap-2">
       <div className="flex items-center gap-1">
         <span className={textVariants({ variant: "heading" })}>{title}</span>
-        <InfoPopover triggerAriaLabel={`${title}の説明`}>{info}</InfoPopover>
+        <InfoPopover triggerAriaLabel={t("infoLabel", { name: title })}>{info}</InfoPopover>
       </div>
       <div className="flex flex-wrap items-center gap-2">
         <Button usage={null} onClick={() => fetchReport.mutate()}>
-          {fetchReport.isPending ? "集計中…" : report ? "再集計する" : "集計する"}
+          {fetchReport.isPending ? t("report.running") : report ? t("report.rerun") : t("report.run")}
         </Button>
         {report && (
           <span className={textVariants({ variant: "hint" })}>
-            {[summary?.(report), formatMoment(report.computed_at)].filter(Boolean).join(" ・ ")}
+            {[summary?.(report), formatMoment(report.computed_at)].filter(Boolean).join(t("separator"))}
           </span>
         )}
       </div>
       {fetchReport.isError && (
-        <p className={textVariants({ variant: "error" })}>集計失敗: {errorMessage(fetchReport.error)}</p>
+        <p className={textVariants({ variant: "error" })}>
+          {t("report.failed", { message: errorMessage(fetchReport.error) })}
+        </p>
       )}
       {report && children(report)}
     </Card>

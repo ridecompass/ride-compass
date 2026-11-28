@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import { useMemo, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { useCopyToClipboard } from "@/hooks/useCopyToClipboard";
@@ -39,6 +40,7 @@ function parseLogLevel(line: string): LogLevelName | null {
 // 取得は開いたとき自動ではなく「取得」ボタン押下時のみ（SystemStatusPanelと同じ、
 // プロセス内スナップショットのためポーリング不要）。
 export default function BackendLogsPanel() {
+  const t = useTranslations("admin.logs");
   const [contains, setContains] = useState("");
   const [minLevel, setMinLevel] = useState<LogLevelName | "">("WARNING");
   const [limit, setLimit] = useState(String(DEFAULT_LIMIT));
@@ -59,27 +61,24 @@ export default function BackendLogsPanel() {
 
   return (
     <Card className="flex flex-col gap-2">
-      <div className={textVariants({ variant: "heading" })}>バックエンドの直近ログ</div>
-      <p className={textVariants({ variant: "hint" })}>
-        debug_modeがOFFでもWARNING以上は記録される。DEBUGの詳細は、backend側でdebug_modeを有効にすると出る（`POST
-        /api/admin/debug/mode`。上の「デバッグログを表示」とは別）。
-      </p>
+      <div className={textVariants({ variant: "heading" })}>{t("title")}</div>
+      <p className={textVariants({ variant: "hint" })}>{t("hint")}</p>
       <div className="flex flex-wrap items-center gap-2">
         <Select
           value={minLevel}
           onChange={(e) => setMinLevel(e.target.value as LogLevelName | "")}
-          aria-label="最小レベル"
+          aria-label={t("minLevel")}
         >
-          <option value="">すべてのレベル</option>
+          <option value="">{t("allLevels")}</option>
           {LOG_LEVEL_OPTIONS.map((level) => (
             <option key={level} value={level}>
-              {level}以上
+              {t("levelOrAbove", { level })}
             </option>
           ))}
         </Select>
         <Input
           type="text"
-          placeholder="絞り込み（部分一致、例: jma-tile）"
+          placeholder={t("contains")}
           value={contains}
           onChange={(e) => setContains(e.target.value)}
           className="min-w-48 flex-1"
@@ -89,16 +88,14 @@ export default function BackendLogsPanel() {
           value={limit}
           onChange={(e) => setLimit(e.target.value)}
           className="w-24"
-          aria-label="件数"
+          aria-label={t("limit")}
         />
         <Button usage={null} onClick={handleFetch}>
-          {fetchLogs.isPending ? "取得中…" : "取得"}
+          {fetchLogs.isPending ? t("fetching") : t("fetch")}
         </Button>
       </div>
-      {error && <p className={textVariants({ variant: "error" })}>取得失敗: {error}</p>}
-      {lines && lines.length === 0 && !error && (
-        <p className={textVariants({ variant: "hint" })}>該当するログはありません。</p>
-      )}
+      {error && <p className={textVariants({ variant: "error" })}>{t("failed", { message: error })}</p>}
+      {lines && lines.length === 0 && !error && <p className={textVariants({ variant: "hint" })}>{t("empty")}</p>}
       {lines && lines.length > 0 && (
         <>
           {/* 行ごとのdivを1件ずつドラッグ選択するのは手間なため、表示中の全行を
@@ -106,7 +103,7 @@ export default function BackendLogsPanel() {
           <div className="flex justify-end">
             <Button usage={null} variant="secondary" onClick={() => copy(lines.join("\n"))}>
               <CopyIcon size={14} />
-              {copied ? "ログ全体をコピーしました" : "ログ全体をコピー"}
+              {copied ? t("copied") : t("copy")}
             </Button>
           </div>
           {/* ログ取得の失敗（error）とは原因も対処も別なので、同じ行へ混ぜない。 */}

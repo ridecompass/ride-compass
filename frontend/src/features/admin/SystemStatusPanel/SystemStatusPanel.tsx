@@ -2,6 +2,7 @@
 
 import type { ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useTranslations } from "next-intl";
 import { formatJstDateTime } from "@/lib/time";
 import { errorMessage } from "@/lib/apiError";
 import FloatingPanel from "@/components/FloatingPanel/FloatingPanel";
@@ -42,14 +43,15 @@ function VersionCard({
   version: { commit: string | null; started_at: string } | null;
   children?: ReactNode;
 }) {
+  const t = useTranslations("admin.systemStatus");
   return (
     <div className="flex flex-col gap-0.5 rounded-md border border-[var(--color-border)] bg-[var(--color-surface-2)] px-2 py-1.5">
       <span className={SECTION_HEADING_CLASS}>{title}</span>
-      {error && <span className="text-[var(--color-danger-text)]">取得失敗: {error}</span>}
+      {error && <span className="text-[var(--color-danger-text)]">{t("failed", { message: error })}</span>}
       {version && (
         <>
-          <span className="font-semibold [overflow-wrap:anywhere]">{version.commit ?? "(ローカル)"}</span>
-          <span className="text-[var(--color-muted)]">起動 {formatIsoJst(version.started_at)}</span>
+          <span className="font-semibold [overflow-wrap:anywhere]">{version.commit ?? t("localCommit")}</span>
+          <span className="text-[var(--color-muted)]">{t("startedAt", { at: formatIsoJst(version.started_at) })}</span>
           {children}
         </>
       )}
@@ -62,6 +64,7 @@ function VersionCard({
 // プロセス内カウンタ（バックエンド）・モジュール評価時刻（フロント）のスナップショットのため、
 // ポーリングはせず開いたときと「更新」ボタン押下時にだけ取得する。
 export default function SystemStatusPanel({ open, onClose }: SystemStatusPanelProps) {
+  const t = useTranslations("admin.systemStatus");
   const client = getQueryClient();
   const backendQuery = useQuery({ queryKey: ["debug-stats"], queryFn: getDebugStats, enabled: open }, client);
   const frontendQuery = useQuery({ ...frontendVersionQuery, enabled: open }, client);
@@ -78,12 +81,13 @@ export default function SystemStatusPanel({ open, onClose }: SystemStatusPanelPr
 
   const externalEntries = backend ? Object.entries(backend.external) : [];
   const rejectionEntries = backend ? Object.entries(backend.rate_limit_rejections) : [];
+  const msm = backend?.msm ?? null;
 
   return (
     <FloatingPanel
       open={open}
       onClose={onClose}
-      title="システム状況"
+      title={t("title")}
       // デバッグログパネル（`components/DebugConsole/DebugConsole.tsx: DebugConsole`）と同時に開いても
       // 両方のヘッダーが見えるよう、それより下に置く（同じ位置だと後から開いた方が完全に覆い隠す）。
       // ドラッグで動かせるので、重なった場合はどちらかを移動すればよい。
@@ -92,49 +96,49 @@ export default function SystemStatusPanel({ open, onClose }: SystemStatusPanelPr
       maxHeightPx={480}
       headerButtons={
         <Button usage={null} size="xs" onClick={fetchAll}>
-          {loading ? "更新中…" : "更新"}
+          {loading ? t("refreshing") : t("refresh")}
         </Button>
       }
     >
       <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-2 py-1.5">
         <div className="grid grid-cols-[repeat(auto-fit,minmax(9.5rem,1fr))] gap-2">
-          <VersionCard title="フロントエンド" error={frontendError} version={frontend} />
-          <VersionCard title="バックエンド" error={backendError} version={backend}>
-            <span className="text-[var(--color-muted)]">debug_mode {backend?.debug_mode ? "ON" : "OFF"}</span>
+          <VersionCard title={t("frontend")} error={frontendError} version={frontend} />
+          <VersionCard title={t("backend")} error={backendError} version={backend}>
+            <span className="text-[var(--color-muted)]">
+              {/* 値を要素（Fragment）で返し、前の文と別のテキストのノードにする（文字列で返すと前の文とつながって1つのノードになり、
+                  空白の後ろの字の位置が画素で変わる）。 */}
+              {t.rich("debugMode", { state: () => <>{t(backend?.debug_mode ? "on" : "off")}</> })}
+            </span>
           </VersionCard>
         </div>
 
-        {backend?.msm && (
+        {msm && (
           <div
             className="flex flex-col gap-1 rounded-sm border border-[var(--color-border)] p-2 data-[healthy=false]:border-[var(--color-danger)]"
-            data-healthy={backend.msm.healthy ? "true" : "false"}
+            data-healthy={msm.healthy ? "true" : "false"}
           >
-            <span className={SECTION_HEADING_CLASS}>予報（MSM）</span>
+            <span className={SECTION_HEADING_CLASS}>{t("msm")}</span>
             <span className="text-[var(--color-muted)]">
-              最新run {formatIsoJst(backend.msm.last_run_at)}（{backend.msm.run_age_hours}時間前）・ 予報の残り{" "}
-              {backend.msm.remaining_hours}時間
+              {t("msmRun", { at: formatIsoJst(msm.last_run_at), ageHours: String(msm.run_age_hours) })}
+              {t("msmRemaining", { hours: String(msm.remaining_hours) })}
             </span>
-            {!backend.msm.healthy && (
-              <span className="text-[var(--color-danger-text)]">
-                配信が滞っています（バックエンドのWARNINGログを確認）
-              </span>
-            )}
+            {!msm.healthy && <span className="text-[var(--color-danger-text)]">{t("msmStalled")}</span>}
           </div>
         )}
 
         {externalEntries.length > 0 && (
           <>
-            <div className={cn(SECTION_HEADING_CLASS, "mt-1")}>外部サービス呼び出しサマリ</div>
+            <div className={cn(SECTION_HEADING_CLASS, "mt-1")}>{t("external")}</div>
             <Table>
               <TableHead>
                 <TableRow>
-                  <TableHeader>カテゴリ</TableHeader>
-                  <TableHeader>呼出</TableHeader>
-                  <TableHeader>エラー</TableHeader>
-                  <TableHeader>最終失敗</TableHeader>
-                  <TableHeader>hit率</TableHeader>
-                  <TableHeader>平均</TableHeader>
-                  <TableHeader>最大</TableHeader>
+                  <TableHeader>{t("category")}</TableHeader>
+                  <TableHeader>{t("calls")}</TableHeader>
+                  <TableHeader>{t("errors")}</TableHeader>
+                  <TableHeader>{t("lastError")}</TableHeader>
+                  <TableHeader>{t("hitRate")}</TableHeader>
+                  <TableHeader>{t("average")}</TableHeader>
+                  <TableHeader>{t("max")}</TableHeader>
                 </TableRow>
               </TableHead>
               <tbody>
@@ -162,8 +166,8 @@ export default function SystemStatusPanel({ open, onClose }: SystemStatusPanelPr
                       </TableCell>
                       <TableCell>{formatLastError(s.last_error)}</TableCell>
                       <TableCell>{s.cache_hit_rate != null ? `${Math.round(s.cache_hit_rate * 100)}%` : "—"}</TableCell>
-                      <TableCell>{s.avg_ms}ms</TableCell>
-                      <TableCell>{s.max_ms}ms</TableCell>
+                      <TableCell>{t("milliseconds", { value: String(s.avg_ms) })}</TableCell>
+                      <TableCell>{t("milliseconds", { value: String(s.max_ms) })}</TableCell>
                     </TableRow>
                   );
                 })}
@@ -176,14 +180,14 @@ export default function SystemStatusPanel({ open, onClose }: SystemStatusPanelPr
           <div className="flex flex-wrap gap-1">
             {rejectionEntries.map(([category, count]) => (
               <Badge key={category} variant="warning">
-                429拒否: {category} {count}件
+                {t("rejected", { category, count: String(count) })}
               </Badge>
             ))}
           </div>
         )}
 
         {!backend && !frontend && !backendError && !frontendError && (
-          <p className={textVariants({ variant: "hint" })}>取得中…</p>
+          <p className={textVariants({ variant: "hint" })}>{t("fetching")}</p>
         )}
       </div>
     </FloatingPanel>

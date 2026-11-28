@@ -1,6 +1,7 @@
 "use client";
 
 import { useMutation, useQuery } from "@tanstack/react-query";
+import { useTranslations } from "next-intl";
 import { useState } from "react";
 import { Button } from "@/components/ui/Button/Button";
 import { Card } from "@/components/ui/Card/Card";
@@ -14,6 +15,7 @@ import {
   type RouteProfile,
   type RouteProfiles,
 } from "@/features/admin/adminApi";
+import { translate } from "@/i18n/config";
 import { errorMessage } from "@/lib/apiError";
 import { cn } from "@/lib/cn";
 import { getQueryClient } from "@/lib/queryClient";
@@ -39,6 +41,7 @@ interface RouteProfilesPanelProps {
  * 全体を手元で直してから「DBへ保存」で1回に送る（並びも保存する。途中の形を配らない）。今の費用の軸・道の段の行に無い名を指す
  * 全体はbackendが断り、その文をここに出す。 */
 export default function RouteProfilesPanel({ standard, renderSettingsEditor }: RouteProfilesPanelProps) {
+  const t = useTranslations("admin");
   const client = getQueryClient();
   const query = useQuery({ queryKey: ROUTE_PROFILES_QUERY_KEY, queryFn: getRouteProfiles }, client);
   const saved = query.data ?? null;
@@ -60,7 +63,7 @@ export default function RouteProfilesPanel({ standard, renderSettingsEditor }: R
     },
     client,
   );
-  const error = save.isError ? errorMessage(save.error, "保存に失敗しました") : (query.error?.message ?? null);
+  const error = save.isError ? errorMessage(save.error, t("saveFailed")) : (query.error?.message ?? null);
 
   const update = (index: number, change: Partial<RouteProfile>) =>
     setDraft(profiles.map((profile, i) => (i === index ? { ...profile, ...change } : profile)));
@@ -74,15 +77,12 @@ export default function RouteProfilesPanel({ standard, renderSettingsEditor }: R
   };
 
   return (
-    <Card className="flex flex-col gap-2">
+    <Card className="flex flex-col gap-2" data-state={edited ? "unsaved" : "saved"}>
       <div className="flex flex-wrap items-center gap-2">
         <span className="flex items-center gap-1">
-          <h2 className={textVariants({ variant: "heading" })}>ひな形</h2>
-          <InfoPopover triggerAriaLabel="ひな形の説明">
-            <p>
-              名前を付けた難所と道路の設定です。公開にしたものが、利用者の画面の「難所」「道路」タブの頭に並び、選ぶとその設定へ
-              まとめて入れ替わります。書いていない種類と道路は標準です。
-            </p>
+          <h2 className={textVariants({ variant: "heading" })}>{t("tabs.routeProfiles")}</h2>
+          <InfoPopover triggerAriaLabel={t("infoLabel", { name: t("tabs.routeProfiles") })}>
+            <p>{t("routeProfiles.info")}</p>
           </InfoPopover>
         </span>
         {saved && (
@@ -93,15 +93,15 @@ export default function RouteProfilesPanel({ standard, renderSettingsEditor }: R
               onClick={() => save.mutate({ profiles })}
               disabled={!edited || save.isPending}
             >
-              {save.isPending ? "保存中…" : "DBへ保存"}
+              {save.isPending ? t("saving") : t("saveToDb")}
             </Button>
             <Button usage={null} variant="secondary" onClick={add}>
-              ひな形を足す
+              {t("routeProfiles.add")}
             </Button>
           </>
         )}
-        {edited && <span className={textVariants({ variant: "note" })}>未保存</span>}
-        {query.isFetching && <span className={textVariants({ variant: "note" })}>読み込み中…</span>}
+        {edited && <span className={textVariants({ variant: "note" })}>{t("routeProfiles.unsaved")}</span>}
+        {query.isFetching && <span className={textVariants({ variant: "note" })}>{t("loading")}</span>}
       </div>
 
       {error && (
@@ -109,13 +109,15 @@ export default function RouteProfilesPanel({ standard, renderSettingsEditor }: R
           {error}
           {saved === null && (
             <Button usage={null} className="flex-none" size="sm" onClick={() => void query.refetch()}>
-              読み込み直す
+              {t("reload")}
             </Button>
           )}
         </p>
       )}
 
-      {saved && profiles.length === 0 && <p className={textVariants({ variant: "hint" })}>ひな形はまだありません。</p>}
+      {saved && profiles.length === 0 && (
+        <p className={textVariants({ variant: "hint" })}>{t("routeProfiles.empty")}</p>
+      )}
 
       <ul className="m-0 flex list-none flex-col gap-2 p-0">
         {profiles.map((profile, index) => (
@@ -127,7 +129,7 @@ export default function RouteProfilesPanel({ standard, renderSettingsEditor }: R
             <div className="flex flex-wrap items-center gap-2">
               <Input
                 className="min-w-0 flex-auto"
-                aria-label="名前"
+                aria-label={t("routeProfiles.name")}
                 value={profile.name}
                 onChange={(event) => update(index, { name: event.target.value })}
               />
@@ -135,9 +137,9 @@ export default function RouteProfilesPanel({ standard, renderSettingsEditor }: R
                 <Checkbox
                   checked={profile.published}
                   onCheckedChange={(published) => update(index, { published })}
-                  aria-label={`${profile.name}を公開`}
+                  aria-label={t("routeProfiles.publish", { name: profile.name })}
                 />
-                公開
+                {t("routeProfiles.published")}
               </label>
               <Button
                 usage={null}
@@ -146,15 +148,15 @@ export default function RouteProfilesPanel({ standard, renderSettingsEditor }: R
                 aria-expanded={opened === index}
                 onClick={() => setOpened(opened === index ? null : index)}
               >
-                {opened === index ? "設定を閉じる" : "設定を開く"}
+                {opened === index ? t("routeProfiles.closeSettings") : t("routeProfiles.openSettings")}
               </Button>
               <Button usage={null} size="sm" variant="secondary" onClick={() => remove(index)}>
-                消す
+                {t("routeProfiles.remove")}
               </Button>
             </div>
             <Input
-              aria-label="説明"
-              placeholder="説明（利用者が札を押す前に読む）"
+              aria-label={t("routeProfiles.description")}
+              placeholder={t("routeProfiles.descriptionPlaceholder")}
               value={profile.description}
               onChange={(event) => update(index, { description: event.target.value })}
             />
@@ -174,7 +176,10 @@ export default function RouteProfilesPanel({ standard, renderSettingsEditor }: R
 function newName(profiles: readonly RouteProfile[]): string {
   const names = new Set(profiles.map(({ name }) => name));
   for (let n = 1; ; n += 1) {
-    const name = n === 1 ? "新しいひな形" : `新しいひな形${n}`;
+    const name =
+      n === 1
+        ? translate("admin.routeProfiles.newName")
+        : translate("admin.routeProfiles.newNameNumbered", { number: String(n) });
     if (!names.has(name)) return name;
   }
 }
