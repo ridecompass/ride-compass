@@ -35,3 +35,15 @@ export function costPreferenceDescription(preference: CostPreference, catalog: C
   ];
   return parts.length > 0 ? parts.join("・") : "標準";
 }
+
+/** 今の費用の軸の一覧`catalog`に無い軸の倍率と無効を捨てた好み（管理で軸を消しても、端末や保存した条件に残った値は消えず、
+ * backend は知らない軸を断る。書いていない軸は標準）。一覧が届くまで・失敗の間は今の軸が分からないので、そのまま返す。 */
+export function costPreferenceForAxes(preference: CostPreference, catalog: CostAxisCatalog): CostPreference {
+  if (!catalog.loaded) return preference;
+  const known = new Set(catalog.axes.map((axis) => axis.axisId));
+  return {
+    ...preference,
+    multipliers: Object.fromEntries(Object.entries(preference.multipliers).filter(([axisId]) => known.has(axisId))),
+    disabled_axes: preference.disabled_axes.filter((axisId) => known.has(axisId)),
+  };
+}

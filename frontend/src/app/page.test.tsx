@@ -212,6 +212,23 @@ describe("ルートを作る", () => {
     });
   });
 
+  it("端末に残った、今の費用の軸の一覧に無い軸の倍率と無効は、生成の要求に載らない（載せると backend が断る）", async () => {
+    localStorage.setItem(
+      "ridecompass:cost-preference",
+      JSON.stringify({ strength: 1, multipliers: { ascent: 2, removed: 2 }, disabled_axes: ["gone", "vibration"] }),
+    );
+    const { user } = renderHome();
+    await user.click(screen.getByRole("tab", { name: "走りにくさ" }));
+    await screen.findByRole("radiogroup", { name: "振動の割合" });
+
+    jobs.respond([FIRST], LOOP_CONDITIONS);
+    expect((await generate(user)).cost_preference).toEqual({
+      strength: 1,
+      multipliers: { ascent: 2 },
+      disabled_axes: ["vibration"],
+    });
+  });
+
   it("走りにくさを説明する文の軸の並びと、ルートの後に選ばずに塗る総合の名前は、費用の軸の一覧の名前で出る", async () => {
     const catalog = costAxisCatalog(costAxisEntry("first", { label: "甲" }), costAxisEntry("second", { label: "乙" }));
     serveCostAxisCatalog({ ...catalog, total_lens: { ...catalog.total_lens, label: "全部" } });
