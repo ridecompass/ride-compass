@@ -1,5 +1,5 @@
 // デバッグモードの間、画面を止めた長いコマ（Chrome の Long Animation Frames。50ms 以上）を、そのコマで時間を使ったスクリプトと
-// 一緒にデバッグログへ出す。重さの原因を、利用者の端末で測るため（tasks#1691）。
+// 一緒にデバッグログへ出す。重さの原因を、利用者の端末で測るため。
 // 仕組みは https://developer.mozilla.org/en-US/docs/Web/API/PerformanceLongAnimationFrameTiming 。Chrome 123 から。Safari と
 // Firefox は対応しないので、そう書いて何もしない。
 
@@ -27,7 +27,7 @@ const ENTRY_TYPE = "long-animation-frame";
 /** 長いコマの記録を始め、止める関数を返す。 */
 export function observeLongFrames(): () => void {
   if (typeof PerformanceObserver === "undefined" || !PerformanceObserver.supportedEntryTypes.includes(ENTRY_TYPE)) {
-    debugLog("frame", "このブラウザは長いコマを記録できません（Chrome だけが対応）", undefined, "warn");
+    debugLog("frame", "このブラウザは長いコマを記録できません（Chrome だけが対応）");
     return () => {};
   }
   const observer = new PerformanceObserver((list) => {
