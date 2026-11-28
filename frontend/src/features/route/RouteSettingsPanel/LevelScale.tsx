@@ -21,7 +21,7 @@ interface LevelScaleProps<K extends string> {
   onChange: (value: K) => void;
 }
 
-/** 段を1本の目盛りの上の点から選び、選んでいる段の名前を右に小さく出す（道路タブの行と走りにくさタブの行）。 */
+/** 段を1本の目盛りの上の点から選び、選んでいる段の名前を右に小さく出す（道路タブの行と要因タブの行）。 */
 export default function LevelScale<K extends string>({ levels, value, onChange, ...props }: LevelScaleProps<K>) {
   return (
     <span className="ml-auto flex items-center gap-1.5">

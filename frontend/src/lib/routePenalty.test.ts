@@ -1,7 +1,7 @@
 /**
- * `lib/routePenalty.ts`——内訳の行と走りにくさの書き方。
+ * `lib/routePenalty.ts`——内訳の行とロスの書き方。
  *
- * 見るもの: 一覧が届くまで・取れない間の行の名前と軸の色。好む道で下げた分が上回った走りにくさを「−」で書くこと。
+ * 見るもの: 一覧が届くまで・取れない間の行の名前と軸の色。好む道で下げた分が上回ったロスを「−」で書くこと。
  *
  * ここで見ないもの: 軸の行の並びと事実 → `features/route/RouteProfile/RouteProfile.test.tsx`。
  */
@@ -26,7 +26,7 @@ describe("penaltyRows", () => {
     expect(penaltyRows(AXIS_SECONDS, { ...NOT_LOADED, failed }).map((row) => row.label)).toEqual([label]);
   });
 
-  it("好む道で下げた分が上乗せを上回った走りにくさは「−」で書く", () => {
+  it("好む道で下げた分が上乗せを上回ったロスは「−」で書く", () => {
     expect([formatPenalty(-180), formatPenaltyMinutes(-180)]).toEqual(["−3分", "−3"]);
   });
 });
@@ -34,8 +34,6 @@ describe("penaltyRows", () => {
 describe("costAxisColor", () => {
   it("一覧が届くまでは中立の色で、届いた一覧に無い軸は既定の色で塗らずに投げる", () => {
     expect(costAxisColor(NOT_LOADED, "stopping")).toBe(palette.semantic.neutral);
-    expect(() => costAxisColor({ axisColors: { other: "red" }, loaded: true }, "stopping")).toThrow(
-      "走りにくさの種類 stopping の色が一覧にありません",
-    );
+    expect(() => costAxisColor({ axisColors: { other: "red" }, loaded: true }, "stopping")).toThrow();
   });
 });

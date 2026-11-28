@@ -97,7 +97,7 @@ export default function HomeMapPane({
   if (!navigating && dark) setDark(false);
   // Street View を開く地点と向きの矢印。走り出したらしまう（右の列の出すボタンは、走っていない間だけ出す）。
   const [streetViewAim, setStreetViewAim] = useState<StreetViewAim | null>(null);
-  // 「走りにくさを色で見る」が「表示」の横に収まらない間は、下の段へ下げる。
+  // 「難所を色で見る」が「表示」の横に収まらない間は、下の段へ下げる。
   const lensRowRef = useCramped<HTMLDivElement>();
   if (navigating && streetViewAim !== null) setStreetViewAim(null);
   const selected = results.selectedCandidate;
@@ -173,7 +173,7 @@ export default function HomeMapPane({
         )}
         {navigating && <div ref={setRideNoticeHost} className="empty:hidden" />}
       </div>
-      {/* 上端の段の中央に「走りにくさを色で見る」を置く。走行中も、ルートの線と道の色が何かを示すため同じ大きさで出す。
+      {/* 上端の段の中央に「難所を色で見る」を置く。走行中も、ルートの線と道の色が何かを示すため同じ大きさで出す。
           左右の余白は、右の縦の列を両側で避ける幅（中央に置くため。左上の「表示」は列と同じ幅なので、これで避けられる）。
           「表示」の横に収まらない間（`hooks/useCramped.ts: useCramped`）は、「表示」の下の段へ下げ、余白は変えずに箱を左へずらして左端を「表示」の左端にそろえる（余白のクラスを上書きしない）。 */}
       <div

@@ -49,8 +49,8 @@ export function costAxisCatalog(...axes: CostAxisEntry[]): CostAxisCatalogRespon
     axes,
     total_lens: {
       lens_id: "total",
-      label: "総合の走りにくさ",
-      description: "走りにくさの秒の和",
+      label: "総合のロス",
+      description: "ロスの秒の和",
       icon_id: "",
       lens: { thresholds: [10], band_labels: ["軽い", "重い"] },
       map_lens: ALL_CONDITIONS_LENS,

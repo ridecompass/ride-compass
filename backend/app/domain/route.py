@@ -74,7 +74,7 @@ class PenaltyBreakdown(StrictModel):
     # 上乗せした秒（0以上）。
     preferred_seconds: float
     avoided_seconds: float
-    # 曲がる所の罰（選ばせないために置く秒。Uターン）の和（0以上）。実際に失う時間ではないので所要時間に入らず、道の走りにくさでも
+    # 曲がる所の罰（選ばせないために置く秒。Uターン）の和（0以上）。実際に失う時間ではないので所要時間に入らず、道のロスでも
     # ないので1kmあたりの代償にも入らない。区間（道1本の分）は曲がる所を持たないので0。
     turn_penalty_seconds: float
 
@@ -274,7 +274,7 @@ class EvaluatedRoute(StrictModel):
 
     def penalty_per_km(self) -> float | None:
         """候補全体の1kmあたりの代償の秒（曲がる所の漕ぎ出しと避け方の秒を含むルート全体の損）。曲がる所の
-        罰は道の走りにくさでないので入れない——入れると、地図のレンズの総合の段で塗る候補の帯が道の走りにくさとずれる。
+        罰は道のロスでないので入れない——入れると、地図のレンズの総合の段で塗る候補の帯が道のロスとずれる。
         候補の帯は応答の`penalty_seconds_per_km`で塗る。所要時間か
         長さが無ければNone。"""
         if self.estimated_duration_seconds is None or not self.distance_km > 0:

@@ -57,7 +57,7 @@ function expectColorsMatchLegend(
   }
 }
 
-describe("段で塗るモード（費用のレンズの1kmあたりの走りにくさ）", () => {
+describe("段で塗るモード（費用のレンズの1kmあたりのロス）", () => {
   const mode = buildRangeSteppedMode({
     id: "ax",
     valueExpression: ["get", "ax", ["get", ROUTE_LENS_SECONDS_PROPERTY]],

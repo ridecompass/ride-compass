@@ -452,7 +452,7 @@ _LAYER_SPECS: dict[str, MapLayerSpec] = {
             "・取得に失敗することがあります。",
         ),
     ),
-    # 「走りにくさを色で見る」の道路の塗り（向かい風・追い風）と見分けられる名前にする。
+    # 「難所を色で見る」の道路の塗り（向かい風・追い風）と見分けられる名前にする。
     "windVector": MapLayerSpec(
         "msmGrid",
         "weather",
@@ -589,7 +589,7 @@ ROUTE_CASING_WIDTHS_PX: dict[str, float] = {
 }
 
 #: 線の濃さ（役割ごと）。候補の参考線は選んだ候補より薄くする。`travelled`は走行中に走り終えた区間で、
-#: 残りの道と見分けられるだけ薄くし、ルートの線と道のりの走りにくさのグラフの両方に当てる。
+#: 残りの道と見分けられるだけ薄くし、ルートの線と道のりのロスのグラフの両方に当てる。
 ROUTE_LINE_OPACITIES: dict[str, float] = {
     "selectedHalo": 0.25,
     "splice": 0.75,

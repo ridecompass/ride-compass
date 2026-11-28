@@ -391,7 +391,7 @@ TUNING_PARAMETERS: tuple[TuningParameter, ...] = (
     TuningParameter(
         "cost.burden_seconds_per_km",
         "道のストレスの換算", "秒/km", TuningEffect.IMMEDIATE,
-        "道のストレスの基準の重さ（1）の道を1km走ることを、何秒の走りにくさとみなすか（費用の式のβ）。標準の人が、その1kmを何秒の"
+        "道のストレスの基準の重さ（1）の道を1km走ることを、何秒のロスとみなすか（費用の式のβ）。標準の人が、その1kmを何秒の"
         "所要時間と引き換えにするかの交換比。道のストレスのすべての種類に共通。" + _PREFERENCE_DEFINITION,
     ),
     TuningParameter(
@@ -515,7 +515,7 @@ TUNING_PARAMETERS: tuple[TuningParameter, ...] = (
     ),
     TuningParameter(
         LENS_SCALE_STEPS_ID, "色の物差しを刻む数", "段", TuningEffect.IMMEDIATE,
-        "地図の「走りにくさを色で見る」の色を、緑の端から赤の端までこの数に刻む。",
+        "地図の「難所を色で見る」の色を、緑の端から赤の端までこの数に刻む。",
     ),
     # --- 画面が使う値（カタログ取得でフロントへ配る） ---
     TuningParameter(

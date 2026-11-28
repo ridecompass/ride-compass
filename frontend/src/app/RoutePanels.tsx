@@ -28,14 +28,14 @@ const MOBILE_TABS = [
     sheet: "routeSettings",
     label: "ルート設定",
     Icon: RouteSettingsIcon,
-    usage: `ルートを作る条件[距離・地点・走りにくさ・${ROAD_SETTINGS_TAB_NAME}・保存した地点と設定]と「ルート生成」を開きます。もう一度押すと閉じます。`,
+    usage: `ルートを作る条件[距離・地点・ロスの要因・${ROAD_SETTINGS_TAB_NAME}・保存した地点と設定]と「ルート生成」を開きます。もう一度押すと閉じます。`,
   },
   {
     sheet: "routeOutcome",
     label: "ルート結果",
     Icon: RouteIcon,
     usage:
-      "作った候補の一覧と、その走りにくさの内訳を開きます。\n・点: 新しい結果が出たか、条件を変えた\n・赤: 失敗した\n・中が空いた丸: 候補が無かった",
+      "作った候補の一覧と、そのロスの内訳を開きます。\n・点: 新しい結果が出たか、条件を変えた\n・赤: 失敗した\n・中が空いた丸: 候補が無かった",
   },
 ] as const;
 
@@ -141,7 +141,7 @@ export function DesktopRoutePanels(props: RoutePanelsProps) {
               }
               open={panels.outcomeOpen}
               onOpenChange={panels.setOutcomeOpen}
-              usage="押すと開いたり畳んだりします。作った候補と、その走りにくさの内訳がここに並びます。"
+              usage="押すと開いたり畳んだりします。作った候補と、そのロスの内訳がここに並びます。"
             >
               {outcome.body}
             </SectionDisclosure>

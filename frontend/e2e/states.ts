@@ -79,7 +79,7 @@ const SPLICE_PLACES: Places = {
 const SCAN_BURDEN_AXES = 25;
 
 /**
- * 走査の模擬応答。アプリを開く前に入れる。費用の軸は既定の2本に道のストレスの軸を`SCAN_BURDEN_AXES`本足す（倍率のタブ・走りにくさの
+ * 走査の模擬応答。アプリを開く前に入れる。費用の軸は既定の2本に道のストレスの軸を`SCAN_BURDEN_AXES`本足す（倍率のタブ・ロスの
  * 内訳・レンズの一覧が軸の数だけ伸びる）。乗り換えの入口が出るように、画面の設定は区間を割る下限の較正値を持つ。
  */
 export async function installScanMocks(page: Page): Promise<void> {
