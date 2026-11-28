@@ -1,7 +1,27 @@
 import { format } from "node:util";
 import { CompressionStream, DecompressionStream } from "node:stream/web";
 import { BroadcastChannel } from "node:worker_threads";
-import { afterAll, afterEach, beforeAll } from "vitest";
+import type { RenderHookOptions, RenderOptions } from "@testing-library/react";
+import type { ReactNode } from "react";
+import { afterAll, afterEach, beforeAll, vi } from "vitest";
+
+// 本番は `app/layout.tsx` の `NextIntlClientProvider` が全部の部品へ辞書を配る。テストでも同じに置くため、Testing Library の
+// 描く口を本物の辞書の包みで包む。
+vi.mock("@testing-library/react", async (importOriginal) => {
+  const testingLibrary = await importOriginal<typeof import("@testing-library/react")>();
+  const { createElement } = await import("react");
+  const { NextIntlClientProvider } = await import("next-intl");
+  const { intlConfig } = await import("@/i18n/config");
+  const wrapper = ({ children }: { children: ReactNode }) =>
+    createElement(NextIntlClientProvider, { ...intlConfig, children });
+  return {
+    ...testingLibrary,
+    render: ((ui: ReactNode, options?: RenderOptions) =>
+      testingLibrary.render(ui, { ...options, wrapper })) as typeof testingLibrary.render,
+    renderHook: ((callback: (props: unknown) => unknown, options?: RenderHookOptions<unknown>) =>
+      testingLibrary.renderHook(callback, { ...options, wrapper })) as typeof testingLibrary.renderHook,
+  };
+});
 
 // mswは読み込んだ時点で`BroadcastChannel`を使う。`pool: "vmThreads"`のテストの文脈にはNodeのそれが無いので、先に置いてから読み込む。
 globalThis.BroadcastChannel ??= BroadcastChannel as unknown as typeof globalThis.BroadcastChannel;
@@ -12,7 +32,8 @@ const { backendServer, closeHeldReplies } = await import("@/testing/backendServe
 
 // jsdom は`wbr`の表示の種類を持たず（ブラウザの既定は行の中）、読み上げの名前と説明を組む部品が、折り返しの印（`GuideText`の
 // `wbr`）の前後に空白を足す。ブラウザの既定と同じ決まりを置き、読み上げの文をブラウザと同じに組ませる。
-if (typeof document !== "undefined") document.head.insertAdjacentHTML("beforeend", "<style>wbr { display: inline; }</style>");
+if (typeof document !== "undefined")
+  document.head.insertAdjacentHTML("beforeend", "<style>wbr { display: inline; }</style>");
 
 // node の環境のテスト（DOM を使わない）にも、端末の保存値の口を置く。デバッグの記録の表示など、保存値を読む処理を通るテストが
 // あるため（本番では画面の中でしか動かない）。

@@ -1,5 +1,5 @@
 /**
- * `features/route/RouteProfile/RouteProfile.tsx`——道のりのグラフの「表示」「難所を色で見る」のタブ（名前は地図の2つの入口と同じ `lib/screenNames.ts`）と、
+ * `features/route/RouteProfile/RouteProfile.tsx`——道のりのグラフの「表示」「難所を色で見る」のタブ（名前は地図の2つの入口と同じ辞書の ID）と、
  * 地点を選んでいる間の「区間を地図で見る」。
  *
  * 差し替えたもの: グラフの実寸（`getBoundingClientRect`。テスト環境は実寸を返さない）。道の区分の層は画面の設定の応答としてテストが組む
@@ -8,7 +8,7 @@
  * ここで見ないもの: 「表示」の図の折れ線・帯・現在地の印・値の目盛りと、出す情報の一覧 → `RouteProfile.layers.test.tsx`。
  * 難所の塗り → `DifficultyProfile.test.tsx`。なぞって地点を選ぶ操作 → `ProfileChart.test.tsx`。地点・選んだ区間の値と行の計算 → `profileLayers.test.ts`。
  */
-import { BURDEN_PAINT_NAME, FACT_DISPLAY_NAME } from "@/lib/screenNames";
+import { translate } from "@/i18n/config";
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { makeRouteSegment, penaltyFields } from "@/testing/routeFixtures";
 import userEvent from "@testing-library/user-event";
@@ -67,7 +67,10 @@ describe("RouteProfile", () => {
           riding,
         });
       const { unmount } = render(element());
-      expect(screen.getByRole("tab", { name: BURDEN_PAINT_NAME })).toHaveAttribute("aria-selected", "true");
+      expect(screen.getByRole("tab", { name: translate("common.burdenPaint") })).toHaveAttribute(
+        "aria-selected",
+        "true",
+      );
       const openList = () => userEvent.click(screen.getByRole("button", { name: "グラフに積む要因" }));
       const rows = () =>
         within(screen.getByRole("dialog"))
@@ -132,7 +135,7 @@ describe("RouteProfile", () => {
     "タブは結果も走行中（$riding）も絵だけで出して押すと図が替わり、走行中だけ距離の目盛り・図の下の文字を大きくする",
     async ({ riding, large }) => {
       renderProfile({ riding, progressKm: riding ? 0.25 : null });
-      for (const name of [FACT_DISPLAY_NAME, BURDEN_PAINT_NAME]) {
+      for (const name of [translate("common.factDisplay"), translate("common.burdenPaint")]) {
         const tab = screen.getByRole("tab", { name });
         expect(tab.querySelector("svg")).not.toBeNull();
         expect(within(tab).getByText(name)).toHaveClass("sr-only");
@@ -143,14 +146,14 @@ describe("RouteProfile", () => {
       for (const text of [screen.getByText("2.0km"), screen.getByText("標高 最高 32m・最低 12m")])
         expect(text.closest(".text-base") !== null).toBe(large);
 
-      await userEvent.click(screen.getByRole("tab", { name: BURDEN_PAINT_NAME }));
+      await userEvent.click(screen.getByRole("tab", { name: translate("common.burdenPaint") }));
       expect(screen.getByRole("img", { name: "区間ごとの難所" })).toBeInTheDocument();
     },
   );
 
   it.each([
-    { riding: true, tab: BURDEN_PAINT_NAME },
-    { riding: false, tab: FACT_DISPLAY_NAME },
+    { riding: true, tab: translate("common.burdenPaint") },
+    { riding: false, tab: translate("common.factDisplay") },
   ])(
     "走行中（$riding）の「$tab」の図をなぞって地点を選ぶと、右上に「区間を地図で見る」を出す",
     async ({ riding, tab }) => {

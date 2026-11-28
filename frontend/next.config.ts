@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import createNextIntlPlugin from "next-intl/plugin";
 import { readFileSync } from "node:fs";
 import { networkInterfaces } from "node:os";
 import path from "node:path";
@@ -36,4 +37,7 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default nextConfig;
+// 辞書の読み込みは既定の置き場 src/i18n/request.ts。辞書の ID と差し込む値の型（messages/ja.d.json.ts）を書き出させる。
+const withNextIntl = createNextIntlPlugin({ experimental: { createMessagesDeclaration: "./messages/ja.json" } });
+
+export default withNextIntl(nextConfig);

@@ -99,7 +99,8 @@ localStorageは指紋に入れない。
 2. **レイアウトの溢れは座標・幅を実測して押さえる。** role・名前で見つかることを「押せる」ことの確かめにしない。
    `scrollWidth`/`clientWidth`の比較と`boundingBox()`で確かめる（`e2e/mobile.spec.ts`の
    ヘッダー検査）。
-3. **ロケータを当て推量で書かない。** 実際の名前は、落ちたテストの`test-results/<テスト名>/
+3. **ロケータの名前と状態の見方は vitest と同じにする**（testing-frontend.md「画面の文と状態の見方」。辞書の文は
+   `frontend/messages/ja.json`から ID で引き、状態は文言でなく標準の属性か`data-state`で見る）。**ロケータを当て推量で書かない。** 実際の名前は、落ちたテストの`test-results/<テスト名>/
    error-context.md`（その時点の画面構造）で確かめる。
 4. **地図が描けたかは画素で見る。** 描けたことを見るのは`e2e/map-runtime.spec.ts`の1本だけに置き
    （GeoJSONの面を専用色で塗り、canvasの写しにその色の画素が出るかを数える）、他の

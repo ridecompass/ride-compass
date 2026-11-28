@@ -2,10 +2,10 @@ import { AppPage } from "@/components/AppPage/AppPage";
 import { GuideText } from "@/components/ui/GuideText/GuideText";
 import { textVariants } from "@/components/ui/Text/Text";
 import { cn } from "@/lib/cn";
-import { APP_NAME } from "@/lib/screenNames";
+import { translate } from "@/i18n/config";
 
 /** 運営者の名乗り。名前と住所は、問い合わせの求めに応じて答える。 */
-export const OPERATOR = `${APP_NAME} の運営者`;
+export const OPERATOR = `${translate("common.appName")} の運営者`;
 const CONTACT_EMAIL = "h7g4bin@gmail.com";
 
 /** 規約のページの1節。 */

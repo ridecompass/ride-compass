@@ -7,7 +7,7 @@ import type { ComponentProps } from "react";
 import { vi } from "vitest";
 
 import RouteProfile from "@/features/route/RouteProfile/RouteProfile";
-import { FACT_DISPLAY_NAME } from "@/lib/screenNames";
+import { translate } from "@/i18n/config";
 import { serveClientConfig } from "@/testing/backendServer";
 import { clientConfigResponse, roadClass, roadClassCatalog, roadMapLayer } from "@/testing/clientConfig";
 import { makeRouteSegment, penaltyFields } from "@/testing/routeFixtures";
@@ -108,5 +108,5 @@ export function renderProfile(props: Partial<Props> = {}) {
 }
 
 export async function openLayers() {
-  await userEvent.click(screen.getByRole("tab", { name: FACT_DISPLAY_NAME }));
+  await userEvent.click(screen.getByRole("tab", { name: translate("common.factDisplay") }));
 }

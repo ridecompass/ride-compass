@@ -2,7 +2,7 @@
 
 import { TabsList, TabsTrigger } from "@/components/ui/Tabs/Tabs";
 import { costAxisNamesNote, useCostAxisCatalog } from "@/hooks/useCostAxisCatalog";
-import { ROAD_SETTINGS_TAB_NAME } from "@/lib/screenNames";
+import { MAP_OVERLAY_GROUP_LABELS } from "@/lib/mapDisplay/overlayGroups";
 import routeGenerateConfig from "@/types/generated/route-generate-config.json";
 import type { SettingsTab } from "./RouteForm";
 
@@ -20,7 +20,7 @@ const settingsTabs = (axisNames: string): readonly { value: SettingsTab; label: 
   },
   {
     value: "exclusions",
-    label: ROAD_SETTINGS_TAB_NAME,
+    label: MAP_OVERLAY_GROUP_LABELS.road,
     usage: `道路の種類ごとに、区間の${routeGenerateConfig.avoidance_multiplier_wording}を選びます。`,
   },
   { value: "saved", label: "保存", usage: "保存した地点と、名前を付けて保存した設定を並べ、呼び出します。" },

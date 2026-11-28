@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/Input/Input";
 import { textVariants } from "@/components/ui/Text/Text";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/ToggleGroup/ToggleGroup";
 import { cn } from "@/lib/cn";
-import { ROAD_SETTINGS_TAB_NAME } from "@/lib/screenNames";
+import { MAP_OVERLAY_GROUP_LABELS } from "@/lib/mapDisplay/overlayGroups";
 import {
   describeConditions,
   originDescription,
@@ -88,7 +88,7 @@ export function SaveConditionsButton({
         aria-label="いまの設定を保存"
         aria-haspopup="dialog"
         aria-expanded={saving}
-        usage={`いまの設定[基本・出発地・難所・${ROAD_SETTINGS_TAB_NAME}]を開いて確かめ、名前を付けてこの端末に保存します。\n・保存した設定は、「保存」タブの「設定」から呼び出せます。`}
+        usage={`いまの設定[基本・出発地・難所・${MAP_OVERLAY_GROUP_LABELS.road}]を開いて確かめ、名前を付けてこの端末に保存します。\n・保存した設定は、「保存」タブの「設定」から呼び出せます。`}
         onClick={() => setSaving(true)}
       >
         <SaveConditionsIcon size={18} />
@@ -121,7 +121,7 @@ export function SaveConditionsButton({
                   </ToggleGroup>,
                 ],
                 ["難所", currentDescription.costPreference],
-                [ROAD_SETTINGS_TAB_NAME, currentDescription.exclusions],
+                [MAP_OVERLAY_GROUP_LABELS.road, currentDescription.exclusions],
               ]}
             />
             <form
@@ -180,7 +180,7 @@ export default function SavedConditionsPanel({ saved, onRecall, onRemove }: Save
       <SavedList
         items={saved}
         noun="設定"
-        howToSave={`右上の「いまの設定を保存」で、いまの設定[基本・出発地・難所・${ROAD_SETTINGS_TAB_NAME}]に名前を付けて保存します。\n・保存した設定は、行の「呼び出す」を押すと各タブに戻せます。`}
+        howToSave={`右上の「いまの設定を保存」で、いまの設定[基本・出発地・難所・${MAP_OVERLAY_GROUP_LABELS.road}]に名前を付けて保存します。\n・保存した設定は、行の「呼び出す」を押すと各タブに戻せます。`}
         renderMain={(entry) => <span className="min-w-0 flex-auto truncate font-semibold">{entry.name}</span>}
         renderActions={(entry) => (
           <Button
@@ -212,7 +212,7 @@ export default function SavedConditionsPanel({ saved, onRecall, onRemove }: Save
                 ["基本", recallingDescription.route],
                 ["出発地", originDescription(recalling.origin !== null)],
                 ["難所", recallingDescription.costPreference],
-                [ROAD_SETTINGS_TAB_NAME, recallingDescription.exclusions],
+                [MAP_OVERLAY_GROUP_LABELS.road, recallingDescription.exclusions],
               ]}
             />
             <div className="mt-3 flex justify-end gap-2">

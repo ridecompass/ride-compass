@@ -8,7 +8,7 @@ import { dotVariants } from "@/components/ui/Dot/Dot";
 import { RouteIcon } from "@/components/ui/icons/icons";
 import { RouteSettingsIcon } from "@/components/ui/icons/lucideIcons";
 import { Tabs } from "@/components/ui/Tabs/Tabs";
-import { ROAD_SETTINGS_TAB_NAME } from "@/lib/screenNames";
+import { MAP_OVERLAY_GROUP_LABELS } from "@/lib/mapDisplay/overlayGroups";
 import type GenerateRouteActions from "@/features/route/GenerateRouteActions/GenerateRouteActions";
 import type { SettingsTab } from "@/features/route/RouteForm/RouteForm";
 import SettingsHeaderRow from "@/features/route/RouteForm/SettingsHeaderRow";
@@ -28,7 +28,7 @@ const MOBILE_TABS = [
     sheet: "routeSettings",
     label: "ルート設定",
     Icon: RouteSettingsIcon,
-    usage: `ルートを作る条件[距離・地点・難所の要因・${ROAD_SETTINGS_TAB_NAME}・保存した地点と設定]と「ルート生成」を開きます。もう一度押すと閉じます。`,
+    usage: `ルートを作る条件[距離・地点・難所の要因・${MAP_OVERLAY_GROUP_LABELS.road}・保存した地点と設定]と「ルート生成」を開きます。もう一度押すと閉じます。`,
   },
   {
     sheet: "routeOutcome",

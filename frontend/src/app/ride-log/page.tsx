@@ -1,11 +1,11 @@
 import type { Metadata } from "next";
 
 import { AppPage } from "@/components/AppPage/AppPage";
-import { APP_NAME } from "@/lib/screenNames";
+import { translate } from "@/i18n/config";
 
 import RideLogWithMap from "./RideLogWithMap";
 
-export const metadata: Metadata = { title: `走行ログ | ${APP_NAME}` };
+export const metadata: Metadata = { title: `走行ログ | ${translate("common.appName")}` };
 
 export default function RideLogPage() {
   return (

@@ -1,0 +1,8 @@
+{
+  "common": {
+    "appName": "RideCompass",
+    "factDisplay": "表示",
+    "burdenPaint": "難所を色で見る",
+    "burdenPaintShort": "色で見る"
+  }
+}

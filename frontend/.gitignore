@@ -17,6 +17,8 @@
 /blob-report/
 
 # next.js
+# next-intl の createMessagesDeclaration が書き出す辞書の型（next.config.ts）
+/messages/*.d.json.ts
 /.next/
 /out/
 
