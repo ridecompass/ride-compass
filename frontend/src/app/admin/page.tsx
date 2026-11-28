@@ -14,7 +14,7 @@ import RouteSettingsPanel from "@/features/route/RouteSettingsPanel/RouteSetting
 import HardFilterPanel from "@/features/route/RouteSettingsPanel/HardFilterPanel";
 import { STANDARD_PROFILE_SETTINGS } from "@/features/route/routeProfiles";
 import { useClientConfig } from "@/hooks/useClientConfig";
-import { ROAD_SETTINGS_TAB_NAME } from "@/lib/screenNames";
+import { MAP_OVERLAY_GROUP_LABELS } from "@/lib/mapDisplay/overlayGroups";
 import { useDebugEnabled } from "@/hooks/useDebugLog";
 import { buttonVariants } from "@/components/ui/Button/Button";
 import { Toggle } from "@/components/ui/Toggle/Toggle";
@@ -40,7 +40,7 @@ function RouteProfileSettingsEditor({
           難所
         </TabsTrigger>
         <TabsTrigger usage={null} value="exclusions">
-          {ROAD_SETTINGS_TAB_NAME}
+          {MAP_OVERLAY_GROUP_LABELS.road}
         </TabsTrigger>
       </TabsList>
       <TabsContent value="weights" className="pt-2">
