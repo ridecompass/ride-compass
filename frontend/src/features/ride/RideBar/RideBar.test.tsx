@@ -9,9 +9,11 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
+import { translate } from "@/i18n/config";
+
 import RideBar from "./RideBar";
 
-const bar = () => screen.getByRole("group", { name: "走りの数字" });
+const bar = () => screen.getByRole("group", { name: translate("ride.bar.label") });
 
 type Props = Parameters<typeof RideBar>[0];
 
@@ -32,31 +34,31 @@ describe("RideBar", () => {
     const { rerender } = render(
       <RideBar {...props({ wind: { directionDeg: 180, directionLabel: "南", speedMs: 3.24 } })} />,
     );
-    expect(bar()).toHaveTextContent("南の風");
+    expect(bar()).toHaveTextContent("南");
     expect(bar()).toHaveTextContent("3.2m/s");
 
     rerender(<RideBar {...props()} />);
-    expect(bar()).not.toHaveTextContent("の風");
+    expect(bar()).not.toHaveTextContent("m/s");
   });
 
   it.each([
     {
       case: "ルートの残りがあれば、残りの距離を小数1桁で、到着予想を日本時間の時刻で出す",
       remaining: { remainingKm: 12.34, arrivalAt: new Date("2026-10-13T05:07:00Z") },
-      texts: ["残り: 12.3km", "到着予想: 14:07"],
+      texts: [`${translate("ride.bar.remaining")}12.3km`, `${translate("ride.bar.arrival")}14:07`],
       absent: [],
     },
     {
       case: "現在地をまだルートへ当てていなければ、無いことを出す",
       remaining: { remainingKm: null, arrivalAt: null },
-      texts: ["残り: —km", "到着予想: —"],
+      texts: [`${translate("ride.bar.remaining")}—km`, `${translate("ride.bar.arrival")}—`],
       absent: [],
     },
     {
       case: "選んだ候補が無ければ、残りも到着予想も出さない",
       remaining: null,
       texts: [],
-      absent: ["残り", "到着予想"],
+      absent: [translate("ride.bar.remaining").trim(), translate("ride.bar.arrival").trim()],
     },
   ])("$case", ({ remaining, texts, absent }) => {
     render(<RideBar {...props({ remaining })} />);

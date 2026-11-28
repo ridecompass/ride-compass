@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/Button/Button";
 import { GoalFlagIcon, OffRouteIcon } from "@/components/ui/icons/icons";
 import { DarkScreenIcon, VoiceOffIcon, VoiceOnIcon } from "@/components/ui/icons/lucideIcons";
 import { formatAlongDistance } from "@/lib/geoDistance";
+import { useTranslations } from "next-intl";
 
 import type { UpcomingTurn } from "../nextTurn";
 
@@ -12,14 +13,9 @@ const DIM = "text-[#666] border-[#444]";
 
 /** 音声案内を入れている間、地図の右の列に置く、黒の画面へ入るボタン。 */
 export function RideDarkScreenButton({ onEnter }: { onEnter: () => void }) {
+  const t = useTranslations("ride.darkScreen");
   return (
-    <Button
-      variant="mapCtrl"
-      size="mapCtrl"
-      onClick={onEnter}
-      aria-label="黒の画面"
-      usage="画面を点けたまま、ほぼ黒の画面にします。位置の更新と音声案内は続きます。画面に触れると地図に戻ります。"
-    >
+    <Button variant="mapCtrl" size="mapCtrl" onClick={onEnter} aria-label={t("label")} usage={t("enterUsage")}>
       <DarkScreenIcon />
     </Button>
   );
@@ -49,26 +45,27 @@ export default function RideDarkScreen({
   onVoiceToggle,
   onExit,
 }: RideDarkScreenProps) {
+  const t = useTranslations("ride");
   return (
     <div
       role="dialog"
       aria-modal="true"
-      aria-label="黒の画面"
+      aria-label={t("darkScreen.label")}
       className="fixed inset-0 z-[var(--z-ride-dark)] bg-black"
     >
       <Button
         variant="ghost"
         size="bare"
         onClick={onExit}
-        aria-label="地図に戻る"
-        usage="地図の画面に戻ります。"
+        aria-label={t("darkScreen.exit")}
+        usage={t("darkScreen.exitUsage")}
         className="absolute inset-0 rounded-none border-0 bg-black hover:enabled:bg-black"
       />
       <div className={`pointer-events-none relative flex h-full flex-col items-center justify-center gap-4 ${DIM}`}>
         {offRoute ? (
           <>
             <OffRouteIcon size={120} />
-            <p className="px-4 text-center text-[2rem] leading-tight font-bold">ルートを外れています</p>
+            <p className="px-4 text-center text-[2rem] leading-tight font-bold">{t("offRoute")}</p>
           </>
         ) : turn !== null ? (
           <>
@@ -82,7 +79,7 @@ export default function RideDarkScreen({
             <>
               <GoalFlagIcon size={120} />
               <p className="text-[2.75rem] leading-none font-bold tabular-nums">
-                残り {formatAlongDistance(remainingKm * 1000)}
+                {t("darkScreen.remaining", { distance: formatAlongDistance(remainingKm * 1000) })}
               </p>
             </>
           )
@@ -91,13 +88,13 @@ export default function RideDarkScreen({
           variant="ghost"
           size="bare"
           onClick={onVoiceToggle}
-          aria-label="音声案内"
+          aria-label={t("voice.label")}
           aria-pressed={voiceOn}
-          usage="音声案内を入れたり切ったりします。黒の画面のままです。"
+          usage={t("darkScreen.voiceUsage")}
           className={`pointer-events-auto mt-12 gap-2 rounded-full border-2 bg-black px-7 py-3.5 text-[1.375rem] font-bold hover:enabled:bg-black hover:enabled:text-[#666] ${DIM}`}
         >
           {voiceOn ? <VoiceOnIcon size={24} /> : <VoiceOffIcon size={24} />}
-          音声案内 {voiceOn ? "入" : "切"}
+          {t("darkScreen.voiceState", { on: String(voiceOn) })}
         </Button>
       </div>
     </div>

@@ -3,7 +3,223 @@
     "appName": "RideCompass",
     "factDisplay": "表示",
     "burdenPaint": "難所を色で見る",
-    "burdenPaintShort": "色で見る"
+    "burdenPaintShort": "色で見る",
+    "close": "閉じる",
+    "loading": "読み込み中…",
+    "listSeparator": "・",
+    "terms": "利用規約",
+    "privacy": "プライバシーポリシー"
+  },
+  "ride": {
+    "offRoute": "ルートを外れています",
+    "resume": "続きから走る",
+    "followAgain": "現在地へ戻る",
+    "turnCard": "{distance}先で{label}",
+    "storedSession": "走行中のルート",
+    "bar": {
+      "label": "走りの数字",
+      "remaining": "残り: ",
+      "arrival": "到着予想: ",
+      "speed": "今の速さ: "
+    },
+    "bottom": {
+      "resumeUsage": "休止中は、現在地の取得と画面の常時点灯を止めています。押すと現在地の取得を再開し、休止前の進み具合から案内を続けます。",
+      "followAgainUsage": "地図を指で動かしている間は、現在地を追いません。押すと地図を現在地へ戻し、再び現在地に合わせて動かします。",
+      "offRouteNotice": "ルートを外れています。ルートへ戻ると続きから案内します。",
+      "profile": "予定ルートのプロファイル"
+    },
+    "darkScreen": {
+      "label": "黒の画面",
+      "enterUsage": "画面を点けたまま、ほぼ黒の画面にします。位置の更新と音声案内は続きます。画面に触れると地図に戻ります。",
+      "exit": "地図に戻る",
+      "exitUsage": "地図の画面に戻ります。",
+      "remaining": "残り {distance}",
+      "voiceUsage": "音声案内を入れたり切ったりします。黒の画面のままです。",
+      "voiceState": "音声案内 {on, select, true {入} other {切}}"
+    },
+    "keepCard": {
+      "title": {
+        "sending": "走行ログに残しています",
+        "kept": "走行ログに残しました",
+        "failed": "走りを残せませんでした"
+      },
+      "closeUsage": "カードを閉じます。",
+      "view": "見る",
+      "viewUsage": "残した走りを、走行ログのページで見返します。",
+      "retryLater": "走りは端末に置き、次に案内を終えたときに送り直します。"
+    },
+    "lock": {
+      "label": "ロック",
+      "usage": "押すと地図をロックし、雨粒が画面に当たっても地図が動かないようにします。\n・ロック中も現在地を追い続け、右の列のボタンと地図の下のボタンは使えます。\n・ロック中に押すと「{unlock}」が出ます。",
+      "unlockChoice": "ロックの外し方",
+      "unlock": "ロックを外す",
+      "unlockUsage": "ロックを外し、地図を指で動かせるようにします。",
+      "closesIn": "{seconds}秒で閉じます"
+    },
+    "log": {
+      "signInPrompt": "Google でログインすると、残した走りを見返せます。",
+      "empty": "まだ走りがありません。走行モードで案内を終えると、ここに残ります。",
+      "list": "走りの一覧",
+      "noTrack": "この走りには位置が残っていません。",
+      "deleteWarning": "消すと戻せません。",
+      "deleteCancel": "やめる",
+      "deleteConfirm": "消す",
+      "delete": "この走りを消す",
+      "withdrawWarning": "記録をやめると、アプリを使えなくなります（地図の画面を開くと最初の画面に戻り、同意をもう一度聞きます）。残した走りは消えず、ここで見返せます。",
+      "withdraw": "記録をやめる",
+      "withdrawn": "記録をやめています。地図の画面を開くと、同意をもう一度聞きます。",
+      "signOut": "ログアウト"
+    },
+    "mode": {
+      "label": "走行モード",
+      "usage": "押すと走行モードを始め、現在地に地図を合わせ続けます[画面も点けたままにします]。\n・走行中に押すと「{end}」か「{rest}」を選べます。\n・休んだ後は、地図の下の「{resume}」で再開します。\n・地図を指で動かすと追従が止まり、「{followAgain}」で戻ります。",
+      "choice": "走行モードの続け方",
+      "resumeUsage": "現在地の取得を再開し、休止前の進み具合から案内を続けます。",
+      "rest": "休む",
+      "restUsage": "現在地の取得と画面の常時点灯を止め、電池の減りを抑えます。\n・ルートと進み具合は残り、再読み込みしても休止中のまま戻ります。\n・地図の下の「{resume}」で再開できます。",
+      "end": "案内を終える",
+      "endUsage": "走行モードを止めて、走る前の画面に戻します。進み具合は消え、続きからは走れません。",
+      "wakeLockUnavailable": "この端末では画面を点けたままにできません。\n画面が消えると現在地も届かなくなるので、自動ロックの設定を確かめてください。",
+      "headingNeedsGesture": "現在地のマーカーにスマホの向きを表示するには、向きの取得を許可する必要があります。",
+      "requestHeading": "向きを出す",
+      "requestHeadingUsage": "スマホの向きを取得する許可を求めます。許可すると、現在地のマーカーにスマホが向いている方角を表示します。",
+      "closeNoticeUsage": "このお知らせを閉じます。",
+      "unavailable": "この端末では位置情報を受け取れないため、走行モードを使えません。",
+      "permissionDenied": "位置情報の利用が許可されていないため、走行モードを止めました。\nブラウザか端末の設定で、このサイトの位置情報を許可してください。"
+    },
+    "voice": {
+      "label": "音声案内",
+      "usage": "押すと、次に曲がる所の手前で向きを声で知らせます。画面を点けたまま走る間だけ読み上げます。もう一度押すと切ります。",
+      "turnedOn": "音声案内を入れました",
+      "offRoute": "ルートを外れました",
+      "backOnRoute": "ルートに戻りました",
+      "meters": "{meters}メートル",
+      "kilometers": "{km}キロ",
+      "callNear": "まもなく{label}です",
+      "callFirst": "次は{distance}先、{label}です",
+      "call": "{distance}先、{label}です"
+    }
+  },
+  "account": {
+    "signInUnavailable": "この環境ではログインできません。",
+    "legalLinks": "<terms></terms>と<privacy></privacy>",
+    "welcome": {
+      "lead": "ロードバイクで走りやすいルートを作るアプリです。",
+      "points": {
+        "loopOrGoal": "出発地へ戻る周回も、目的地へ向かうルートも作れます。",
+        "roads": "坂・路面・車の多さを見て、走りやすい道を選びます。",
+        "rideMode": "走行モードでは、次に曲がる所・残りの道のり・天気を案内します。",
+        "rideLog": "走行モードで走った記録は送られ、あなたの走行ログに残ります。走行ログでは、自分の走りを見返したり消したりできます。"
+      },
+      "signInConsents": "Google でログインすると、<wbr></wbr><legal></legal>に<wbr></wbr>同意したことに<wbr></wbr>なります。",
+      "retry": "もう一度読む",
+      "retryUsage": "ログインの状態をもう一度読みます。"
+    },
+    "consent": {
+      "title": "走りの記録への同意",
+      "lead": "{appName} を使うと、走行モードで走った走りを毎回送り、走行ログに残します。同意すると、地図の画面へ進みます。",
+      "points": {
+        "kept": "走りの位置と時刻・推したルート・生成の条件・見せた予報・端末とブラウザの名前を残します。",
+        "use": "あなたが走行ログで見返すことと、ルート生成の精度を上げる分析に使います。",
+        "notKept": "名前・メール・IP は持たず、あなたの走りを外へ出しません。"
+      },
+      "readLegal": "詳しくは<legal></legal>を読んでください。",
+      "agree": "同意してはじめる",
+      "agreeUsage": "{terms}と{privacy}に同意して、アプリを使い始めます。"
+    }
+  },
+  "conditions": {
+    "bar": {
+      "label": "走行条件",
+      "trigger": "{name}（タップで変更）",
+      "withValue": "{name}: {value}"
+    },
+    "departure": {
+      "name": "出発時刻",
+      "stepName": "出発時刻の刻み",
+      "usage": "出発する日時を決めます。地図に出す気象と周りの道の難所[風]の時刻と、ルートの到達予想の時刻に使います。",
+      "at": "{time}発",
+      "heading": "出発の時刻",
+      "input": "出発日時を直接指定",
+      "inputUsage": "出発する日時を、日付と時刻で直接入れます。",
+      "hours": "{hours}時間"
+    },
+    "speed": {
+      "name": "想定速度",
+      "usage": "{cruise}を決めます。所要時間と、区間ごとの到達予想の時刻に使います。",
+      "inputUsage": "{cruise}を、つまみか数値で決めます。",
+      "slider": "想定速度スライダー",
+      "input": "想定速度（km/h）",
+      "info": "想定速度の説明",
+      "notAverage": "{cruise}です。信号待ちや坂を含めた普段の平均速度ではありません。"
+    },
+    "timeSlider": {
+      "step": "{name}の刻み",
+      "stepUsage": "目盛りの1コマの刻みを選びます。切り替えると、出発時刻は今の時刻へ戻ります。",
+      "previous": "1つ前へ",
+      "previousLabel": "{name}を1つ前へ",
+      "previousUsage": "出発時刻を目盛りの1コマ前へ動かします。",
+      "rulerUsage": "目盛りをなぞって出発時刻を選びます。",
+      "next": "1つ次へ",
+      "nextLabel": "{name}を1つ次へ",
+      "nextUsage": "出発時刻を目盛りの1コマ次へ動かします。",
+      "nowLabel": "{name}を現在に戻す",
+      "nowUsage": "出発時刻をいまの時刻に戻し、その後もいまの時刻に合わせ続けます。"
+    },
+    "warning": {
+      "notFetched": "{labels}を取得できていません",
+      "notFetchedLabel": "{labels}を取得できていません。押すと詳細を表示",
+      "notFetchedUsage": "取得できていない情報と、その影響で画面に出ないものを開きます。そこから取得し直せます。",
+      "retry": "再試行",
+      "retryUsage": "この情報を取得し直します。",
+      "count": "{label}{count}件",
+      "summaryLabel": "気象警報・注意報あり: {summary}。押すと詳細を表示",
+      "summaryUsage": "いまいる場所に出ている気象警報・注意報の詳細を開きます。",
+      "details": "気象警報・注意報の詳細",
+      "additions": "付加事項: {additions}",
+      "passing": "{range}に通る見込み",
+      "passingWithAdditions": "{passing}。{additions}",
+      "wbgtLabel": "{name}{level}",
+      "wbgtValue": "{name} {value}",
+      "badgeHidden": "出ていてもバッジは表示されません。",
+      "source": {
+        "jma": "警報・注意報",
+        "wbgt": "暑さ指数",
+        "flood": "河川氾濫予報",
+        "route-timeline": "ルートの注意報級の見込み"
+      }
+    },
+    "weather": {
+      "failedLabel": "観測値を取得できません",
+      "failedUsage": "現在地の観測値を取得できていません[{error}]。取得は自動で続けており、取得できればここに表示します。",
+      "stat": "{term}: ",
+      "temperature": "気温",
+      "apparent": "[体感 {value}℃]",
+      "wind": "風",
+      "windValue": "{direction}の風 {speed}m/s",
+      "precipitation": "降水量",
+      "precipitationValue": "{value}mm[直近10分間]",
+      "weather": "天気",
+      "usage": "ヘッダーの天気を観測した観測所と時刻を開きます。",
+      "amedas": "アメダスの観測",
+      "amedasNote": "最寄りの観測所で測った値です。",
+      "twilight": "日の出・日没"
+    },
+    "gridPoint": {
+      "failed": "最寄りの格子点の今日の値を取得できませんでした。",
+      "hour": "{hour}時",
+      "label": "今日・最寄りの格子点の値",
+      "today": "今日",
+      "distance": "{km}km先の格子点",
+      "hourlyRange": "1時間ごとの値の幅: ",
+      "rangeTemperature": "気温 ",
+      "rangePrecipitation": "降水量 最も多い1時間 ",
+      "rangeWind": "風速 最も強い1時間 ",
+      "time": "時刻",
+      "rowTemperature": "気温（℃）",
+      "rowPrecipitation": "降水量（mm）",
+      "rowWind": "風速（m/s）"
+    }
   },
   "admin": {
     "title": "管理・開発者ツール",

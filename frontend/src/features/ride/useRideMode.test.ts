@@ -20,6 +20,7 @@ import { act, cleanup, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { clearDebugLog, getDebugLogEntries, setDebugEnabled } from "@/lib/debugLog";
+import { translate } from "@/i18n/config";
 import { setOrientationPermission } from "@/testing/deviceOrientation";
 import { installGeolocation, removeGeolocation } from "@/testing/geolocation";
 
@@ -100,9 +101,7 @@ describe("useRideMode", () => {
     geolocation.fail(1);
     expect(result.current.status).toBe("off");
     expect(geolocation.watching()).toBe(0);
-    expect(result.current.error).toMatch(
-      /許可されていない[\s\S]*ブラウザか端末の設定で、このサイトの位置情報を許可してください/,
-    );
+    expect(result.current.error).toBe(translate("ride.mode.permissionDenied"));
 
     act(() => result.current.press());
     expect(result.current.error).toBeNull();
@@ -122,7 +121,7 @@ describe("useRideMode", () => {
     const { result } = renderHook(() => useRideMode(PLAUSIBLE_MAX_KMH));
     act(() => result.current.press());
     expect(result.current.status).toBe("off");
-    expect(result.current.error).toMatch(/位置情報/);
+    expect(result.current.error).toBe(translate("ride.mode.unavailable"));
   });
 
   it("始める操作の中でスマホの向きを読む許しを求め（iPhone）、許されたら地図へ向いている方角を真北の基準にして渡す", async () => {

@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import { Fragment, type ReactNode } from "react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/Popover/Popover";
 import { HeaderStat, StatValue, WindValue } from "@/components/HeaderStat/HeaderStat";
@@ -49,6 +50,7 @@ function Divider() {
 }
 
 export default function WeatherPanel({ amedas, error, today, todayError, mapBearingDeg }: WeatherPanelProps) {
+  const t = useTranslations("conditions.weather");
   // 手元に観測値があるなら、直近の取り直しが失敗していてもそちらを出す（失敗の文言で
   // 値を置き換えない）。取得は一定間隔で続くため、回復すれば表示も戻る。
   if (!amedas) {
@@ -58,8 +60,8 @@ export default function WeatherPanel({ amedas, error, today, todayError, mapBear
       return (
         <span
           role="img"
-          aria-label="観測値を取得できません"
-          data-usage={`現在地の観測値を取得できていません[${error}]。取得は自動で続けており、取得できればここに表示します。`}
+          aria-label={t("failedLabel")}
+          data-usage={t("failedUsage", { error })}
           className="inline-flex size-7 items-center justify-center text-[var(--color-danger-text)]"
         >
           <NotFetchedIcon size={18} />
@@ -75,14 +77,16 @@ export default function WeatherPanel({ amedas, error, today, todayError, mapBear
 
   const items: { term: string; value: string; stat: ReactNode }[] = [
     {
-      term: "気温",
+      term: t("temperature"),
       value:
         `${temperature}℃` +
-        (amedas.apparent_temperature_c != null ? `[体感 ${amedas.apparent_temperature_c.toFixed(1)}℃]` : ""),
+        (amedas.apparent_temperature_c != null
+          ? t("apparent", { value: amedas.apparent_temperature_c.toFixed(1) })
+          : ""),
       stat: (
         <>
           <ThermometerIcon size={16} />
-          <span className="sr-only">気温: </span>
+          <span className="sr-only">{t("stat", { term: t("temperature") })}</span>
           <StatValue unit="℃">{temperature}</StatValue>
         </>
       ),
@@ -90,8 +94,8 @@ export default function WeatherPanel({ amedas, error, today, todayError, mapBear
     ...(wind
       ? [
           {
-            term: "風",
-            value: `${wind.directionLabel}の風 ${wind.speedMs.toFixed(1)}m/s`,
+            term: t("wind"),
+            value: t("windValue", { direction: wind.directionLabel, speed: wind.speedMs.toFixed(1) }),
             stat: <WindValue wind={wind} mapBearingDeg={mapBearingDeg} />,
           },
         ]
@@ -99,12 +103,12 @@ export default function WeatherPanel({ amedas, error, today, todayError, mapBear
     ...(amedas.precipitation_10min_mm != null
       ? [
           {
-            term: "降水量",
-            value: `${amedas.precipitation_10min_mm.toFixed(1)}mm[直近10分間]`,
+            term: t("precipitation"),
+            value: t("precipitationValue", { value: amedas.precipitation_10min_mm.toFixed(1) }),
             stat: (
               <>
                 <RaindropIcon size={16} />
-                <span className="sr-only">降水量: </span>
+                <span className="sr-only">{t("stat", { term: t("precipitation") })}</span>
                 <StatValue unit="mm">{amedas.precipitation_10min_mm.toFixed(1)}</StatValue>
               </>
             ),
@@ -114,12 +118,15 @@ export default function WeatherPanel({ amedas, error, today, todayError, mapBear
     ...(weatherDisplay != null
       ? [
           {
-            term: "天気",
+            term: t("weather"),
             value: weatherDisplay.label,
             stat: (
               <>
                 <weatherDisplay.Icon size={16} />
-                <span className="sr-only">天気: {weatherDisplay.label}</span>
+                <span className="sr-only">
+                  {t("stat", { term: t("weather") })}
+                  {weatherDisplay.label}
+                </span>
               </>
             ),
           },
@@ -130,12 +137,7 @@ export default function WeatherPanel({ amedas, error, today, todayError, mapBear
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <Button
-          variant="ghost"
-          size="bare"
-          className="min-w-0 rounded-sm"
-          usage="ヘッダーの天気を観測した観測所と時刻を開きます。"
-        >
+        <Button variant="ghost" size="bare" className="min-w-0 rounded-sm" usage={t("usage")}>
           {/* 気温・風向風速・降水量・天気アイコンをアイコン+数値だけの統計チップとして1行に並べる
               （はみ出した分は横へ流し、ヘッダーを2行にしない）。ボタンの中に置くのでdivでなくspan。 */}
           <span className="flex flex-nowrap items-center gap-2 overflow-x-auto text-[var(--foreground)] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
@@ -149,7 +151,7 @@ export default function WeatherPanel({ amedas, error, today, todayError, mapBear
         </Button>
       </PopoverTrigger>
       <PopoverContent layer="header" className="w-72 max-w-[calc(100vw-2*var(--space-3))]" side="bottom" align="start">
-        <p className={cn(textVariants({ variant: "note" }), "font-bold tracking-wide")}>アメダスの観測</p>
+        <p className={cn(textVariants({ variant: "note" }), "font-bold tracking-wide")}>{t("amedas")}</p>
         <p className="text-[length:var(--font-size-md)] font-semibold">
           {amedas.station_name}
           <span className="ml-2 tabular-nums">{formatJstHourMinute(new Date(amedas.observed_at))}</span>
@@ -162,10 +164,10 @@ export default function WeatherPanel({ amedas, error, today, todayError, mapBear
             </div>
           ))}
         </dl>
-        <p className={cn(textVariants({ variant: "note" }), "mt-1")}>最寄りの観測所で測った値です。</p>
+        <p className={cn(textVariants({ variant: "note" }), "mt-1")}>{t("amedasNote")}</p>
         {amedas.twilight !== null && (
           <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 border-t border-[var(--color-border)] pt-2 text-[length:var(--font-size-sm)]">
-            <dt className="text-[var(--color-muted)]">日の出・日没</dt>
+            <dt className="text-[var(--color-muted)]">{t("twilight")}</dt>
             <dd className="m-0 tabular-nums">
               {formatClockTime(amedas.twilight.sunrise)}〜{formatClockTime(amedas.twilight.sunset)}
             </dd>

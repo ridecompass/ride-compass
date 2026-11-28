@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { debugLog } from "@/lib/debugLog";
@@ -93,6 +94,7 @@ const PERMISSION_DENIED = 1;
  * 分からなければ警告を出さない。`onEnd`は案内を終えて記録を止めたあとに呼ぶ。
  */
 export function useRideMode(plausibleMaxKmh: number | undefined, onEnd?: () => void): UseRideModeResult {
+  const t = useTranslations("ride.mode");
   const [status, setStatus] = useState<RideStatus>("off");
   const [error, setError] = useState<string | null>(null);
   const [fix, setFix] = useState<Fix | null>(null);
@@ -151,7 +153,7 @@ export function useRideMode(plausibleMaxKmh: number | undefined, onEnd?: () => v
 
   const start = useCallback(() => {
     if (!navigator.geolocation) {
-      setError("この端末では位置情報を受け取れないため、走行モードを使えません。");
+      setError(t("unavailable"));
       return;
     }
     // iPhone は向きを読む許しを利用者の操作の中でしか求められないので、始めるボタンの操作の中で求める。
@@ -203,13 +205,11 @@ export function useRideMode(plausibleMaxKmh: number | undefined, onEnd?: () => v
         debugLog("ride:position", "位置を受け取れなかった", { code: failure.code }, "warn");
         if (failure.code !== PERMISSION_DENIED) return;
         stop();
-        setError(
-          "位置情報の利用が許可されていないため、走行モードを止めました。\nブラウザか端末の設定で、このサイトの位置情報を許可してください。",
-        );
+        setError(t("permissionDenied"));
       },
       WATCH_OPTIONS,
     );
-  }, [stop, requestHeading]);
+  }, [stop, requestHeading, t]);
 
   const press = useCallback(() => {
     if (status === "off") start();

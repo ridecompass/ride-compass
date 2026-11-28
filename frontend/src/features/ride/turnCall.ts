@@ -1,4 +1,5 @@
 import { turnLabel } from "@/components/TurnArrow/TurnArrow";
+import { translate } from "@/i18n/config";
 import type { RouteTurn } from "@/types/route";
 
 /** 曲がる所の手前で向きを読む所（m）。遠い順で、最後の所だけは道のりの代わりに「まもなく」と読む。 */
@@ -19,14 +20,14 @@ export function turnCallStage(distanceM: number): TurnCallStage {
 
 function spokenDistance(distanceM: number): string {
   const roundedM = Math.round(distanceM / SPOKEN_DISTANCE_STEP_M) * SPOKEN_DISTANCE_STEP_M;
-  if (roundedM < 1000) return `${roundedM}メートル`;
-  return `${Number((distanceM / 1000).toFixed(1))}キロ`;
+  if (roundedM < 1000) return translate("ride.voice.meters", { meters: String(roundedM) });
+  return translate("ride.voice.kilometers", { km: String(Number((distanceM / 1000).toFixed(1))) });
 }
 
 /** 読む段の言葉。道のりは刻みへ丸め、1km からはキロで小数1桁まで読む。 */
 export function turnCallText(stage: TurnCallStage, direction: RouteTurn["direction"], distanceM: number): string {
   const label = turnLabel(direction);
-  if (stage === TURN_CALL_POINTS_M.length) return `まもなく${label}です`;
-  if (stage === 0) return `次は${spokenDistance(distanceM)}先、${label}です`;
-  return `${spokenDistance(distanceM)}先、${label}です`;
+  if (stage === TURN_CALL_POINTS_M.length) return translate("ride.voice.callNear", { label });
+  if (stage === 0) return translate("ride.voice.callFirst", { distance: spokenDistance(distanceM), label });
+  return translate("ride.voice.call", { distance: spokenDistance(distanceM), label });
 }

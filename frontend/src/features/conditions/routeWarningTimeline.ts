@@ -3,6 +3,7 @@
 
 import type { components } from "@/types/generated/api";
 import type { WarningBadgeItem } from "@/features/conditions/WarningBadge/WarningBadge";
+import { translate } from "@/i18n/config";
 import { formatJstDateTime, formatJstHourMinute, isSameJstDay } from "@/lib/time";
 
 type RouteWarningTimeline = components["schemas"]["RouteWarningTimeline"];
@@ -42,15 +43,27 @@ export function routeWarningTimelineItems(
           label: `${levels.advisory_label}${area.area_name}`,
           level: "advisory",
           source: "jma",
-          title: [
-            `${timeRange(start, end)}に通る見込み`,
-            ...(levels.additions.length > 0 ? [`付加事項: ${levels.additions.join("・")}`] : []),
-          ].join("。"),
+          title: passingTitle(timeRange(start, end), levels.additions),
         });
       }
     }
   }
   return [...items.values()];
+}
+
+/** 通る時間帯の文。付加事項があれば添える。 */
+export function passingTitle(range: string, additions: string[]): string {
+  const passing = translate("conditions.warning.passing", { range });
+  const note = additionsNote(additions);
+  return note === undefined
+    ? passing
+    : translate("conditions.warning.passingWithAdditions", { passing, additions: note });
+}
+
+/** 警報・注意報に添える付加事項（突風・ひょう等）の文。無ければ undefined。 */
+export function additionsNote(additions: string[]): string | undefined {
+  if (additions.length === 0) return undefined;
+  return translate("conditions.warning.additions", { additions: additions.join(translate("common.listSeparator")) });
 }
 
 /** 「10/21 21:00〜10/22 00:00」。同じ日に終わるなら終わりは時刻だけ。 */

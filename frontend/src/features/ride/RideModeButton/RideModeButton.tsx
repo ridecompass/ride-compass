@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import { useState } from "react";
 import { createPortal } from "react-dom";
 
@@ -14,11 +15,6 @@ import { cn } from "@/lib/cn";
 
 import type { RideStatus } from "../useRideMode";
 import type { ScreenWakeLockStatus } from "../useScreenWakeLock";
-
-const WAKE_LOCK_UNAVAILABLE =
-  "この端末では画面を点けたままにできません。\n画面が消えると現在地も届かなくなるので、自動ロックの設定を確かめてください。";
-
-const HEADING_NEEDS_GESTURE = "現在地のマーカーにスマホの向きを表示するには、向きの取得を許可する必要があります。";
 
 interface RideModeButtonProps {
   status: RideStatus;
@@ -49,6 +45,7 @@ export default function RideModeButton({
   onResume,
   noticeHost,
 }: RideModeButtonProps) {
+  const t = useTranslations();
   const [wakeNoticeClosed, setWakeNoticeClosed] = useState(false);
   const [choosing, setChoosing] = useState(false);
   // 止めたら、次に始めたときにまた知らせる。
@@ -85,14 +82,9 @@ export default function RideModeButton({
           noticePlace,
         )}
       >
-        <p className={textVariants({ variant: "hint" })}>{HEADING_NEEDS_GESTURE}</p>
-        <Button
-          variant="primary"
-          size="sm"
-          onClick={onRequestHeading}
-          usage="スマホの向きを取得する許可を求めます。許可すると、現在地のマーカーにスマホが向いている方角を表示します。"
-        >
-          向きを出す
+        <p className={textVariants({ variant: "hint" })}>{t("ride.mode.headingNeedsGesture")}</p>
+        <Button variant="primary" size="sm" onClick={onRequestHeading} usage={t("ride.mode.requestHeadingUsage")}>
+          {t("ride.mode.requestHeading")}
         </Button>
       </div>
     ) : (
@@ -101,15 +93,15 @@ export default function RideModeButton({
         <div
           className={cn(cardVariants({ variant: "float" }), "pointer-events-auto flex items-start gap-1", noticePlace)}
         >
-          <p className={textVariants({ variant: "hint" })}>
-            <GuideText text={WAKE_LOCK_UNAVAILABLE} />
+          <p role="status" className={textVariants({ variant: "hint" })}>
+            <GuideText text={t("ride.mode.wakeLockUnavailable")} />
           </p>
           <Button
-            usage="このお知らせを閉じます。"
+            usage={t("ride.mode.closeNoticeUsage")}
             variant="ghost"
             size="close"
             onClick={() => setWakeNoticeClosed(true)}
-            aria-label="閉じる"
+            aria-label={t("common.close")}
             className="flex-none"
           >
             ✕
@@ -126,14 +118,17 @@ export default function RideModeButton({
             variant="mapCtrl"
             size="mapCtrl"
             onClick={() => (status === "off" ? onPress() : setChoosing((open) => !open))}
-            aria-label="走行モード"
+            aria-label={t("ride.mode.label")}
             aria-pressed={status !== "off"}
             aria-haspopup={status === "off" ? undefined : "dialog"}
             aria-expanded={status === "off" ? undefined : choosing}
-            aria-description={wakeLockUnavailable ? WAKE_LOCK_UNAVAILABLE : undefined}
-            usage={
-              "押すと走行モードを始め、現在地に地図を合わせ続けます[画面も点けたままにします]。\n・走行中に押すと「案内を終える」か「休む」を選べます。\n・休んだ後は、地図の下の「続きから走る」で再開します。\n・地図を指で動かすと追従が止まり、「現在地へ戻る」で戻ります。"
-            }
+            aria-description={wakeLockUnavailable ? t("ride.mode.wakeLockUnavailable") : undefined}
+            usage={t("ride.mode.usage", {
+              end: t("ride.mode.end"),
+              rest: t("ride.mode.rest"),
+              resume: t("ride.resume"),
+              followAgain: t("ride.followAgain"),
+            })}
             data-ride={status}
             className={cn(
               "relative",
@@ -149,34 +144,23 @@ export default function RideModeButton({
             )}
           </Button>
         </PopoverAnchor>
-        <PopoverContent side="left" align="end" aria-label="走行モードの続け方" className="flex flex-col gap-1.5">
+        <PopoverContent side="left" align="end" aria-label={t("ride.mode.choice")} className="flex flex-col gap-1.5">
           {resting ? (
-            <Button
-              variant="primary"
-              size="md"
-              onClick={choose(onResume)}
-              usage="現在地の取得を再開し、休止前の進み具合から案内を続けます。"
-            >
-              続きから走る
+            <Button variant="primary" size="md" onClick={choose(onResume)} usage={t("ride.mode.resumeUsage")}>
+              {t("ride.resume")}
             </Button>
           ) : (
             <Button
               variant="primary"
               size="md"
               onClick={choose(onRest)}
-              usage={
-                "現在地の取得と画面の常時点灯を止め、電池の減りを抑えます。\n・ルートと進み具合は残り、再読み込みしても休止中のまま戻ります。\n・地図の下の「続きから走る」で再開できます。"
-              }
+              usage={t("ride.mode.restUsage", { resume: t("ride.resume") })}
             >
-              休む
+              {t("ride.mode.rest")}
             </Button>
           )}
-          <Button
-            size="md"
-            onClick={choose(onPress)}
-            usage="走行モードを止めて、走る前の画面に戻します。進み具合は消え、続きからは走れません。"
-          >
-            案内を終える
+          <Button size="md" onClick={choose(onPress)} usage={t("ride.mode.endUsage")}>
+            {t("ride.mode.end")}
           </Button>
         </PopoverContent>
       </Popover>

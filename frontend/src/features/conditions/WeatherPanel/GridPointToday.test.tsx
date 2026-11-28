@@ -9,10 +9,15 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
+import { translate } from "@/i18n/config";
+import { cardinalLabel } from "@/lib/cardinalLabel";
+import { previousRunNotice } from "@/lib/previousRun";
 import { mapDisplay } from "@/types/generated/mapDisplay";
 import type { GridPointToday as GridPointTodayValues } from "@/types/weather";
 
 import GridPointToday from "./GridPointToday";
+
+const region = { name: translate("conditions.gridPoint.label") };
 
 const gridPointToday = (overrides: Partial<GridPointTodayValues> = {}): GridPointTodayValues => ({
   latitude: 35.75,
@@ -36,8 +41,8 @@ describe("GridPointToday", () => {
   it("最寄りの格子点の方位と距離・1時間ごとの値の幅・時刻ごとの値・計算値の断りを出す", () => {
     render(<GridPointToday today={gridPointToday()} error={null} mapBearingDeg={0} />);
 
-    const today = screen.getByRole("region", { name: "今日・最寄りの格子点の値" });
-    expect(today).toHaveTextContent("北東3.2km先の格子点");
+    const today = screen.getByRole("region", region);
+    expect(today).toHaveTextContent(`${cardinalLabel(45)}${translate("conditions.gridPoint.distance", { km: "3.2" })}`);
     expect(today).toHaveTextContent("17.6〜18.2℃");
     expect(today).toHaveTextContent("〜1.2mm");
     expect(today).toHaveTextContent("〜5.1m/s");
@@ -47,24 +52,24 @@ describe("GridPointToday", () => {
   it("風の矢印は、吹いていく向きを地図の向きに合わせて指す", () => {
     render(<GridPointToday today={gridPointToday()} error={null} mapBearingDeg={30} />);
 
-    const wind = screen.getByRole("rowheader", { name: "風速（m/s）" }).parentElement!;
+    const wind = screen.getByRole("rowheader", { name: translate("conditions.gridPoint.rowWind") }).parentElement!;
     const arrows = wind.querySelectorAll<HTMLElement>("[style]");
     expect(Array.from(arrows).map((arrow) => arrow.style.transform)).toEqual(["rotate(240deg)"]);
   });
 
   it.each([
-    ["2026-09-24T23:00", "9/24 23:00から先は、前の予報の値です。"],
-    ["2026-09-25T00:00", null],
-  ])("最新の予報の終わりが%sなら、前に出た予報の値の時刻を知らせる", (latestRunEnd, notice) => {
+    ["2026-09-24T23:00", true],
+    ["2026-09-25T00:00", false],
+  ])("最新の予報の終わりが%sなら、前に出た予報の値の時刻を知らせる: %s", (latestRunEnd, shown) => {
     render(<GridPointToday today={gridPointToday({ latest_run_end: latestRunEnd })} error={null} mapBearingDeg={0} />);
 
-    const today = screen.getByRole("region", { name: "今日・最寄りの格子点の値" });
-    if (notice === null) expect(today).not.toHaveTextContent("前の予報");
-    else expect(today).toHaveTextContent(notice);
+    const today = screen.getByRole("region", region);
+    if (shown) expect(today).toHaveTextContent(previousRunNotice(latestRunEnd));
+    else expect(today).not.toHaveTextContent(previousRunNotice(latestRunEnd));
   });
 
   it("取得に失敗したら、その旨だけを出す", () => {
     render(<GridPointToday today={null} error="混雑しています" mapBearingDeg={0} />);
-    expect(screen.queryByRole("region", { name: "今日・最寄りの格子点の値" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", region)).not.toBeInTheDocument();
   });
 });

@@ -7,6 +7,7 @@ import { textVariants } from "@/components/ui/Text/Text";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/ToggleGroup/ToggleGroup";
 import { cn } from "@/lib/cn";
 import { cardVariants } from "@/components/ui/Card/Card";
+import { useTranslations } from "next-intl";
 
 interface DynamicLayerTimeSliderProps {
   /** コマの`label`は日付付きの日時（目盛りの文字は日付を持たないので、日付をまたぐ曖昧さはこれが解く）。 */
@@ -37,6 +38,7 @@ export default function DynamicLayerTimeSlider({
   step,
   onStepChange,
 }: DynamicLayerTimeSliderProps) {
+  const t = useTranslations("conditions.timeSlider");
   // 端では押せないので、動かした先は必ず範囲の中。
   const stepIndex = (delta: number) => onIndexChange(index + delta);
 
@@ -57,8 +59,8 @@ export default function DynamicLayerTimeSlider({
           <ToggleGroup
             value={step}
             onValueChange={onStepChange}
-            aria-label={`${ariaLabel}の刻み`}
-            usage="目盛りの1コマの刻みを選びます。切り替えると、出発時刻は今の時刻へ戻ります。"
+            aria-label={t("step", { name: ariaLabel })}
+            usage={t("stepUsage")}
             className="pointer-events-auto"
           >
             {steps.map((option) => (
@@ -70,19 +72,19 @@ export default function DynamicLayerTimeSlider({
         </div>
         <div className="flex items-center gap-2">
           <Button
-            usage="出発時刻を目盛りの1コマ前へ動かします。"
+            usage={t("previousUsage")}
             variant="stepper"
             size="sm"
             className="pointer-events-auto touch-none"
             onClick={() => stepIndex(-1)}
             disabled={index <= 0}
-            aria-label={`${ariaLabel}を1つ前へ`}
-            title="1つ前へ"
+            aria-label={t("previousLabel", { name: ariaLabel })}
+            title={t("previous")}
           >
             ‹
           </Button>
           <Ruler
-            usage="目盛りをなぞって出発時刻を選びます。"
+            usage={t("rulerUsage")}
             frames={frames}
             index={index}
             onIndexChange={onIndexChange}
@@ -90,14 +92,14 @@ export default function DynamicLayerTimeSlider({
             className="pointer-events-auto min-w-30 flex-1 touch-none"
           />
           <Button
-            usage="出発時刻を目盛りの1コマ次へ動かします。"
+            usage={t("nextUsage")}
             variant="stepper"
             size="sm"
             className="pointer-events-auto touch-none"
             onClick={() => stepIndex(1)}
             disabled={index >= frames.length - 1}
-            aria-label={`${ariaLabel}を1つ次へ`}
-            title="1つ次へ"
+            aria-label={t("nextLabel", { name: ariaLabel })}
+            title={t("next")}
           >
             ›
           </Button>
@@ -107,8 +109,8 @@ export default function DynamicLayerTimeSlider({
             className="pointer-events-auto touch-none"
             onClick={onNow}
             disabled={index === currentIndex}
-            aria-label={`${ariaLabel}を現在に戻す`}
-            usage="出発時刻をいまの時刻に戻し、その後もいまの時刻に合わせ続けます。"
+            aria-label={t("nowLabel", { name: ariaLabel })}
+            usage={t("nowUsage")}
           >
             <BackToNowIcon />
           </Button>

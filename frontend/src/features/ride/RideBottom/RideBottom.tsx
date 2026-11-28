@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import type { ReactNode } from "react";
 
 import { Button } from "@/components/ui/Button/Button";
@@ -28,6 +29,7 @@ interface RideBottomProps {
  * 戻れば続きから案内すること。俯瞰図は、それらの上の左に積む。
  */
 export default function RideBottom({ status, offRoute, onResume, profile, overview }: RideBottomProps) {
+  const t = useTranslations("ride");
   const awayNotice = status === "following" && offRoute;
   const resumable = status === "paused" || status === "resting";
   if (profile === null && overview === null && !resumable && !awayNotice) return null;
@@ -43,10 +45,10 @@ export default function RideBottom({ status, offRoute, onResume, profile, overvi
           size="md"
           className="pointer-events-auto gap-1.5 shadow-md"
           onClick={onResume}
-          usage="休止中は、現在地の取得と画面の常時点灯を止めています。押すと現在地の取得を再開し、休止前の進み具合から案内を続けます。"
+          usage={t("bottom.resumeUsage")}
         >
           <RideModeIcon />
-          続きから走る
+          {t("resume")}
         </Button>
       )}
       {status === "paused" && (
@@ -55,10 +57,10 @@ export default function RideBottom({ status, offRoute, onResume, profile, overvi
           size="md"
           className="pointer-events-auto gap-1.5 shadow-md"
           onClick={onResume}
-          usage="地図を指で動かしている間は、現在地を追いません。押すと地図を現在地へ戻し、再び現在地に合わせて動かします。"
+          usage={t("bottom.followAgainUsage")}
         >
           <LocateIcon />
-          現在地へ戻る
+          {t("followAgain")}
         </Button>
       )}
       {awayNotice && (
@@ -69,12 +71,12 @@ export default function RideBottom({ status, offRoute, onResume, profile, overvi
             "pointer-events-auto rounded-md px-2.5 py-1.5",
           )}
         >
-          ルートを外れています。ルートへ戻ると続きから案内します。
+          {t("bottom.offRouteNotice")}
         </p>
       )}
       {profile !== null && (
         <section
-          aria-label="予定ルートのプロファイル"
+          aria-label={t("bottom.profile")}
           className={cn(cardVariants({ variant: "float" }), "pointer-events-auto w-full rounded-md px-2 py-1.5")}
         >
           {profile}
