@@ -44,6 +44,24 @@ export function updateTuningParameter(paramId: string, value: number) {
   );
 }
 
+// ひな形
+
+/** ひな形の全体（並びは利用者の画面に出す順）。読むのも書くのも全体を1回で。 */
+export type RouteProfiles = Schemas["RouteProfiles-Output"];
+export type RouteProfile = RouteProfiles["profiles"][number];
+
+export function getRouteProfiles() {
+  return requestApi((init) => adminApiClient.GET("/route-profiles", init), adminOptions("ひな形の取得"));
+}
+
+/** 全体を入れ替える。今の費用の軸・道の段の行に無い名を指すと、backendが名指して断る。 */
+export function replaceRouteProfiles(body: RouteProfiles) {
+  return requestApi(
+    (init) => adminApiClient.PUT("/route-profiles", { body, ...init }),
+    adminOptions("ひな形の保存", { body }),
+  );
+}
+
 // ログ
 
 type LogsQuery = NonNullable<paths["/api/admin/debug/logs"]["get"]["parameters"]["query"]>;

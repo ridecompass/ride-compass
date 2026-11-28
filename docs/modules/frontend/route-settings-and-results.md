@@ -25,6 +25,8 @@
 | `hooks/useCloseOnBack.ts` | 開いている間、履歴に印を付けた項目を URL を変えずに1つ積み、ブラウザの「戻る」で閉じる。「戻る」以外で閉じたら積んだ項目を戻す（下記「住所・施設で探す」） |
 | `components/PinMark/PointMark.tsx` | 地点の一覧・探す小窓・道のりのグラフの経由地の印に出す、地図のピンと同じ図形の丸（`components/PinMark/PinMark.tsx`の中身に背景色を付けたもの。ルートの機能と地図の機能の両方が描くので共有の層に置く） |
 | `features/route/RouteForm/useRouteFormSubmit.ts` | 上記の検証（`{error, check}`。`features/route/RouteForm/useRouteFormSubmit.ts: check`は通ったかを返す）。「ルート生成」ボタン自体は`RouteForm`の外（`GenerateRouteActions.tsx`。見出し行）にあるため分離している（下記参照） |
+| `features/route/RouteProfilePicker/RouteProfilePicker.tsx` | 「難所」「道路」タブの頭の、運営が配るひな形（画面の設定の`route_profiles`）と「標準」の札。選ぶと負担と道の段をまとめて入れ替える。押した状態は、いまの設定と一致する札から導く（選んだひな形を別に覚えないので、タブで1つ変えるとどの札も押していない状態になる）。配るひな形が無ければ出さない |
+| `features/route/routeProfiles.ts` | ひな形が入れ替える設定の形と標準、2つの設定が今の軸と行の上で同じ選び方か（`features/route/routeProfiles.ts: sameProfileSettings`。書いていない軸・行は標準として比べる） |
 | `features/route/RouteSettingsPanel/RouteSettingsPanel.tsx` | 「難所」タブの中身: 一番上の「総合」で総合のつまみの段を、その下で費用の軸ごとに倍率の段か無効を選ぶ（下記参照）。無効の軸も行として残す（無効から戻す所） |
 | `features/route/costPreference.ts` | つまみと倍率の値の扱い: 段（値と名前）・説明の文・今の軸の一覧に無い軸を捨てる |
 | `hooks/useCostAxisCatalog.ts` | `GET /api/cost-axes`の取得。費用の軸（名前・説明・アイコン・地図のレンズ）を`hooks/useCostAxisCatalog.ts: useCostAxisCatalog`が返す（届くまで・失敗の間は軸0件。レンズの読み方は[地図: レンズ・ルート色分け](map-axis-coloring.md)）。軸ごとの色（`hooks/useCostAxisCatalog.ts: CostAxisCatalog.axisColors`）と、取れていないことの項目（`hooks/useCostAxisCatalog.ts: costAxisCatalogFetchFailure`。常設ヘッダーの印と要因タブの告知）もここが持つ |
@@ -105,7 +107,8 @@
   写しへは倒さない。管理APIで書いた定義が再デプロイなしに反映される。届くまでは読み込んでいることを1行で出す。
 - 軸ごとの行は「アイコン＋名前＋(i)説明・段の選び」の1行。軸の説明は画面へ書かず(i)の奥に置く（設計原則「冗長なものは削る」）。
   地図の色分け（レンズ）はこのパネルには無く、地図上の`LensControl`だけが持つ。
-- 「標準に戻す」で軸ごとの倍率を全部標準へ戻す（軸の行が標準の間は押せない。総合のつまみは変えない）。
+- 「標準に戻す」で軸ごとの倍率を全部標準へ戻す（軸の行が標準の間は押せない。総合のつまみは変えない）。ひな形の札の「標準」は
+  これと別で、総合のつまみと道路の段も含めて全部を標準へ戻す。
 - 取得に失敗したときの告知と再試行導線は、常設ヘッダーの「未取得」の印（[ページ全体構成](page-composition.md)「失敗・空・待ちの伝え方」）と、
   難所を触っている人へ向けたこのパネルの両方にある。
 - 向きを選ぶ操作はこのパネルには存在しない。風・勾配で周りの道を塗るときは、ルートの前は両向きのきつい向き、走行中は進む向きで塗る
