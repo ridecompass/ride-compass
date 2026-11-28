@@ -22,15 +22,6 @@ import { evaluateExpression } from "@/testing/mapExpressions";
 
 import { wayValueExpression, type WayValueFormula } from "./wayValueFormula";
 
-const INPUTS = {
-  featureStateKey: (name: string) => `axis:${name}`,
-  globalStateKey: (name: string) => `ride:${name}`,
-};
-
-function prefixed(values: Record<string, number>, prefix: string): Record<string, number> {
-  return Object.fromEntries(Object.entries(values).map(([name, value]) => [`${prefix}${name}`, value]));
-}
-
 describe("wayValueExpression", () => {
   const groups = wayValueExpectations.way_value_formula;
 
@@ -38,10 +29,10 @@ describe("wayValueExpression", () => {
     "%s: backend が出す表の全行で、backend と同じ値になる",
     (_scene, group) => {
       expect(group.rows.length).toBeGreaterThan(0);
-      const expressions = wayValueExpression(group.formula as WayValueFormula, INPUTS);
+      const expressions = wayValueExpression(group.formula as WayValueFormula);
       for (const row of group.rows) {
-        const state = prefixed(row.features as Record<string, number>, "axis:");
-        const globalState = prefixed(row.conditions as Record<string, number>, "ride:");
+        const state = row.features as Record<string, number>;
+        const globalState = row.conditions as Record<string, number>;
         const value = evaluateExpression(expressions, {}, state, globalState) as number;
         expect(Number.isNaN(value) ? null : value, JSON.stringify(row)).toBe(row.value);
       }
@@ -69,7 +60,7 @@ describe("wayValueExpression", () => {
     }
 
     function readsOf(value: unknown): number {
-      return readsIn(wayValueExpression({ value } as WayValueFormula, INPUTS));
+      return readsIn(wayValueExpression({ value } as WayValueFormula));
     }
 
     it.each([

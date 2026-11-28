@@ -79,13 +79,6 @@ for (const { name, steps, expected } of MAP_CONTRACT) {
               data: await (map.getSource(source) as import("maplibre-gl").GeoJSONSource).getData(),
             })),
           ),
-          ...(expected.globalState === undefined
-            ? {}
-            : {
-                globalState: Object.fromEntries(
-                  Object.keys(expected.globalState).map((name) => [name, map.getGlobalState()[name]]),
-                ),
-              }),
         };
         return result;
       },
