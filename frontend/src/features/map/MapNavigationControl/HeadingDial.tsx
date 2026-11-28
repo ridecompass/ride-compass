@@ -94,7 +94,7 @@ export default function HeadingDial({ bearing, heading, onBearingChange, onReset
           />
         </InfoPopover>
         <span className="tabular-nums">
-          <span className="text-[length:var(--font-size-md)] font-semibold text-[var(--color-accent)]">
+          <span className="text-[length:var(--font-size-md)] font-semibold text-[var(--color-accent-text)]">
             {heading.label}
           </span>{" "}
           <span className="text-[length:var(--font-size-sm)] text-[var(--color-muted)]">{heading.degrees}°</span>

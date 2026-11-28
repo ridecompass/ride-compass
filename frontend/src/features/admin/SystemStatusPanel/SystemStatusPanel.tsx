@@ -45,7 +45,7 @@ function VersionCard({
   return (
     <div className="flex flex-col gap-0.5 rounded-md border border-[var(--color-border)] bg-[var(--color-surface-2)] px-2 py-1.5">
       <span className={SECTION_HEADING_CLASS}>{title}</span>
-      {error && <span className="text-[var(--color-danger)]">取得失敗: {error}</span>}
+      {error && <span className="text-[var(--color-danger-text)]">取得失敗: {error}</span>}
       {version && (
         <>
           <span className="font-semibold [overflow-wrap:anywhere]">{version.commit ?? "(ローカル)"}</span>
@@ -115,7 +115,7 @@ export default function SystemStatusPanel({ open, onClose }: SystemStatusPanelPr
               {backend.msm.remaining_hours}時間
             </span>
             {!backend.msm.healthy && (
-              <span className="text-[var(--color-danger)]">配信が滞っています（バックエンドのWARNINGログを確認）</span>
+              <span className="text-[var(--color-danger-text)]">配信が滞っています（バックエンドのWARNINGログを確認）</span>
             )}
           </div>
         )}
@@ -144,9 +144,9 @@ export default function SystemStatusPanel({ open, onClose }: SystemStatusPanelPr
                     <TableRow
                       key={category}
                       data-level={s.errors > 0 ? "error" : undefined}
-                      className="data-[level=error]:text-[var(--color-danger)]"
+                      className="data-[level=error]:text-[var(--color-danger-text)]"
                     >
-                      <TableCell className="text-[var(--color-accent)] in-data-[level=error]:text-[var(--color-danger)]">
+                      <TableCell className="text-[var(--color-accent-text)] in-data-[level=error]:text-[var(--color-danger-text)]">
                         {category}
                       </TableCell>
                       <TableCell>{s.calls}</TableCell>

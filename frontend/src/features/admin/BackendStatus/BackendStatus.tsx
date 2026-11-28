@@ -18,7 +18,7 @@ export default function BackendStatus() {
   const statusClass = {
     checking: "text-[var(--color-muted-strong)]",
     ok: "text-[var(--color-muted)]",
-    ng: "font-semibold text-[var(--color-danger)]",
+    ng: "font-semibold text-[var(--color-danger-text)]",
   }[status];
 
   return <span className={cn("text-[length:var(--font-size-sm)]", statusClass)}>{label}</span>;

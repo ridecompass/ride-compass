@@ -10,7 +10,7 @@ const logLineVariants = cva(
         normal: "",
         warning:
           "border-[var(--color-warning-strong)] bg-[var(--color-warning-soft)] text-[var(--color-warning-strong)]",
-        error: "border-[var(--color-danger)] bg-[var(--color-danger-muted)] font-semibold text-[var(--color-danger)]",
+        error: "border-[var(--color-danger)] bg-[var(--color-danger-muted)] font-semibold text-[var(--color-danger-text)]",
       },
     },
     defaultVariants: { tone: "normal" },

@@ -22,7 +22,7 @@ interface SavedPlacesPanelProps {
   onRemove: (place: SavedPlace) => void;
 }
 
-// 「保存済み」タブの「地点」。保存した地点の一覧と、呼び出す・消すを置く（保存は地点を探す小窓・地点の行の☆で開く小窓のチップと、候補の☆）。行の「呼び出す」は
+// 「保存」タブの「地点」。保存した地点の一覧と、呼び出す・消すを置く（保存は地点を探す小窓・地点の行の☆で開く小窓のチップと、候補の☆）。行の「呼び出す」は
 // 「設定」の行と同じアイコンで、押すとどの役割に置くかを選ぶメニューを開く。
 export default function SavedPlacesPanel({ places, waypointsFull, loop, onRecall, onRemove }: SavedPlacesPanelProps) {
   // 「呼び出す」のメニューを開いている地点。

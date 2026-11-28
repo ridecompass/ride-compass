@@ -64,7 +64,7 @@ interface RoutePanelsProps {
   onSettingsTabChange: (tab: SettingsTab) => void;
   /** 「ルート設定」の中身。 */
   settingsBody: ReactNode;
-  /** 「条件」タブの中身の形（地点の行の数等）。変わったら、シートの高さを中身へ合わせ直す（タブの切り替えでは合わせ直さない）。 */
+  /** 「基本」タブの中身の形（地点の行の数等）。変わったら、シートの高さを中身へ合わせ直す（タブの切り替えでは合わせ直さない）。 */
   settingsShape: string;
   /** 「このルートで走る」を押した。無ければボタンを出さない（もう走っている間）。 */
   onRide?: (routeId: string) => void;
@@ -180,7 +180,7 @@ export function MobileRoutePanels(props: RoutePanelsProps) {
             key={sheet}
             variant="ghost"
             size="bare"
-            className="relative min-h-11 flex-1 touch-none flex-col gap-0.5 rounded-none border-0 text-[var(--foreground)] aria-expanded:bg-[var(--color-accent-bg)] aria-expanded:font-bold aria-expanded:text-[var(--color-accent-strong)]"
+            className="relative min-h-11 flex-1 touch-none flex-col gap-0.5 rounded-none border-0 text-[var(--foreground)] aria-expanded:bg-[var(--color-accent-bg)] aria-expanded:font-bold aria-expanded:text-[var(--color-accent-text)]"
             aria-expanded={panels.mobileSheet === sheet}
             aria-description={sheet === "routeOutcome" ? outcomeTabSignal?.label : undefined}
             usage={usage}

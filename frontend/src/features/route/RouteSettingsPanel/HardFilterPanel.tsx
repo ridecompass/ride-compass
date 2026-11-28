@@ -60,12 +60,12 @@ export default function HardFilterPanel({
         <Checkbox checked={roadTabMap.on} onCheckedChange={roadTabMap.onChange} aria-label="地図で見る" />
         地図で見る
       </label>
-      {/* 地図の色が段のどれかを、段の向きの名前と、行に出る段の名前（倍率）で読ませる。 */}
+      {/* 地図の色が段のどれかを、行と見出しに出る段の名前（倍率）だけで見せ、1行に収める。段の向きの名前は読み上げにだけ渡す。 */}
       <MarkLegend role="group" aria-label="段の凡例" className="pb-1">
         {levels.filter(isPainted).map(({ key, name, label, color }) => (
           <MarkLegendItem key={key}>
             <Dot tone="none" style={{ backgroundColor: color }} />
-            {name}
+            <span className="sr-only">{name}</span>
             <span className="tabular-nums">{label}</span>
           </MarkLegendItem>
         ))}

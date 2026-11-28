@@ -52,20 +52,20 @@ describe("スマホのシート", () => {
     await user.click(settingsTab());
     const settingsSheet = screen.getByRole("dialog", { name: "ルート設定" });
     // 出発地が仮の地点のまま押すと、窓も失敗の合図も出さず、別のタブを開いていても条件タブの出発地の行へ寄せ、置き方を言う。
-    await user.click(within(settingsSheet).getByRole("tab", { name: "走りにくさ" }));
+    await user.click(within(settingsSheet).getByRole("tab", { name: "難所" }));
     await user.click(within(settingsSheet).getByRole("button", { name: "ルート生成" }));
     expect(screen.queryByRole("dialog", { name: "ルートを作れませんでした" })).toBeNull();
     expect(outcomeTab).not.toHaveAccessibleDescription();
-    expect(within(settingsSheet).getByRole("tab", { name: "条件" })).toHaveAttribute("aria-selected", "true");
+    expect(within(settingsSheet).getByRole("tab", { name: "基本" })).toHaveAttribute("aria-selected", "true");
     const originRow = within(settingsSheet).getByRole("button", { name: "出発地 未設定" }).closest("li");
     expect(originRow).toHaveFocus();
     expect(originRow).toHaveAttribute("data-asked", "true");
     expect(originRow).toHaveTextContent("押して探すか、地図をタップ");
 
     expect(originMark().draggable).toBe(true);
-    await user.click(within(settingsSheet).getByRole("tab", { name: "走りにくさ" }));
+    await user.click(within(settingsSheet).getByRole("tab", { name: "難所" }));
     expect(originMark().draggable).toBe(false);
-    await user.click(within(settingsSheet).getByRole("tab", { name: "条件" }));
+    await user.click(within(settingsSheet).getByRole("tab", { name: "基本" }));
     // 出発地へフォーカスを移すのは押したときだけで、ほかの地点から出発地を選び直しただけでは移さない。
     // 小窓は閉じてから地図を押す（開いている間に地図を押すと、閉じるだけで置かない）。
     await user.click(within(settingsSheet).getByRole("button", { name: "＋ 経由地" }));

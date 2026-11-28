@@ -37,7 +37,7 @@ const listVariants = cva("flex", {
 });
 
 const triggerVariants = cva(
-  "flex cursor-pointer items-center whitespace-nowrap border-0 bg-transparent font-bold text-[length:var(--font-size-sm)] text-[var(--color-muted)] transition-colors data-[state=active]:text-[var(--color-accent-strong)] disabled:cursor-not-allowed disabled:text-[var(--color-border)]",
+  "flex cursor-pointer items-center whitespace-nowrap border-0 bg-transparent font-bold text-[length:var(--font-size-sm)] text-[var(--color-muted)] transition-colors data-[state=active]:text-[var(--color-accent-text)] disabled:cursor-not-allowed disabled:text-[var(--color-border)]",
   {
     variants: {
       variant: {

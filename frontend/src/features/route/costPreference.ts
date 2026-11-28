@@ -10,7 +10,7 @@ export interface CostLevel {
   color: string | null;
 }
 
-/** 全体のつまみの段。 */
+/** 総合のつまみの段。 */
 export const COST_STRENGTH_LEVELS: readonly CostLevel[] = routeGenerateConfig.cost_strength_levels;
 /** 軸ごとの倍率の段。 */
 export const COST_MULTIPLIER_LEVELS: readonly CostLevel[] = routeGenerateConfig.cost_multiplier_levels;
@@ -25,7 +25,7 @@ function levelLabel(levels: readonly CostLevel[], value: number): string {
 export function costPreferenceDescription(preference: CostPreference, catalog: CostAxisCatalog): string {
   const parts = [
     ...(preference.strength !== STANDARD_COST_FACTOR
-      ? [`全体 ${levelLabel(COST_STRENGTH_LEVELS, preference.strength)}`]
+      ? [`総合 ${levelLabel(COST_STRENGTH_LEVELS, preference.strength)}`]
       : []),
     ...(countsCosts(preference) ? catalog.axes : []).flatMap((axis) => {
       const setting = axisSettingOf(preference, axis.axisId);

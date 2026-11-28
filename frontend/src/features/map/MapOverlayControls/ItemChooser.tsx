@@ -32,7 +32,7 @@ export default function ItemChooser({
                 size="bare"
                 aria-pressed={listed}
                 aria-label={`${member.label}を一覧に並べる`}
-                className={listed ? "text-[var(--color-accent)]" : undefined}
+                className={listed ? "text-[var(--color-accent-text)]" : undefined}
                 onClick={() => onToggleListed(member)}
                 usage="目が開いた項目を一覧に並べ、閉じた項目は並べません。地図に出すかは一覧のチェックで選びます。"
               >

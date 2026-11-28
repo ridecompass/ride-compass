@@ -34,7 +34,7 @@ export function reorderedIndex(index: number, from: number, to: number): number 
   if (to <= index && index < from) return index + 1;
   return index;
 }
-// 「条件」タブの入力値。場所（目的地・経由地のピン）は持たない——行くたびに変わるうえ、
+// 「基本」タブの入力値。場所（目的地・経由地のピン）は持たない——行くたびに変わるうえ、
 // 古いピンが残っていると気づかないまま生成してしまう。
 const LOOP_STORAGE_KEY = "ridecompass:loop";
 const DISTANCE_TARGETED_STORAGE_KEY = "ridecompass:distance-targeted";

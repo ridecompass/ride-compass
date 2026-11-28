@@ -43,7 +43,7 @@ export default function SpliceDeltaBar({
 
   return (
     <div className="mt-0.5 flex items-center gap-1.5">
-      <span className="text-[length:var(--font-size-sm)] leading-none font-bold text-[var(--color-accent)]">−</span>
+      <span className="text-[length:var(--font-size-sm)] leading-none font-bold text-[var(--color-accent-text)]">−</span>
       <div
         className="flex h-3 min-w-0 flex-1 items-stretch"
         role="img"

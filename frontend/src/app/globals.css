@@ -46,6 +46,10 @@
   /* 情報のまとまりを示すカード背景 */
   --color-surface-2: #f3f4f2;
   --color-accent-strong: #1d4ed8;
+  /* 文字・アイコンに使う青と赤。地に塗る--color-accent・--color-dangerと分けるのは、ダークでは地は白い文字のために濃いまま、
+   * 文字・アイコンは暗い面の上で読めるよう明るい側へ振るため。 */
+  --color-accent-text: #1d4ed8;
+  --color-danger-text: #dc2626;
 
   /* 「表示」の一覧で、群（道路・環境・スポット）の見出しを見分ける色。ONのチェックの青（--color-accent）と
    * 別の意味で使うので、それと被らない色相にする。 */
@@ -109,7 +113,7 @@
     --color-surface: #2a2a2d;
     --color-surface-2: #1c1c1f;
     --color-accent-bg: #16233d;
-    --color-muted: #a1a1a6;
+    --color-muted: #a6a6ab;
     --color-muted-strong: #c7c7cc;
     /* ライトの#b45309は暗いサーフェス（--color-surface）上で、0.65rem級の小さい文字に要る
      * WCAG AAの4.5:1に届かないので、明るい側へ振る。 */
@@ -122,7 +126,9 @@
     --color-border: #3a3a3d;
     --color-border-strong: #505054;
     --color-border-muted: #38383b;
-    --color-neutral: #8e8e93;
+    --color-neutral: #98989d;
+    --color-accent-text: #60a5fa;
+    --color-danger-text: #f87171;
     --color-group-road: #2dd4bf;
     --color-group-environment: #fbbf24;
     --color-group-spot: #f472b6;

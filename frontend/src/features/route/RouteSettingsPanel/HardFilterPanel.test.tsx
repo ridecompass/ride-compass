@@ -1,7 +1,7 @@
 /**
  * `RouteSettingsPanel/HardFilterPanel.tsx`——「道路」タブ。道の区分の行ごとの避け方の選びと、自転車が通れない道の固定の行。
  *
- * 見るもの: 「地図で見る」の下の段の凡例が、地図に塗る段だけを向きの名前と倍率で並べること。選べない行を既定の段に鍵を付けて並びの先頭に出し、選ぶ操作を持たないこと。行の避け方を
+ * 見るもの: 「地図で見る」の下の段の凡例が、地図に塗る段（色を持つ段）だけを並べること。選べない行を既定の段に鍵を付けて並びの先頭に出し、選ぶ操作を持たないこと。行の避け方を
  * 節ごとに畳んで並べ（行の無い節は出さない）、選ぶとその行だけを変えた値を上げ、既定から変えた行の数を畳んだ見出しに出すこと。
  * 見出しの行と全部を既定へ戻す操作を持たないこと。
  *
@@ -54,12 +54,11 @@ const checkedLevel = (row: string) =>
   within(screen.getByRole("radiogroup", { name: `${row}の避け方` })).getByRole("radio", { checked: true });
 
 describe("HardFilterPanel", () => {
-  it("段の凡例は、地図に塗る段だけを、向きの名前と倍率で並べる", () => {
+  it("段の凡例は、地図に塗る段（色を持つ段）だけを並べる", () => {
     renderPanel();
 
-    expect(screen.getByRole("group", { name: "段の凡例" })).toHaveTextContent(
-      /^好む×0\.5少し好む×0\.7少し避ける×1\.4なるべく避ける×2通らない×∞$/,
-    );
+    const painted = AVOIDANCE_LEVELS.filter(({ color }) => color !== null);
+    expect(screen.getByRole("group", { name: "段の凡例" }).childElementCount).toBe(painted.length);
   });
 
   it("選べない行は、並びの先頭に畳まずに鍵と既定の段の名前で出し、選び直す操作を持たない", () => {

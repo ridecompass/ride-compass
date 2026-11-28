@@ -7,7 +7,7 @@ export const calloutVariants = cva("rounded-sm p-2 text-[length:var(--font-size-
     tone: {
       neutral: "bg-[var(--color-surface-2)] text-[var(--color-muted)]",
       warning: "border border-[var(--color-warning)] text-[var(--color-warning-strong)]",
-      danger: "bg-[var(--color-danger-muted)] text-[var(--color-danger)]",
+      danger: "bg-[var(--color-danger-muted)] text-[var(--color-danger-text)]",
     },
   },
   defaultVariants: { tone: "neutral" },

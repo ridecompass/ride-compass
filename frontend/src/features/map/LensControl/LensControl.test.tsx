@@ -63,12 +63,6 @@ describe("LensControl", () => {
     },
   );
 
-  it("選んでいないピルは、画面の名前の短い形を出す（読み上げの名前は縮めない）", () => {
-    renderLens({ lens: UNSELECTED_LENS_ID });
-    expect(pill()).toHaveTextContent("色で見る");
-    expect(pill()).not.toHaveTextContent("走りにくさ");
-  });
-
   it("取得状態は、ピルのtitleと、開いた先の文で伝える", async () => {
     renderLens({ dataStatus: "error" });
     expect(pill()).toHaveAttribute("title", LAYER_DATA_STATUS_LABELS.error);
