@@ -64,6 +64,5 @@ export function costLensOptions(lenses: readonly MapLens[]): LensOption[] {
     color: LENS_NEUTRAL_COLOR,
     description: lens.description,
     iconId: lens.iconId,
-    conditions: lens.conditions,
   }));
 }
