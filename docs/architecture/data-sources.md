@@ -112,7 +112,7 @@ git grep -h -o -E "https?://[a-zA-Z0-9.-]+" -- backend/app backend/scripts front
 
 版ごとに人が見るもの:
 
-1. [各種情報の提供](https://www.jartic.or.jp/service/opendata/)の利用規約と、拡張版標準フォーマットの説明書の版を読み、
+1. [各種情報の提供](https://www.jartic.or.jp/service/opendata/)の利用規約と、拡張版標準フォーマットの説明書（版 k_2.1 は `https://www.jartic.or.jp/d/opendata/typeD_kisei_73_k_2.1.pdf`。一方通行の向きは「線規制(2)：一方通行」）の版を読み、
    出典の求めが変わっていれば`ALWAYS_SHOWN_ATTRIBUTIONS`の行を合わせ（生成物`mapDisplay.ts`を作り直す）、列や共通規制種別コードが
    変わっていればアダプタと`rows.kinds`を合わせる。
 
