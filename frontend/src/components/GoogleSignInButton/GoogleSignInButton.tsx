@@ -10,7 +10,13 @@ interface GoogleAccountsId {
   initialize(config: { client_id: string; callback: (response: { credential: string }) => void }): void;
   renderButton(
     parent: HTMLElement,
-    options: { type: "standard"; theme: "outline" | "filled_black"; size: "large"; text: "signin_with"; locale: string },
+    options: {
+      type: "standard";
+      theme: "outline" | "filled_black";
+      size: "large";
+      text: "signin_with";
+      locale: string;
+    },
   ): void;
 }
 

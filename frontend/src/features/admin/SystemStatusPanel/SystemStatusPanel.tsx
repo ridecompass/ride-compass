@@ -115,7 +115,9 @@ export default function SystemStatusPanel({ open, onClose }: SystemStatusPanelPr
               {backend.msm.remaining_hours}時間
             </span>
             {!backend.msm.healthy && (
-              <span className="text-[var(--color-danger-text)]">配信が滞っています（バックエンドのWARNINGログを確認）</span>
+              <span className="text-[var(--color-danger-text)]">
+                配信が滞っています（バックエンドのWARNINGログを確認）
+              </span>
             )}
           </div>
         )}
