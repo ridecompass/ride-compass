@@ -3,7 +3,7 @@
 入れ（タイルを焼く取込範囲と、道の名前の元）、本物のSQLを流す。
 
 確かめるのは、路面タイルが渡したフィーチャーを道ごとの鍵と地図の線の層の値で焼くこと（道ごとの鍵を持つズームと、値の同じ道を
-つなぐ引いたズーム）と、道の名前を道の番号で引くこと。
+つなぐ引いたズーム）と、地図のレンズのタイルが同じ焼き方で道ごとの材料を数で載せることと、道の名前を道の番号で引くこと。
 
 ここで見ないもの:
 - どのフィーチャーを焼くか・押した所に近い道 → `test_map_features.py`
@@ -17,7 +17,7 @@ import pytest
 import shapely
 
 from app.domain.region import ROAD_TILE_MIN_ZOOM, tile_bounds_lonlat, tile_position
-from app.infrastructure.vector_tile import ROAD_SURFACE_LAYER_NAME
+from app.infrastructure.vector_tile import LENS_LAYER_NAME, ROAD_SURFACE_LAYER_NAME
 from tests.source_ingest import WAY_ORIGIN, WAY_STEP, ingest_records, parallel_way_record
 
 pytestmark = pytest.mark.asyncio(loop_scope="module")
@@ -39,11 +39,12 @@ async def _ingest_two_ways() -> None:
     await ingest_records("osm_way", [parallel_way_record(1, {"name": "一番通り"}), parallel_way_record(2)])
 
 
-async def _tile(road_graph_repository, z: int, layer_values: dict[str, dict[str, str]]) -> list[dict]:
+async def _tile(road_graph_repository, z: int, layer_values: dict[str, dict[str, str | float]],
+                layer_name: str = ROAD_SURFACE_LAYER_NAME) -> list[dict]:
     x, y = (int(v) for v in tile_position(LON, LAT, z))
-    tile = await road_graph_repository.get_road_surface_tile_mvt(
-        z, x, y, tile_bounds_lonlat(z, x, y), ["1", "2"], [_line(1), _line(2)], layer_values)
-    return [feature["properties"] for feature in mapbox_vector_tile.decode(tile)[ROAD_SURFACE_LAYER_NAME]["features"]]
+    tile = await road_graph_repository.get_road_feature_tile_mvt(
+        layer_name, z, x, y, tile_bounds_lonlat(z, x, y), ["1", "2"], [_line(1), _line(2)], layer_values)
+    return [feature["properties"] for feature in mapbox_vector_tile.decode(tile)[layer_name]["features"]]
 
 
 async def test_the_tile_has_each_roads_layer_values_and_its_key(road_graph_repository):
@@ -54,6 +55,18 @@ async def test_the_tile_has_each_roads_layer_values_and_its_key(road_graph_repos
 
     assert sorted(tile, key=lambda properties: properties["feature_key"]) == [
         {"feature_key": "1", "layer_a": "class_a", "layer_b": "-"},
+        {"feature_key": "2"},
+    ]
+
+
+async def test_the_lens_tile_carries_each_roads_materials_as_numbers(road_graph_repository):
+    """地図のレンズは、タイルの材料を地図の式で数として読む（文字で載ると、どの道も値の無い道になる）。材料の無い道は鍵だけを持つ。"""
+    await _ingest_two_ways()
+
+    tile = await _tile(road_graph_repository, Z, {"1": {"lens_along": 12.3, "road_bearing_deg": 90.0}}, LENS_LAYER_NAME)
+
+    assert sorted(tile, key=lambda properties: properties["feature_key"]) == [
+        {"feature_key": "1", "lens_along": pytest.approx(12.3), "road_bearing_deg": pytest.approx(90.0)},
         {"feature_key": "2"},
     ]
 

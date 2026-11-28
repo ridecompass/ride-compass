@@ -108,8 +108,7 @@ HTTPステータスが`message`に入るのは、応答に`detail`が無い（JS
 - **キーをまたいで前の値を使う取得は、refを持たずキャッシュから引く**。`useQuery`の`placeholderData: keepPreviousData`は
   1つの観測者の前のキーの値を渡すが、`useQueries`は観測者をキーで対応付けるため、キーが変わった観測者に前の値を
   渡さない（`query-core/src/queriesObserver.ts: #findMatchingObservers`）。件数が実行時に変わる取得で取り直しの間に
-  前の値を残すものは、`placeholderData`の関数で、同じ要素を前の入力で取った答えをキャッシュから引く
-  （`features/map/tileQueries.ts: tileQueryOptions`）。
+  前の値を残すものは、`placeholderData`の関数で、同じ要素を前の入力で取った答えをキャッシュから引く。
 - テストでは、取得の結果は区切り（`setTimeout(0)`、`query-core/src/notifyManager.ts`）ごとに購読者へ届く。応答を
   返した直後に同期で確かめず、`waitFor`か区切りを待つ（偽の時計で`setTimeout`まで止めると届かない）。
 - 取得の関数の中身（通信・ログ・文言）は`apiClient.ts`・`services/*Api.ts`のまま。キャッシュは呼び出し口の
@@ -164,8 +163,8 @@ backendも日本時間で扱う。`domain/time_zone.py`）。暦と時刻の取�
    原因の詳細（`detail`）は印の使い方の文に入れて長押しのツールチップ（下記「長押しのツールチップ」）で出す。
 4. **原因の粒度は、利用者の次の行動が変わる単位まで。** 混雑（429）と通信エラーはどちらも
    「待って再試行」だが、backendの`detail`と`[通信エラー]`で区別されて届くため、`Error`を
-   そのまま出す経路ではそのまま見せる。**地図タイル（MapLibreの`error`イベント）とレンズ
-   （`features/map/regionApi.ts: fetchLensMaterials`）は原因を落とし、汎用の「取得に失敗しました。
+   そのまま出す経路ではそのまま見せる。**地図タイル（MapLibreの`error`イベント。レンズのタイルも含む）は
+   原因を落とし、汎用の「取得に失敗しました。
    しばらくしてから再読み込みしてください」に揃える**。タイルの`error`イベントが運ぶ
    MapLibreの`AJAXError`はHTTPステータスを持つが本文（`detail`）は`Blob`で同期的に読めない。
    どちらの経路も原因に関わらず利用者の行動（待つ）は同じで、状態は次の取得サイクルで
@@ -346,9 +345,9 @@ backendも日本時間で扱う。`domain/time_zone.py`）。暦と時刻の取�
 
   レンズの線の共通経路（レンズごとの分岐を持たない）:
     塗っているレンズ = lens（ルート確定後は、表示する範囲が地図全体の間だけ。それ以外は無し）
-    useWayMaterials([塗っているレンズ], 表示範囲, 出発時刻と走る条件, つまみと倍率)
-      （useMapViewの中。走る条件は、レンズの materialConditions にある名前だけがそのレンズの材料の要求に載る）
-    走る条件 {bearing_deg: 走行方位, speed_kmh: 想定速度} → レンズの線が道の値を求める（要求に載せない条件は、変えても材料を取り直さない）
+    useLensTileUrl(塗っているレンズ, 出発時刻と想定速度, つまみと倍率)
+      （useMapViewの中。走る条件は、レンズの materialConditions にある名前だけがそのレンズのタイルの要求に載る）
+    走る条件 {bearing_deg: 走行方位, speed_kmh: 想定速度} → レンズの線の式へ埋め込む（要求に載せない条件は、変えてもタイルを取り直さない）
     レンズの層を出すか = 周りを出す間で、レンズid === lens（地図側のsceneが導く）
 ```
 
@@ -384,8 +383,8 @@ MapLibreが自分の部品（出典の開閉、ポップアップの閉じる、
 既定が英語のため、地図を作るときの`locale`でこの地図が使う部品の分を日本語へ上書きする（`features/map/baseMap.ts: MAP_UI_LOCALE`）。
 MapLibreの部品を新しく足すときは、その部品の文言のキー（`maplibre-gl/src/ui/default_locale.ts`）も足す。
 
-**暗黙の前提**: 道ごとの材料と取得中かは、レンズid→取得結果の1つの`Map`として
-見え方の値（`features/map/scene/sceneInputs.ts: SceneLook.wayMaterials`）に載る（design-principles.md構造仕様3「軸ごとに
+**暗黙の前提**: レンズの数に依らず、見え方の値は塗っているレンズのタイルのURL1つ
+（`features/map/scene/sceneInputs.ts: SceneLook.lensTileUrl`）を持つ（design-principles.md構造仕様3「軸ごとに
 propを新設しない」）。塗る段（種類・単位・しきい値・段階ラベル）はレンズそのもの（`lib/mapDisplay/mapLens.ts: MapLens.display`）が持ち、
 別の値では渡さない——レンズと塗る段を別々に配ると、片方にだけ在るレンズが生まれ、それを既定値で埋める経路が要る。
 地図は費用の軸の一覧を共有の取得から自分で読むため、費用の軸が増えてもどの受け口も変わらない。

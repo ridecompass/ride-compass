@@ -83,6 +83,7 @@ type LayerDeclaration = Pick<ChipLayerDescriptor, "dataSource" | "category" | "d
  * 地図の組み立てが情報源を引くためのidと源泉の宣言だけを持つ。 */
 interface LensLayerDescriptor extends LayerDeclaration {
   id: MapLayerId;
+  lensId: string;
   lensLayer: true;
 }
 
@@ -156,6 +157,7 @@ export function buildMapLayers({
     // レンズは費用の軸の一覧から作る。チップには出ないが、地図の組み立てが情報源をここから引く（無いと描く時点で落ちる）。
     ...lenses.map((lens): LensLayerDescriptor => ({
       id: lensMapLayerId(lens.lensId),
+      lensId: lens.lensId,
       ...declaredLayer(mapDisplay.axisLayers.dedicated),
       lensLayer: true,
     })),
@@ -178,14 +180,13 @@ export function tileZoomTooWideLayerIds(layers: readonly MapLayerDescriptor[], z
 }
 
 // レイヤーごとの取得の状態。正常なときはキー自体を持たない。
-export type LayerDataStatus = "loading" | "empty" | "error" | "partial";
+export type LayerDataStatus = "loading" | "empty" | "error";
 export type LayerDataStatusByLayer = Partial<Record<MapLayerId, LayerDataStatus>>;
 
 export const LAYER_DATA_STATUS_LABELS: Record<LayerDataStatus, string> = {
   loading: "読み込み中です",
   empty: "この範囲に表示できるデータがありません",
   error: "データの取得に失敗しました。しばらくしてから再読み込みしてください",
-  partial: "画面の端の道は、拡大すると色が付きます",
 };
 
 /** 開いたパネルへ文として出す状態。待ちは絞り込み・ON/OFFの取り直しのたびに一瞬出ては消え、パネルの中身を
@@ -194,24 +195,21 @@ export function layerDataStatusNotice(status: LayerDataStatus | undefined): stri
   return status && status !== "loading" ? LAYER_DATA_STATUS_LABELS[status] : null;
 }
 
-/** 自前で取るレイヤーの取得の状態（失敗 > 読み込み中 > 画面の一部だけ取った > 取れたが値なし）。まだ一度も取れていない間を
- * 「値なし」にしない（有効にした直後や、取得がそもそも走っていない状態が「データが無い」と読めてしまう）。一部だけ取った間も
- * 「値なし」にしない（取らなかった所に値があるかは分からない）。 */
+/** 自前で取るレイヤーの取得の状態（失敗 > 読み込み中 > 取れたが値なし）。まだ一度も取れていない間を「値なし」にしない
+ * （有効にした直後や、取得がそもそも走っていない状態が「データが無い」と読めてしまう）。 */
 export function deriveFetchLayerStatus(
   loading: boolean,
   error: string | null,
   hasPayload: boolean,
   hasFetched: boolean,
-  truncated = false,
 ): LayerDataStatus | undefined {
   if (error) return "error";
   if (loading) return "loading";
   if (!hasFetched) return undefined;
-  if (truncated) return "partial";
   if (!hasPayload) return "empty";
   return undefined;
 }
 
-function lensMapLayerId(lensId: string): MapLayerId {
+export function lensMapLayerId(lensId: string): MapLayerId {
   return `${lensId}Lens`;
 }

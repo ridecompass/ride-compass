@@ -1,5 +1,3 @@
-from datetime import datetime
-
 import numpy as np
 
 from app.domain.msm import wind_speed_and_direction
@@ -17,7 +15,7 @@ from app.domain.msm_grid import (
 from app.domain.route import Coordinates
 from app.domain.region import BoundingBox
 from app.domain.weather import GridPointToday, grid_point_today
-from app.domain.wind import WeatherForecastSeries
+from app.domain.wind import ForecastTimes, WeatherForecastSeries
 from app.infrastructure import msm_client
 from app.infrastructure.msm_client import MsmUnavailableError
 
@@ -29,11 +27,11 @@ class WeatherService:
         """置き場の予報の版（同期が予報を入れ替えると変わる）。"""
         return msm_client.forecast_version()
 
-    async def get_forecast_times(self, version: str) -> list[datetime] | None:
-        """予報の版が`version`のままの間に読んだ、今の正時から読める予報の時刻（系列の時刻の形）。読む間に同期が予報を入れ替えたら
-        None（版と時刻の並びが別の予報になる）。読めなければ投げる。"""
-        times = await msm_client.forecast_times()
-        return times if msm_client.forecast_version() == version else None
+    async def get_forecast_times(self, version: str) -> ForecastTimes | None:
+        """予報の版が`version`のままの間に読んだ、今の正時から読める予報の時刻（系列の時刻の形）と最新のrunの予報の終わり。
+        読む間に同期が予報を入れ替えたらNone（版と時刻の並びが別の予報になる）。読めなければ投げる。"""
+        forecast = await msm_client.forecast_times()
+        return forecast if msm_client.forecast_version() == version else None
 
     async def get_grid_point_today(self, point: Coordinates) -> GridPointToday:
         """`point`に最も近いMSMの格子点の、今日の1時間ごとの値（格子点の値のまま）。読めなければ投げる。"""

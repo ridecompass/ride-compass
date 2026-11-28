@@ -10,7 +10,7 @@ import { useMemo, useState, type ComponentProps } from "react";
 
 import type LensControl from "@/features/map/LensControl/LensControl";
 import {
-  deriveFetchLayerStatus,
+  lensMapLayerId,
   ROAD_LINE_MIN_ZOOM,
   TILE_ZOOM_TOO_WIDE_NOTICE,
   THIN_ROADS_OMITTED_NOTICE,
@@ -27,7 +27,7 @@ import { useClientConfig } from "@/hooks/useClientConfig";
 import { useCostAxisCatalog } from "@/hooks/useCostAxisCatalog";
 import { costLensOptions } from "@/features/map/costLens";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
-import { useWayMaterials } from "@/features/map/useWayMaterials";
+import { useLensTileUrl } from "@/features/map/lensTiles";
 import { useDynamicWeatherLayers } from "@/features/map/useDynamicWeatherLayers";
 import { windPreviousRunNotice } from "@/lib/previousRun";
 import { useStoredState } from "@/hooks/useStoredState";
@@ -176,8 +176,8 @@ export function useMapView({
   // ルートを選んでいる間は、地図全体に出す設定のときだけ道に付く層（周りの道の塗り・点の層）を地図全体に出す。
   const surroundingsShown = !hasDetail || keepSurroundings;
   const painted = surroundingsShown ? lens : null;
-  // 道ごとの材料は、全道路を塗っているレンズの分だけ取る（塗っていないレンズの値は地図に出ない。表示中のものだけ叩く）。
-  const fetchLenses = useMemo(() => lenses.filter((candidate) => candidate.lensId === painted), [lenses, painted]);
+  // タイルは、全道路を塗っているレンズの分だけ取る（塗っていないレンズの値は地図に出ない）。
+  const paintedLens = lenses.find((candidate) => candidate.lensId === painted);
   // 走る向きは走行中の進む向きだけ。ルートの前はどちら向きに走るか決まらないので渡さない（式の木はどの道も両向きのきつい方で
   // 塗る）。向きを段に丸めるのは、走行中の細かな向きの揺れのたびに式の木を解き直さないため。式の木と道の窓は同じ丸めた向きで
   // 値を求める。
@@ -188,7 +188,7 @@ export function useMapView({
     () => ({ bearingDeg, lensFrame: frames.lens, speedKmh, paintedLensId: painted }),
     [bearingDeg, frames.lens, speedKmh, painted],
   );
-  const wayMaterials = useWayMaterials(fetchLenses, viewport, wayConditions, costPreference, totalLens?.axisId ?? null);
+  const lensTileUrl = useLensTileUrl(paintedLens, wayConditions, costPreference, totalLens?.axisId ?? null);
   const [roadTabOnMap, setRoadTabOnMap] = useStoredState("ridecompass:road-tab-on-map", "道路タブを地図で見るか", true);
   // 道路タブを出していて「地図で見る」がONの間だけ、段を地図の道に塗る。段の値は出し入れで作り直さない。
   const roadAvoidanceShown = roadTabShown && roadTabOnMap;
@@ -229,7 +229,7 @@ export function useMapView({
       surroundingsShown,
       roadAvoidance: avoidanceChoice,
       roadAvoidanceShown,
-      wayMaterials,
+      lensTileUrl,
       wayConditions: formulaConditions,
       roadSurfaceFrame: frames.roadSurface,
       hiddenLegendKeys: debouncedHidden,
@@ -247,7 +247,7 @@ export function useMapView({
       surroundingsShown,
       avoidanceChoice,
       roadAvoidanceShown,
-      wayMaterials,
+      lensTileUrl,
       formulaConditions,
       frames.roadSurface,
       debouncedHidden,
@@ -257,7 +257,6 @@ export function useMapView({
   );
 
   const legend = totalCounted ? lensLegend(lens, hasDetail, mapCatalog) : [];
-  const lensFetch = wayMaterials.get(lens);
   const chips = overlayChips({
     layers: mapCatalog.layers,
     roadLayers: mapCatalog.roadLayers,
@@ -297,7 +296,7 @@ export function useMapView({
             (costPreference.multipliers[painted] ?? STANDARD_COST_FACTOR) !== STANDARD_COST_FACTOR)
             ? "凡例の事実は標準の割合での値です。いまは「難所」タブで割合を変えているので、色はその割合で塗っています。"
             : null,
-          windPreviousRunNotice(lensFetch?.windPreviousRunFrom),
+          windPreviousRunNotice(paintedLens?.materialConditions.includes("at") ? frames.lensWindPreviousRunFrom : null),
         ]
           .filter((line) => line !== null)
           .join(" ") || null,
@@ -308,14 +307,13 @@ export function useMapView({
         : totalCounted
           ? null
           : `「難所」タブの総合か全部の要因が${DISABLED_LABEL}のため、塗れる難所はありません。`,
-      dataStatus: lensFetch
-        ? deriveFetchLayerStatus(
-            lensFetch.loading,
-            lensFetch.error,
-            [...lensFetch.materials.values()].some((leaves) => Object.keys(leaves).length > 0),
-            lensFetch.hasFetched,
-            lensFetch.truncated,
-          )
+      // タイルを取れない（出発時刻の風のコマが無い）間は失敗、コマの一覧を待つ間は読み込み中、それ以外は地図のソースの状態。
+      dataStatus: paintedLens
+        ? lensTileUrl === null
+          ? "error"
+          : lensTileUrl === undefined
+            ? "loading"
+            : mapLayerStatus[lensMapLayerId(paintedLens.lensId)]
         : undefined,
     },
     overlayControls: {

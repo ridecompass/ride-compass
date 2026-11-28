@@ -8,8 +8,8 @@
  * - タイルのオリジンの決め方 → `lib/tileBaseUrl.test.ts`
  * - パスの`{名前}`の埋め方 → `lib/apiPath.ts`を通る全URLが同じで、ここでは結果のURLだけを見る
  * - 失敗の文言の組み立て・通信の失敗の包み直し → `lib/apiClient.test.ts`
- * - 道の窓の値・道ごとの材料を画面へ出すこと → `features/map/MapView/RoadInspectorPopup.test.tsx`・
- *   `features/map/useWayMaterials.test.ts`
+ * - 道の窓の値を画面へ出すこと → `features/map/MapView/RoadInspectorPopup.test.tsx`
+ * - レンズのタイルのURLへ条件を載せること → `features/map/lensTiles.test.ts`
  */
 import { describe, expect, it, vi } from "vitest";
 
@@ -91,27 +91,5 @@ describe("押した道の内訳（fetchAxisInspector）", () => {
     );
 
     expect(sent.map(({ body }) => body)).toEqual([expect.objectContaining({ lens_id: "ascent", wind: false })]);
-  });
-});
-
-describe("地図が塗るレンズの道ごとの材料（fetchLensMaterials）", () => {
-  it("レンズとタイルをパスへ、走る条件を問い合わせへ載せ、道ごとの材料を返す", async () => {
-    const sent = onBackend("GET", "/api/region/lens/:lensId/:z/:x/:y", () =>
-      Response.json({ materials: { "101": { lens_along: 3.5 } }, wind_previous_run_from: null }),
-    );
-
-    const result = await api.fetchLensMaterials("ascent", 15, 29100, 12900, {
-      frame: "v1-2026100109",
-      speed_kmh: 25,
-    });
-
-    expect(result).toEqual({ materials: { "101": { lens_along: 3.5 } }, wind_previous_run_from: null });
-    expect(sent.map(({ method, path, query }) => ({ method, path, query }))).toEqual([
-      {
-        method: "GET",
-        path: "/api/region/lens/ascent/15/29100/12900",
-        query: { frame: "v1-2026100109", speed_kmh: "25" },
-      },
-    ]);
   });
 });

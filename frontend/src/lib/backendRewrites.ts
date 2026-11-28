@@ -13,6 +13,7 @@ interface Rewrite {
 const TILE_PATHS = [
   "/api/region/road-surface-tiles",
   "/api/region/point-tiles",
+  "/api/region/lens-tiles",
   "/api/region/landcover-tiles",
   "/api/jma-tile",
 ] as const;

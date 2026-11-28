@@ -22,6 +22,7 @@ from app.domain.cost_preference import CostPreference
 from app.domain.model_settings import current_model_settings
 from app.domain.road_avoidance import AvoidanceLevel
 from app.domain.road_network import RoadNetwork
+from app.domain.wind import ForecastTimes
 from app.domain.route import Coordinates, EvaluatedRoute, PenaltyBreakdown, RouteFacts
 from app.domain.route_request import FixedPoints, RequestedConditions
 from app.domain.time_zone import JST
@@ -165,7 +166,7 @@ class Weather:
         return self.version
 
     async def get_forecast_times(self, version):
-        return list(self._series.times)
+        return ForecastTimes(times=list(self._series.times), latest_run_end=self._series.latest_run_end)
 
 
 #: 置くたびに進める道路網の世代。置き場は世代で見分けるので、中身を変えて置くたびに世代を変える。

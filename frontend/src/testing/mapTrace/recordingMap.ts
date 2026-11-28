@@ -28,7 +28,6 @@ export interface RecordingMap {
   sources(): string[];
   /** `addSource` に渡された宣言。 */
   sourceSpec(sourceId: string): unknown;
-  featureState(sourceId: string, featureId: string): Record<string, unknown> | undefined;
   /** ソースの今の中身（作ったときの宣言の `data`・`tiles` か、そのあと `setData`・`setTiles` で流し込んだもの）。 */
   sourceContent(sourceId: string): { data?: unknown; tiles?: readonly string[] } | undefined;
   /** スタイルを差し替えたときの状態（このアプリが足したものが消える）。 */
@@ -76,16 +75,12 @@ export function createRecordingMap(options: { basemapLayerIds?: readonly string[
     }
   >();
   const content = new Map<string, { data?: unknown; tiles?: readonly string[] }>();
-  let featureStates = new Map<string, Record<string, unknown>>();
   let styleLoading = false;
 
   const record = (call: string, ...args: unknown[]) => {
     trace.push({ call, args });
   };
   const indexOf = (id: string) => layers.findIndex((layer) => layer.id === id);
-  // MapLibreは、ベクタのソースの地物の状態を source-layer の名指し無しでは扱わず、エラーの出来事にする。
-  const refusesFeatureState = (target: { source: string; sourceLayer?: string }) =>
-    (sources.get(target.source) as { type?: unknown } | undefined)?.type === "vector" && !target.sourceLayer;
   // MapLibreは、塗り・配置・絞り込みに null を渡すと、その指定を外して既定へ戻す（読み返すと undefined）。
   const assignOrDelete = (record: Record<string, unknown>, name: string, value: unknown) => {
     if (value === null || value === undefined) delete record[name];
@@ -205,25 +200,6 @@ export function createRecordingMap(options: { basemapLayerIds?: readonly string[
       if (filter === null || filter === undefined) delete layer.filter;
       else layer.filter = filter;
     },
-    setFeatureState: (target: { source: string; sourceLayer?: string; id: string }, state: Record<string, unknown>) => {
-      record("setFeatureState", target.source, target.id, state);
-      if (refusesFeatureState(target)) return;
-      const key = `${target.source}:${target.id}`;
-      featureStates.set(key, { ...(featureStates.get(key) ?? {}), ...state });
-    },
-    removeFeatureState: (target: { source: string; sourceLayer?: string; id?: string }, key?: string) => {
-      record("removeFeatureState", target.source, target.id ?? null, key ?? null);
-      if (refusesFeatureState(target)) return;
-      if (target.id === undefined) {
-        // ソース単位のクリア（MapLibreは全キー・全地物を落とす）。
-        for (const stateKey of [...featureStates.keys()]) {
-          if (stateKey.startsWith(`${target.source}:`)) featureStates.delete(stateKey);
-        }
-        return;
-      }
-      const entry = featureStates.get(`${target.source}:${target.id}`);
-      if (entry && key) delete entry[key];
-    },
   };
 
   const handle: RecordingMap = {
@@ -232,14 +208,12 @@ export function createRecordingMap(options: { basemapLayerIds?: readonly string[
     layer: (id: string) => layers[indexOf(id)],
     sources: () => [...sources.keys()],
     sourceSpec: (sourceId) => sources.get(sourceId),
-    featureState: (sourceId, featureId) => featureStates.get(`${sourceId}:${featureId}`),
     sourceContent: (sourceId) => content.get(sourceId),
     dropEverything: () => {
       layers = [];
       sources = new Map();
       sourceHandles = new Map();
       content.clear();
-      featureStates = new Map();
     },
     loadStyle: (next) => {
       styleLoading = next === undefined;

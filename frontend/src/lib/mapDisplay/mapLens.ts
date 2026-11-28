@@ -17,7 +17,7 @@ export interface MapLens {
   iconId: string;
   /** 値が変わる走る条件（材料の要求に載せる条件と、式の木が読む条件）。 */
   conditions: readonly WayValueCondition[];
-  /** `conditions`のうち、道ごとの材料の要求（`/api/region/lens/{lens_id}/...`）へ載せるもの。ほかは式の木が読む。 */
+  /** `conditions`のうち、レンズのタイルの要求（`/api/region/lens-tiles/{lens_id}/...`）へ載せるもの。ほかは式の木が読む。 */
   materialConditions: readonly WayValueCondition[];
   /** 地図に塗る段。 */
   display: MapPaintDeclaration;

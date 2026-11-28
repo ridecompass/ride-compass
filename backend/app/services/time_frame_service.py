@@ -5,6 +5,7 @@
 """
 
 import asyncio
+from dataclasses import dataclass
 from datetime import datetime
 
 from cachetools import LRUCache
@@ -14,7 +15,7 @@ from app.domain.strict_model import StrictModel
 from app.domain.time_frames import TimeFrame, frame_range, frame_start
 from app.domain.time_zone import JST
 from app.domain.timed_regulations import regulation_frames
-from app.domain.wind import wind_frames
+from app.domain.wind import LensTimeFrame, wind_frames
 from app.infrastructure import road_network_store
 from app.infrastructure.debug_log import log_external_call, mark_failed
 from app.infrastructure.msm_client import MsmUnavailableError
@@ -23,24 +24,31 @@ from app.services.weather_service import WeatherService
 #: 読む間に予報が入れ替わったときに読み直す回数の上限（入れ替えは数分ごとにしか起きない）。
 _FORECAST_READ_ATTEMPTS = 3
 
-#: 持つ一覧の数。値の種類ごとに今の元と今の正時の1つずつで足り、正時をまたぐ間だけ前のものが残る。
-FRAME_CACHE_SIZE = 4
+#: 値の種類ごとに持つ一覧の数。今の元と今の正時の1つで足り、正時をまたぐ間だけ前のものが残る。
+FRAME_CACHE_SIZE = 2
 
 
-def new_frame_cache() -> LRUCache[tuple[str, str, datetime], list[TimeFrame]]:
-    """コマの一覧の持ち（鍵は値の種類・作った元・範囲の始まり）。"""
-    return LRUCache(maxsize=FRAME_CACHE_SIZE)
+@dataclass(frozen=True)
+class FrameCache:
+    """コマの一覧の持ち。値の種類ごとに分け、鍵は作った元（道路網の置き場・予報の版）と範囲の始まり。"""
+
+    road_surface: LRUCache[tuple[str, datetime], list[TimeFrame]]
+    lens: LRUCache[tuple[str, datetime], list[LensTimeFrame]]
+
+
+def new_frame_cache() -> FrameCache:
+    return FrameCache(road_surface=LRUCache(maxsize=FRAME_CACHE_SIZE), lens=LRUCache(maxsize=FRAME_CACHE_SIZE))
 
 
 class TimeFrames(StrictModel):
     #: 路面タイル（`/api/region/road-surface-tiles`の`frame`）のコマ。時刻で変わる交通規制の効き方で変わる。道路網が読めなければ空。
     road_surface: list[TimeFrame]
-    #: 風に依るレンズと道の窓（`/api/region/lens`・`/api/region/road-inspector`の`frame`）のコマ。予報が読めなければ空。
-    lens: list[TimeFrame]
+    #: 風に依るレンズと道の窓（`/api/region/lens-tiles`・`/api/region/road-inspector`の`frame`）のコマ。予報が読めなければ空。
+    lens: list[LensTimeFrame]
 
 
 class TimeFrameService:
-    def __init__(self, weather_service: WeatherService, cache: LRUCache[tuple[str, str, datetime], list[TimeFrame]]):
+    def __init__(self, weather_service: WeatherService, cache: FrameCache):
         self._weather_service = weather_service
         self._cache = cache
 
@@ -76,21 +84,21 @@ class TimeFrameService:
         return frame_start(await self._lens(*frame_range(datetime.now(JST))), key)
 
     async def _road_surface(self, network: RoadNetwork, start: datetime, end: datetime) -> list[TimeFrame]:
-        cache_key = ("road_surface", road_network_store.directory_name(network.revision), start)
-        frames = self._cache.get(cache_key)
+        cache_key = (road_network_store.directory_name(network.revision), start)
+        frames = self._cache.road_surface.get(cache_key)
         if frames is None:
             # 全部の組の効き方を時刻ごとに求めるのは、イベントループの外で行う。
-            frames = self._cache[cache_key] = await asyncio.to_thread(regulation_frames, network, start, end)
+            frames = self._cache.road_surface[cache_key] = await asyncio.to_thread(regulation_frames, network, start, end)
         return frames
 
-    async def _lens(self, start: datetime, end: datetime) -> list[TimeFrame]:
+    async def _lens(self, start: datetime, end: datetime) -> list[LensTimeFrame]:
         # 持ちは版（小さなファイルを読むだけ）で先に引き、外れたときだけ予報の時刻の並びを読む。
         for _ in range(_FORECAST_READ_ATTEMPTS):
             version = self._weather_service.forecast_version()
-            cache_key = ("lens", version, start)
-            if (frames := self._cache.get(cache_key)) is not None:
+            cache_key = (version, start)
+            if (frames := self._cache.lens.get(cache_key)) is not None:
                 return frames
-            if (times := await self._weather_service.get_forecast_times(version)) is not None:
-                frames = self._cache[cache_key] = wind_frames(times, version, start, end)
+            if (forecast := await self._weather_service.get_forecast_times(version)) is not None:
+                frames = self._cache.lens[cache_key] = wind_frames(forecast, version, start, end)
                 return frames
         raise MsmUnavailableError("MSMの予報が入れ替わり続け、版と時刻の並びをそろえて読めません")

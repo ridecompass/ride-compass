@@ -5,42 +5,45 @@
 import { describe, expect, it } from "vitest";
 
 import { createRecordingMap } from "@/testing/mapTrace/recordingMap";
-import { rebuild, roadLayerId, shown } from "@/testing/sceneContract";
-import { ROAD_LINE_SOURCE_ID } from "@/features/map/scene/groups/roadLines";
+import { rebuild, shown } from "@/testing/sceneContract";
+import { lensSourceId } from "@/features/map/scene/groups/axisLines";
 import { applyScene } from "@/features/map/scene/applyToMap";
 import { sceneInputsFrom } from "@/features/map/scene/sceneInputs";
 import { buildMapScene } from "@/features/map/scene/buildScene";
+import { sceneLayerId } from "@/features/map/scene/sceneBuilders";
 
 describe("レンズの線", () => {
-  const fetched = (byLens: Record<string, Record<string, Record<string, number>>>) =>
-    new Map(Object.entries(byLens).map(([lensId, byWay]) => [lensId, { materials: new Map(Object.entries(byWay)) }]));
-  const MATERIALS = fetched({ ascent: { w1: { lens_along: 3 } }, vibration: { w1: { lens_along: 7 } } });
+  const ASCENT_SOURCE = lensSourceId("ascent");
+  const LOOK = { lens: "ascent", lensTileUrl: "https://tiles.test/api/region/lens-tiles/ascent/{z}/{x}/{y}.pbf" };
 
-  it("取った材料から求めた道の値が、道路のソースの地物へレンズごとに1つずつ載り、塗っているレンズの線が見える", () => {
+  it("塗っているレンズのタイルを読み、その線だけが載る。タイルを取れない間は載らない", () => {
     const { map, handle } = createRecordingMap();
-    rebuild(map, shown({ surface: true }, { lens: "ascent", wayMaterials: MATERIALS }));
+    rebuild(map, shown({ surface: true }, LOOK));
 
-    expect(Object.keys(handle.featureState(ROAD_LINE_SOURCE_ID, "w1") ?? {}).sort()).toEqual([
-      "ascent:value",
-      "vibration:value",
-    ]);
-    expect(handle.layer(roadLayerId("ascent"))?.visibility).toBe("visible");
-    expect(handle.layer(roadLayerId("vibration"))?.visibility).toBe("none");
+    expect(handle.sourceContent(ASCENT_SOURCE)?.tiles).toEqual([LOOK.lensTileUrl]);
+    expect(handle.layer(sceneLayerId(ASCENT_SOURCE, "ascent"))?.visibility).toBe("visible");
+    expect(handle.sources()).not.toContain(lensSourceId("vibration"));
+
+    applyScene(map as never, buildMapScene(sceneInputsFrom(shown({ surface: true }, { ...LOOK, lensTileUrl: null }))));
+
+    expect(handle.sources()).not.toContain(ASCENT_SOURCE);
   });
 
-  it("走る条件だけを変えると、道の値だけを置き直し、レイヤーは当て直さない", () => {
+  it("走る条件だけを変えても、タイルを取り直さない", () => {
     const { map, handle } = createRecordingMap();
-    const look = { lens: "ascent", wayMaterials: MATERIALS };
-    rebuild(map, shown({ surface: true }, { ...look, wayConditions: { bearing_deg: 0, speed_kmh: 20 } }));
+    rebuild(map, shown({ surface: true }, { ...LOOK, wayConditions: { bearing_deg: 0, speed_kmh: 20 } }));
     const callsBefore = handle.trace.length;
 
     applyScene(
       map as never,
       buildMapScene(
-        sceneInputsFrom(shown({ surface: true }, { ...look, wayConditions: { bearing_deg: 135.5, speed_kmh: 20 } })),
+        sceneInputsFrom(shown({ surface: true }, { ...LOOK, wayConditions: { bearing_deg: 135.5, speed_kmh: 20 } })),
       ),
     );
 
-    expect(handle.trace.slice(callsBefore).filter(({ call }) => call !== "setFeatureState")).toEqual([]);
+    // 条件を読む式の当て直し（塗りと絞り込み）のほかは、地図に何もしない。
+    expect(
+      handle.trace.slice(callsBefore).filter(({ call }) => call !== "setPaintProperty" && call !== "setFilter"),
+    ).toEqual([]);
   });
 });

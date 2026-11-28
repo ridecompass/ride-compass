@@ -10,10 +10,11 @@ import { BASEMAP_STYLE_URL } from "@/features/map/basemapStyle";
 import { isStyleReady, reloadStyle } from "@/features/map/layers/mapStyleOps";
 import { registerJmaTileProtocol } from "@/features/map/layers/jmaTileProtocol";
 import type { MapLook } from "@/features/map/view/mapLook";
-import type { LayerDataStatusByLayer, MapLayerDescriptor } from "@/features/map/layers/mapLayers";
+import { lensMapLayerId, type LayerDataStatusByLayer, type MapLayerDescriptor } from "@/features/map/layers/mapLayers";
 import { buildLayerDataSources } from "@/features/map/MapView/layerDataSources";
 import { useLayerDataStatus } from "@/features/map/MapView/useLayerDataStatus";
 import { ORIGIN_ZOOM } from "@/features/map/MapView/useMapMarkers";
+import { lensSourceId } from "@/features/map/scene/groups/axisLines";
 import { ROAD_LINE_SOURCE_ID } from "@/features/map/scene/groups/roadLines";
 import { refreshTimeFramesIfStale } from "@/features/map/useTimeFrames";
 import { debugLog } from "@/lib/debugLog";
@@ -52,7 +53,13 @@ export function useMapLifecycle(
   // 最初のタイルが揃うまでの白紙を覆う。
   const [initialTilesLoading, setInitialTilesLoading] = useState(true);
   const layerDataSources = useMemo(() => buildLayerDataSources(layers), [layers]);
-  const getVisibility = useCallback(() => getLook().layerVisibility, [getLook]);
+  const getVisibility = useCallback(() => {
+    const look = getLook();
+    // レンズの層は表示の切り替えの鍵を持たず、塗っている間だけ出る。
+    return look.surroundingsShown && typeof look.lensTileUrl === "string"
+      ? { ...look.layerVisibility, [lensMapLayerId(look.lens)]: true }
+      : look.layerVisibility;
+  }, [getLook]);
   const onChange = useCallback(
     (status: LayerDataStatusByLayer) => getLook().onLayerDataStatusChange(status),
     [getLook],
@@ -107,8 +114,8 @@ export function useMapLifecycle(
         setInitialTilesLoading(false);
       }
       if (sourceId) layerDataStatusRef.current.markSourceErrored(sourceId);
-      // 路面タイルが古い印で断られたら、コマの一覧を読み直す（新しい印でタイルのURLが変わり、取り直す）。
-      if (sourceId === ROAD_LINE_SOURCE_ID)
+      // 路面タイルとレンズのタイルが古い印で断られたら、コマの一覧を読み直す（新しい印でタイルのURLが変わり、取り直す）。
+      if (sourceId === ROAD_LINE_SOURCE_ID || sourceId === lensSourceId(getLook().lens))
         refreshTimeFramesIfStale((e.error as { status?: number } | undefined)?.status);
     }
     function handleFirstIdle() {

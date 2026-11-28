@@ -276,14 +276,14 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/region/lens/{lens_id}/{z}/{x}/{y}": {
+    "/api/region/lens-tiles/{lens_id}/{z}/{x}/{y}.pbf": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        get: operations["region_lens_api_region_lens__lens_id___z___x___y__get"];
+        get: operations["region_lens_tile_api_region_lens_tiles__lens_id___z___x___y__pbf_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1320,23 +1320,29 @@ export interface components {
             along: components["schemas"]["LensDirection"] | null;
             against: components["schemas"]["LensDirection"] | null;
         };
-        /** LensMaterials */
-        LensMaterials: {
-            /** Materials */
-            materials: {
-                [key: string]: {
-                    [key: string]: number;
-                };
-            };
-            /** Wind Previous Run From */
-            wind_previous_run_from: string | null;
-        };
         /** LensScale */
         LensScale: {
             /** Green */
             green: number | string;
             /** Red */
             red: number | string;
+        };
+        /** LensTimeFrame */
+        LensTimeFrame: {
+            /**
+             * Start
+             * Format: date-time
+             */
+            start: string;
+            /**
+             * End
+             * Format: date-time
+             */
+            end: string;
+            /** Key */
+            key: string;
+            /** Wind Previous Run From */
+            wind_previous_run_from: string | null;
         };
         /** LinearBurden */
         LinearBurden: {
@@ -2141,7 +2147,7 @@ export interface components {
             /** Road Surface */
             road_surface: components["schemas"]["TimeFrame"][];
             /** Lens */
-            lens: components["schemas"]["TimeFrame"][];
+            lens: components["schemas"]["LensTimeFrame"][];
         };
         /**
          * TimelineKind
@@ -2828,7 +2834,7 @@ export interface operations {
             };
         };
     };
-    region_lens_api_region_lens__lens_id___z___x___y__get: {
+    region_lens_tile_api_region_lens_tiles__lens_id___z___x___y__pbf_get: {
         parameters: {
             query?: {
                 speed_kmh?: number;
@@ -2854,7 +2860,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["LensMaterials"];
+                    "application/json": unknown;
                 };
             };
             /** @description Validation Error */

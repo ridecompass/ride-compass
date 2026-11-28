@@ -28,16 +28,6 @@ export function basemapAnchorOf(tier: MapSceneTier): BasemapAnchor | null {
   return MAP_SCENE_TIERS.find((entry) => entry.id === tier)!.under;
 }
 
-/** feature-state へ載せられる値。 */
-export type MapSceneFeatureStateValue = string | number | boolean | null;
-
-/**
- * feature-state。外側のキーが state のキー、内側のキーが feature の id。
- * feature の id は文字列のまま保つ——配信側の id の体系は数値とは限らず、
- * 数値へ変換すると黙って NaN へ潰れて色が付かなくなる。
- */
-export type MapSceneFeatureStates = ReadonlyMap<string, ReadonlyMap<string, MapSceneFeatureStateValue>>;
-
 type DistributiveOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K> : never;
 
 /**
@@ -62,9 +52,6 @@ export type MapSceneSource = {
   readonly id: string;
   readonly spec: MapSceneSourceSpec;
   readonly content?: MapSceneSourceContent;
-  /** feature-state を当てる source-layer。ベクタタイルでは必須。 */
-  readonly sourceLayer?: string;
-  readonly featureStates?: MapSceneFeatureStates;
 };
 
 export type MapSceneLayer = {
@@ -102,7 +89,7 @@ export type MapSceneImage = {
 
 /**
  * 地図に載っているべきものの宣言。ソース・レイヤーの id はそれぞれ一意。
- * 表示 ON/OFF・絞り込み・feature-state もここが持つ——スタイルを差し替えると
+ * 表示 ON/OFF・絞り込みもここが持つ——スタイルを差し替えると
  * これらは地図から消えるため、宣言から辿れない位置に置いたものは作り直されない。
  */
 export type MapScene = {

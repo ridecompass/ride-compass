@@ -37,7 +37,8 @@ import {
 import type { PointTileLayer } from "@/lib/mapDisplay/pointLayers";
 import regionTileConfig from "@/types/generated/region-tile-config.json";
 
-import type { AxisLineState, WayConditions, WayMaterials } from "./groups/axisLines";
+import type { AxisLineState } from "./groups/axisLines";
+import type { WayConditions } from "./wayValueFormula";
 import { POINT_TILE_LAYERS } from "./groups/points";
 import type { BasemapLook } from "@/features/map/basemapTheme";
 import type { AvoidanceChoice } from "@/lib/roadAvoidance";
@@ -74,8 +75,8 @@ export interface SceneLook {
   readonly roadAvoidance: AvoidanceChoice;
   /** 道路タブを地図で見ているか。 */
   readonly roadAvoidanceShown: boolean;
-  /** 軸ごとの、今の範囲の道ごとの材料の取得結果。 */
-  readonly wayMaterials: ReadonlyMap<string, { materials: WayMaterials }>;
+  /** 塗っているレンズのタイルのURL（`lensTiles.ts: useLensTileUrl`。取れない間はnullかundefined）。 */
+  readonly lensTileUrl: string | null | undefined;
   /** 道の値の式が読む走る条件。 */
   readonly wayConditions: WayConditions;
   /** 出発の時刻を含む路面タイルのコマの印（`useTimeFrames`）。道の線の区分のうち時刻で変わる交通規制の区分は、このコマの値で塗る。 */
@@ -109,8 +110,6 @@ type SceneWiringProps = {
   /** 選んでいるルートの線。無ければnull。編集中は、点を`splicedRoute`の線の近くに絞る。 */
   readonly routePath: readonly (readonly [number, number])[] | null;
 };
-
-const NO_MATERIALS: WayMaterials = new Map();
 
 function routeStateFrom(props: SceneWiringProps): RouteState {
   const { look } = props;
@@ -164,20 +163,17 @@ function routeStateFrom(props: SceneWiringProps): RouteState {
   };
 }
 
-function axisStateFrom(props: SceneWiringProps, sourceLayer: string): AxisLineState {
+function axisStateFrom(props: SceneWiringProps): AxisLineState {
   const { look } = props;
-  const axes = props.catalog.lenses.map((lens) => {
-    const fetched = look.wayMaterials.get(lens.lensId);
-    return {
-      axisId: lens.lensId,
-      // 道の線を塗るレンズは、選んでいる1本だけ。
-      visible: look.surroundingsShown && lens.lensId === look.lens,
-      bands: valueBands(lens.display),
-      formula: lens.formula,
-      materials: fetched?.materials ?? NO_MATERIALS,
-    };
-  });
-  return { axes, conditions: look.wayConditions, sourceLayer };
+  // 道の線を塗るレンズは、選んでいる1本だけ。
+  const lens = look.surroundingsShown
+    ? props.catalog.lenses.find((candidate) => candidate.lensId === look.lens)
+    : undefined;
+  const painted =
+    lens && typeof look.lensTileUrl === "string"
+      ? { axisId: lens.lensId, bands: valueBands(lens.display), formula: lens.formula, tileUrl: look.lensTileUrl }
+      : null;
+  return { painted, conditions: look.wayConditions };
 }
 
 /** 届いている中身を、要素の鍵（`groups/weather.ts: weatherElementKey`）で引ける形へ移す。 */
@@ -231,7 +227,7 @@ export function sceneInputsFrom(props: SceneWiringProps): SceneInputs {
       avoidanceShown: props.look.roadAvoidanceShown,
       inspectedShape: props.inspectedShape,
     },
-    axis: axisStateFrom(props, roadTiles.sourceLayer),
+    axis: axisStateFrom(props),
     point: {
       tiles: { urls: pointTileUrls(), ...pointZoom },
       visible,

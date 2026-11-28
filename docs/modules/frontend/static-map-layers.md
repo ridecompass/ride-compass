@@ -29,7 +29,7 @@
 | `features/map/scene/mapSceneGroups.ts` | 家族（面・道路の線・点・レンズの線・ルート・気象）を「いまの状態から、載っているべきレイヤーの並びを返す」1つの形で宣言する型と、それらを1つのsceneへ畳む`features/map/scene/mapSceneGroups.ts: composeScene`（同じソースを名乗る家族を1本へまとめる） |
 | `features/map/scene/sceneBuilders.ts` | sceneを組み立てる道具のうち、どの家族でも同じ形になるもの（ソース名・レイヤーidを作る唯一の口。型で縛り、手で文字列を組み立てられないようにする）等 |
 | `features/map/scene/buildScene.ts` | 地図に載るもの全部を1つのsceneへ組み立てる唯一の口（`features/map/scene/buildScene.ts: buildMapScene`）。受け取るのは実行時にしか決まらない値だけで、見た目の値は各グループが持つ。家族を1つ足すのはここの並びへ1行足すこと |
-| `features/map/scene/applyToMap.ts` | 画面の状態を地図へ当てる唯一の入口（状態→各家族の入力`features/map/scene/sceneInputs.ts: sceneInputsFrom`→`buildMapScene`→`features/map/scene/applyToMap.ts: applyScene`）。作り直しも同じ道を通り、空から当て直すだけが違う。**再描画で失われる表示状態（filter・feature-state・visibility）を持つ描画は、ここから辿れる位置へ置く**——辿れないものは`setStyle()`後に作り直されない |
+| `features/map/scene/applyToMap.ts` | 画面の状態を地図へ当てる唯一の入口（状態→各家族の入力`features/map/scene/sceneInputs.ts: sceneInputsFrom`→`buildMapScene`→`features/map/scene/applyToMap.ts: applyScene`）。作り直しも同じ道を通り、空から当て直すだけが違う。**再描画で失われる表示状態（filter・visibility）を持つ描画は、ここから辿れる位置へ置く**——辿れないものは`setStyle()`後に作り直されない |
 | `features/map/scene/sceneInputs.ts` | 画面の状態（`features/map/scene/sceneInputs.ts: SceneLook`）から、各家族の入力を組み、どのレイヤーを出すか・家族ごとの隠した行を導く。**入力の型はsceneの側で宣言する**（`MapView`のpropsから借りると、sceneと`MapView`が互いをimportし合う） |
 | `features/map/maplibreWorker.ts` | MapLibreのWorkerの場所を、ビルド前に静的配信へ複製したもの（`scripts/copy-maplibre-worker.mjs`）へ向ける。地図を作る前に呼ばないと、Workerがバンドラの解決できないURLを読みに行き、スタイル処理とタイル取得が止まる |
 | `lib/mapDisplay/legendFilter.ts` | 凡例の行の型（`lib/mapDisplay/legendFilter.ts: LegendEntry`）と、凡例で隠した行を落とす絞り込み式の組み立て（ルート線のモードが使う） |
@@ -39,8 +39,8 @@
 | `features/map/layers/mapLayers.ts` | レイヤーカタログ本体（`MapLayerDescriptor[]`）・地図上チップの最上位グループ（`features/map/layers/mapLayers.ts: MAP_OVERLAY_GROUP_ORDER`が正本。現在は道路/環境/スポット）判定・レンズの層の除外判定（レンズの層はチップに出ないので、名前・アイコン・説明を持たず、idと源泉の宣言だけを持つ。判定は`features/map/layers/mapLayers.ts: isLensLayer`）・`features/map/layers/mapLayers.ts: deriveFetchLayerStatus`（MapLibreのソースイベントを経由しないレイヤーのデータ状態判定）。静的なレイヤーは源泉の宣言（生成物`mapDisplay.ts: mapDisplay.layers`）の並びを列挙して組み、足すのはアイコン（`components/ui/icons/mapLayerIcons.ts: MAP_LAYER_ICONS`）と表示専用の凡例（`features/map/layers/readOnlyLegends.ts: READ_ONLY_LEGENDS`）だけ。道の線の層は画面の設定の`road_classes.map_layers`から、レンズの層は費用の軸の一覧から組む（`features/map/layers/mapLayers.ts: buildMapLayers`）。名前・略名・説明・(i)の文は源泉が持ち、説明の差し込み口だけを実行時の値で埋める（下記「説明文に実行時の名前を書き込まない」）。**`layers/`は`scene/`を読まない**（`scene/`が`layers/`を読む一方向） |
 | `features/map/layers/readOnlyLegends.ts` | 絞り込めない表示専用の凡例（`features/map/layers/readOnlyLegends.ts: READ_ONLY_LEGENDS`。土地被覆・降水ナウキャスト・風の矢印・災害）。災害の凡例は、同じ段で塗る要素の名前を見出しにして段を並べる。降水ナウキャストの凡例は、降水の強さの段に、凡例の色を宣言した要素（源泉の`legendColor`）の行を名前ごとに1ブロックで足す |
 | `features/map/layers/layerText.ts` | チップの説明の文の差し込み口を埋める（`features/map/layers/layerText.ts: fillLayerText`。値が空の口は前後の文ごと出さない）と、事故の収録年の言い方（`features/map/layers/layerText.ts: coverageYearsLabel`） |
-| `features/map/scene/mapScene.ts` | 地図に載っているべきものの宣言の型（ソース・レイヤー・feature-state）と、重なりの段（`features/map/scene/mapScene.ts: MAP_SCENE_TIERS`）・押せるレイヤーの引き方 |
-| `features/map/scene/applyMapScene.ts` | 宣言を地図へ当てる唯一の実装（`features/map/scene/applyMapScene.ts: addImage`/`features/map/scene/applyMapScene.ts: addSource`/`features/map/scene/applyMapScene.ts: addLayer`/`features/map/scene/applyMapScene.ts: setPaintProperty`/`features/map/scene/applyMapScene.ts: setFilter`/`features/map/scene/applyMapScene.ts: setFeatureState`）。前回の宣言との差分だけを当て、段の順に差し込む |
+| `features/map/scene/mapScene.ts` | 地図に載っているべきものの宣言の型（ソース・レイヤー・絵）と、重なりの段（`features/map/scene/mapScene.ts: MAP_SCENE_TIERS`）・押せるレイヤーの引き方 |
+| `features/map/scene/applyMapScene.ts` | 宣言を地図へ当てる唯一の実装（`features/map/scene/applyMapScene.ts: addImage`/`features/map/scene/applyMapScene.ts: addSource`/`features/map/scene/applyMapScene.ts: addLayer`/`features/map/scene/applyMapScene.ts: setPaintProperty`/`features/map/scene/applyMapScene.ts: setFilter`）。前回の宣言との差分だけを当て、段の順に差し込む |
 | `features/map/MapView/MapView.tsx`（静的レイヤーの箇所のみ） | 画面の状態をsceneの入力へ渡し、組んだ宣言を地図へ当てる配線。レイヤーの描画コードは持たない |
 | `features/map/MapView/useMapScene.ts` | 地図に載るもの全部の入力から scene を組む唯一の口と、そこから押せるレイヤーを引く |
 | `features/map/MapView/mapTaps.ts` | 地図を押す・なぞる操作。押した所で一番上の地物を、そのレイヤーが宣言した当たり判定の対象（`hitTargets`）のうち、地図を押したときの意味（`features/map/MapView/mapTapHits.ts: MapTapMode`）が開ける対象で開く手続きへ振り分け、長押しで開ける物が無ければ押した所に近い道を backend に問う。地図の出来事（MapLibre の型が約束するものだけ）を判断の部品へ渡し、決まった操作を開く手続きへ渡す |
@@ -64,7 +64,7 @@
 | `services/placeLinkApi.ts` | 地図の点の名前から開く外の地図のリンクを backend（`GET /api/place-link`）に引く口と、点ごとに取得を共有する問い合わせ（`services/placeLinkApi.ts: placeLinkQuery`） |
 | `features/map/MapView/RoadInspectorPopup.tsx`（上の帯と属性の箇所） | 道をクリックしたときの詳細（**Reactで描き、MapLibreのPopupへportalで差し込む**）。上の帯に、道の層を出していればその先頭の層の線と同じ見本（`features/map/scene/groups/roadLines.ts: shownRoadTrackOf`）・名前（名前の無い道は出さない）・事実の要約（路面等）を出し、属性（タイルの事実と、難所を取ったときに届くタグ。**同じ項目は1度だけ**で、日本語の値だけを出し、英語の生の値と登録外のタグはその中の「その他のタグ」にさらに畳む）は畳む——地図の上の小さな枠に収めるため。中身の高さには上限を付けて中でスクロールさせ、中身が伸び縮みしたら置く向きを決め直す（MapLibreのPopupは地図が動いたときにしか決め直さず、開いた後に伸びた中身が画面の外へはみ出す）。道のストレス（開いたら取りに行く、地図のレンズと同じ値と事実）は[地図: レンズ・ルート色分け](map-axis-coloring.md)の同じファイルの行。**デバッグログONのときだけ`osm_way_id`を出す**——値がおかしい道を見つけたとき、地図で押した1本をそのままbackendの調査へ渡せるようにする。一般の利用者には読めない値のため常時は出さない |
 | `features/map/MapView/roadFacts.ts` | クリックした道の「事実」（例: 道路名・路面の種類・農道・林道の等級・トンネル）をタイルのプロパティから組み立てる純関数。項目名と値の呼び名、タイルのどの属性を読むか（`features/map/MapView/roadFacts.ts: tile_property`）は材料カタログ（生成物`material-catalog.json`）から引く。材料の外の列（識別子・道路名）の名前は生成物`region-tile-config.json`の`region-tile-config.json: road_surface.properties`から引き、押した道のway_id・フィーチャーの鍵もここの関数（`roadWayId`・`roadFeatureKey`）で読む。該当しない項目は行ごと出さない（「なし」が並ぶと該当する項目が埋もれる）。路面の種類（材料`surface`。区分ではなくタグの値の呼び名）だけは値が無くても「不明」として出す——どの道でも最初に見たい項目で、行ごと消すと「舗装されていない」と読める |
-| `features/map/regionApi.ts`（`features/map/regionApi.ts: roadSurfaceTileUrl`/`features/map/regionApi.ts: pointTileUrl`） | ベクタタイルのURLテンプレート（路面タイルは出発時刻を含む路面タイルのコマの印を載せる。`features/map/regionApi.ts: fetchLensMaterials`は[地図: レンズ・ルート色分け](map-axis-coloring.md)の管轄）。点のレイヤーはどれも1つの配信（backend `GET /api/region/point-tiles/{layer}/...`）で、URLはレイヤー名（生成物`region-tile-config.json`の`region-tile-config.json: point_layers`の鍵）で組み、source-layer名も同じ一覧から読む |
+| `features/map/regionApi.ts`（`features/map/regionApi.ts: roadSurfaceTileUrl`/`features/map/regionApi.ts: pointTileUrl`） | ベクタタイルのURLテンプレート（路面タイルは出発時刻を含む路面タイルのコマの印を載せる。`features/map/regionApi.ts: lensTileUrl`は[地図: レンズ・ルート色分け](map-axis-coloring.md)の管轄）。点のレイヤーはどれも1つの配信（backend `GET /api/region/point-tiles/{layer}/...`）で、URLはレイヤー名（生成物`region-tile-config.json`の`region-tile-config.json: point_layers`の鍵）で組み、source-layer名も同じ一覧から読む |
 | `lib/tileBaseUrl.ts` | タイル配信元オリジンの決定（既定はフロント自身のオリジン＝rewrites経由、`lib/tileBaseUrl.ts: NEXT_PUBLIC_TILE_BASE_URL`設定時はbackend直接）。路面/POI/事故タイル・国土地理院の標高タイル（地形の陰影）・JMA動的タイル（[動的気象レイヤー](dynamic-weather-layers.md)）が共通に使う |
 | `features/map/MapOverlayControls/MapOverlayControls.tsx` | 地図の左上の「表示」のボタンと、押すと開く地図に出す情報の一覧（下記「最上位グルーピング」）。群への束ね方と並びはレイヤーカタログ（`features/map/MapOverlayControls/MapOverlayControls.tsx: mapOverlayGroupFor`・`mapLayers.ts: MAP_OVERLAY_GROUP_ORDER`）から導く。一覧は「重ねる情報」と「範囲と色」のタブに分ける。「重ねる情報」は群の見出しで中身をたため、群ごとに一覧に並べる項目を選べ、末尾にまとめて戻す操作（下記「まとめて戻す操作」）を並べる。「範囲と色」は`features/map/MapOverlayControls/MapLookSettings.tsx`が描く |
 | `features/map/MapOverlayControls/MapLookSettings.tsx` | 「表示」の「範囲と色」のタブ。表示する範囲（ルート沿い・地図全体。下記「ルートの近くの点」）と地図の色（明るい・暗い。下記「暗い地図」）を2択で選び、説明は見出しのⓘで行のすぐ下に開く |
@@ -193,8 +193,6 @@ DOM/MapLibreを一切知らない。`MapView.tsx`は画面の状態をsceneの�
 `diff()`はスタイル全体どうしを比べて地図への操作の列を返すもので、このアプリの当て方と次の点で合わない
 （`diff.ts`・`util/deep_equal.ts`、版は`frontend/package.json`）:
 
-- **feature-stateを扱わない**。返す操作にfeature-stateの設定・解除が無い（スタイルの一部ではない）ため、
-  配信値で塗る線の差分は結局別に取ることになる。
 - **比べる相手がスタイル全体**。基礎地図のレイヤーまで含めた完成形を毎回組み、その中でこのアプリの面を
   道路網の手前へ挿す位置も組む側が決める必要があり、差し込み位置の判断（下記`areaLayerAnchor`）は残る。
 - **タイルのURLが変わるとソースを作り直す**。GeoJSON以外のソースの変更は、ソースとそれを使うレイヤーを
@@ -379,11 +377,11 @@ MSMを配るOpen-MeteoのCC BY 4.0も、リンク付きのクレジット・ラ�
 
 **暗黙の前提**: 宣言から辿れない描画は作り直されず、そのレイヤーは押した人の地図から
 消えたまま戻らない（次にそのpropが変わるまで復旧しない）。**対象はsource/layerの追加に
-限らず、filter・feature-state・visibilityで持つ表示状態も同じ**——たとえば詳細を見ている
+限らず、filter・visibilityで持つ表示状態も同じ**——たとえば詳細を見ている
 道の強調（`scene/groups/roadLines.ts: inspected`）はレイヤーのfilterとvisibilityだけで表され、ポップアップは
 開いたままなので、復元しないと「どの線の話か」だけが失われる。そのため
 詳細を見ている道（コンポーネントのstate由来）も宣言の入力に含める。**再描画で失われる
-副作用を持つもの**（source/layerの追加・filter・feature-state・visibilityの設定）は、
+副作用を持つもの**（source/layerの追加・filter・visibilityの設定）は、
 宣言の一部として書く——宣言の外で当てたものは、スタイル切替後に再追加されず消える。
 カメラはここでは動かさない——表示範囲は利用者の操作に属し、フィットは候補一覧が
 変わったときだけ行う。
@@ -799,7 +797,7 @@ ON/OFFで入れ替わる）。
 「データなし」）は分類ではなく、どの属性・レンズでも同じ意味なので、線を重ねても混ざらない——これは
 細かい刻みの破線（`mapDisplay.noDataDash`、`sceneBuilders.ts: noDataDashExpression`）で示し、乗り換え帯の
 破線（`mapDisplay.route.spliceDash`）と刻みで見分ける。取得中（まだ値が来ていない）は値が無いと決まって
-いないので破線にしない。配信値（feature-state）で塗るレンズの線は`line-dasharray`を値で切り替えられないので、破線だけの線を重ね、濃さで出し入れする（[地図: レンズ・ルート色分け](map-axis-coloring.md)「レンズの線」）。
+いないので破線にしない。レンズの線は、値の無い道を絞り込みで破線の線へ分ける（[地図: レンズ・ルート色分け](map-axis-coloring.md)「レンズの線」）。
 分類を線種で表し始めたら、この区別が崩れている。
 
 ## MapLibreの式を組むときの前提

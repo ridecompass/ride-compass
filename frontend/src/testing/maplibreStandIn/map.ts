@@ -30,8 +30,6 @@ const STYLE_OPERATIONS = [
   "setPaintProperty",
   "setLayoutProperty",
   "setFilter",
-  "setFeatureState",
-  "removeFeatureState",
 ] as const;
 
 const drawn: StandInMap[] = [];

@@ -549,5 +549,5 @@ run初期時刻から数時間遅れる。そのため現在時刻から先の�
 置き場に置かずに成功し、読み出しはそのチャンクから先を値の無い時刻として扱う（今を含むチャンクが無ければ同期は失敗する）。どこから先が前のrunの値かは`infrastructure/msm_client.py: MsmGridPointSeries.latest_run_end`で返し、風の予報（`domain/wind.py: WeatherForecastSeries.latest_run_end`）を
 経て、ルートの候補が着くまでにその先の風を引いたなら、前に出たrunの風に替わる時刻（最新のrunの終わり）を応答の`wind_previous_run_from`に載せる。地図の格子点（`GET /api/weather/msm-grid`）と
 今日の値（`GET /api/weather`）は同じ境を応答の`latest_run_end`に載せ、これより先の時刻の値が前のrunのものとする（この時刻を含む）。
-レンズの材料（`GET /api/region/lens/{lens_id}/{z}/{x}/{y}`）は、引いた風が前のrunのものなら、前に出たrunの風に替わる時刻を応答の`wind_previous_run_from`に載せる。
+レンズのコマ（`GET /api/region/time-frames`の`lens`）は、そのコマの風が前のrunのものなら、前に出たrunの風に替わる時刻をコマの`wind_previous_run_from`に載せる（どのタイルも同じ予報から引くので、タイルごとに載せない）。
 どの応答も、値そのものは前のrunかを区別しない。

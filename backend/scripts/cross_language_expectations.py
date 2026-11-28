@@ -21,7 +21,7 @@ from app.domain.jma_tile_specs import (
     jma_tile_path,
     read_target_times,
 )
-from app.domain.region import BoundingBox, tile_bounds_lonlat, tile_position, tiles_covering_bbox
+from app.domain.region import tile_bounds_lonlat, tile_position
 from app.domain.time_zone import jst_local_text
 from app.domain.way_value_formula import (
     Binary,
@@ -308,34 +308,6 @@ _TILE_POINTS: list[tuple[str, float, float, int]] = [
     ("Web Mercatorの限界より南", -100.0, -89.9, 3),
 ]
 
-# 範囲→覆うタイルの場面: （場面, 範囲, ズーム）。
-_TILE_AREAS: list[tuple[str, BoundingBox, int]] = [
-    (
-        "東京駅の辺り（1枚）",
-        BoundingBox(min_latitude=35.6811, min_longitude=139.7670, max_latitude=35.6813, max_longitude=139.7672),
-        14,
-    ),
-    (
-        "東京の辺り（東西南北に複数枚）",
-        BoundingBox(min_latitude=35.5, min_longitude=139.5, max_latitude=35.8, max_longitude=139.9),
-        12,
-    ),
-    (
-        "東端・南端がタイルの境目ちょうど",
-        BoundingBox(min_latitude=0.0, min_longitude=-90.0, max_latitude=10.0, max_longitude=0.0),
-        1,
-    ),
-    (
-        "東端と北端が世界の端（端のタイルへ寄せる）",
-        BoundingBox(min_latitude=89.0, min_longitude=179.0, max_latitude=89.9, max_longitude=180.0),
-        3,
-    ),
-    (
-        "西端と南端が世界の端（端のタイルへ寄せる）",
-        BoundingBox(min_latitude=-89.9, min_longitude=-180.0, max_latitude=-89.0, max_longitude=-179.0),
-        3,
-    ),
-]
 
 # タイル→範囲の場面: （場面, ズーム, x, y）。
 _TILE_INDICES: list[tuple[str, int, int, int]] = [
@@ -344,10 +316,6 @@ _TILE_INDICES: list[tuple[str, int, int, int]] = [
     ("南東の端", 3, 7, 7),
     ("北東", 1, 1, 0),
 ]
-
-
-def _span(values: list[int]) -> list[int]:
-    return [min(values), max(values)]
 
 
 def region_expectations() -> dict[str, list[dict]]:
@@ -365,18 +333,6 @@ def region_expectations() -> dict[str, list[dict]]:
                 "y": round(y, _TILE_DECIMALS) + 0.0,
             }
         )
-    rows_covering = []
-    for scene, bbox, z in _TILE_AREAS:
-        tiles = tiles_covering_bbox(bbox, z)
-        rows_covering.append(
-            {
-                "scene": scene,
-                "bbox": bbox.model_dump(),
-                "z": z,
-                "x_range": _span([x for x, _ in tiles]),
-                "y_range": _span([y for _, y in tiles]),
-            }
-        )
     rows_bounds = []
     for scene, z, x, y in _TILE_INDICES:
         bounds = tile_bounds_lonlat(z, x, y)
@@ -389,7 +345,7 @@ def region_expectations() -> dict[str, list[dict]]:
                 "bounds": {key: round(value, _TILE_DECIMALS) for key, value in bounds.model_dump().items()},
             }
         )
-    return {"tile_position": rows_position, "tiles_covering_bbox": rows_covering, "tile_bounds_lonlat": rows_bounds}
+    return {"tile_position": rows_position, "tile_bounds_lonlat": rows_bounds}
 
 
 # 時刻の場面: （場面, 時点）。日本時間で日付・月・年・うるう日が変わる所を選ぶ。

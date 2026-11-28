@@ -33,7 +33,7 @@ class _TileRepository:
     def __init__(self, tile: bytes | None = None):
         self.tile = tile
 
-    async def get_road_surface_tile_mvt(self, z, x, y, bbox, feature_keys, shapes, layer_values):
+    async def get_road_feature_tile_mvt(self, layer_name, z, x, y, bbox, feature_keys, shapes, layer_values):
         return self.tile
 
     async def get_tile_mvt(self, sql, layer_name, z, x, y, bbox):

@@ -29,11 +29,12 @@ describe("wayValueExpression", () => {
     "%s: backend が出す表の全行で、backend と同じ値になる",
     (_scene, group) => {
       expect(group.rows.length).toBeGreaterThan(0);
-      const expressions = wayValueExpression(group.formula as WayValueFormula);
       for (const row of group.rows) {
-        const state = row.features as Record<string, number>;
-        const globalState = row.conditions as Record<string, number>;
-        const value = evaluateExpression(expressions, {}, state, globalState) as number;
+        const expression = wayValueExpression(
+          group.formula as WayValueFormula,
+          row.conditions as Record<string, number>,
+        );
+        const value = evaluateExpression(expression, row.features as Record<string, number>) as number;
         expect(Number.isNaN(value) ? null : value, JSON.stringify(row)).toBe(row.value);
       }
     },
@@ -50,7 +51,7 @@ describe("wayValueExpression", () => {
     function readsIn(expression: unknown, bound: ReadonlyMap<string, number> = new Map()): number {
       if (!Array.isArray(expression)) return 0;
       const [operator, ...args] = expression as [unknown, ...unknown[]];
-      if (operator === "feature-state") return 1;
+      if (operator === "get") return 1;
       if (operator === "var") return bound.get(args[0] as string) ?? 0;
       if (operator === "let") {
         const [name, value, body] = args as [string, unknown, unknown];
@@ -60,7 +61,7 @@ describe("wayValueExpression", () => {
     }
 
     function readsOf(value: unknown): number {
-      return readsIn(wayValueExpression({ value } as WayValueFormula));
+      return readsIn(wayValueExpression({ value } as WayValueFormula, {}));
     }
 
     it.each([

@@ -1,4 +1,4 @@
-"""地図のレンズ——`GET /api/region/lens/{lens_id}/{z}/{x}/{y}`（道ごとの1kmあたりの代償の秒）と、`GET /api/cost-axes`の
+"""地図のレンズ——`GET /api/region/lens-tiles/{lens_id}/{z}/{x}/{y}.pbf`（道ごとの1kmあたりの代償の秒を載せたタイル）と、`GET /api/cost-axes`の
 色の物差しから刻んだ段、道の窓が出す値と事実（`services/lens_service.py: LensService.inspect`）。
 
 道路網は本番と同じ置き場から読ませ（`tests/route_world.py`）、差し替えるのは天気（無風の予報）だけ。
@@ -8,10 +8,12 @@
 - 代償の秒の式（つまみ・倍率・α・β） → `test_ledger_costs.py`
 - 地図の向きでどちらの値を塗るか（式の木） → `test_way_value_formula.py`
 - 道の窓の押した道の読み出し → `test_region_service.py`
+- タイルの道の形と焼き方（路面タイルと同じSQL） → `test_road_tile_sql.py`。ここではタイルを組む部品を、道の形を焼かない代役にする
 - 持ちの鍵の組み立て（`infrastructure/cache_identity.py: dynamic_tile_key`）は、ここで入口から当たり外れを見る
 """
 
 import httpx
+import mapbox_vector_tile
 import numpy as np
 import pytest
 
@@ -28,9 +30,9 @@ from app.domain.lens_values import LENS_AGAINST_LEAF, LENS_ALONG_LEAF
 from app.domain.material_catalog import MATERIAL_CATALOG
 from app.domain.route import AxisFact
 from app.main import app
-from app.domain.lens_values import LensMaterials
 from app.services import lens_service
-from app.services.lens_service import LensService, new_response_cache
+from app.infrastructure.vector_tile import LENS_LAYER_NAME
+from app.services.lens_service import LENS_MATERIAL_DECIMALS, LensService, new_response_cache
 from app.services.time_frame_service import TimeFrameService, new_frame_cache
 from dataclasses import replace
 from datetime import datetime, timedelta
@@ -63,6 +65,8 @@ NORTH_WIND = replace(CALM, speed_ms=np.full_like(CALM.speed_ms, 6.0))
 #: 道1本で塗るズームの、格子の真ん中を含むタイル。
 Z = 12
 X, Y = (int(v) for v in tile_position(COORDINATES[CENTER][1], COORDINATES[CENTER][0], Z))
+#: タイルへ焼く材料の丸めの幅。丸めた値どうしの和は、足した数だけこの幅の半分ずつずれうる。
+STEP = 10.0 ** -LENS_MATERIAL_DECIMALS
 #: どれも格子の真ん中のノードに接する道（タイルの端で切れない）。201は南から北へ、103は西から東へ向く。
 FLAT_ROUGH_WAY, CLIMBING_WAY, STOPPING_WAY = 103, 201, 104
 
@@ -73,19 +77,37 @@ def cost_axes():
     yield
 
 
+async def _encode(z, x, y, keys, shapes, materials) -> bytes:
+    """タイルを組む部品の代役。道の形は焼かず、どの道も、材料をプロパティに持つ点にする。"""
+    assert len(keys) == len(shapes)
+    return mapbox_vector_tile.encode([{"name": LENS_LAYER_NAME, "features": [
+        {"geometry": "POINT(0 0)", "properties": {"feature_key": key, **materials.get(key, {})}} for key in keys]}])
+
+
+class _Encoder:
+    encode_lens_tile = staticmethod(_encode)
+
+
+def _decoded(tile: bytes) -> dict[str, dict[str, float]]:
+    """タイルの道の鍵→材料（材料の無い道は空）。"""
+    layer = mapbox_vector_tile.decode(tile).get(LENS_LAYER_NAME, {"features": []})
+    return {(properties := dict(feature["properties"])).pop("feature_key"): properties for feature in layer["features"]}
+
+
 @pytest.fixture
 async def client(override_dependency, road_network_root):
     override_dependency(dependencies.get_lens_service, lambda: _lens_service(Weather()))
+    override_dependency(dependencies.get_region_service, lambda: _Encoder())
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
         yield client
 
 
 async def _lens(client, lens_id: str, **preference: float | str) -> dict[str, dict[str, float]]:
-    response = await client.get(f"/api/region/lens/{lens_id}/{Z}/{X}/{Y}",
+    response = await client.get(f"/api/region/lens-tiles/{lens_id}/{Z}/{X}/{Y}.pbf",
                                 params={"speed_kmh": ASSUMED_SPEED_KMH, **preference})
     assert response.status_code == 200, response.text
-    return response.json()["materials"]
+    return _decoded(response.content)
 
 
 def _lens_service(weather: Weather, responses=None) -> LensService:
@@ -118,10 +140,10 @@ async def _lens_frame(client, hours_ahead: int) -> str:
     return key
 
 
-async def _materials(service: LensService, lens_id: str, frame: str | None) -> LensMaterials | None:
-    body = await service.way_materials(lens_id, Z, X, Y, frame, ASSUMED_SPEED_KMH, CostPreference(),
-                                        current_model_settings())
-    return None if body is None else LensMaterials.model_validate_json(body)
+async def _materials(service: LensService, lens_id: str, frame: str | None) -> dict[str, dict[str, float]] | None:
+    body = await service.lens_tile(lens_id, Z, X, Y, frame, ASSUMED_SPEED_KMH, CostPreference(), current_model_settings(),
+                                   _encode)
+    return None if body is None else _decoded(body)
 
 
 async def test_each_axis_lens_paints_its_own_penalty_seconds_per_km_and_the_total_paints_their_sum(
@@ -136,13 +158,13 @@ async def test_each_axis_lens_paints_its_own_penalty_seconds_per_km_and_the_tota
 
     burden_seconds = TUNING["cost.burden_seconds_per_km"] * ROUGH_WEIGHT
     flat = total[str(FLAT_ROUGH_WAY)]
-    assert (flat[LENS_ALONG_LEAF], flat[LENS_AGAINST_LEAF]) == pytest.approx((burden_seconds, burden_seconds))
-    assert by_axis["rough"][str(FLAT_ROUGH_WAY)][LENS_ALONG_LEAF] == pytest.approx(burden_seconds)
+    assert (flat[LENS_ALONG_LEAF], flat[LENS_AGAINST_LEAF]) == pytest.approx((burden_seconds, burden_seconds), abs=STEP)
+    assert by_axis["rough"][str(FLAT_ROUGH_WAY)][LENS_ALONG_LEAF] == pytest.approx(burden_seconds, abs=STEP)
     climb = by_axis["ascent"][str(CLIMBING_WAY)]
     assert climb[LENS_ALONG_LEAF] > 0.0 == climb[LENS_AGAINST_LEAF]
     for leaf in (LENS_ALONG_LEAF, LENS_AGAINST_LEAF):
         assert total[str(CLIMBING_WAY)][leaf] == pytest.approx(
-            sum(values[str(CLIMBING_WAY)][leaf] for values in by_axis.values()))
+            sum(values[str(CLIMBING_WAY)][leaf] for values in by_axis.values()), abs=STEP * len(by_axis))
 
 
 async def test_the_route_and_the_map_lens_count_the_same_seconds_on_the_same_roads(client, cost_axes, road_network_root):
@@ -159,9 +181,9 @@ async def test_the_route_and_the_map_lens_count_the_same_seconds_on_the_same_roa
     for axis_id in (*EFFORT_AXES, "rough"):
         lenses[axis_id] = {}
         for x, y in tiles:
-            response = await client.get(f"/api/region/lens/{axis_id}/{Z}/{x}/{y}", params={"speed_kmh": ASSUMED_SPEED_KMH})
+            response = await client.get(f"/api/region/lens-tiles/{axis_id}/{Z}/{x}/{y}.pbf", params={"speed_kmh": ASSUMED_SPEED_KMH})
             assert response.status_code == 200, response.text
-            lenses[axis_id].update(response.json()["materials"])
+            lenses[axis_id].update(_decoded(response.content))
 
     assert candidates
     for candidate in candidates:
@@ -228,7 +250,7 @@ async def test_the_route_and_the_map_lens_lower_the_forecast_wind_to_the_rider_b
     assert lens is not None and north
     (route,) = north
     assert route.segments[0].penalty.axis_seconds["headwind"] == pytest.approx(
-        lens.materials[str(CLIMBING_WAY)][LENS_ALONG_LEAF] * km, abs=0.05)
+        lens[str(CLIMBING_WAY)][LENS_ALONG_LEAF] * km, abs=0.05 + STEP * km)
 
 
 async def test_the_lens_paints_with_the_users_strength_and_multipliers_like_the_route(client, cost_axes, road_network_root):
@@ -241,17 +263,17 @@ async def test_the_lens_paints_with_the_users_strength_and_multipliers_like_the_
     doubled = await _lens(client, "total", strength=2.0)
     ascent = await _lens(client, "ascent")
     without_ascent = await _lens(client, "total", disabled_axes='["ascent"]')
-    disabled_lens = await client.get(f"/api/region/lens/ascent/{Z}/{X}/{Y}",
+    disabled_lens = await client.get(f"/api/region/lens-tiles/ascent/{Z}/{X}/{Y}.pbf",
                                      params={"speed_kmh": ASSUMED_SPEED_KMH, "disabled_axes": '["ascent"]'})
 
     climb = str(CLIMBING_WAY)
-    assert doubled[climb][LENS_ALONG_LEAF] == pytest.approx(2 * standard[climb][LENS_ALONG_LEAF])
+    assert doubled[climb][LENS_ALONG_LEAF] == pytest.approx(2 * standard[climb][LENS_ALONG_LEAF], abs=2 * STEP)
     assert without_ascent[climb][LENS_ALONG_LEAF] == pytest.approx(
-        standard[climb][LENS_ALONG_LEAF] - ascent[climb][LENS_ALONG_LEAF])
+        standard[climb][LENS_ALONG_LEAF] - ascent[climb][LENS_ALONG_LEAF], abs=2 * STEP)
     assert disabled_lens.status_code == 404
     # 知らない軸・壊れた値・上限を越えるつまみは、ルート生成と同じく型の検査で断る（500にしない）。
     for broken in ({"multipliers": '{"nothing": 2}'}, {"multipliers": '{"ascent": "1..2"}'}, {"strength": 99}):
-        response = await client.get(f"/api/region/lens/total/{Z}/{X}/{Y}", params={"speed_kmh": ASSUMED_SPEED_KMH, **broken})
+        response = await client.get(f"/api/region/lens-tiles/total/{Z}/{X}/{Y}.pbf", params={"speed_kmh": ASSUMED_SPEED_KMH, **broken})
         assert response.status_code == 422, broken
 
 
@@ -297,8 +319,8 @@ async def test_the_inspector_gives_both_directions_and_the_facts_behind_them(cos
     assert total is not None and inspection is not None and inspection.along is not None and inspection.against is not None
     (row,) = np.flatnonzero((network.edge_way_id == CLIMBING_WAY) & network.edge_forward)
     assert inspection.painted == "along"
-    assert inspection.along.total_seconds == pytest.approx(
-        total.materials[str(CLIMBING_WAY)][LENS_ALONG_LEAF] * float(network.distance_m[row]) / 1000.0)
+    km = float(network.distance_m[row]) / 1000.0
+    assert inspection.along.total_seconds == pytest.approx(total[str(CLIMBING_WAY)][LENS_ALONG_LEAF] * km, abs=STEP * km)
     assert inspection.along.facts["ascent"].value == pytest.approx(network.elevation_gain_m[row], abs=0.05)
     assert inspection.against.facts["ascent"].value == 0.0
     bad = MATERIAL_CATALOG[BAD_MATERIAL]
@@ -366,7 +388,7 @@ async def test_without_the_forecast_the_map_paints_only_the_lenses_that_do_not_d
     _serve_weather(override_dependency, _NoForecast())
     serve_road_network(road_network_root, road_network(WAYS, COORDINATES))
 
-    response = await client.get(f"/api/region/lens/{lens_id}/{Z}/{X}/{Y}", params={"speed_kmh": ASSUMED_SPEED_KMH})
+    response = await client.get(f"/api/region/lens-tiles/{lens_id}/{Z}/{X}/{Y}.pbf", params={"speed_kmh": ASSUMED_SPEED_KMH})
 
     assert response.status_code == status_code, response.text
 
@@ -386,19 +408,19 @@ async def test_a_new_road_network_generation_paints_its_own_roads(client, cost_a
 
 
 @pytest.mark.parametrize("ends_after_the_frame", [True, False], ids=["最新のrunの中の時刻", "最新のrunの終わりから先の時刻"])
-async def test_the_lens_tells_that_it_painted_the_wind_of_a_previous_run(
-        client, override_dependency, cost_axes, road_network_root, ends_after_the_frame):
-    """配信元が新しいrunを出さない間も前に出たrunの風で塗り、画面が但し書きを出せるよう、その終わりの時刻を返す。"""
+async def test_the_lens_frame_tells_that_it_paints_the_wind_of_a_previous_run(
+        client, override_dependency, ends_after_the_frame):
+    """配信元が新しいrunを出さない間も前に出たrunの風で塗り、画面が但し書きを出せるよう、そのコマにrunの終わりの時刻を載せる
+    （どのタイルも同じ予報から引くので、コマで配る）。"""
     next_hour = datetime.now(JST).replace(minute=0, second=0, microsecond=0, tzinfo=None) + timedelta(hours=1)
     latest_run_end = next_hour + timedelta(hours=1) if ends_after_the_frame else next_hour
     _serve_weather(override_dependency, Weather(replace(CALM, latest_run_end=latest_run_end)))
-    serve_road_network(road_network_root, road_network(WAYS, COORDINATES))
 
-    response = await client.get(f"/api/region/lens/total/{Z}/{X}/{Y}",
-                                params={"speed_kmh": ASSUMED_SPEED_KMH, "frame": await _lens_frame(client, 1)})
+    response = await client.get("/api/region/time-frames")
 
     assert response.status_code == 200, response.text
-    assert response.json()["wind_previous_run_from"] == (None if ends_after_the_frame else f"{next_hour:%Y-%m-%dT%H:%M}")
+    [frame] = [frame for frame in response.json()["lens"] if frame["key"].endswith(f"{next_hour:%Y%m%d%H}")]
+    assert frame["wind_previous_run_from"] == (None if ends_after_the_frame else f"{next_hour:%Y-%m-%dT%H:%M}")
 
 
 async def test_each_road_carries_the_direction_from_its_start_to_its_end(client, cost_axes, road_network_root):
@@ -417,16 +439,16 @@ async def test_a_tile_without_roads_paints_nothing(client, cost_axes, road_netwo
     lat, lon = COORDINATES[NORTH_EAST]
     x, y = (int(v) for v in tile_position(lon + 0.05, lat + 0.05, 14))
 
-    response = await client.get(f"/api/region/lens/total/14/{x}/{y}", params={"speed_kmh": ASSUMED_SPEED_KMH})
+    response = await client.get(f"/api/region/lens-tiles/total/14/{x}/{y}.pbf", params={"speed_kmh": ASSUMED_SPEED_KMH})
 
     assert response.status_code == 200, response.text
-    assert response.json()["materials"] == {}
+    assert _decoded(response.content) == {}
 
 
 async def test_an_unknown_lens_has_nothing_to_paint(client, road_network_root, cost_axes):
     serve_road_network(road_network_root, road_network(WAYS, COORDINATES))
 
-    unknown = await client.get(f"/api/region/lens/nothing/{Z}/{X}/{Y}", params={"speed_kmh": ASSUMED_SPEED_KMH})
+    unknown = await client.get(f"/api/region/lens-tiles/nothing/{Z}/{X}/{Y}.pbf", params={"speed_kmh": ASSUMED_SPEED_KMH})
 
     assert unknown.status_code == 404
 
@@ -450,8 +472,8 @@ async def test_the_same_request_is_answered_from_the_kept_response_until_an_inpu
     assert [call.fields["cache"] for call in calls] == ["miss", "hit", "miss", "miss"]
     assert second == first
     rough = str(FLAT_ROUGH_WAY)
-    assert doubled[rough][LENS_ALONG_LEAF] == pytest.approx(2 * first[rough][LENS_ALONG_LEAF])
-    assert heavier[rough][LENS_ALONG_LEAF] == pytest.approx(2 * first[rough][LENS_ALONG_LEAF])
+    assert doubled[rough][LENS_ALONG_LEAF] == pytest.approx(2 * first[rough][LENS_ALONG_LEAF], abs=2 * STEP)
+    assert heavier[rough][LENS_ALONG_LEAF] == pytest.approx(2 * first[rough][LENS_ALONG_LEAF], abs=2 * STEP)
 
 
 async def test_the_same_frame_of_the_forecast_shares_the_kept_response(
@@ -463,7 +485,7 @@ async def test_the_same_frame_of_the_forecast_shares_the_kept_response(
     calls = record_external_calls(monkeypatch, lens_service)
 
     for frame in frames:
-        response = await client.get(f"/api/region/lens/headwind/{Z}/{X}/{Y}",
+        response = await client.get(f"/api/region/lens-tiles/headwind/{Z}/{X}/{Y}.pbf",
                                     params={"speed_kmh": ASSUMED_SPEED_KMH, "frame": frame})
         assert response.status_code == 200, response.text
 
@@ -480,7 +502,7 @@ async def test_a_replaced_forecast_paints_the_wind_anew(
 
     for version in ("fake", "fake", "replaced"):
         weather.version = version
-        response = await client.get(f"/api/region/lens/headwind/{Z}/{X}/{Y}", params={"speed_kmh": ASSUMED_SPEED_KMH})
+        response = await client.get(f"/api/region/lens-tiles/headwind/{Z}/{X}/{Y}.pbf", params={"speed_kmh": ASSUMED_SPEED_KMH})
         assert response.status_code == 200, response.text
 
     assert [call.fields["cache"] for call in calls] == ["miss", "hit", "miss"]
@@ -492,7 +514,7 @@ async def test_a_frame_of_a_replaced_forecast_is_refused(client, override_depend
     serve_road_network(road_network_root, road_network(WAYS, COORDINATES))
     replaced = (await _lens_frame(client, 1)).replace("fake-", "replaced-")
 
-    response = await client.get(f"/api/region/lens/headwind/{Z}/{X}/{Y}",
+    response = await client.get(f"/api/region/lens-tiles/headwind/{Z}/{X}/{Y}.pbf",
                                 params={"speed_kmh": ASSUMED_SPEED_KMH, "frame": replaced})
 
     assert response.status_code == 409

@@ -16,7 +16,7 @@ from app.domain.time_frames import StaleTimeFrameError, frame_start
 from app.domain.time_zone import JST
 from app.domain.timed_regulations import regulation_frames
 from app.domain.traffic_regulation import SLOT_FIELDS, RegulationSlot
-from app.domain.wind import wind_frames
+from app.domain.wind import ForecastTimes, wind_frames
 from app.services.time_frame_service import TimeFrameService, new_frame_cache
 from tests.road_network_fixture import road_network
 from tests.route_world import Weather
@@ -63,7 +63,7 @@ def test_the_wind_frames_take_the_nearest_hour_of_the_forecast():
     hours = [datetime(2026, 11, 24, hour) for hour in (10, 11, 12)]
     start = datetime(2026, 11, 24, 10, tzinfo=JST)
 
-    frames = wind_frames(hours, "v1", start, start + timedelta(hours=49))
+    frames = wind_frames(ForecastTimes(hours, latest_run_end=hours[-1] + timedelta(hours=1)), "v1", start, start + timedelta(hours=49))
 
     assert [(frame.start.strftime("%H:%M"), frame.end.strftime("%H:%M"), frame.key) for frame in frames] == [
         ("10:00", "10:30", "v1-2026112410"), ("10:30", "11:30", "v1-2026112411"), ("11:30", "12:30", "v1-2026112412")]
@@ -71,7 +71,8 @@ def test_the_wind_frames_take_the_nearest_hour_of_the_forecast():
 
 def test_a_key_outside_the_current_frames_is_refused():
     """終わったコマや、版の変わる前のコマの印は、画面が一覧を読み直してから求め直す。"""
-    frames = wind_frames([datetime(2026, 11, 24, 10)], "v2", DAY, DAY + timedelta(days=1))
+    frames = wind_frames(ForecastTimes([datetime(2026, 11, 24, 10)], latest_run_end=datetime(2026, 11, 24, 11)), "v2", DAY,
+                         DAY + timedelta(days=1))
 
     assert frame_start(frames, "v2-2026112410") == datetime(2026, 11, 24, 9, 30, tzinfo=JST)
     with pytest.raises(StaleTimeFrameError):

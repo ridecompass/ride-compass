@@ -8,7 +8,7 @@
  *
  * ここで見ないもの:
  * - 表の答えが正しいこと → backendのテスト（`domain/region.py`）
- * - 点を含むタイルの番号・ズームの丸め・範囲を覆うタイルの番号の範囲（表の`tiles_covering_bbox`） → `dynamicWayValues.test.ts`
+ * - 点を含むタイルの番号・ズームの丸め → `dynamicWayValues.test.ts`
  * - 在否インデックスの網羅範囲との交差 → `jmaTileIndex.test.ts`
  */
 import { describe, expect, it } from "vitest";

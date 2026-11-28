@@ -93,10 +93,6 @@ export async function installApiMocks(page: Page): Promise<void> {
   await page.route(`${API_BASE}/api/client-config*`, (route) => route.fulfill({ json: clientConfigFixture() }));
   // 費用の軸は登坂と振動の2本（`src/testing/costAxes.ts: TWO_COST_AXES`）。
   await page.route(`${API_BASE}/api/cost-axes*`, (route) => route.fulfill({ json: TWO_COST_AXES }));
-  // レンズで塗る道ごとの材料。材料を持つ道が無い形で答える。
-  await page.route(`${API_BASE}/api/region/lens/**`, (route) =>
-    route.fulfill({ json: { materials: {}, wind_previous_run_from: null } }),
-  );
   // 時刻で変わる値のコマ。路面タイルもレンズも、どの出発時刻も1つのコマで覆う。
   await page.route(`${API_BASE}/api/region/time-frames`, (route) => route.fulfill({ json: WIDE_TIME_FRAMES }));
 

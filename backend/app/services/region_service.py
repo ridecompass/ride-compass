@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from functools import partial
@@ -33,7 +33,9 @@ from app.infrastructure.debug_log import log_external_call
 from app.infrastructure.point_tile_layers import PointTileLayer
 from app.infrastructure.road_graph_repository import RoadGraphRepository
 from app.infrastructure import road_network_store
-from app.infrastructure.vector_tile import ROAD_FEATURE_PROPERTIES, ROAD_SURFACE_LAYER_NAME, encode_empty_tile
+from app.infrastructure.vector_tile import (
+    LENS_LAYER_NAME, ROAD_FEATURE_PROPERTIES, ROAD_SURFACE_LAYER_NAME, encode_empty_tile,
+)
 from app.infrastructure.media_types import MVT_CONTENT_TYPE
 from app.infrastructure.region_tile_cache import MVT_TILE_GENERATIONS, serve_region_tile
 from app.services.lens_service import LensService
@@ -130,7 +132,8 @@ class RegionService:
             # 引いたズームのタイルの数万本の道の値と形を並べるのは、イベントループの外で行う。
             keys, shapes, layer_values = await asyncio.to_thread(_road_surface_features, network, z, bbox, definitions,
                                                                  timed_at)
-            return await self._repository.get_road_surface_tile_mvt(z, x, y, bbox, keys, shapes, layer_values)
+            return await self._repository.get_road_feature_tile_mvt(ROAD_SURFACE_LAYER_NAME, z, x, y, bbox, keys, shapes,
+                                                                    layer_values)
 
         return await self._get_tile(
             read_tile=read_tile,
@@ -139,6 +142,14 @@ class RegionService:
             external_call_name="region:road-surface-tile",
             z=z, x=x, y=y, variant=variant,
         )
+
+    async def encode_lens_tile(self, z: int, x: int, y: int, keys: Sequence[str], shapes: Sequence[bytes],
+                               materials: Mapping[str, Mapping[str, float]]) -> bytes:
+        """地図のレンズのタイル（`services/lens_service.py: LensService.lens_tile`）を、路面タイルと同じ焼き方で組む——同じ道の形に、
+        道ごとの材料をプロパティで載せる。取込範囲の外は空のタイル。"""
+        tile = await self._repository.get_road_feature_tile_mvt(LENS_LAYER_NAME, z, x, y, tile_bounds_lonlat(z, x, y), keys,
+                                                               shapes, materials)
+        return encode_empty_tile(LENS_LAYER_NAME) if tile is None else tile
 
     async def get_point_tile(self, layer: PointTileLayer, z: int, x: int, y: int) -> bytes:
         """点のレイヤー（`infrastructure/point_tile_layers.py`）のタイル。どのレイヤーも同じ道で配る。"""

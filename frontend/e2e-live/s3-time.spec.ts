@@ -112,12 +112,12 @@ test("S3 時刻で変わる入力", async ({ page }) => {
             notApplicable(`「${lens.label}」${name}`, "backendの予報（MSM）が古い");
             return;
           }
-          const before = watch.wayMaterials.length;
+          const before = watch.lensTiles.length;
           await setDeparture(page, tomorrowJst(hour));
           await settleMap(page);
-          const received = () => watch.wayMaterials.slice(before).filter((entry) => entry.lensId === lens.lensId);
+          const received = () => watch.lensTiles.slice(before).filter((entry) => entry.lensId === lens.lensId);
           await expect.poll(() => received().length, { timeout: 15_000 }).toBeGreaterThan(0);
-          const ways = received().flatMap((entry) => Object.keys(entry.materials));
+          const ways = received().flatMap((entry) => entry.ways.filter((way) => Object.keys(way).length > 1));
           expect.soft(ways.length, `「${lens.label}」${name}: 道ごとの材料を1件も受け取っていない`).toBeGreaterThan(0);
         },
         () => setDeparture(page, original),

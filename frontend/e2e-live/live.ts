@@ -68,9 +68,12 @@ export function tileOf(z: number, { latitude, longitude }: { latitude: number; l
 }
 
 /** 路面タイル（MVT）の地物ごとのプロパティ。 */
-export function decodeRoadTile(body: Buffer): Record<string, unknown>[] {
+export function decodeRoadTile(
+  body: Buffer,
+  layerName = regionTileConfig.road_surface.layer_name,
+): Record<string, unknown>[] {
   const tile = new VectorTile(new PbfReader(body));
-  const layer = tile.layers[regionTileConfig.road_surface.layer_name];
+  const layer = tile.layers[layerName];
   if (!layer) return [];
   return Array.from({ length: layer.length }, (_, i) => layer.feature(i).properties);
 }
@@ -84,13 +87,14 @@ export interface Watch {
   /** backendが上流（外部の配信元・キャッシュ）の失敗として返した502・503・504（HTTPの定義で上流の失敗を表す）。合否に入れない。 */
   gatewayFailures: string[];
   roadTiles: Map<string, Record<string, unknown>[]>;
-  wayMaterials: { lensId: string; url: string; materials: Record<string, Record<string, number>> }[];
+  /** 受け取ったレンズのタイルの道（地物のプロパティ。材料の無い道は道の鍵だけを持つ）。 */
+  lensTiles: { lensId: string; url: string; ways: Record<string, unknown>[] }[];
   jmaTiles: { url: string; body: Buffer }[];
   generated: { routes: unknown[]; no_candidates_reason: string | null }[];
 }
 
 const ROAD_TILE = /\/api\/region\/road-surface-tiles\/(\d+)\/(\d+)\/(\d+)\.pbf/;
-const WAY_MATERIALS = /\/api\/region\/lens\/([^/]+)\//;
+const LENS_TILE = /\/api\/region\/lens-tiles\/([^/]+)\/\d+\/\d+\/\d+\.pbf/;
 
 async function record(watch: Watch, response: Response): Promise<void> {
   const url = response.url();
@@ -100,10 +104,10 @@ async function record(watch: Watch, response: Response): Promise<void> {
   else if (isBackend && (status >= 500 || status === 429)) watch.backendFailures.push(`${status} ${url}`);
   if (!response.ok()) return;
   const road = ROAD_TILE.exec(url);
-  const wayMaterials = WAY_MATERIALS.exec(url);
+  const lensTile = LENS_TILE.exec(url);
   const isJmaTile = url.includes("/api/jma-tile/") && url.endsWith(".png");
   const isGeneration = url.includes("/api/routes/generate/");
-  if (!road && !wayMaterials && !isJmaTile && !isGeneration) return;
+  if (!road && !lensTile && !isJmaTile && !isGeneration) return;
   let body: Buffer;
   try {
     body = await response.body();
@@ -113,8 +117,8 @@ async function record(watch: Watch, response: Response): Promise<void> {
   }
   try {
     if (road) watch.roadTiles.set(`${road[1]}/${road[2]}/${road[3]}`, decodeRoadTile(body));
-    else if (wayMaterials)
-      watch.wayMaterials.push({ lensId: wayMaterials[1], url, materials: JSON.parse(body.toString("utf-8")) });
+    else if (lensTile)
+      watch.lensTiles.push({ lensId: lensTile[1], url, ways: decodeRoadTile(body, regionTileConfig.lens.layer_name) });
     else if (isJmaTile) watch.jmaTiles.push({ url, body });
     else {
       const job = JSON.parse(body.toString("utf-8"));
@@ -143,7 +147,7 @@ export async function openLive(
     backendFailures: [],
     gatewayFailures: [],
     roadTiles: new Map(),
-    wayMaterials: [],
+    lensTiles: [],
     jmaTiles: [],
     generated: [],
   };

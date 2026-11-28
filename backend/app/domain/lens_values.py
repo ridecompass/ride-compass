@@ -28,7 +28,6 @@ from app.domain.gradient import ROAD_BEARING_LEAF, travel_direction_formula
 from app.domain.ledger_costs import LedgerCosts, LedgerParameters
 from app.domain.leg_costs import axis_facts, burden_weights, travel_inputs
 from app.domain.model_settings import ModelSettings
-from app.domain.msm_grid import ForecastTime
 from app.domain.road_features import feature_row_ranges
 from app.domain.search_graph import range_positions
 from app.domain.road_network import MaterialFills, RoadNetwork
@@ -52,7 +51,7 @@ LENS_AGAINST_LEAF = "lens_against"
 
 
 class MapLens(StrictModel):
-    """地図がレンズで道を塗る決まり。道ごとの材料は`/api/region/lens/{lens_id}/...`で、要求には`material_conditions`の走る条件を
+    """地図がレンズで道を塗る決まり。道ごとの材料は`/api/region/lens-tiles/{lens_id}/...`で、要求には`material_conditions`の走る条件を
     載せる（載せない条件では値が変わらない）。道の値は`formula`へ材料と走行方位を入れたもの。"""
 
     formula: WayValueFormula
@@ -207,15 +206,6 @@ def _summed_by_direction(features: LensFeatures, per_row: np.ndarray) -> np.ndar
     total = np.bincount(slot, weights=np.asarray(per_row, dtype=np.float64), minlength=size)
     present = np.bincount(slot, minlength=size) > 0
     return np.where(present, total, np.nan).reshape(len(features), 2)
-
-
-class LensMaterials(StrictModel):
-    """タイル1枚の、地図のレンズの道ごとの材料と、その値が引いた風の素性。"""
-
-    #: フィーチャーの鍵→道の向き・逆向きに辿った1kmあたりの代償の秒と道の向き（値の無い材料は載せない）。
-    materials: dict[str, dict[str, float]]
-    #: 引いた風が最新のrunの終わりから先の（前に出たrunの）ものなら、その終わりの時刻。そうでなければNone。
-    wind_previous_run_from: ForecastTime | None
 
 
 class LensAxisSeconds(StrictModel):

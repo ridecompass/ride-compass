@@ -26,17 +26,18 @@ export async function settleMap(page: Page): Promise<void> {
   await page.evaluate(() => window.__e2e.settle());
 }
 
-/** 路面タイルのソースのid（スタイルのうち、タイルのURLが路面タイルの経路を指すもの）。 */
-export async function roadSourceId(page: Page): Promise<string> {
-  const id = await page.evaluate(() => {
+/** レンズ`lensId`のタイルのソースのid（スタイルのうち、タイルのURLがそのレンズのタイルの経路を指すもの）。 */
+export async function lensSourceId(page: Page, lensId: string): Promise<string> {
+  const path = `/lens-tiles/${lensId}/`;
+  const id = await page.evaluate((path) => {
     const sources = window.__liveMap().getStyle().sources;
     return (
       Object.entries(sources).find(([, source]) =>
-        ((source as { tiles?: string[] }).tiles ?? []).some((url) => url.includes("/road-surface-tiles/")),
+        ((source as { tiles?: string[] }).tiles ?? []).some((url) => url.includes(path)),
       )?.[0] ?? null
     );
-  });
-  expect(id, "路面タイルのソースがスタイルに無い").not.toBeNull();
+  }, path);
+  expect(id, `レンズ「${lensId}」のタイルのソースがスタイルに無い`).not.toBeNull();
   return id!;
 }
 
