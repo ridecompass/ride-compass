@@ -82,9 +82,9 @@ export default function LensControl({
             className="max-w-full flex-row items-center gap-1 border-0 px-2.5 py-1 text-[length:var(--font-size-sm)] whitespace-nowrap focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-accent-strong)]"
             aria-label={`${namesLensOnly ? LENS_SCREEN_NAME : `${LENS_SCREEN_NAME}: ${pillLabel}`}（タップで変更）`}
             title={statusLabel}
-            usage={`選んだ走りにくさの種類の${LENS_QUANTITY_LABEL}で、地図の道路[ルートを作った後はルートの線]を塗ります。\n・横の帯は左ほど小さく、右ほど大きい走りにくさです（右に値があれば、その値から一番濃い色）。\n・道を押すと、その道の値が出ます。`}
+            usage={`選んだ要因の${LENS_QUANTITY_LABEL}で、地図の道路[ルートを作った後はルートの線]を塗ります。\n・横の帯は左ほど小さく、右ほど大きいロスです（右に値があれば、その値から一番濃い色）。\n・道を押すと、その道の値が出ます。`}
           >
-            {/* 道のりのグラフの「走りにくさを色で見る」の切り替えと同じ絵で、どちらも同じ入口と分かるようにする。 */}
+            {/* 道のりのグラフの「難所を色で見る」の切り替えと同じ絵で、どちらも同じ入口と分かるようにする。 */}
             <BurdenPaintIcon size={14} />
             <span
               aria-hidden="true"
@@ -137,7 +137,7 @@ export default function LensControl({
             value={unselected ? "" : lens}
             onValueChange={(id) => onLensChange(id === "" ? UNSELECTED_LENS_ID : id)}
             aria-label={LENS_SCREEN_NAME}
-            usage={`押した走りにくさの種類の${LENS_QUANTITY_LABEL}で、地図の道路[ルートを作った後はルートの線]を塗ります。選んでいる行をもう一度押すと外れます。`}
+            usage={`押した要因の${LENS_QUANTITY_LABEL}で、地図の道路[ルートを作った後はルートの線]を塗ります。選んでいる行をもう一度押すと外れます。`}
           >
             {axisOptions.map((option) => (
               <LensRow key={option.id} option={option} />
@@ -149,7 +149,7 @@ export default function LensControl({
               aria-label="選択を外す"
               onClick={() => onLensChange(UNSELECTED_LENS_ID)}
               disabled={unselected}
-              usage={`選んでいる走りにくさの種類を外します。外すと、ルートを作る前は道路を塗らず、作った後は${totalLabel ?? "1色"}で塗ります。`}
+              usage={`選んでいる要因を外します。外すと、ルートを作る前は道路を塗らず、作った後は${totalLabel ?? "1色"}で塗ります。`}
             >
               <ClearLensIcon />
             </Button>

@@ -69,7 +69,7 @@ describe("選んだ候補の中身", () => {
         selectedRouteSegment: { segment: second, latitude: 35, longitude: 139 },
       }),
     });
-    const graph = screen.getByRole("slider", { name: /^道のりに沿った走りにくさ/ });
+    const graph = screen.getByRole("slider", { name: /^区間ごとのロス/ });
     expect(graph).toHaveAttribute("aria-valuetext", "1.0 km地点");
     expect(screen.getByText("20.0km")).toBeInTheDocument();
     graph.focus();
@@ -120,7 +120,7 @@ describe("選んだ候補の中身", () => {
     },
   );
 
-  it("道のりのグラフの「グラフに積む走りにくさ」の一覧に軸の名前（費用の軸の一覧）の付いた内訳と事実を出す", async () => {
+  it("道のりのグラフの「グラフに積む要因」の一覧に軸の名前（費用の軸の一覧）の付いた内訳と事実を出す", async () => {
     const candidate = route("fast", {
       segments: [makeRouteSegment({ distance_km: 1 })],
       penalty: {
@@ -133,7 +133,7 @@ describe("選んだ候補の中身", () => {
       facts: { axes: { ascent: { label: "登り", value: 120, unit: "m" } } },
     });
     renderOutcome({ results: resultsOf({ generated: [candidate] }) });
-    await userEvent.click(screen.getByRole("button", { name: "グラフに積む走りにくさ" }));
+    await userEvent.click(screen.getByRole("button", { name: "グラフに積む要因" }));
     expect(await within(screen.getByRole("dialog")).findByText("登坂")).toBeInTheDocument();
     expect(screen.getByText("登り 120m")).toBeInTheDocument();
   });

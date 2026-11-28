@@ -1,5 +1,5 @@
 /**
- * `LensControl.tsx`——「走りにくさを色で見る」のピルが今のレンズと色の帯を示して帯の右に一番濃い段の名前を出し、開いた一覧でレンズを1つ選び・外し、
+ * `LensControl.tsx`——「難所を色で見る」のピルが今のレンズと色の帯を示して帯の右に一番濃い段の名前を出し、開いた一覧でレンズを1つ選び・外し、
  * 一覧の頭で但し書きを読ませること。
  *
  * ここで見ないもの:
@@ -46,15 +46,15 @@ function renderLens(props: Partial<Parameters<typeof LensControl>[0]> = {}) {
   );
   return handlers;
 }
-const pill = () => screen.getByRole("button", { name: /^走りにくさを色で見る/ });
+const pill = () => screen.getByRole("button", { name: /^難所を色で見る/ });
 const open = () => userEvent.click(pill());
-const list = () => screen.getByRole("radiogroup", { name: "走りにくさを色で見る" });
+const list = () => screen.getByRole("radiogroup", { name: "難所を色で見る" });
 
 describe("LensControl", () => {
   it.each([
-    ["used", false, "走りにくさを色で見る: usedの軸（タップで変更）"],
-    [UNSELECTED_LENS_ID, false, "走りにくさを色で見る（タップで変更）"],
-    [UNSELECTED_LENS_ID, true, "走りにくさを色で見る: 総合（タップで変更）"],
+    ["used", false, "難所を色で見る: usedの軸（タップで変更）"],
+    [UNSELECTED_LENS_ID, false, "難所を色で見る（タップで変更）"],
+    [UNSELECTED_LENS_ID, true, "難所を色で見る: 総合（タップで変更）"],
   ])(
     "ピルは選んでいるレンズ（%s・ルートの確定後 %s）の名前を出し、選んでいなければ塗り方を出す",
     (lens, hasDetail, name) => {

@@ -53,15 +53,15 @@ export async function renderedRoads(page: Page, sourceId: string): Promise<Recor
   );
 }
 
-/** 「走りにくさを色で見る」のピル（押すとレンズの一覧を開く）。 */
+/** 「難所を色で見る」のピル（押すとレンズの一覧を開く）。 */
 function lensPill(page: Page) {
-  return page.getByRole("button", { name: /^走りにくさを色で見る/ });
+  return page.getByRole("button", { name: /^難所を色で見る/ });
 }
 
 /** レンズの一覧を開いて`read`を当て、Escape で閉じる。 */
 async function inLensList<T>(page: Page, read: (group: Locator) => Promise<T>): Promise<T> {
   await lensPill(page).click();
-  const group = page.getByRole("radiogroup", { name: "走りにくさを色で見る" });
+  const group = page.getByRole("radiogroup", { name: "難所を色で見る" });
   await expect(group).toBeVisible();
   const result = await read(group);
   await page.keyboard.press("Escape");

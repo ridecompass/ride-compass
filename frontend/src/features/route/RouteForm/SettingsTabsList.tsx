@@ -15,8 +15,8 @@ const settingsTabs = (axisNames: string): readonly { value: SettingsTab; label: 
   },
   {
     value: "weights",
-    label: "難所",
-    usage: `走りにくさ${axisNames}を、総合と種類ごとに、どれだけの割合で数えるかを決めます。`,
+    label: "要因",
+    usage: `ロスを、総合と要因${axisNames}ごとに、どれだけの割合で数えるかを決めます。`,
   },
   {
     value: "exclusions",

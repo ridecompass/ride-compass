@@ -112,9 +112,9 @@ export const ChooseItemsIcon = fromLucide(ListChecks);
 /** 項目を選ぶ間の、一覧に並べる項目（`UnlistedIcon`と対で、並べるかを形で見分ける）。 */
 export const ListedIcon = fromLucide(Eye);
 export const UnlistedIcon = fromLucide(EyeOff);
-/** 走りにくさで道を塗る（「走りにくさを色で見る」の入口）。 */
+/** ロスで道を塗る（「難所を色で見る」の入口）。 */
 export const BurdenPaintIcon = fromLucide(Paintbrush);
-/** 走りにくさ（所要時間に足す代償）の量。 */
+/** ロス（所要時間に足す代償）の量。 */
 export const BurdenIcon = fromLucide(Weight);
 export const RouteSettingsIcon = fromLucide(SlidersHorizontal);
 export const ShieldIcon = fromLucide(Shield);

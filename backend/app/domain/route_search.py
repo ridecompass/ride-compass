@@ -417,7 +417,7 @@ def prefers_reverse(forward_cost: float, reverse_cost: float) -> bool:
     return reverse_cost < forward_cost
 
 
-#: `candidate_order`の並べ方を、利用者に言う文（代償を利用者には走りにくさと呼ぶ）。並べ方を変えたら、ここも変える。
+#: `candidate_order`の並べ方を、利用者に言う文（代償を利用者にはロスと呼ぶ）。並べ方を変えたら、ここも変える。
 CANDIDATE_ORDER_WORDING = f"{COST_WORDING}が小さい順[周回は1kmあたりの和が小さい順]"
 
 

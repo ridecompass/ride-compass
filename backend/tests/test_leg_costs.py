@@ -174,7 +174,7 @@ def test_an_excluded_segment_cannot_be_passed():
 
 def test_the_avoidance_multiplier_scales_only_the_travel_time_in_the_cost():
     """避け方の倍率は費用の中の所要時間にだけ掛かり、代償（道のストレス）にも予想の所要時間にも掛からない。代償に掛かると、
-    走りにくさの大きい道ほど「好む」で大きく割り引かれ、避ける・好むの強さが道の走りにくさで変わる。所要時間に混ざると、避けた道・好む道を
+    ロスの大きい道ほど「好む」で大きく割り引かれ、避ける・好むの強さが道のロスで変わる。所要時間に混ざると、避けた道・好む道を
     通った候補の所要時間と到着の予想が延び縮みする。区間の内訳の避け方の秒も、所要時間に倍率を掛けた分だけ。"""
     matrix = _matrix(3, categories={"class:surface_estimate": ["gravel"] * 3})
     scales = [COST_SCALE, 1.0, 1.0 / COST_SCALE]
@@ -192,7 +192,7 @@ def test_the_avoidance_multiplier_scales_only_the_travel_time_in_the_cost():
 @pytest.mark.parametrize(("values", "expected"), [([np.nan, 0.5], 0.5), ([np.nan, 0.0], None)])
 def test_the_fact_of_a_numeric_axis_is_the_value_of_the_road_that_has_it_and_weighs_most(values, expected):
     """数の材料の軸の事実は、材料の値のある区間のうち、その軸の秒に一番効いた区間の値。材料の無い区間の秒は取込の範囲全体の重さの
-    平均から出て、その区間に値が無いので、事実にすると走りにくさの秒を説明しない値（材料の値の平均等）を見せる。値のある区間の秒が
+    平均から出て、その区間に値が無いので、事実にするとロスの秒を説明しない値（材料の値の平均等）を見せる。値のある区間の秒が
     どれも0なら、事実を出さない。"""
     matrix = _matrix(2, materials={BAD_MATERIAL: values})
     composer = _composer(matrix, axes=cost_axes(BAD_MATERIAL), parameters=STRENGTH, burden_fills={BAD_AXIS: 2.0})

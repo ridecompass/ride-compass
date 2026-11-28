@@ -186,7 +186,7 @@ export function useGenerationConditions({ onOriginPlace }: GenerationConditionsI
   // 無い軸を捨てた値。
   const [storedCostPreference, setCostPreference] = useStoredState<CostPreference>(
     COST_PREFERENCE_STORAGE_KEY,
-    "走りにくさの好み",
+    "要因の割合",
     STANDARD_COST_PREFERENCE,
   );
   const costAxisCatalog = useCostAxisCatalog();

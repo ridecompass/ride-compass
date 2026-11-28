@@ -25,7 +25,7 @@ export function countsAxis(preference: CostPreference, axisId: string): boolean 
   return countsCosts(preference) && !preference.disabled_axes.includes(axisId);
 }
 
-/** 走りにくさを数えないことを、段と並べて出す名前（費用の軸の無効と、全体のつまみの0。backendの宣言）。 */
+/** ロスを数えないことを、段と並べて出す名前（費用の軸の無効と、全体のつまみの0。backendの宣言）。 */
 export const DISABLED_LABEL = routeGenerateConfig.disabled_label;
 
 /** 軸を数えない（無効）ことを、倍率と並べて選ぶ値。 */

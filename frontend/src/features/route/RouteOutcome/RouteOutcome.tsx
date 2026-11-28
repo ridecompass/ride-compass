@@ -34,7 +34,7 @@ import type { RouteResults } from "@/features/route/useRouteResults";
 import type { SpliceSessionView } from "@/features/route/useSpliceSession";
 import type { RouteCandidate } from "@/types/route";
 
-const CANDIDATE_TAB_USAGE = `この候補を地図と内訳に出し、地図に全体を収めます。\n${CANDIDATE_MARKS_WORDING}\n・上の段: 距離\n・下の段: 所要時間と走りにくさ[重りの印]\n・下の帯: ${LENS_QUANTITY_LABEL}[地図と同じ色]`;
+const CANDIDATE_TAB_USAGE = `この候補を地図と内訳に出し、地図に全体を収めます。\n${CANDIDATE_MARKS_WORDING}\n・上の段: 距離\n・下の段: 所要時間とロス[重りの印]\n・下の帯: ${LENS_QUANTITY_LABEL}[地図と同じ色]`;
 
 /** 名前の列で群を見分ける印と、その意味（指を置いたときの吹き出しと読み上げの名前）。生成した候補は印を持たない。 */
 const GROUP_MARKS: Partial<Record<RouteListGroup, { Icon: typeof FastestRouteIcon; meaning: string }>> = {
@@ -42,7 +42,7 @@ const GROUP_MARKS: Partial<Record<RouteListGroup, { Icon: typeof FastestRouteIco
   spliced: { Icon: RouteSpliceIcon, meaning: "合成ルート" },
 };
 
-/** カードの下の帯の色。候補を並べるのと同じ、ルート全体の1kmあたりの走りにくさ（曲がる所と、好む道・避ける道の増減を含む）を、総合のレンズの段で
+/** カードの下の帯の色。候補を並べるのと同じ、ルート全体の1kmあたりのロス（曲がる所と、好む道・避ける道の増減を含む）を、総合のレンズの段で
  * 示す。値が無ければ値なしの色。 */
 function penaltyColor(route: RouteCandidate, catalog: CostAxisCatalog, ground: MapTheme): string {
   if (catalog.lenses === null || route.penalty_seconds_per_km === null) return NO_DATA_LEGEND_BAND.color;
@@ -134,8 +134,8 @@ export default function RouteOutcome({ results, generation, splice, profileLayer
     );
   }
 
-  // 候補ごとのタブの1段で、タブの切り替えが候補の切り替えを兼ねる。中身は上から、候補の一覧（所要と走りにくさはカードが出す）・
-  // 推定の注意・道のりのグラフ・元との違いの順で、狭い高さでも候補の切り替えと所要・走りにくさが先に見える。
+  // 候補ごとのタブの1段で、タブの切り替えが候補の切り替えを兼ねる。中身は上から、候補の一覧（所要とロスはカードが出す）・
+  // 推定の注意・道のりのグラフ・元との違いの順で、狭い高さでも候補の切り替えと所要・ロスが先に見える。
   // 道のりのグラフの横軸の右端。候補どうしで同じ物差しにし、面積（負荷）を見比べられるようにする。
   const longestDistanceKm = Math.max(0, ...routes.map((route) => route.distance_km));
   const selectedValue = selectedRouteId ?? routes[0].id;
@@ -175,7 +175,7 @@ export default function RouteOutcome({ results, generation, splice, profileLayer
               <span>所要</span>
               <span className="inline-flex items-center gap-0.5">
                 <BurdenIcon size={11} />
-                走りにくさ
+                ロス
               </span>
             </span>
           </div>
@@ -215,10 +215,10 @@ export default function RouteOutcome({ results, generation, splice, profileLayer
                         : formatDurationShort(route.estimated_duration_seconds)}
                     </span>{" "}
                     <span className="inline-flex items-center gap-0.5">
-                      <span aria-hidden="true" title="走りにくさ" className="inline-flex text-[var(--color-muted)]">
+                      <span aria-hidden="true" title="ロス" className="inline-flex text-[var(--color-muted)]">
                         <BurdenIcon size={11} />
                       </span>
-                      <span className="sr-only">走りにくさ</span>
+                      <span className="sr-only">ロス</span>
                       {formatPenaltyMinutes(route.penalty.total_seconds)}
                       <span className="sr-only">{MINUTE_UNIT}</span>
                     </span>

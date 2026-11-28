@@ -1,11 +1,11 @@
 /**
- * `features/route/ProfileChart/ProfileChart.tsx`——道のりに沿った図の枠（走りにくさの図と「表示」の図が中身を差し込む）。
+ * `features/route/ProfileChart/ProfileChart.tsx`——道のりに沿った図の枠（ロスの図と「表示」の図が中身を差し込む）。
  *
  * 見るもの: 選ばれた区間の帯とスライダーとしての値、キーボード（矢印・Home・End）と1本の指（マウス）で横になぞる・
  * 押して離す操作で選ぶ区間と地点、押しただけ・ボタンを押していない動き・縦に動き出した操作・2本目の指が加わった操作では
  * 選ばないこと、選んだ地点の線（図で選んでも地図で押しても、選んだ地点を区間の道なりに当てた所）、選ぶ受け口が無ければ見るだけの図にすること、結果の図だけに図の名前の帯を出すこと（帯が切り替えに重なり、中身が帯の下に描かれることは実寸で決まるので `frontend/e2e/mobile-route-result.spec.ts` が見る）。
  *
- * ここで見ないもの: 図の中身（走りにくさの塗り・現在地の印の高さ） → `DifficultyProfile.test.tsx`・`RouteProfile.test.tsx`。
+ * ここで見ないもの: 図の中身（ロスの塗り・現在地の印の高さ） → `DifficultyProfile.test.tsx`・`RouteProfile.test.tsx`。
  * 区間の中の割合から地点を引く計算（道なりの形の上） → `lib/routeDistance.ts`。
  *
  * 差し替えたもの: グラフの実寸（`getBoundingClientRect`。テスト環境は実寸を返さない）。

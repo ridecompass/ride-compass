@@ -173,7 +173,7 @@ export function ClearAllFiltersIcon({ size = 16 }: IconProps) {
 /** 筆をバツと重ならない左上へ収める、lucideの24単位の枠から自前の枠への縮み。 */
 const CLEAR_LENS_BRUSH_SCALE = 15 / 24;
 
-/** 「走りにくさを色で見る」の選択を外す: 入口の筆（lucideの`Paintbrush`と同じ線）＋バツ。一括操作の組の形なので、ほかの組と同じく
+/** 「難所を色で見る」の選択を外す: 入口の筆（lucideの`Paintbrush`と同じ線）＋バツ。一括操作の組の形なので、ほかの組と同じく
  * 自前に置き、筆も入口の形の線をこの枠へ縮めて描く。 */
 export function ClearLensIcon({ size = 16 }: IconProps) {
   return (

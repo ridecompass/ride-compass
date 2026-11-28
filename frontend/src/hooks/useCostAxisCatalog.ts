@@ -92,11 +92,11 @@ export function retryCostAxisCatalogFetch(): void {
 const COST_AXIS_CATALOG_FETCH_FAILURE: FetchFailure = {
   id: "cost-axis-catalog",
   label: COST_AXIS_CATALOG_LABEL,
-  effect: "走りにくさの種類ごとの割合を変えられません。",
+  effect: "要因ごとの割合を変えられません。",
   onRetry: retryCostAxisCatalogFetch,
 };
 
-/** 費用の軸の一覧が取れていないことの項目（取れていれば・取得中なら無い）。常設ヘッダーの印と、走りにくさタブの告知が読む。 */
+/** 費用の軸の一覧が取れていないことの項目（取れていれば・取得中なら無い）。常設ヘッダーの印と、要因タブの告知が読む。 */
 export function costAxisCatalogFetchFailure(catalog: CostAxisCatalog): FetchFailure | null {
   return catalog.failed ? COST_AXIS_CATALOG_FETCH_FAILURE : null;
 }

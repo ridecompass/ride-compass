@@ -4,7 +4,7 @@ import { formatDelta } from "@/features/route/routeEditDiff";
 import { MINUTE_UNIT } from "@/lib/duration";
 import { cn } from "@/lib/cn";
 
-/** 1つの軸の走りにくさの差（分、編集後−元）。 */
+/** 1つの軸のロスの差（分、編集後−元）。 */
 export interface AxisDelta {
   axisId: string;
   label: string;

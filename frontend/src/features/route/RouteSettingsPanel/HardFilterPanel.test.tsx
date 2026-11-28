@@ -64,8 +64,8 @@ describe("HardFilterPanel", () => {
   it("選べない行は、並びの先頭に畳まずに鍵と既定の段の名前で出し、選び直す操作を持たない", () => {
     renderPanel({ "fixed.motorway": "pass" });
 
-    // 行の並びは段の凡例の次から。
-    const firstRow = screen.getByRole("group", { name: "段の凡例" }).nextElementSibling;
+    // 行の並びは「地図で見る」と段の凡例の行の次から。
+    const firstRow = screen.getByRole("group", { name: "段の凡例" }).parentElement?.nextElementSibling;
     expect(firstRow).toHaveTextContent(/^高速道路.*×∞$/);
     for (const label of ["高速道路", "自転車禁止"]) {
       expect(screen.getByRole("img", { name: `${label}はいつも経路から外れます（変えられません）` })).toHaveTextContent(

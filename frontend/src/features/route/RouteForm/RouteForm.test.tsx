@@ -1,6 +1,6 @@
 /**
  * `RouteForm/RouteForm.tsx`——「ルート設定」区分の各タブの中身。「基本」タブ（ルートの形・距離の目標・地点の一覧）を
- * 描き、「難所」「道路」タブと「保存」タブの「設定」には受け取った中身を置き、「保存」タブの「地点」には保存した地点を並べる。
+ * 描き、「要因」「道路」タブと「保存」タブの「設定」には受け取った中身を置き、「保存」タブの「地点」には保存した地点を並べる。
  *
  * ここで見ないもの: タブの列と選んだタブ、どのタブの中身が見えるか（スタイルで隠す）、呼び出した地点を選んで「基本」タブへ移ること
  * → `app/page.tsx`。
@@ -128,16 +128,16 @@ describe("RouteForm タブの中身", () => {
     return <input aria-label={name} value={text} onChange={(e) => setText(e.target.value)} />;
   }
 
-  it("「難所」「道路」と「保存」の「設定」に受け取った中身を置き、タブを切り替えても外さない", async () => {
+  it("「要因」「道路」と「保存」の「設定」に受け取った中身を置き、タブを切り替えても外さない", async () => {
     const { showTab } = renderForm(
       {
-        weightsPanel: <Draft name="走りにくさの中身" />,
+        weightsPanel: <Draft name="ロスの中身" />,
         exclusionsPanel: <Draft name="除外の中身" />,
         savedConditionsPanel: <Draft name="保存の中身" />,
       },
       "weights",
     );
-    await userEvent.type(screen.getByRole("textbox", { name: "走りにくさの中身" }), "動かした配分");
+    await userEvent.type(screen.getByRole("textbox", { name: "ロスの中身" }), "動かした配分");
     showTab("exclusions");
     await userEvent.type(screen.getByRole("textbox", { name: "除外の中身" }), "外した種類");
     showTab("saved");
@@ -146,7 +146,7 @@ describe("RouteForm タブの中身", () => {
     showTab("generate");
     showTab("weights");
 
-    expect(screen.getByRole("textbox", { name: "走りにくさの中身" })).toHaveValue("動かした配分");
+    expect(screen.getByRole("textbox", { name: "ロスの中身" })).toHaveValue("動かした配分");
     expect(screen.getByRole("textbox", { name: "除外の中身" })).toHaveValue("外した種類");
     expect(screen.getByRole("textbox", { name: "保存の中身" })).toHaveValue("書きかけの名前");
   });

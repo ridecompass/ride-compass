@@ -1,7 +1,7 @@
 // @vitest-environment node
 /**
  * `features/route/routeEditDiff.ts`——編集で作ったルートが元から何を変えたか。
- * - `editDifference`: 距離・所要（分）・走りにくさ（内訳の和の分）の元・編集後と差（編集後 − 元。どちらかに値が無ければnull）と、
+ * - `editDifference`: 距離・所要（分）・ロス（内訳の和の分）の元・編集後と差（編集後 − 元。どちらかに値が無ければnull）と、
  *   2本のEdgeの差から求めた変えた区間（元の始点からの位置と、長さの差）。指標は編集面と同じ1つの表（`metricDifferences`）から作る
  * - `formatDelta`: 差を表示の桁で丸めて符号付きで書く。丸めて0なら「±0」
  * - `deltaTone`: 差の増減の印。表示する桁で丸めた差で決める
@@ -43,7 +43,7 @@ function deltasOf(metrics: MetricDifference[]): Record<string, number | null> {
 }
 
 describe("editDifference", () => {
-  it("距離・所要時間・走りにくさ（避ける道で上乗せした秒を含む内訳の和）の差を、編集後から元を引いて出す", () => {
+  it("距離・所要時間・ロス（避ける道で上乗せした秒を含む内訳の和）の差を、編集後から元を引いて出す", () => {
     const origin = route("ABCDEF", {
       distance_km: 20,
       estimated_duration_seconds: 3600,
@@ -66,7 +66,7 @@ describe("editDifference", () => {
         total_seconds: 180,
       },
     });
-    expect(deltasOf(editDifference(origin, edited).metrics)).toEqual({ 距離: 1.5, 所要: -5, 走りにくさ: -4 });
+    expect(deltasOf(editDifference(origin, edited).metrics)).toEqual({ 距離: 1.5, 所要: -5, ロス: -4 });
   });
 
   it("どちらかに所要時間が無ければ、その差はnull", () => {
