@@ -7,7 +7,7 @@
 const CONSENT_MARK_KEY = "ridecompass:consented";
 
 /** `<html>` に付ける印（`data-consented`）。読み込み中の最初の画面を隠す CSS が見る。 */
-export const CONSENT_MARK_ATTRIBUTE = "data-consented";
+const CONSENT_MARK_ATTRIBUTE = "data-consented";
 
 /** 最初の HTML の `<head>` で動かすスクリプト。覚えがあれば `<html>` に印を付ける（保存が使えなければ何もしない）。 */
 export const CONSENT_MARK_SCRIPT = `try{if(localStorage.getItem(${JSON.stringify(CONSENT_MARK_KEY)}))document.documentElement.setAttribute(${JSON.stringify(CONSENT_MARK_ATTRIBUTE)},"")}catch(e){}`;
