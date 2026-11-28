@@ -1,4 +1,5 @@
-"""`infrastructure/road_network_store.py`——取込範囲全体の道路網をDBから組み、ディスクの置き場へ置き、読む。
+"""`infrastructure/road_network_store.py`と`infrastructure/road_network_assembly.py`——取込範囲全体の道路網をDBから組み、
+ディスクの置き場へ置き、読む。
 
 入口は`ensure_current`（DBから組んで置く）・`write_pending`と`publish`（派生の作り直しが置く2段）・`save`・
 `current`（読む）・`prune_other_shapes`（起動後の片付け）。置き場（`ROOT`）はテストごとの一時ディレクトリ（`backend/tests/conftest.py: road_network_root`）。
@@ -15,7 +16,7 @@ DBから組むテストは、道とノードを取込の入口から入れ、派
 - 形の署名の組み立て → `test_cache_identity.py`
 
 材料を区間の束に分けて引くとき、束をまたいで行を続けて詰め、分類の語彙を1つへ付け替えることは、詰める部品
-（`MaterialColumns`）へ束を値で渡して見る——束の大きさ（20万区間）の区間をテストのDBに作らない。
+（`infrastructure/road_network_assembly.py: MaterialColumns`）へ束を値で渡して見る——束の大きさ（20万区間）の区間をテストのDBに作らない。
 """
 
 import importlib
@@ -37,7 +38,7 @@ from app.domain.material_catalog import ELEVATION_GAIN_PER_KM, GRADIENT_PERCENT,
 from app.domain.road_network_build import per_km
 from app.domain.road_network import RoadNetwork, edge_shape
 from app.domain.traffic import highway_rank
-from app.infrastructure import road_network_store
+from app.infrastructure import road_network_assembly, road_network_store
 from app.infrastructure.road_graph_repository import RoadGraphRepository
 from tests.conftest import on_test_db, postgis_database_url, raw_connection
 from tests.source_ingest import abr_prefecture_record, ingest_records, point_record, way_record, zigzag_point
@@ -156,7 +157,7 @@ def test_cleaning_up_after_start_removes_only_networks_of_other_shapes(store):
         [road_network_store.directory_name(2), "not-a-network", _other_shape(3)])
 
 
-@pytest.mark.parametrize("module", [road_network_build, elevation_profile])
+@pytest.mark.parametrize("module", [road_network_assembly, road_network_build, elevation_profile])
 def test_the_shape_changes_when_the_code_that_builds_the_network_changes(module):
     """事実から配列を組むコードを直すと、置き場の形の署名が変わる。変わらないと、直したコードのデプロイが、直す前のコードで
     組んだ置き場を読み続ける。"""
@@ -187,7 +188,7 @@ def _batch(distance_m: list[float], surface: list[str | None]) -> EdgeMaterialAr
 
 def test_batches_fill_consecutive_rows_and_share_one_vocabulary():
     """本番の道路網は束（20万区間）より大きく、束ごとに分類の語彙の番号が違う。"""
-    columns = road_network_store.MaterialColumns(4)
+    columns = road_network_assembly.MaterialColumns(4)
     columns.add(_batch([1.0, 2.0], ["砂利", "舗装"]))
     columns.add(_batch([3.0, 4.0], ["舗装", None]))
 

@@ -186,7 +186,7 @@ class MaterialSpec(StrictModel):
     # （設計原則 構造仕様8。別の辞書へ分けると、材料を増やしたとき片方が取り残される）。
     value_sql: str | None = None
     # 値式の値（区間の量）を、区間の長さ1kmあたりにして持つか。割り算は道路網の配列を作るときに材料を読んだ直後の1か所
-    # （`infrastructure/road_network_store.py: build`が`domain/road_network_build.py: per_km`で割る）だけが持ち、SQLへ写さない。
+    # （`infrastructure/road_network_assembly.py: build`が`domain/road_network_build.py: per_km`で割る）だけが持ち、SQLへ写さない。
     per_km: bool = False
     # 欠損率の測り方（`/admin`の材料タブ）。`CoverageExcluded`を含む3択で、**どれかを必ず
     # 持つ**——「どちらの一覧にも載っていない材料」を型として作れなくする。中身は

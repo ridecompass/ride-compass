@@ -71,7 +71,7 @@ from app.batch.common import (
     run_batch_cli,
 )
 from app.infrastructure.tuning_overrides import load_tuning_values
-from app.infrastructure import derived_data_meta, derived_database_export, region_tile_cache, road_network_store
+from app.infrastructure import derived_data_meta, derived_database_export, region_tile_cache, road_network_assembly, road_network_store
 from app.domain.stop_place import CONTACT_MERGE_GROUPS
 from app.domain.tuning import (
     DIVIDED_BEARING_TOLERANCE_ID,
@@ -277,7 +277,7 @@ async def _build_road_network(database_url: str, revision: int) -> Path:
     started = time.perf_counter()
     async with batch_session_factory(database_url, schema=_WORK_SCHEMA) as session_factory:
         async with session_factory() as session:
-            network = await road_network_store.build(RoadGraphRepository(session), revision)
+            network = await road_network_assembly.build(RoadGraphRepository(session), revision)
     pending = road_network_store.write_pending(network)
     logger.info("道路網の配列を作った / %s", format_duration(time.perf_counter() - started))
     return pending
