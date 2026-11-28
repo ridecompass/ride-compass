@@ -108,4 +108,15 @@ describe("useLayerDataStatus（知らせ方と解除）", () => {
     act(() => hook().settleViewport());
     expect(onChange).toHaveBeenLastCalledWith({ c: "error" });
   });
+
+  it("地図から消えたソース（塗るのをやめたレンズのタイル）の失敗は、範囲が動いたときに外す", () => {
+    const { hook, onChange, state } = renderStatus({ unloaded: ["points"] });
+    act(() => hook().markSourceErrored("points"));
+    state.added = ["road", "relief"];
+    act(() => hook().settleViewport());
+
+    state.added = undefined;
+    act(() => hook().recompute());
+    expect(onChange).toHaveBeenLastCalledWith({ c: "loading" });
+  });
 });

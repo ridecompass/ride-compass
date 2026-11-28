@@ -1,4 +1,3 @@
-
 import numpy as np
 
 from app.domain.msm import wind_speed_and_direction

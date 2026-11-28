@@ -139,9 +139,10 @@ class LensService:
         lenses = lens_conditions(settings.cost_axes)
         # 塗っていない・知らない・無効にした軸のレンズは、総合の塗り方で選ぶ。
         painted_id = lens_id if lens_id in lenses and lens_id in tile.table.values else TOTAL_LENS_ID
-        # 塗っている向きは、地図がタイルの材料で選ぶのと同じ丸めた値で選ぶ。
-        along, against, road_bearing = (round(float(value), LENS_MATERIAL_DECIMALS) for value in (
-            *tile.table.values[painted_id][0].tolist(), tile.table.features.bearing_deg[0]))
+        # 塗っている向きは、地図がタイルの材料で選ぶのと同じ値（丸めた有限の値。ほかは値の無い材料）で選ぶ。
+        along, against, road_bearing = (round(float(value), LENS_MATERIAL_DECIMALS) if math.isfinite(value) else math.nan
+                                        for value in (*tile.table.values[painted_id][0].tolist(),
+                                                      tile.table.features.bearing_deg[0]))
         painted = painted_direction(map_lens(lenses[painted_id], settings.tuning),
                                     math.nan if bearing_deg is None else bearing_deg, road_bearing, along, against)
         return lens_inspection(tile.table.features, 0, painted, tile.facts)

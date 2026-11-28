@@ -66,7 +66,9 @@ function layerDataStatusEqual(a: LayerDataStatusByLayer, b: LayerDataStatusByLay
 function clearStaleTrackedSourceErrors(map: DataStatusMapLike, erroredSourceIds: Set<string>): boolean {
   let changed = false;
   for (const sourceId of erroredSourceIds) {
-    if (map.isSourceLoaded(sourceId)) {
+    // 宣言から外れて地図から消えたソース（塗るのをやめたレンズのタイル）は、読み込みを問わず印を外す（消えたソースを問うと、
+    // 地図は誤りの出来事を出す）。
+    if (!map.getSource(sourceId) || map.isSourceLoaded(sourceId)) {
       erroredSourceIds.delete(sourceId);
       changed = true;
     }
