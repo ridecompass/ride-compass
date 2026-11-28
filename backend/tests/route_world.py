@@ -2,35 +2,31 @@
 
 3×3の格子（1辺約1km。長さの要るテストには大きな格子・任意の道と地点の道路網も）を`RoadNetwork`で組み、プロセス境界（DB・天気の予報ファイル）だけを代役にし、道路網は本番と同じ置き場（一時ディレクトリ）から読ませて、
 本物の`GraphService`・エンジンの組み立て（`services/route_generation_setup.py: assemble_route_generation_setup`）・戦略層を通す。
-
-使う側: `test_route_generation_behavior.py`・`test_route_generation_segments.py`（戦略層の入口）・`test_routes_generate.py`（HTTPの入口）・
-`test_search_kernels.py`（生成の経路がPythonから呼ぶJIT）・`test_route_generator.py`（経由地の無い周回の指定だけ）。
+道路網を通さずに経路の並べ方・選び方を確かめるテストには、評価済みの経路を組む`evaluated_route`を置く。
 """
 
 import itertools
-from datetime import datetime, timedelta
+from datetime import datetime
 import shutil
 from dataclasses import replace
 from pathlib import Path
-from types import SimpleNamespace
 
 import numpy as np
 
 from app.services.route_generation_setup import assemble_route_generation_setup
 from app.domain.geo import haversine_distance_km
-from app.domain.graph import edge_feature_key, edge_key, node_key, parse_edge_key
-from app.domain.region import EDGE_UNIT_MIN_ZOOM
+from app.domain.graph import edge_id_of, node_key, parse_edge_id
 from app.domain.landcover import LANDCOVER_CLASSES
 from app.domain.traffic import stop_count_material_ids
 from app.domain.cost_preference import CostPreference
+from app.domain.model_settings import current_model_settings
 from app.domain.road_avoidance import AvoidanceLevel
 from app.domain.road_network import RoadNetwork
-from app.domain.route import Coordinates
+from app.domain.route import Coordinates, EvaluatedRoute, PenaltyBreakdown, RouteFacts
 from app.domain.route_request import FixedPoints, RequestedConditions
-from app.domain.msm import MsmBlock, MsmGrid
 from app.domain.time_zone import JST
-from app.domain.cycling_speed import STANDARD_TEMPERATURE_C
-from app.domain.wind import WindForecastSeries
+from app.domain.wind import WeatherForecastSeries
+from tests.weather_forecast import weather_forecast
 from app.infrastructure import road_network_store
 from app.services.graph_service import GraphService, SearchMemory
 from tests.road_network_fixture import road_network as build_road_network
@@ -42,7 +38,7 @@ NO_POINTS = FixedPoints(waypoints=[], destination=None)
 
 #: 避けたい道の材料（値1の道）。道のストレスの軸（`tests/cost_axes_fixture.py: cost_axes`）が読む。本番の軸と同じく宣言のある
 #: 数の材料を使う（軸の事実は、その宣言の名前と単位で出す）。
-BAD_MATERIAL = "accident_count_per_km_year"
+BAD_MATERIAL = "intersection_count_per_km"
 BASE_LAT, BASE_LON = 35.60, 139.60
 LAT_STEP, LON_STEP = 0.009, 0.011  # 緯度・経度とも約1km
 
@@ -151,41 +147,25 @@ def road_network(
 
 #: 2020〜2035年の毎時の、どこでも無風・標準の気温の予報（格子点1つ。区間はどこでも、一番近い格子点のこの1つを引く）。
 _CALM_HOURS = int((datetime(2035, 1, 1) - datetime(2020, 1, 1)).total_seconds() // 3600)
-CALM = WindForecastSeries(
-    times=[datetime(2020, 1, 1) + timedelta(hours=hour) for hour in range(_CALM_HOURS)],
-    speed_ms=np.zeros((1, _CALM_HOURS)),
-    direction_deg=np.zeros((1, _CALM_HOURS)),
-    temperature_c=np.full((1, _CALM_HOURS), STANDARD_TEMPERATURE_C),
-    lattice=MsmBlock(grid=MsmGrid(lat_min=35.0, lon_min=139.0, d_lat=0.05, d_lon=0.0625, n_lat=1, n_lon=1),
-                     row0=0, col0=0, rows=1, cols=1),
-    latest_run_end=datetime(2035, 1, 1),
-)
+CALM = weather_forecast(datetime(2020, 1, 1), np.zeros(_CALM_HOURS))
 
 
 class Weather:
-    """天気の代役。時別の風の予報は`series`（省けば無風の`CALM`）を返す。"""
+    """天気の代役。時別の風の予報は`series`（省けば無風の`CALM`）を、予報の版は`version`を返す（書き換えると、同期が予報を
+    入れ替えたことになる）。"""
 
-    def __init__(self, series: WindForecastSeries = CALM):
+    def __init__(self, series: WeatherForecastSeries = CALM):
         self._series = series
+        self.version = "fake"
 
-    async def get_wind_forecast_lattice(self, bbox):
+    async def get_weather_forecast_lattice(self, bbox):
         return self._series
 
+    def forecast_version(self):
+        return self.version
 
-class TileFeatures:
-    """`RoadGraphRepository.get_tile_features`の代役。置き場から配っている道路網の、形の外接矩形がタイルに重なる区間の
-    フィーチャー（区間で塗るズームは区間、道1本で塗るズームは道）を返す（格子の道は直線なので、DBが道の形で選ぶのと同じ）。"""
-
-    async def get_tile_features(self, z, x, y, bbox):
-        network = road_network_store.current()
-        hit = np.flatnonzero((network.edge_max_lon >= bbox.min_longitude) & (network.edge_min_lon <= bbox.max_longitude)
-                             & (network.edge_max_lat >= bbox.min_latitude) & (network.edge_min_lat <= bbox.max_latitude))
-        edges = sorted({(int(network.edge_way_id[row]), int(network.edge_segment[row])) for row in hit})
-        if z >= EDGE_UNIT_MIN_ZOOM:
-            return [SimpleNamespace(feature_key=edge_feature_key(way, segment), osm_way_id=way, segment_index=segment)
-                    for way, segment in edges]
-        return [SimpleNamespace(feature_key=str(way), osm_way_id=way, segment_index=None)
-                for way in sorted({way for way, _ in edges})]
+    async def get_forecast_times(self, version):
+        return list(self._series.times)
 
 
 #: 置くたびに進める道路網の世代。置き場は世代で見分けるので、中身を変えて置くたびに世代を変える。
@@ -202,7 +182,7 @@ def serve_road_network(root: Path, network: RoadNetwork | None) -> None:
 
 
 def generator_for(
-    root: Path, network: RoadNetwork, wind: WindForecastSeries = CALM,
+    root: Path, network: RoadNetwork, wind: WeatherForecastSeries = CALM,
     *, assumed_speed_kmh: float = 20.0, road_avoidance: dict[str, AvoidanceLevel] | None = None,
 ):
     """道路網を全体の配列として置き場へ置き、本物の`GraphService`とエンジンの上に戦略層（`RouteGenerator`）を組む。"""
@@ -211,6 +191,7 @@ def generator_for(
         GraphService(SearchMemory(), road_network_store.current()), Weather(wind),
         RequestedConditions(
             cost_preference=CostPreference(), road_avoidance=road_avoidance or {}, assumed_speed_kmh=assumed_speed_kmh,
+            settings=current_model_settings(),
         ),
     ).generator
 
@@ -230,7 +211,7 @@ def edges_of(candidate) -> list[tuple[int, int, bool]]:
     """候補の区間の`(道, 区間番号, 順方向)`を、通る順に。"""
     edges = []
     for edge_id in candidate.edge_ids:
-        edge = parse_edge_key(edge_id)
+        edge = parse_edge_id(edge_id)
         assert edge is not None, edge_id
         edges.append(edge)
     return edges
@@ -253,7 +234,7 @@ def lattice_ring_edges(side: int) -> list[str]:
     edges = []
     for start, end in zip(ring, ring[1:]):
         tail, head = lattice_node(*start), lattice_node(*end)
-        edges.append(edge_key(way_of[tail, head], 0, True) if (tail, head) in way_of else edge_key(way_of[head, tail], 0, False))
+        edges.append(edge_id_of(way_of[tail, head], 0, True) if (tail, head) in way_of else edge_id_of(way_of[head, tail], 0, False))
     return edges
 
 
@@ -285,3 +266,18 @@ DEPARTURE = datetime(2026, 9, 22, 8, 10, tzinfo=JST)
 def fastest_of(candidates):
     """一覧の中で所要時間が最小の候補（基準線）。"""
     return min(candidates, key=lambda c: c.estimated_duration_seconds)
+
+
+def evaluated_route(*, distance_km: float, estimated_duration_seconds: float | None, cost_seconds: float,
+                    **fields) -> EvaluatedRoute:
+    """並びの鍵が読む距離・所要時間・費用を決めた評価済みの経路。ほかの欄は`fields`で渡したもの以外は空にする
+    （応答の欄が増えても、欄の中身を読まないテストは書き換えずに済む）。"""
+    return EvaluatedRoute(**{
+        "direction_label": "", "geometry": {"type": "LineString", "coordinates": []}, "point_distances_m": [],
+        "elevation_gain_m": None, "segments": [], "wind_previous_run_from": None,
+        "penalty": PenaltyBreakdown(axis_seconds={}, preferred_seconds=0.0, avoided_seconds=0.0, turn_penalty_seconds=0.0),
+        "facts": RouteFacts(axes={}), "missing_travel_data_share": None, "edge_ids": [], "edge_point_offsets": [],
+        "node_ids": [], "turns": [], "waypoint_distances_km": [],
+        "distance_km": distance_km, "estimated_duration_seconds": estimated_duration_seconds, "cost_seconds": cost_seconds,
+        **fields,
+    })

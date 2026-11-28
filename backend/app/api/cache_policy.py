@@ -118,6 +118,8 @@ ROUTE_POLICIES: Final[tuple[tuple[str, CachePolicy], ...]] = (
     *TILE_ROUTE_POLICIES,
     # カタログ・設定
     ("/api/client-config", LIVE),
+    # 時刻で変わる値のコマ。今の正時が進むと始まりが変わり、予報が届くとレンズのコマの印が変わる。
+    ("/api/region/time-frames", LIVE),
     # 管理APIで書いた費用の軸の定義が、再デプロイなしに画面へ出るまでの遅れを、区分・較正値と揃える。
     ("/api/cost-axes", LIVE),
     # 天候（URLに緯度経度を含むため地点ごとに別エントリになる）
@@ -144,6 +146,8 @@ ROUTE_POLICIES: Final[tuple[tuple[str, CachePolicy], ...]] = (
     ("/api/region/roads-at", NO_STORE),
     # 走りを本文で送るPOSTで、応答を使い回させない。
     ("/api/rides", NO_STORE),
+    # ログインした本人の状態と走り（cookie で人ごとに違う応答を、中間キャッシュへ残さない）
+    ("/api/me", NO_STORE),
     # 管理・状態確認（認可必須の情報を中間キャッシュへ残さない）
     (ADMIN_PATH_PREFIX, NO_STORE),
     ("/api/debug/", NO_STORE),

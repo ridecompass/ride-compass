@@ -11,7 +11,7 @@ import json
 
 import pytest
 
-from app.domain.traffic_regulation import RegulationSlot
+from app.domain.traffic_regulation import OTHER_DAYS, RegulationSlot
 from app.infrastructure.source_models import regulation_slots
 
 _NO_VEHICLES = ["", "", "", ""]
@@ -20,28 +20,46 @@ _EMPTY = {"hours_from": "", "hours_to": "", "days": "", "period_from": "", "peri
           "except_period_to": "", "except_vehicles": _NO_VEHICLES}
 
 
+def _slots(**fields) -> list[RegulationSlot]:
+    return regulation_slots(json.dumps([{**_EMPTY, **fields}]))
+
+
 def _slot(**fields) -> RegulationSlot:
-    return regulation_slots(json.dumps([{**_EMPTY, **fields}]))[0]
+    [slot] = _slots(**fields)
+    return slot
 
 
-def test_regulation_hours_until_2400_are_the_end_of_the_day():
-    """「2400」を24:00の分へ読めないと、終日の規制が時間帯の規制になる（時刻の読み替えの残りは派生の段のテストが通す）。"""
-    slot = _slot(hours_from="0", hours_to="2400")
-    assert (slot.hours_from, slot.hours_to) == (0, 24 * 60)
+def test_regulation_hours_are_minutes_and_an_end_of_0_or_2400_is_the_end_of_the_day():
+    """終わりの「0」「2400」を24:00と読めないと、終日の規制が効かない時間帯になる。"""
+    assert (_slot(hours_from="0730", hours_to="2400").hours_from, _slot(hours_from="0", hours_to="2400").hours_to) == (
+        7 * 60 + 30, 24 * 60)
+    assert _slot(hours_from="2200", hours_to="0").hours_to == 24 * 60
+
+
+def test_day_codes_read_9999_as_other_and_refuse_codes_the_manual_does_not_have():
+    assert _slot(days="9999").days == OTHER_DAYS
+    with pytest.raises(ValueError, match="規制曜日コード"):
+        _slot(days="7")
+
+
+def test_a_slot_without_any_field_is_not_a_slot():
+    assert _slots() == []
 
 
 def _vehicles(a: str = "", d: str = "") -> list[str]:
     return [a, "", "", d]
 
 
-@pytest.mark.parametrize(("vehicles", "bicycle"), [
-    # 区分 A の車両は自転車を含む（自動車だけのコードは派生の段のテストが通す）。
-    (_vehicles(a="1"), True),
-    # 区分 D の自転車の位と軽車両の位は自転車を含み、歩行者の位は含まない。コードは車種の位を足した数。
-    (_vehicles(d="100"), True),
-    (_vehicles(d="100000"), True),
-    (_vehicles(d="1000000"), False),
+@pytest.mark.parametrize(("vehicles", "except_vehicles", "bicycle"), [
+    # 対象の車両を書かない組は、車両の全部が対象。
+    (_NO_VEHICLES, _NO_VEHICLES, True),
+    # 区分 A の車両は自転車を含む。区分 D の自転車の位と軽車両の位は自転車を含み、歩行者の位は含まない。
+    (_vehicles(a="1"), _NO_VEHICLES, True),
+    (_vehicles(d="100"), _NO_VEHICLES, True),
+    (_vehicles(d="100000"), _NO_VEHICLES, True),
+    (_vehicles(d="1000000"), _NO_VEHICLES, False),
+    # 除外の車両に自転車を含めば、自転車は対象でない。
+    (_NO_VEHICLES, _vehicles(d="100"), False),
 ])
-def test_vehicle_codes_include_bicycles(vehicles, bicycle):
-    slot = _slot(vehicles=vehicles, except_vehicles=vehicles)
-    assert (slot.vehicles, slot.vehicles_bicycle, slot.except_vehicles_bicycle) == (True, bicycle, bicycle)
+def test_a_slot_applies_to_bicycles_by_its_vehicle_codes(vehicles, except_vehicles, bicycle):
+    assert _slot(days="2", vehicles=vehicles, except_vehicles=except_vehicles).applies_to_bicycles is bicycle

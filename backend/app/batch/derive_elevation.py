@@ -1,8 +1,8 @@
-"""標高のタイルを区間に沿った断面の点で引いて、区間の標高と勾配（`edge_elevation`）にする。
+"""標高のタイルを区間に沿った断面の点で引いて、区間の標高の断面（`edge_elevation`）にする。
 
 **標高を拾う点は、区間を等しい道のりに分けた点**で、間隔は較正値（引数`profile_step_m`）以下にする。形状点で引くと、
 点の間隔が描き手ごとにばらつき、細かく描いた道ほど標高データの揺らぎを登りとして積む。拾った点は、揺れの閾値（引数
-`profile_tolerance_m`）で間引いてから表に残す（`domain/attributes.py: elevation_values_sql`）。
+`profile_tolerance_m`）で間引いてから表に残す（`elevation_profile_sql`）。
 
 **橋かトンネルの区間は刻まずに両端だけを引く**。配信元のDEMは地表面の値で構造物の高さを反映しないため
 （https://maps.gsi.go.jp/development/hyokochi.html に明記）、中間の点は桁や坑道ではなく下の地形を指す——谷を渡る平らな橋で、
@@ -11,12 +11,12 @@
 **橋・トンネルの端の頂点は、道に沿って近い地面の標高で直す**（GraphHopper の
 https://github.com/graphhopper/graphhopper/blob/master/core/src/main/java/com/graphhopper/reader/dem/BridgeTunnelTowerCorrection.java
 と同じ手順）。OSM の橋の端が DEM の構造物を除いた範囲（水門の下の水面・高架の下の谷底）に入ると、端の点は橋台より低い値を
-返し、トンネルの坑口は山肌の高い値を返す。端の頂点から構造物でない区間だけを道のりで`STRUCTURE_GROUND_SEARCH_M`までたどり、
+返し、トンネルの坑口は山肌の高い値を返す。端の頂点から構造物でない区間だけを道のりで較正値`elevation.structure_ground_search_m`までたどり、
 着いた地面の頂点と、その長さで打ち切った所の DEM の値を、道のりの2乗に反比例する重み（道のりは最低1m）で平均した値に
 置き換える（頂点に DEM の値が無ければ、その値で埋める）。置き換えで、頂点に接する区間の勾配の最大が前より急になるなら取り消す
-（構造物の区間は`STRUCTURE_SLOPE_FLOOR`まで許す。取り消しが出なくなるまで繰り返す）。勾配は区間の両端の間で測るが、下の引き直しに
-合わせ、`STRUCTURE_GROUND_SEARCH_M`より長い地面の区間はその長さの位置との間で測る。置き換えた頂点に接する地面の区間は、その頂点から
-`STRUCTURE_GROUND_SEARCH_M`以内の点を直線に引き直す——GraphHopper は区間の形状点を全部引き直すが、ここは5m おきに点を持つので、
+（構造物の区間は較正値`elevation.structure_slope_floor`まで許す。取り消しが出なくなるまで繰り返す）。勾配は区間の両端の間で測るが、下の引き直しに
+合わせ、較正値`elevation.structure_ground_search_m`より長い地面の区間はその長さの位置との間で測る。置き換えた頂点に接する地面の区間は、その頂点から
+較正値`elevation.structure_ground_search_m`以内の点を直線に引き直す——GraphHopper は区間の形状点を全部引き直すが、ここは5m おきに点を持つので、
 区間全部を引き直すと遠くの起伏まで消える。
 
 **構造物の内側の頂点（構造物の区間にしか接しない頂点）は、構造物の外へつながる頂点から補う**（GraphHopper の
@@ -30,24 +30,25 @@ https://github.com/graphhopper/graphhopper/blob/master/core/src/main/java/com/gr
 持つ派生は作らない**——面を読む出口は「そのまま見せる」か「線へ落とす」のどちらかで、
 面のままの中間結果を要る相手がいない。
 
-**画素はDB内で引く。**画素をプロセスへ取り出さず、頂点のあるタイルをDBの中で1枚ずつ展開して引く。
+**画素はDB内で引く。**画素をプロセスへ取り出さず、頂点のあるタイルをDBの中で1枚ずつ展開して引く。点の標高は、まわりの4画素の
+双線形補間にする（`infrastructure/source_models.py: dem_bilinear_corners_sql`）。
 
 同じ地点に複数の製品のタイルがありうる。どの製品の値を採るかは点ごとに決める
 （`infrastructure/dem_elevation.py: fill_elevations`）。頂点ごとに採った標高は表`_vertex_elev`に入り、行の無い頂点は値が無い。
 
 
-値の出し方そのものはdomainが持つ（`elevation_values_sql`）。このバッチは画素の引き方を
+間引き方は`elevation_profile_sql`が持ち、閾値は較正値から渡す。このバッチは画素の引き方を
 組み立てるだけで、勾配の上限を持たない。
 """
 
 import logging
+from dataclasses import dataclass
 import math
 import time
 
 import asyncpg
 
 from app.batch.common import affected_rows
-from app.domain.attributes import elevation_values_sql
 from app.domain.material_sql import IS_BRIDGE_SQL, IS_TUNNEL_SQL
 from app.domain.tuning import (
     ELEVATION_PROFILE_STEP_ID,
@@ -64,12 +65,15 @@ logger = logging.getLogger("ridecompass.derive_elevation")
 #: 2〜5倍遅くなった。本番の範囲で340万点までは、点の数に比例する速さで流れることを確かめた。
 CHUNK_POINTS = 3_000_000
 
-#: 橋・トンネルの端の頂点から、地面の標高を集めにたどる道のりの長さ（m）。置き換えた頂点に接する地面の区間を引き直す長さも同じ。
-#: GraphHopper の`BridgeTunnelTowerCorrection`の`MAX_DIST_M`と同じ値。
-STRUCTURE_GROUND_SEARCH_M = 50.0
-#: 端の頂点の置き換えで、構造物の区間の勾配が増えても許す上限（割合）。両端が同じ誤った DEM を返す平らな橋を両端そろって
-#: 直すと、小さな本当の勾配が出るため。GraphHopper の`STRUCTURE_SLOPE_FLOOR`と同じ値。
-STRUCTURE_SLOPE_FLOOR = 0.015
+
+
+@dataclass(frozen=True)
+class _StructureFix:
+    """橋・トンネルの端の直し方（較正値）。`ground_search_m`は端の頂点から地面の標高を集めにたどる道のりで、置き換えた頂点に
+    接する地面の区間を引き直す長さも同じ。`slope_floor`は端を直して構造物の区間の勾配が増えても許す上限（割合）。"""
+
+    ground_search_m: float
+    slope_floor: float
 
 #: 区間の形と、構造物の種類（トンネル・橋・どちらでもなければ NULL）、断面の刻みの数・塊の番号。`$1`は刻みの上限（m）、
 #: `$2`は塊の点の数の目安。
@@ -273,15 +277,55 @@ SELECT v.osm_way_id, v.segment_index, v.ord, v.along_m, e.elev
 FROM _vertex v LEFT JOIN _vertex_elev e ON e.vid = v.vid
 """
 
-_ELEVATION_COLUMNS = ("start_elevation_m", "end_elevation_m", "elevation_gain_m", "elevation_loss_m",
-                      "average_grade", "steepest_gain_percent", "steepest_loss_percent", "elevation_profile_m",
-                      "elevation_profile_along_m")
+def elevation_profile_sql(vertices: str, tolerance_m: str) -> str:
+    """区間に沿って拾った点（標高の断面）を揺れの閾値で間引き、残した点の標高と位置を順に並べるSQL。
+
+    `vertices`は`(osm_way_id, segment_index, ord, along_m, elev)`を返す関係。`along_m`は区間の始まりから
+    道に沿って測った点の位置（m）。
+
+    **間引きは、断面（横が道のり、縦が標高）に Douglas-Peucker をかける**（PostGIS の`ST_Simplify`。閾値`tolerance_m`はSQLの式で
+    渡す）。閾値以下の揺れを消す。残る点の間の勾配は元の点の間の一番急な勾配を越えない（GraphHopper の ramer のならしと、そのあとの
+    間引きと同じ）が、高さが閾値の数倍に満たない短い段は、前後の点と一緒になだらかに残ることがある。値の無い点をまたいで間引かない
+    ——値のある点の続きごとに間引き、値の無い点は残す。残す点は、点の順（`ord`）を M の値に載せて取り戻す。
+
+    値のある点が2つ未満の区間は返らない。返すのは残した点の標高`elevation_profile_m`（値の無い点はNULL）と位置
+    `elevation_profile_along_m`。標高と勾配の要約は、道路網の配列を作るときにこの点から出す
+    （`domain/elevation_profile.py: profile_summaries`）。
+    """
+    return f"""
+-- 標高と位置は残す断面の点と同じ精度（real）に落としてから間引く。
+WITH v AS (
+    SELECT osm_way_id, segment_index, ord, along_m::real::float8 AS along_m, elev::real::float8 AS elev FROM ({vertices}) s),
+-- 値の無い点で区切った、値のある点の続きの番号（値の無い点は次の続きの頭に入る）と、続きの中の値のある点の数。
+runs AS (
+    SELECT *, count(elev) OVER (PARTITION BY osm_way_id, segment_index, run) AS run_known
+    FROM (SELECT *, count(*) FILTER (WHERE elev IS NULL) OVER (PARTITION BY osm_way_id, segment_index ORDER BY ord) AS run
+          FROM v) n),
+simplified AS (
+    SELECT osm_way_id, segment_index, ST_M(d.geom)::int AS ord
+    FROM (SELECT osm_way_id, segment_index,
+                 ST_Simplify(ST_MakeLine(ST_MakePointM(along_m, elev, ord) ORDER BY ord), {tolerance_m}) AS line
+          FROM runs WHERE elev IS NOT NULL AND run_known >= 3 GROUP BY osm_way_id, segment_index, run) l
+    CROSS JOIN LATERAL ST_DumpPoints(l.line) d),
+kept AS (
+    SELECT r.osm_way_id, r.segment_index, r.ord, r.along_m, r.elev
+    FROM runs r LEFT JOIN simplified k
+      ON k.osm_way_id = r.osm_way_id AND k.segment_index = r.segment_index AND k.ord = r.ord
+    WHERE r.elev IS NULL OR r.run_known < 3 OR k.ord IS NOT NULL)
+SELECT osm_way_id, segment_index,
+       array_agg(elev::real ORDER BY ord) AS elevation_profile_m,
+       array_agg(along_m::real ORDER BY ord) AS elevation_profile_along_m
+FROM kept GROUP BY osm_way_id, segment_index HAVING count(elev) >= 2
+"""
+
+
+_ELEVATION_COLUMNS = ("elevation_profile_m", "elevation_profile_along_m")
 
 #: 値の出た区間だけを入れる。`$1`は揺れを消す閾値（m）。
 _INSERT_ELEVATION = f"""
 INSERT INTO edge_elevation (osm_way_id, segment_index, {", ".join(_ELEVATION_COLUMNS)})
 SELECT osm_way_id, segment_index, {", ".join(_ELEVATION_COLUMNS)}
-FROM ({elevation_values_sql(_VERTEX_ELEVATIONS, "$1::float8")}) v
+FROM ({elevation_profile_sql(_VERTEX_ELEVATIONS, "$1::float8")}) v
 """
 
 
@@ -295,11 +339,6 @@ async def _fill_vertices(conn: asyncpg.Connection, products: list[tuple[str, int
         filled[product] += count
         remaining -= count
     return points, remaining
-
-
-async def _drop_vertex_tables(conn: asyncpg.Connection) -> None:
-    for table in ("_vertex", "_vertex_elev"):
-        await conn.execute(f"DROP TABLE IF EXISTS {table}")
 
 
 #: GraphHopper の`ElevationInterpolator.EPSILON`（経緯度の度）。
@@ -379,7 +418,8 @@ async def _interpolate_inner_nodes(conn: asyncpg.Connection) -> int:
     return added
 
 
-async def _fix_structure_ends(conn: asyncpg.Connection, products: list[tuple[str, int]]) -> tuple[int, int, int, int]:
+async def _fix_structure_ends(conn: asyncpg.Connection, products: list[tuple[str, int]], fix: _StructureFix,
+                              ) -> tuple[int, int, int, int]:
     """橋・トンネルの頂点の置き換え（`_node_fix`）を、塊に分ける前に全部の区間で決める。構造物に接する頂点の数・
     端を置き換えた頂点の数・ガードで取り消した頂点の数・補った内側の頂点の数を返す。"""
     for sql in (_ENDPOINTS, "CREATE INDEX ON _endpoint (node_id)", "ANALYZE _endpoint",
@@ -391,10 +431,10 @@ async def _fix_structure_ends(conn: asyncpg.Connection, products: list[tuple[str
         await conn.execute("DROP TABLE IF EXISTS _frontier")
         await conn.execute(_WALK_FRONTIER)
         await conn.execute("UPDATE _walk SET fresh = false WHERE fresh")
-        if not affected_rows(await conn.execute(_WALK_STEP, STRUCTURE_GROUND_SEARCH_M)):
+        if not affected_rows(await conn.execute(_WALK_STEP, fix.ground_search_m)):
             break
     await conn.execute("ANALYZE _walk")
-    await conn.execute(_STRUCTURE_PROBES, STRUCTURE_GROUND_SEARCH_M)
+    await conn.execute(_STRUCTURE_PROBES, fix.ground_search_m)
     await _fill_vertices(conn, products, dict.fromkeys((product for product, _ in products), 0))
     await conn.execute(_CUTS)
     await conn.execute("CREATE INDEX ON _cut (start)")
@@ -403,30 +443,30 @@ async def _fix_structure_ends(conn: asyncpg.Connection, products: list[tuple[str
     await conn.execute(_PROPOSALS)
     await conn.execute("CREATE INDEX ON _node_fix (node_id)")
     rejected = 0
-    while count := affected_rows(await conn.execute(_REJECT_STEEPENING, STRUCTURE_SLOPE_FLOOR, STRUCTURE_GROUND_SEARCH_M)):
+    while count := affected_rows(await conn.execute(_REJECT_STEEPENING, fix.slope_floor, fix.ground_search_m)):
         rejected += count
     fixed = await conn.fetchval("SELECT count(*) FROM _node_fix")
     inner = await _interpolate_inner_nodes(conn)
-    await _drop_vertex_tables(conn)
+    await conn.execute("DROP TABLE IF EXISTS _vertex")
     await conn.execute("ANALYZE _node_fix")
     return await conn.fetchval("SELECT count(*) FROM _structure_node"), fixed, rejected, inner
 
 
 async def _derive_chunk(conn: asyncpg.Connection, chunk: int, products: list[tuple[str, int]],
-                        profile_tolerance_m: float, filled: dict[str, int]) -> tuple[int, int, int]:
+                        profile_tolerance_m: float, fix: _StructureFix, filled: dict[str, int]) -> tuple[int, int, int]:
     """1つの塊の区間の標高を出して書き、その塊の点の数・値の無い点の数・書いた区間の数を返す。`filled`へ製品ごとの値の付いた
     点の数を足す。"""
-    await _drop_vertex_tables(conn)
+    await conn.execute("DROP TABLE IF EXISTS _vertex")
     await conn.execute(_VERTICES, chunk)
     points, remaining = await _fill_vertices(conn, products, filled)
     await conn.execute(_APPLY_STRUCTURE_FIXES)
-    await conn.execute(_RAMP_STRUCTURE_ENDS, chunk, STRUCTURE_GROUND_SEARCH_M)
+    await conn.execute(_RAMP_STRUCTURE_ENDS, chunk, fix.ground_search_m)
     written = affected_rows(await conn.execute(_INSERT_ELEVATION, profile_tolerance_m))
     return points, remaining, written
 
 
 async def _derive_elevation(conn: asyncpg.Connection, profile_step_m: float, profile_tolerance_m: float,
-                            chunk_points: int) -> None:
+                            fix: _StructureFix, chunk_points: int) -> None:
     started = time.perf_counter()
     products = await products_in_priority(conn)
     await conn.execute("TRUNCATE edge_elevation")
@@ -434,16 +474,16 @@ async def _derive_elevation(conn: asyncpg.Connection, profile_step_m: float, pro
     await conn.execute(_SHAPES, profile_step_m, chunk_points)
     await conn.execute("CREATE INDEX ON _shape (chunk)")
     await conn.execute("ANALYZE _shape")
-    structure_nodes, fixed, rejected, inner = await _fix_structure_ends(conn, products)
+    structure_nodes, fixed, rejected, inner = await _fix_structure_ends(conn, products, fix)
     logger.info("標高: 橋・トンネルに接する頂点 %d点のうち、端の %d点を道に沿って%.0fm以内の地面の標高で直し（勾配が急になる"
                 " %d点は直さない）、内側の %d点を外へつながる頂点から補った / %.0f秒",
-                structure_nodes, fixed, STRUCTURE_GROUND_SEARCH_M, rejected, inner, time.perf_counter() - started)
+                structure_nodes, fixed, fix.ground_search_m, rejected, inner, time.perf_counter() - started)
     chunks = [r["chunk"] for r in await conn.fetch("SELECT DISTINCT chunk FROM _shape ORDER BY chunk")]
     logger.info("標高: 区間 %d本を%d個の塊に分けた", edges, len(chunks))
     filled = dict.fromkeys((product for product, _ in products), 0)
     vertices = missing = updated = 0
     for done, chunk in enumerate(chunks, 1):
-        points, remaining, written = await _derive_chunk(conn, chunk, products, profile_tolerance_m, filled)
+        points, remaining, written = await _derive_chunk(conn, chunk, products, profile_tolerance_m, fix, filled)
         vertices, missing, updated = vertices + points, missing + remaining, updated + written
         logger.info("標高: 塊 %d/%d・点 %d（値の無い点 %d）・区間 %d本を書いた / %.0f秒",
                     done, len(chunks), points, remaining, written, time.perf_counter() - started)
@@ -453,10 +493,12 @@ async def _derive_elevation(conn: asyncpg.Connection, profile_step_m: float, pro
 
 
 async def derive(conn: asyncpg.Connection, *, profile_step_m: float, profile_tolerance_m: float,
-                 chunk_points: int = CHUNK_POINTS) -> None:
-    """`profile_step_m`は標高を拾う間隔の上限（m）、`profile_tolerance_m`は揺れを消す閾値（m）、`chunk_points`は1つの塊に
-    入れる点の数の目安。塊の分け方は値を変えない。"""
+                 structure_ground_search_m: float, structure_slope_floor: float, chunk_points: int = CHUNK_POINTS) -> None:
+    """`profile_step_m`は標高を拾う間隔の上限（m）、`profile_tolerance_m`は揺れを消す閾値（m）、`structure_ground_search_m`と
+    `structure_slope_floor`は橋・トンネルの端の直し方（`_StructureFix`）、`chunk_points`は1つの塊に入れる点の数の目安。
+    塊の分け方は値を変えない。"""
     require_tuning({ELEVATION_PROFILE_STEP_ID: profile_step_m}, profile_step_m > 0, "0より大きい")
     require_tuning({ELEVATION_PROFILE_TOLERANCE_ID: profile_tolerance_m}, profile_tolerance_m >= 0, "0以上")
     async with conn.transaction():
-        await _derive_elevation(conn, profile_step_m, profile_tolerance_m, chunk_points)
+        await _derive_elevation(conn, profile_step_m, profile_tolerance_m,
+                                _StructureFix(structure_ground_search_m, structure_slope_floor), chunk_points)

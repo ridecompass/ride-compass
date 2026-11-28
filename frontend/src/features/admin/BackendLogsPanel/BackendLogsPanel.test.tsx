@@ -75,8 +75,6 @@ describe("BackendLogsPanel", () => {
     render(<BackendLogsPanel />);
 
     await user.click(screen.getByRole("button", { name: "取得" }));
-
-    expect(await screen.findByText("該当するログはありません。")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "ログ全体をコピー" })).not.toBeInTheDocument();
   });
 

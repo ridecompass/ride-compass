@@ -127,10 +127,8 @@ _LOOP_RATIO_MAX_ID = "search.loop_to_outbound_ratio_max"
 _DISTANCE_TOLERANCE_ID = "search.distance_tolerance_ratio"
 #: 派生の段だけが読む較正値のid。
 SIGNAL_MATCH_RADIUS_ID = "signal.match_radius_m"
-ACCIDENT_FATAL_WEIGHT_ID = "accident.fatal_weight"
 #: 派生の外（地図の点のタイル・近くの点の読み出し）も作り直しに使った値を読む較正値のid。
 STOP_CLUSTER_DISTANCE_ID = "stop.cluster_distance_m"
-ACCIDENT_MATCH_DISTANCE_ID = "accident.match_max_distance_m"
 #: 道路網の配列を作る読み出しが、作り直しに使った値を読む較正値のid。
 TURN_BEARING_DISTANCE_ID = "turn.bearing_distance_m"
 #: 土地被覆を数える帯の外・内の幅のid。外の幅は地図の説明の文にも出る。
@@ -140,6 +138,28 @@ LANDCOVER_RING_INNER_ID = "landcover.ring_inner_m"
 REGULATION_LINE_HALF_WIDTH_ID = "traffic_regulation.line_half_width_m"
 REGULATION_EDGE_SHARE_ID = "traffic_regulation.edge_share"
 REGULATION_MAX_ANGLE_ID = "traffic_regulation.max_angle_deg"
+#: ルート生成が読む、規制の時間帯を前後に広げる幅のid。
+REGULATION_MARGIN_MINUTES_ID = "regulation.margin_minutes"
+#: 上下線の分かれた道の片側かを決める距離と向きの差のid（`domain/divided_carriageway.py`）。
+DIVIDED_NAMED_GAP_ID = "divided.named_gap_m"
+DIVIDED_GEOMETRIC_GAP_ID = "divided.geometric_gap_m"
+DIVIDED_BEARING_TOLERANCE_ID = "divided.bearing_tolerance_deg"
+#: 土地被覆の割合を出す有効な画素の下限のid（`domain/landcover.py`）。
+LANDCOVER_MIN_VALID_PIXELS_ID = "landcover.min_valid_pixels"
+#: 立ち寄り先をまとめる距離のid（`domain/stop_place.py`）。連絡先で寄せる距離は群ごと（`place_contact_merge_id`）。
+PLACE_CHAIN_MERGE_ID = "place.chain_merge_radius_m"
+PLACE_HERITAGE_MERGE_ID = "place.heritage_merge_radius_m"
+#: 橋・トンネルの端の地面の探し方のid（`batch/derive_elevation.py`）。
+STRUCTURE_GROUND_SEARCH_ID = "elevation.structure_ground_search_m"
+STRUCTURE_SLOPE_FLOOR_ID = "elevation.structure_slope_floor"
+#: 道路網の配列を作るとき、断面から勾配と要約を出すのに読む較正値のid（`domain/elevation_profile.py`）。
+MAX_PLAUSIBLE_GRADE_ID = "elevation.max_plausible_grade_percent"
+STEEPEST_MIN_INTERVAL_ID = "elevation.steepest_min_interval_m"
+
+
+def place_contact_merge_id(group: str) -> str:
+    """立ち寄り先の群`group`の、言語違いの同じ場所を連絡先で寄せる距離の較正値のid。"""
+    return f"place.contact_merge_radius_m.{group}"
 #: 区間の標高を拾う間隔の上限のid。
 ELEVATION_PROFILE_STEP_ID = "elevation.profile_step_m"
 #: 拾った標高の揺れを消す閾値のid。
@@ -180,18 +200,6 @@ TUNING_PARAMETERS: tuple[TuningParameter, ...] = (
         "曲がりの向きを測る長さ", "m", TuningEffect.DERIVE_REBUILD,
         "交差点での曲がり（直進・左・右）を、区間の端からこの道のりの点までの向きで測る。区間がこれより短ければ端から端を見る。",
     ),
-    # --- 事故 ---
-    TuningParameter(
-        ACCIDENT_MATCH_DISTANCE_ID,
-        "事故を道に付ける距離", "m", TuningEffect.DERIVE_REBUILD,
-        "事故の点を、この距離以内で最も近い道に付ける。事故の数とルートの印が同じ値で付ける。",
-    ),
-    TuningParameter(
-        ACCIDENT_FATAL_WEIGHT_ID,
-        "死亡事故の重み", "件", TuningEffect.DERIVE_REBUILD,
-        "死亡事故1件を何件分の事故として数えるか。単純に数えると死亡事故が軽い事故と同じ1件になり、最も避けたい重大な事故の"
-        "危険が薄まる。",
-    ),
     # --- 標高 ---
     TuningParameter(
         ELEVATION_PROFILE_STEP_ID,
@@ -228,8 +236,9 @@ TUNING_PARAMETERS: tuple[TuningParameter, ...] = (
     TuningParameter(
         REGULATION_EDGE_SHARE_ID,
         "交通規制を区間へ当てる長さの割合", "", TuningEffect.DERIVE_REBUILD,
-        "区間の長さのうち、この割合以上が規制の場所（線の帯か面）の中にある区間へ規制を当てる。0より大きく1以下。下げるほど"
-        "規制の場所を横切るだけの区間にも当たり、上げるほど規制の端に掛かる区間が漏れる。",
+        "区間の長さのうち、この割合以上が規制の場所（線の帯か面）の中にある区間へ規制を当てる。一方通行の規制は、さらに当たった"
+        "区間の長さが道の長さのこの割合以上の道にだけ効かせる。0より大きく1以下。下げるほど"
+        "規制の場所を横切るだけの区間や道にも当たり、上げるほど規制の端に掛かる区間や道が漏れる。",
     ),
     TuningParameter(
         REGULATION_MAX_ANGLE_ID,
@@ -237,6 +246,72 @@ TUNING_PARAMETERS: tuple[TuningParameter, ...] = (
         "線の規制は、区間の始点から終点への向きと、区間の中点に一番近い所の規制の線の向きの差（向きを問わず0〜90度）が"
         "この角度以下の区間にだけ当てる。広げるほど規制の線を交差点で横切る短い区間にも当たり、狭めるほど規制の線と"
         "地図の道の向きのずれで当たり漏れる。",
+    ),
+    TuningParameter(
+        REGULATION_MARGIN_MINUTES_ID,
+        "交通規制の時間帯を前後に広げる幅", "分", TuningEffect.IMMEDIATE,
+        "ルート生成は、区間を通る見込みの時間帯（レグの出発の見込みから到着の見込みまで）をこの幅だけ前後に広げた間に一度でも効く"
+        "規制を、そのレグの間ずっと効いているとみなす。通る時刻の見込みのずれ（休憩や道の事情で遅れる等）を、規制が効く側へ吸う。",
+    ),
+    # --- 上下線 ---
+    TuningParameter(
+        DIVIDED_NAMED_GAP_ID, "上下線の相方を同じ路線番号・名前で探す距離", "m", TuningEffect.DERIVE_REBUILD,
+        "一方通行の道に、同じ路線番号か名前の逆向きの一方通行がこの距離以内を並走していれば、上下線の分かれた道の片側とみなし、"
+        "一方通行に数えない。名前が同じなら同じ道路だとOSMが言っているので、間隔は広めに許す。",
+    ),
+    TuningParameter(
+        DIVIDED_GEOMETRIC_GAP_ID, "上下線の相方を形だけで探す距離", "m", TuningEffect.DERIVE_REBUILD,
+        "名前に頼らず、同じ道の種別の逆向きの一方通行が全長にわたってこの距離以内に寄り添えば、上下線の分かれた道の片側とみなす。"
+        "上下線の間隔（幹線で中央値10m前後）と、街区を挟んで並ぶ別々の一方通行の路地の間隔（中央値20m弱）の谷間に置く。",
+    ),
+    TuningParameter(
+        DIVIDED_BEARING_TOLERANCE_ID, "上下線の相方とみなす向きの差", "度", TuningEffect.DERIVE_REBUILD,
+        "相方の道の進む向きが、ちょうど逆向き（180度）からこの角度以内なら逆向きとみなす。カーブの途中で上下線の向きがずれる分を吸う。",
+    ),
+    # --- 土地被覆 ---
+    TuningParameter(
+        LANDCOVER_MIN_VALID_PIXELS_ID, "土地被覆の割合を出す有効な画素の下限", "画素", TuningEffect.DERIVE_REBUILD,
+        "道の周りの帯の、値のある画素（No Data・雲を除く）がこの数より少ない区間は、土地被覆の割合を持たない。帯が画像の外へ"
+        "はみ出た・雲に覆われていた区間の割合は、統計として信頼できない。",
+    ),
+    # --- 立ち寄り先 ---
+    TuningParameter(
+        PLACE_CHAIN_MERGE_ID, "同じチェーンの立ち寄り先をまとめる距離", "m", TuningEffect.DERIVE_REBUILD,
+        "同じ群・同じチェーンの地点がこの距離以内に並べば、1つの店にまとめる。出どころごとに少しずれた位置で重なって入っている"
+        "同じ店を1つにする。",
+    ),
+    *(TuningParameter(
+        place_contact_merge_id(group), f"言語違いの同じ場所を連絡先で寄せる距離（{label}）", "m", TuningEffect.DERIVE_REBUILD,
+        f"{label}の地点のうち名前に日本語の文字が無いものを、この距離以内の同じ連絡先を持つ日本語の名前の地点へ寄せる。"
+        "同じ場所が出どころの中で言語違いの別の行として重なって入っているのを1つにする。",
+    ) for group, label in (("scenic", "景色・名所"), ("lodging", "宿"), ("bath", "風呂"), ("bicycle", "自転車"))),
+    TuningParameter(
+        PLACE_HERITAGE_MERGE_ID, "寺社の建物をまとめる距離", "m", TuningEffect.DERIVE_REBUILD,
+        "同じ名前の文化財の建物がこの距離以内に連なれば、1つの寺社にまとめる。境内の建物（本堂・山門・霊廟）は1つにし、同じ名前の"
+        "別の寺社・離れた奥之院は分ける。",
+    ),
+    # --- 橋・トンネル ---
+    TuningParameter(
+        STRUCTURE_GROUND_SEARCH_ID, "橋・トンネルの端の地面を探す道のり", "m", TuningEffect.DERIVE_REBUILD,
+        "橋・トンネルの端の頂点から、構造物でない道に沿ってこの道のりまでの地面の標高で端を直し、続く道もこの道のり以内を直線に"
+        "引き直す（GraphHopper の`BridgeTunnelTowerCorrection`の`MAX_DIST_M`と同じ値から始める）。",
+    ),
+    TuningParameter(
+        STRUCTURE_SLOPE_FLOOR_ID, "橋・トンネルの端を直して許す勾配", "割合", TuningEffect.DERIVE_REBUILD,
+        "端を直して構造物の区間の勾配が増えても、この割合までは許す。両端が同じ誤った標高を返す平らな橋を両端そろって直すと、"
+        "小さな本当の勾配が出るため（GraphHopper の`STRUCTURE_SLOPE_FLOOR`と同じ値から始める）。",
+    ),
+    TuningParameter(
+        MAX_PLAUSIBLE_GRADE_ID, "公道としてありうる勾配の上限", "%", TuningEffect.DERIVE_REBUILD,
+        "断面の点の間の勾配がこれを超えたら、道の起伏ではなく標高データの読み違い（両端が路面でない地物を指した等）として、その間を"
+        "勾配に数えない（標高の無い間として走る）。世界でも最急の公道が35%前後。0次ハードフィルタは値の無い区間を除外しないので、"
+        "誤った値で黙って経路から外すより安全側になる。",
+    ),
+    TuningParameter(
+        STEEPEST_MIN_INTERVAL_ID, "一番急な勾配を測る最短の長さ", "m", TuningEffect.DERIVE_REBUILD,
+        "1つ前の点の間がこの長さ以下なら、その点では一番急な勾配を測らない。数える間の途切れない続きの長さがこれより短ければ、その"
+        "続きの両端でも測らない。短い間ほど標高データの揺れが勾配を大きく揺らす（GraphHopper の`SlopeCalculator`の`MIN_LENGTH`と"
+        "同じ値と理由から始める）。獲得標高・平均勾配と所要時間は、短い間も数える。",
     ),
     # --- 走行モデル ---
     TuningParameter(
@@ -310,13 +385,13 @@ TUNING_PARAMETERS: tuple[TuningParameter, ...] = (
         "cost.effort_alpha",
         "体力の換算", "倍", TuningEffect.IMMEDIATE,
         "平地の出力を超えて使った体力を、平地を何秒走る分に当たるかに換算し、その秒に掛ける倍率（費用の式のα）。"
-        "標準の人が、体力の1秒分を何秒の所要時間と引き換えにするかの交換比。体力の負担のすべての種類に共通。"
+        "標準の人が、体力の1秒分を何秒の所要時間と引き換えにするかの交換比。体力の軸のすべてに共通。"
         + _PREFERENCE_DEFINITION,
     ),
     TuningParameter(
         "cost.burden_seconds_per_km",
         "道のストレスの換算", "秒/km", TuningEffect.IMMEDIATE,
-        "道のストレスの基準の重さ（1）の道を1km走ることを、何秒の負担とみなすか（費用の式のβ）。標準の人が、その1kmを何秒の"
+        "道のストレスの基準の重さ（1）の道を1km走ることを、何秒のロスとみなすか（費用の式のβ）。標準の人が、その1kmを何秒の"
         "所要時間と引き換えにするかの交換比。道のストレスのすべての種類に共通。" + _PREFERENCE_DEFINITION,
     ),
     TuningParameter(
@@ -434,13 +509,13 @@ TUNING_PARAMETERS: tuple[TuningParameter, ...] = (
     # 地図に効くのは、画面が一覧を取り直した（読み込み直した）とき。
     TuningParameter(
         "gradient.perpendicular_band_deg",
-        "勾配を示さない直角からの幅", "度", TuningEffect.IMMEDIATE,
-        "走る向きに対して直角からこの角度以内の道は、どちら向きに辿るか決まらないため、その向きでの勾配を示さない"
-        "（地図では勾配の段で塗らない）。広げるほど勾配を示さない道が増える。",
+        "きつい向きで塗る直角からの幅", "度", TuningEffect.IMMEDIATE,
+        "走る向きに対して直角からこの角度以内の道は、どちら向きに辿るか決まらないため、地図では両向きのうちきつい向きの値で"
+        "塗る。広げるほどきつい向きで塗る道が増える。",
     ),
     TuningParameter(
         LENS_SCALE_STEPS_ID, "色の物差しを刻む数", "段", TuningEffect.IMMEDIATE,
-        "負担で塗る色を、緑の端から赤の端までこの数に刻む。",
+        "地図の「難所を色で見る」の色を、緑の端から赤の端までこの数に刻む。",
     ),
     # --- 画面が使う値（カタログ取得でフロントへ配る） ---
     TuningParameter(
@@ -463,7 +538,7 @@ if _DUPLICATE_IDS:
 
 #: いま効いている値（id → 値）。起動時にDBの表から宣言の全idを読み込み、管理APIで書いたときに**中身だけ**を
 #: 差し替える（束縛済みの参照先が古いままにならないよう、`.update()`で更新する。`.clear()`は挟まない——理由は
-#: `services/tuning_service.py: refresh_tuning_values`）。計算はここを読まず、入口が`current_tuning`で写した束を受ける。
+#: `services/tuning_service.py: refresh_tuning_values`）。計算はここを読まず、入口が`domain/model_settings.py: current_model_settings`で写した束を受ける。
 TUNING_VALUES: dict[str, float] = {}
 
 

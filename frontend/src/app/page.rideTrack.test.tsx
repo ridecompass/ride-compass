@@ -1,6 +1,7 @@
 /**
  * `app/page.tsx`——トップページの走行モードのうち、走りの記録。走行モードの間の位置・候補と生成の条件・見せた予報・休むが1つの走りとして
- * 溜まり、案内を終えると送られ、送れなければ端末に残して次に一緒に送ること。
+ * 溜まり、案内を終えると何も聞かずに送られ、送れなければ端末に残して次に一緒に送ること。地図の画面はログインして同意した人にだけ開くので、
+ * ログインして同意した人として開く（最初の画面は`app/page.account.test.tsx`が見る）。
  *
  * ここで見ないもの: 読み込み直したときに走りの記録が同じ走りを続けること——記録中の走りはモジュールが持ち、テストの中で描き直してもモジュールは
  * 読み直されないので、ここでは作れない。続け方は`lib/rideTrack.test.ts`がモジュールを読み直して見る。
@@ -40,7 +41,7 @@ afterEach(() => {
 });
 
 describe("走りの記録", () => {
-  it("走行モードの間の位置・候補と生成の条件・見せた予報・休むを1つの走りとして溜め、案内を終えるとその走りを送る。送れなければ端末に残して次に案内を終えたときに一緒に送り、送れたら端末から消す", async () => {
+  it("走行モードの間の位置・候補と生成の条件・見せた予報・休むを1つの走りとして溜め、案内を終えると何も聞かずにその走りを送り「走行ログに残しました」と「見る」を出す。送れなければ端末に残して次に案内を終えたときに一緒に送り、送れたら端末から消す", async () => {
     onSameOrigin("GET", "/api/version", () => Response.json({ commit: "abc1234", started_at: "2026-11-16T00:00:00Z" }));
     const sent = onUrl(
       "*/api/rides",
@@ -81,11 +82,14 @@ describe("走りの記録", () => {
     expect((ride.forecasts as { kind: string }[]).map(({ kind }) => kind)).toContain("gridPointToday");
     expect(ride.app_version).toBe("abc1234");
     expect(pendingRideUploads().length).toBe(1);
+    expect(await screen.findByRole("heading", { name: "走りを残せませんでした" })).toBeInTheDocument();
 
     await user.click(rideButton());
     await user.click(rideButton());
     await user.click(screen.getByRole("button", { name: "案内を終える" }));
     await waitFor(() => expect(pendingRideUploads().length).toBe(0));
     expect(await gunzippedJson(sent[1])).toEqual(ride);
+    expect(await screen.findByRole("heading", { name: "走行ログに残しました" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "見る" })).toHaveAttribute("href", "/ride-log");
   });
 });

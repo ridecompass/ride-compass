@@ -9,9 +9,9 @@
 
 | レイヤー | ファイル |
 |---|---|
-| domain | `hard_filters.py`（0次フィルタ）・`road_avoidance.py`（道の行ごとの避け方）・`cost_preference.py`（費用の式の利用者の値: 全体のつまみと費用の軸ごとの倍率と、その範囲）・`cost_axes.py`（費用の軸の定義の型・検証と、プロセス内の定義。道のストレスの軸が材料の列から引く区間ごとの重さ［`cost_axes.py: CategoricalBurden.weights`・`cost_axes.py: LinearBurden.weights`］、画面へ配る軸の一覧［見せ方と識別色を軸の順で］`cost_axes.py: cost_axis_catalog`も持つ）・`ledger_costs.py`（費目の帳簿の式。代償の秒と、その較正値の束）・`axis_templates.py`（道のストレスの重さを材料から引く折れ線と表引き）・`search_materials.py`（探索の材料の表）・`material_catalog.py`・`material_coverage_spec.py`（材料の欠損率の測り方の型と、欠損率の見出し）・`material_value_labels.py`（材料のタグの値ごとの日本語の対訳表）・`material_sql.py`（材料の値をSQLで導出する式。道・ノードの生データを読む副問い合わせは`infrastructure/source_models.py`。SQLの値の綴り［`material_sql.py: sql_literals`］と、`LIKE`の型の中で文字として当てる式［`material_sql.py: like_escaped_sql`］も持つ）・`road_classes.py`（道の区分の全体の型と、区分に道を振り分ける式）・`road_class_catalog.py`（道の区分を画面の設定で配る形） |
+| domain | `hard_filters.py`（0次フィルタ）・`road_avoidance.py`（道の行ごとの避け方）・`cost_preference.py`（費用の式の利用者の値: 全体のつまみと費用の軸ごとの倍率と、その範囲）・`cost_axes.py`（費用の軸の定義の型・検証と、プロセス内の定義。体力の費目ごとの決まり［走りの内訳の欄・事実・地図のレンズの物差し・値が変わる走る条件・漕ぎ出し］の1つの表`cost_axes.py: EFFORT_ITEM_RULES`も持ち、費目を足すとそこへ1行足す。道のストレスの軸が材料の列から引く区間ごとの重さ［`cost_axes.py: CategoricalBurden.weights`・`cost_axes.py: LinearBurden.weights`］、画面へ配る軸の一覧［見せ方と識別色を軸の順で］`cost_axes.py: cost_axis_catalog`も持つ）・`axis_catalog.py`（`GET /api/cost-axes`が配る軸の一覧・総合のレンズ・レンズの段を、今の費用の軸の定義から1つに組む`axis_catalog.py: current_cost_axis_catalog`）・`ledger_costs.py`（費目の帳簿の式。代償の秒と、その較正値の束）・`axis_templates.py`（道のストレスの重さを材料から引く折れ線と表引き）・`search_materials.py`（探索の材料の表）・`material_catalog.py`・`material_coverage_spec.py`（材料の欠損率の測り方の型と、欠損率の見出し）・`material_value_labels.py`（材料のタグの値ごとの日本語の対訳表）・`material_sql.py`（材料の値をSQLで導出する式。道・ノードの生データを読む副問い合わせは`infrastructure/source_models.py`。SQLの値の綴り［`material_sql.py: sql_literals`］と、`LIKE`の型の中で文字として当てる式［`material_sql.py: like_escaped_sql`］も持つ）・`road_classes.py`（道の区分の全体の型と、区分に道を振り分ける式）・`road_class_catalog.py`（道の区分を画面の設定で配る形） |
 | services | `material_coverage_service.py`・`cost_axis_service.py`（費用の軸の定義の読み込みと管理APIの入れ替え）・`road_class_service.py`（道の区分の読み込みと管理APIの入れ替え） |
-| infrastructure | `material_coverage.py`（材料ごとの欠損割合の集計クエリ）・`cost_axis_models.py`・`cost_axis_repository.py`・`road_class_models.py`・`road_class_repository.py` |
+| infrastructure | `material_coverage.py`（材料ごとの欠損割合の集計。DBの集計クエリと、道路網の配列の値の数え上げ）・`cost_axis_models.py`・`cost_axis_repository.py`・`road_class_models.py`・`road_class_repository.py` |
 | api | `material_catalog.py`（材料の欠損割合のエンドポイント）・`cost_axis_catalog.py`（`GET /api/cost-axes`で費用の軸の見せ方・総合のレンズ・色の物差しから刻んだ段を画面へ配る。地図のレンズの要求の利用者の値の受け口`cost_preference_query`も持つ）・`cost_axis_admin.py`・`road_class_admin.py`（どちらも全体の読みと入れ替えの管理API）・`client_config.py`（`GET /api/client-config`。較正値・事故の収録年・道の区分を画面へ配る） |
 
 `material_sql.py`が**domainにある**のは、材料が何から導かれるかがdomainの知識だから。
@@ -80,7 +80,7 @@
 
 | 経路 | 入口 | 粒度 |
 |---|---|---|
-| 道路網の配列の材料 | `road_graph_repository.py: get_edge_material_arrays` | 有向の区間（取込範囲の道路網）と、区間を持たない道 |
+| 道路網の配列の材料 | `road_graph_repository.py: get_edge_material_arrays` | 有向の区間（取込範囲の道路網） |
 
 区間の値を持つ`em`は、区間の番号の式を渡して読む（`material_joins.py: material_from_clause`。渡さずに読む式は断る）。
 道1本の値は、配列を作るときに区間の値から集める（`domain/road_network_build.py`のモジュールの説明）。
@@ -127,13 +127,16 @@
   強さは交換比α・βの較正値が持ち、つまみはそれに掛ける比で、帳簿の較正値の束（`domain/ledger_costs.py: ledger_parameters`）が
   入口の写した較正値で組む——較正値を変えても利用者の値は標準のまま。倍率は書いていない軸を標準とし、条件のエコーへは
   今の費用の軸を全部書いた形（`CostPreference.resolved`）を返す。
+- **費用を述べる文**: 費用の式とロスが何を数えるかを利用者に言う名詞句（`domain/ledger_costs.py: COST_WORDING`・
+  `domain/ledger_costs.py: PENALTY_WORDING`）と、避け方の倍率が何に掛かるかの名詞句（`domain/road_avoidance.py: AVOIDANCE_MULTIPLIER_WORDING`）は
+  式の横に置き、生成物`route-generate-config.json`で配る。式を変えるときは、同じファイルの文を直す。
 - **組み立ての部品**: 走行の模型の入力（転がり抵抗・止まる出来事の待ちと漕ぎ出し・断面。`domain/leg_costs.py: travel_inputs`）と
   道のストレスの1kmあたりの重さ（`domain/leg_costs.py: burden_weights`）は、材料の列（材料id→区間の列）から組む関数で、探索の合成と
   地図のレンズ（[レンズ・フィーチャー値配信](dynamic-way-values.md)「費用の軸のレンズ」）が同じものを呼ぶ。代償の秒は軸ごとの内訳
   （`domain/ledger_costs.py: LedgerCosts.penalty_by_axis`）を持ち、その和が区間の代償の秒（`LedgerCosts.penalty_seconds`）になる。
 - **ルートの内訳**: 経路の区間の代償は、探索がその区間に使ったビンの風で、経路上の行だけを解き直して求める
   （`domain/leg_costs.py: LegCostComposer.values_at_rows`が`domain/ledger_costs.py: LedgerCosts.row_seconds`を呼び、走行の模型は
-  `SegmentSpeedModel.ride`に行を渡すとその行の点の間だけを解く）。点の間ごとの計算は互いに依らないので、全部を解いた探索の
+  `SegmentSpeedModel.ride`に行を渡すとその行の点の間だけを解く）。行ごとの計算は互いに依らない（勢いは行の中でだけ持ち越す）ので、全部を解いた探索の
   値と同じになり、所要時間と内訳の和が探索の費用に合う。避け方の秒は、避け方の倍率と1の差 × 区間の所要時間
   （`domain/leg_costs.py: avoidance_seconds`。探索の費用も同じ式を読む）で、
   負の分（好む側の段）と正の分（避ける側の段）を分けて持つ（`domain/route.py: PenaltyBreakdown`の`preferred_seconds`・`avoided_seconds`）。
@@ -207,7 +210,7 @@
 - コードが名指しで読む材料（例: 勾配・路面の良否）は、同じファイルのid定数（`GRADIENT_PERCENT`等）で
   指し、カタログのキーにも同じ定数を使う。文字列で書き写すと、綴りがずれたときに読む側が材料を
   見つけられず、黙って欠損（全区間が舗装路扱いになる等）として扱う。
-- 土地被覆の割合材料は`edge_landcover.lc_*`／`way_landcover.lc_*`（区間単位・way単位、
+- 土地被覆の割合材料は`edge_landcover.lc_*`（区間単位。道1本の値は道路網の配列が区間の値から集める。
   [静的道路属性・タイル配信](static-road-attributes.md)）が持つクラス別の割合で、
   **どのクラスが割合列を持つかは`landcover.py: LANDCOVER_CLASSES`が単一の正本**で、
   列指向テーブル・集計SQL・読み出しは、そこからクラス値の昇順で
@@ -282,8 +285,9 @@
 
 | 母集団 | 対象 | 判定 |
 |---|---|---|
-| `"way"` | 生の道の全行（`infrastructure/source_models.py: WAYS_SOURCE_SQL`） | `missing_condition`（生の道の列・`tags` JSONBのみで構成したSQL真偽式、`domain/material_sql.py`の共有断片から組み立てる）。全way材料を`count(*) FILTER`で1回の走査にまとめる（`_way_coverage_sql`、`FROM {WAYS_SOURCE_SQL} AS w`）。判定式は[routing-engine.md](routing-engine.md)の`ROAD_SURFACE_TILE_MVT_SQL`と同じPython定数を参照するため、独立した2つの文字列を突き合わせる形の整合性テストは持たない（同じ定数を使う構成自体が一致を保証する） |
+| `"way"` | 生の道の全行（`infrastructure/source_models.py: WAYS_SOURCE_SQL`） | `missing_condition`（生の道の列・`tags` JSONBのみで構成したSQL真偽式、`domain/material_sql.py`の共有断片から組み立てる）。全way材料を`count(*) FILTER`で1回の走査にまとめる（`_way_coverage_sql`、`FROM {WAYS_SOURCE_SQL} AS w`） |
 | `"edge"` | `road_edges`全行 | `present_condition`（区間の値（別名`em`）が値を持つときに真のSQL条件式）。区間の値の表は区間への外部キーと同じ主キーを持ち区間1本に行は0か1なので、値のある区間は区間へ結ばずにその表だけを走査して数え、総数は`road_edges`の件数とする。式が読む表は宣言から引き（`material_joins.py: edge_material_table`）、edge材料を`count(*) FILTER`で表ごとに1回の走査にまとめる（`_edge_coverage_sql`）。判定式が区間の形（`re`）を読むなら区間へ結ぶ形に戻す |
+| `"edge"`（道路網の配列） | 道路網の配列の区間（区間ごとに一番若い行） | 配列を作るときに区間の断面から求める材料（`domain/material_coverage_spec.py: NetworkMaterialCoverageSpec`）。DBに列が無いので、配列の値が無い（NaN）区間を数え、総数は配列の区間の数とする |
 
 - **「行がある」と「値がある」を混同しない**。派生の表は区間ごとに行を持ち、値を出せない列は
   NULLのまま残す（土地被覆の`lc_*`がそう。NULLの意味は[静的道路属性](static-road-attributes.md)「値が無ければNULL」）。

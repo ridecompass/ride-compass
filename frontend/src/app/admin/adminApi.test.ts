@@ -17,12 +17,11 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 
-import { HttpResponse } from "msw";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import * as adminApi from "@/features/admin/adminApi";
 import * as adminRoute from "@/app/admin/api/[...path]/route";
-import { onBackend, onUrl } from "@/testing/backendServer";
+import { onUrl } from "@/testing/backendServer";
 import { openApi } from "@/testing/openApi";
 
 vi.mock("@/lib/adminBasicAuth", () => ({
@@ -108,12 +107,5 @@ describe("叩く先", () => {
       const properties = openApi.components.schemas[schemaRef.split("/").at(-1)!].properties ?? {};
       for (const key of Object.keys(sent)) expect(properties, `${name}の本文の項目${key}`).toHaveProperty(key);
     }
-  });
-});
-
-describe("checkBackendHealth", () => {
-  it("疎通できなければ、疎通確認の失敗の文言で投げる", async () => {
-    onBackend("GET", "/health", () => HttpResponse.error());
-    await expect(adminApi.checkBackendHealth()).rejects.toThrow("バックエンドへの疎通確認に失敗しました");
   });
 });

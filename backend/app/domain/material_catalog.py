@@ -32,10 +32,9 @@ from app.domain.tuning import (
     REGULATION_MAX_ANGLE_ID,
     TUNING_PARAMETERS_BY_ID,
 )
-from app.domain.traffic_regulation import REGULATION_HOURS_LABELS
+from app.domain.traffic_regulation import PEDESTRIAN_ROAD_LABELS
 from app.domain.primary_attributes import (
     PRIMARY_ATTRIBUTES,
-    ATTR_ACCIDENT_POINT,
     ATTR_CYCLEWAY,
     ATTR_ELEVATION,
     ATTR_HIGHWAY,
@@ -69,8 +68,7 @@ from app.domain.material_sql import (
     TRACKTYPE_NORMALIZED_SQL,
     cycleway_has_value_sql,
     landcover_value_sql,
-    per_km_value_sql,
-    poi_density_value_sql,
+    poi_count_value_sql,
     BRIDGE_NORMALIZED_SQL,
     CYCLEWAY_TAG_NAMES,
     HIGHWAY_SQL,
@@ -95,6 +93,7 @@ from app.domain.material_coverage_spec import (
     EdgeMaterialCoverageSpec,
     MaterialCoverage,
     MissingSemantics,
+    NetworkMaterialCoverageSpec,
     WayMaterialCoverageSpec,
 )
 from app.domain.material_value_labels import (
@@ -153,8 +152,9 @@ MaterialDType = Literal["numeric", "boolean", "categorical"]
 
 #: 材料の値の出どころ。`db`はDBの値式（`MaterialSpec.value_sql`）で求める。`road_class`は道の区分から都度作る
 #: （`domain/road_classes.py: class_columns`）。`profile`は道路網の配列を作るときに区間の断面から求める
-#: （`domain/road_network_build.py`）。
-_MaterialSource = Literal["db", "road_class", "profile"]
+#: （`domain/road_network_build.py`）。`regulation`は区間に当たった交通規制の組から、時刻を決めて求める
+#: （`domain/traffic_regulation.py`。配列の列の値は時刻で変わらない組だけで決めた値）。
+_MaterialSource = Literal["db", "road_class", "profile", "regulation"]
 
 
 class MaterialSpec(StrictModel):
@@ -185,6 +185,9 @@ class MaterialSpec(StrictModel):
     # **材料の値の求め方をここ以外へ書かない**
     # （設計原則 構造仕様8。別の辞書へ分けると、材料を増やしたとき片方が取り残される）。
     value_sql: str | None = None
+    # 値式の値（区間の量）を、区間の長さ1kmあたりにして持つか。割り算は道路網の配列を作るときに材料を読んだ直後の1か所
+    # （`infrastructure/road_network_assembly.py: build`が`domain/road_network_build.py: per_km`で割る）だけが持ち、SQLへ写さない。
+    per_km: bool = False
     # 欠損率の測り方（`/admin`の材料タブ）。`CoverageExcluded`を含む3択で、**どれかを必ず
     # 持つ**——「どちらの一覧にも載っていない材料」を型として作れなくする。中身は
     # `value_sql`から導けない（「値がいくつか」と「元データがあるか」は別の問い。
@@ -225,6 +228,8 @@ class MaterialSpec(StrictModel):
         都度の値と二重になり、値式を持たないのにDBとした材料は行列に列が無く、どの軸でも黙って欠損になる。"""
         if (self.source == "db") != (self.value_sql is not None):
             raise ValueError(f"{self.material_id}: 値式（value_sql）は出どころがdbの材料だけが持つ")
+        if self.per_km and not (self.source == "db" and self.dtype == "numeric"):
+            raise ValueError(f"{self.material_id}: 1kmあたりにする（per_km）のは、値式を持つ数値の材料だけ")
         if self.source == "road_class" and not isinstance(self.coverage, CoverageExcluded):
             # 欠損率はDBの元データを数えるので、道の区分から作る材料には数える相手が無い（断面から求める材料は、断面の表を数える）。
             raise ValueError(f"{self.material_id}: 道の区分から作る材料は欠損率を測らない（CoverageExcluded）")
@@ -278,37 +283,20 @@ def _landcover_description(cls: LandcoverClass) -> str:
     )
 
 
-def _pedestrian_road_material(column: str, label: str, subject: str) -> MaterialSpec:
-    """区間に当たった歩行者用道路の規制が効く時間帯の材料（`edge_traffic_regulations`の列`column`）。"""
-    return MaterialSpec(
-        material_id=column,
-        label=label,
-        description=(
-            f"日本道路交通情報センターの交通規制情報から、{subject}歩行者用道路の規制が当たった区間の、規制が効く時間帯"
-            "（終日か、時間・曜日を限るか）。区間の長さのうち較正値の"
-            f"「{TUNING_PARAMETERS_BY_ID[REGULATION_EDGE_SHARE_ID].label}」以上が規制の場所（線の規制は較正値の"
-            f"「{TUNING_PARAMETERS_BY_ID[REGULATION_LINE_HALF_WIDTH_ID].label}」の帯、面の規制は面）の中にある区間に当てます。"
-            "線の規制は、さらに区間と線の向きの差が較正値の"
-            f"「{TUNING_PARAMETERS_BY_ID[REGULATION_MAX_ANGLE_ID].label}」以下の区間（線に沿う区間）に限ります。"
-            "規制が当たらない区間は値を持ちません。"
-        ),
-        dtype="categorical",
-        tile_property=None,
-        value_labels=REGULATION_HOURS_LABELS,
-        value_sql=f"em.{column}",
-        coverage=CoverageExcluded(
-            reason="edge_traffic_regulationsは規制が当たった区間だけが行を持ち、行が無いのは規制が無いこと（データの欠けではない）",
-            missing_semantics="definite",
-        ),
-    )
+#: 歩行者用道路の規制の材料のid。配列を作るときと、時刻を決めて読む所が名指す。
+PEDESTRIAN_ROAD = "pedestrian_road"
 
 
 #: コードが名指しで読む材料のid。カタログのキーにも同じ定数を使う——綴りを別々に書くと、
 #: ずれたときに読む側が材料を見つけられず、黙って欠損として扱う。
 GRADIENT_PERCENT = "gradient_percent"
 ELEVATION_GAIN_PER_KM = "elevation_gain_m_per_km"
-ACCIDENT_COUNT_PER_KM_YEAR = "accident_count_per_km_year"
+HIGHWAY = "highway"
 
+
+#: 区間の標高の断面から求める材料の欠損（道路網の配列の値が無い区間。断面の点が足りない・急すぎて読み違いとした区間を含む）。
+_PROFILE_COVERAGE = NetworkMaterialCoverageSpec(source="道路網の配列の値（区間の標高の断面から求めた値）があるか",
+                                                missing_semantics="unknown")
 
 MATERIAL_CATALOG: dict[str, MaterialSpec] = {
     GRADIENT_PERCENT: MaterialSpec(
@@ -323,11 +311,7 @@ MATERIAL_CATALOG: dict[str, MaterialSpec] = {
         tile_property=None,
         primary_attribute=ATTR_ELEVATION,
         source="profile",
-        coverage=EdgeMaterialCoverageSpec(
-                present_condition="em.average_grade IS NOT NULL",
-                source="edge_elevation.average_grade の有無",
-                missing_semantics="unknown",
-            ),
+        coverage=_PROFILE_COVERAGE,
     ),
     # 勾配の材料と分けて持つ理由と、逆向きの区間で下りの量になることは docs/modules/backend/elevation.md「向きと標高」。
     ELEVATION_GAIN_PER_KM: MaterialSpec(
@@ -343,11 +327,7 @@ MATERIAL_CATALOG: dict[str, MaterialSpec] = {
         tile_property=None,
         primary_attribute=ATTR_ELEVATION,
         source="profile",
-        coverage=EdgeMaterialCoverageSpec(
-            present_condition="em.elevation_gain_m IS NOT NULL",
-            source="区間の標高の表（edge_elevation）に行があるか",
-            missing_semantics="unknown",
-        ),
+        coverage=_PROFILE_COVERAGE,
     ),
     # --- 土地被覆のクラス別の割合。`domain/landcover.py: LANDCOVER_CLASSES`から生成する ---
     **{
@@ -372,18 +352,8 @@ MATERIAL_CATALOG: dict[str, MaterialSpec] = {
         unit="回/km",
         tile_property=None,
         primary_attribute=ATTR_INTERSECTION,
-        value_sql=per_km_value_sql("em.intersection_count"),
-        coverage=_EDGE_COUNTS_COVERAGE,
-    ),
-    ACCIDENT_COUNT_PER_KM_YEAR: MaterialSpec(
-        material_id=ACCIDENT_COUNT_PER_KM_YEAR,
-        label="事故密度",
-        description="警察庁の事故データに基づく、1kmあたり・1年あたりの人身事故件数。",
-        dtype="numeric",
-        unit="件/(km・年)",
-        tile_property=None,
-        primary_attribute=ATTR_ACCIDENT_POINT,
-        value_sql=f"CASE WHEN :accident_years > 0 THEN {per_km_value_sql('em.accident_count')} / :accident_years END",
+        value_sql="em.intersection_count",
+        per_km=True,
         coverage=_EDGE_COUNTS_COVERAGE,
     ),
     "lit": MaterialSpec(
@@ -428,7 +398,8 @@ MATERIAL_CATALOG: dict[str, MaterialSpec] = {
     "oneway": MaterialSpec(
         material_id="oneway",
         label="一方通行",
-        description=f"OSMのタグから判定した一方通行の区間かどうか。{DIVIDED_ROAD_NOTE}の片側は一方通行に数えない。",
+        description=f"自転車が片方向にしか辿れない一方通行の区間かどうか。OSMのタグから判定し、JARTIC の一方通行の規制が道に当たれば、"
+                    f"自転車を除く規制かで決める。{DIVIDED_ROAD_NOTE}の片側は一方通行に数えない。",
         dtype="boolean",
         tile_property="oneway",
         primary_attribute=ATTR_ONEWAY,
@@ -459,8 +430,8 @@ MATERIAL_CATALOG: dict[str, MaterialSpec] = {
         value_sql=LANES_COUNT_CASE_SQL,
         coverage=_tag_coverage(f"({LANES_COUNT_CASE_SQL})", "lanes（数値として解釈できない値も欠損に含む）", "unknown"),
     ),
-    "highway": MaterialSpec(
-        material_id="highway",
+    HIGHWAY: MaterialSpec(
+        material_id=HIGHWAY,
         label="道路種別",
         description="OSMの道路種別タグ(highway)の生値（例: residential/primary/cycleway等）。道の区分の条件に値ごとに書けます。",
         dtype="categorical",
@@ -544,9 +515,26 @@ MATERIAL_CATALOG: dict[str, MaterialSpec] = {
         coverage=_tag_coverage(BICYCLE_NORMALIZED_SQL, f"bicycle（{SHARED_PEDESTRIAN_PATH_NOTE}で判定、タグ不在は非該当扱い）", "definite"),
     ),
     # --- 道の区分を決める事実（タグの値を束ねずに持つ）。道の区分の条件はこれらを読む ---
-    "pedestrian_road": _pedestrian_road_material("pedestrian_road", "歩行者用道路", ""),
-    "pedestrian_road_bicycle": _pedestrian_road_material(
-        "pedestrian_road_bicycle", "歩行者用道路[自転車も対象]", "普通自転車も通行の禁止の対象とする"),
+    PEDESTRIAN_ROAD: MaterialSpec(
+        material_id=PEDESTRIAN_ROAD,
+        label="歩行者用道路",
+        description=(
+            "日本道路交通情報センターの交通規制情報から、歩行者用道路の規制が当たった区間の、その時刻に効いている規制が普通自転車も"
+            "対象とするか。時間・曜日・期間を限る規制は、効いている時刻だけ値を持ちます。区間の長さのうち較正値の"
+            f"「{TUNING_PARAMETERS_BY_ID[REGULATION_EDGE_SHARE_ID].label}」以上が規制の場所（線の規制は較正値の"
+            f"「{TUNING_PARAMETERS_BY_ID[REGULATION_LINE_HALF_WIDTH_ID].label}」の帯、面の規制は面）の中にある区間に当てます。"
+            "線の規制は、さらに区間と線の向きの差が較正値の"
+            f"「{TUNING_PARAMETERS_BY_ID[REGULATION_MAX_ANGLE_ID].label}」以下の区間（線に沿う区間）に限ります。"
+        ),
+        dtype="categorical",
+        tile_property=None,
+        value_labels=PEDESTRIAN_ROAD_LABELS,
+        source="regulation",
+        coverage=CoverageExcluded(
+            reason="規制が当たった区間だけが値を持ち、値が無いのは規制が無いこと（データの欠けではない）",
+            missing_semantics="definite",
+        ),
+    ),
     "bicycle": _tag_fact_material(
         "bicycle", "自転車の通行", "自転車が通ってよいか（禁止・指定・許可等）。",
         ACCESS_VALUE_LABELS, ATTR_CYCLEWAY, "unknown",
@@ -611,7 +599,8 @@ MATERIAL_CATALOG: dict[str, MaterialSpec] = {
             dtype="numeric",
             unit="回/km",
             tile_property=None,
-            value_sql=poi_density_value_sql(kind),
+            value_sql=poi_count_value_sql(kind),
+            per_km=True,
             # 行があれば載っていないキーは0件と確定できる（欠損は行そのものの不在だけ）。
             coverage=_EDGE_COUNTS_COVERAGE,
             primary_attribute=ATTR_STOP_POI,
@@ -662,7 +651,7 @@ def material_value_sql() -> dict[str, str]:
     }
 
 
-def material_coverage_specs() -> dict[str, WayMaterialCoverageSpec | EdgeMaterialCoverageSpec]:
+def material_coverage_specs() -> dict[str, WayMaterialCoverageSpec | EdgeMaterialCoverageSpec | NetworkMaterialCoverageSpec]:
     """欠損率を測る材料id→測り方。カタログから導く（別の辞書を持たない）。"""
     return {
         material_id: spec.coverage

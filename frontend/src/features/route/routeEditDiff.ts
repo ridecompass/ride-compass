@@ -40,7 +40,7 @@ const EDIT_METRICS: readonly EditMetric[] = [
       route.estimated_duration_seconds === null ? null : secondsToMinutes(route.estimated_duration_seconds),
   },
   {
-    label: "負担",
+    label: "ロス",
     digits: 0,
     unit: MINUTE_UNIT,
     value: (route) => secondsToMinutes(route.penalty.total_seconds),
@@ -101,7 +101,7 @@ export function deltaTone({ delta, digits }: Pick<MetricDifference, "delta" | "d
 
 /** 差の色（`deltaTone`の属性を読む）。 */
 export const DELTA_TONE_CLASS =
-  "data-[better=true]:text-[var(--color-accent)] data-[worse=true]:text-[var(--color-route-splice)]";
+  "data-[better=true]:text-[var(--color-accent-text)] data-[worse=true]:text-[var(--color-route-splice)]";
 
 /** 差の表記（例: `+0.4`・`−2`・`±0`）。 */
 export function formatDelta(value: number, digits: number): string {

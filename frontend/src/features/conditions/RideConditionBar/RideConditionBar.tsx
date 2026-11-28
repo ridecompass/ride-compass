@@ -25,13 +25,12 @@ import { Input } from "@/components/ui/Input/Input";
 import { textVariants } from "@/components/ui/Text/Text";
 import { GuideText } from "@/components/ui/GuideText/GuideText";
 import InfoPopover from "@/components/ui/InfoPopover/InfoPopover";
-import { useClientConfigSelect } from "@/hooks/useClientConfig";
-import type { ClientConfigResponse } from "@/types/route";
 
 /** 想定速度が何の速さか（backendの走行モデルが逆算に使う条件）。 */
 const CRUISE_SPEED_LABEL = routeGenerateConfig.cruise_speed_label;
 
-const selectTravelModelWording = (response: ClientConfigResponse) => response.travel_model_wording;
+/** 区間ごとの速度の決め方（backendの走行モデルの決まり）。 */
+const TRAVEL_MODEL_WORDING = routeGenerateConfig.travel_model_wording;
 
 interface RideConditionBarProps {
   /** 出発時刻（気象レイヤーの表示時刻と同じ共有state）。 */
@@ -44,7 +43,7 @@ interface RideConditionBarProps {
   /** 想定速度（km/h）。 */
   speedKmh: number;
   onSpeedKmhChange: (speedKmh: number) => void;
-  /** いまの「負担で塗る」の周りの道の塗りが、出発時刻・想定速度で決まっている。 */
+  /** いまの「難所を色で見る」の周りの道の塗りが、出発時刻・想定速度で決まっている。 */
   linkedDeparture: boolean;
   linkedSpeed: boolean;
 }
@@ -127,8 +126,6 @@ export default function RideConditionBar({
   linkedDeparture,
   linkedSpeed,
 }: RideConditionBarProps) {
-  // 走行モデルの決まりの文（標準値は管理画面の較正値）。届くまでは出さない。
-  const travelModelWording = useClientConfigSelect(selectTravelModelWording).data;
   // 出発時刻の文言は描いた時刻で決まる。ページはビルド時に描かれるので、サーバーとハイドレーションの描画では
   // 出さず、ハイドレーションのあとに出す（出すとビルドの時刻の文言とずれ、ハイドレーションが不一致で失敗する）。
   const hydrated = useSyncExternalStore(
@@ -152,7 +149,7 @@ export default function RideConditionBar({
             name={departureName}
             icon={<ClockIcon />}
             linked={linkedDeparture}
-            usage="出発する日時を決めます。地図に出す気象と周りの道の負担[風]の時刻と、ルートの到達予想の時刻に使います。"
+            usage="出発する日時を決めます。地図に出す気象と周りの道のロス[風]の時刻と、ルートの到達予想の時刻に使います。"
           >
             {/* 別の日は日付も付くため、列の幅に収まるよう日付と時刻を2行に分ける。時刻には「発」を添え、何の時刻かを文字で示す。 */}
             {departureLabel?.map((part, i) => (
@@ -237,12 +234,12 @@ export default function RideConditionBar({
           <div className="flex items-center gap-1">
             <p className={textVariants({ variant: "hint" })}>{CRUISE_SPEED_LABEL}</p>
             <InfoPopover triggerAriaLabel="想定速度の説明">
-              <p>{`${CRUISE_SPEED_LABEL}です。信号待ちや坂を含めた普段の平均速度ではありません。`}</p>
-              {travelModelWording && (
-                <p>
-                  <GuideText text={travelModelWording} />
-                </p>
-              )}
+              <p>
+                <GuideText text={`${CRUISE_SPEED_LABEL}です。信号待ちや坂を含めた普段の平均速度ではありません。`} />
+              </p>
+              <p>
+                <GuideText text={TRAVEL_MODEL_WORDING} />
+              </p>
             </InfoPopover>
           </div>
         </PopoverContent>

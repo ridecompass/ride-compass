@@ -1,7 +1,7 @@
 // ルートの応答の代償の内訳（`penalty`。軸ごとの秒と、避け方の倍率が好む道で下げた秒・避ける道で上乗せした秒と、曲がる所の罰の秒と、
 // その和）を、画面が読む形にする。候補・区間・編集の差が同じ形を読む。
 
-import { formatDurationShort, formatMinutes, roundedMinutes } from "@/lib/duration";
+import { formatDurationShort, formatMinutes, reachesMinute, roundedMinutes } from "@/lib/duration";
 import { formatLensNumber } from "@/lib/mapDisplay/costLensPaint";
 import { signMark } from "@/lib/numberFormat";
 import palette from "@/types/generated/palette.json";
@@ -45,7 +45,7 @@ export function costAxisLabel(
 ): string {
   if (!catalog.loaded) return pendingCatalogLabel(catalog);
   const axis = catalog.axes.find((listed) => listed.axisId === axisId);
-  if (axis === undefined) throw new Error(`負担の種類 ${axisId} が一覧にありません`);
+  if (axis === undefined) throw new Error(`要因 ${axisId} が一覧にありません`);
   return axis.label;
 }
 
@@ -57,7 +57,7 @@ export function costAxisColor(
 ): string {
   if (!catalog.loaded) return palette.semantic.neutral;
   const color = catalog.axisColors[axisId];
-  if (color === undefined) throw new Error(`負担の種類 ${axisId} の色が一覧にありません`);
+  if (color === undefined) throw new Error(`要因 ${axisId} の色が一覧にありません`);
   return color;
 }
 
@@ -84,20 +84,20 @@ export function penaltyRows(axisSeconds: Readonly<Record<string, number>>, catal
     }));
 }
 
-/** 負担の秒の前に置く符号。好む道で下がった負は「−」、ほかは「+」（0も「+0分」として効かなかったことを見せる）。 */
+/** ロスの秒の前に置く符号。好む道で下がった負は「−」、ほかは「+」（0も「+0分」として効かなかったことを見せる）。 */
 function penaltySign(seconds: number): string {
   return signMark(seconds) || "+";
 }
 
-/** 負担の秒を「+12分」「−3分」の形にする（所要時間に上乗せした分・好む道で下げた分として読む）。0は「+0分」（効かなかった軸を
+/** ロスの秒を「+12分」「−3分」の形にする（所要時間に上乗せした分・好む道で下げた分として読む）。0は「+0分」（効かなかった軸を
  * 「1分未満」と見せない）。 */
 export function formatPenalty(seconds: number): string {
   return `${penaltySign(seconds)}${seconds === 0 ? formatMinutes(0) : formatDurationShort(Math.abs(seconds))}`;
 }
 
-/** 候補のカードの負担（分へ丸めた数字だけ。「負担」の語はカードが数字の前に書き、単位は読み上げと開いたときの内訳が持つ）。0でなく1分に
- * 丸まらない負担は「+<1」「−<1」（0と見分ける。内訳の「+1分未満」と同じ線）。 */
+/** 候補のカードのロス（分へ丸めた数字だけ。「ロス」の語はカードが数字の前に書き、単位は読み上げと開いたときの内訳が持つ）。0でなく1分に
+ * 丸まらないロスは「+<1」「−<1」（0と見分ける。内訳の「+1分未満」と同じ線）。 */
 export function formatPenaltyMinutes(seconds: number): string {
   const minutes = roundedMinutes(Math.abs(seconds));
-  return `${penaltySign(seconds)}${seconds !== 0 && minutes === 0 ? "<1" : minutes}`;
+  return `${penaltySign(seconds)}${seconds !== 0 && !reachesMinute(seconds) ? "<1" : minutes}`;
 }

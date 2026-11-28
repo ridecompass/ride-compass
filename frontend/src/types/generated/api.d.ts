@@ -292,6 +292,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/region/time-frames": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["region_time_frames_api_region_time_frames_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/region/roads-at": {
         parameters: {
             query?: never;
@@ -564,10 +580,117 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_status_api_me_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/me/google-login": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["sign_in_with_google_api_me_google_login_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/me/logout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["sign_out_api_me_logout_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/me/consent": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["consent_api_me_consent_put"];
+        post?: never;
+        delete: operations["withdraw_consent_api_me_consent_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/me/rides": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_rides_api_me_rides_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/me/rides/{ride_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_ride_api_me_rides__ride_id__get"];
+        put?: never;
+        post?: never;
+        delete: operations["delete_ride_api_me_rides__ride_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** AccountStatus */
+        AccountStatus: {
+            /** Signed In */
+            signed_in: boolean;
+            /** Consented */
+            consented: boolean;
+            /** Terms Version */
+            terms_version: number;
+            /** Google Client Id */
+            google_client_id: string | null;
+        };
         /** ActiveFloodForecast */
         ActiveFloodForecast: {
             /** River Code */
@@ -772,8 +895,6 @@ export interface components {
             /** Accident Years */
             accident_years: number[];
             road_classes: components["schemas"]["RoadClassCatalog"];
-            /** Travel Model Wording */
-            travel_model_wording: string;
         };
         /** Condition */
         Condition: {
@@ -813,6 +934,11 @@ export interface components {
             needs_attention: boolean;
             /** Note */
             note: string;
+        };
+        /** ConsentRequest */
+        ConsentRequest: {
+            /** Terms Version */
+            terms_version: number;
         };
         /** Constant */
         Constant: {
@@ -998,6 +1124,11 @@ export interface components {
             destination: components["schemas"]["Coordinates"] | null;
             corrected_destination: components["schemas"]["Coordinates"] | null;
         };
+        /** GoogleLoginRequest */
+        GoogleLoginRequest: {
+            /** Credential */
+            credential: string;
+        };
         /** GridPointToday */
         GridPointToday: {
             /** Latitude */
@@ -1153,7 +1284,7 @@ export interface components {
         /** LensDirection */
         LensDirection: {
             /** Total Seconds */
-            total_seconds: number;
+            total_seconds: number | null;
             /** Axes */
             axes: components["schemas"]["LensAxisSeconds"][];
             /** Facts */
@@ -1163,8 +1294,11 @@ export interface components {
         };
         /** LensInspection */
         LensInspection: {
-            /** Painted */
-            painted: ("along" | "against") | null;
+            /**
+             * Painted
+             * @enum {string}
+             */
+            painted: "along" | "against";
             along: components["schemas"]["LensDirection"] | null;
             against: components["schemas"]["LensDirection"] | null;
         };
@@ -1418,6 +1552,46 @@ export interface components {
             /** Candidates */
             candidates: components["schemas"]["PlaceCandidate"][];
         };
+        /** RideDetail */
+        RideDetail: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Started At
+             * Format: date-time
+             */
+            started_at: string;
+            /** Distance M */
+            distance_m: number;
+            /** Duration S */
+            duration_s: number;
+            /** Track */
+            track: {
+                /** @constant */
+                type: "MultiLineString";
+                coordinates: number[][][];
+            };
+        };
+        /** RideSummary */
+        RideSummary: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Started At
+             * Format: date-time
+             */
+            started_at: string;
+            /** Distance M */
+            distance_m: number;
+            /** Duration S */
+            duration_s: number;
+        };
         /** RideUpload */
         RideUpload: {
             /**
@@ -1574,6 +1748,7 @@ export interface components {
         };
         /** RoadInspectorRequest */
         RoadInspectorRequest: {
+            cost_preference?: components["schemas"]["CostPreference-Input"];
             /** Osm Way Id */
             osm_way_id: number;
             /** Feature Key */
@@ -1585,12 +1760,18 @@ export interface components {
             /** Y */
             y: number;
             /** Bearing Deg */
-            bearing_deg: number;
-            /** At */
-            at?: string | null;
+            bearing_deg?: number | null;
+            /** Lens Id */
+            lens_id?: string | null;
+            /** Frame */
+            frame?: string | null;
+            /**
+             * Wind
+             * @default true
+             */
+            wind: boolean;
             /** Speed Kmh */
             speed_kmh: number;
-            cost_preference?: components["schemas"]["CostPreference-Input"];
         };
         /** RoadMapLayerView */
         RoadMapLayerView: {
@@ -1610,6 +1791,8 @@ export interface components {
             hide_missing_rows: boolean;
             /** Has No Data */
             has_no_data: boolean;
+            /** Min Zoom */
+            min_zoom: number;
             /** Classes */
             classes: components["schemas"]["RoadClassView"][];
         };
@@ -1744,13 +1927,13 @@ export interface components {
         };
         /** RouteGenerateRequest */
         RouteGenerateRequest: {
+            cost_preference?: components["schemas"]["CostPreference-Input"];
             /** Latitude */
             latitude: number;
             /** Longitude */
             longitude: number;
             /** Distance Km */
             distance_km?: number | null;
-            cost_preference?: components["schemas"]["CostPreference-Input"];
             road_avoidance: components["schemas"]["RoadAvoidanceOverride"];
             /** Max Routes */
             max_routes: number;
@@ -1808,6 +1991,8 @@ export interface components {
             };
             /** Avoidance Stretches */
             avoidance_stretches: components["schemas"]["AvoidanceStretch"][];
+            /** Regulation Margin */
+            regulation_margin: boolean;
             /** Lens Seconds Per Km */
             readonly lens_seconds_per_km: {
                 [key: string]: number;
@@ -1867,6 +2052,28 @@ export interface components {
             needs_attention: boolean;
             /** Note */
             note: string;
+        };
+        /** TimeFrame */
+        TimeFrame: {
+            /**
+             * Start
+             * Format: date-time
+             */
+            start: string;
+            /**
+             * End
+             * Format: date-time
+             */
+            end: string;
+            /** Key */
+            key: string;
+        };
+        /** TimeFrames */
+        TimeFrames: {
+            /** Road Surface */
+            road_surface: components["schemas"]["TimeFrame"][];
+            /** Lens */
+            lens: components["schemas"]["TimeFrame"][];
         };
         /**
          * TimelineKind
@@ -1978,8 +2185,6 @@ export interface components {
         WayValueFormula: {
             /** Value */
             value: components["schemas"]["Constant"] | components["schemas"]["Missing"] | components["schemas"]["FeatureValue"] | components["schemas"]["Condition"] | components["schemas"]["Unary"] | components["schemas"]["Binary"] | components["schemas"]["Case"] | components["schemas"]["Interpolate"] | components["schemas"]["Round"];
-            /** Undetermined */
-            undetermined: components["schemas"]["Constant"] | components["schemas"]["Missing"] | components["schemas"]["FeatureValue"] | components["schemas"]["Condition"] | components["schemas"]["Unary"] | components["schemas"]["Binary"] | components["schemas"]["Case"] | components["schemas"]["Interpolate"] | components["schemas"]["Round"];
         };
         /** WbgtReading */
         WbgtReading: {
@@ -2455,7 +2660,9 @@ export interface operations {
     };
     region_road_surface_tile_api_region_road_surface_tiles__z___x___y__pbf_get: {
         parameters: {
-            query?: never;
+            query?: {
+                frame?: string | null;
+            };
             header?: never;
             path: {
                 z: number;
@@ -2557,7 +2764,7 @@ export interface operations {
         parameters: {
             query?: {
                 speed_kmh?: number;
-                at?: string | null;
+                frame?: string | null;
                 strength?: number;
                 multipliers?: string | null;
                 disabled_axes?: string | null;
@@ -2589,6 +2796,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    region_time_frames_api_region_time_frames_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TimeFrames"];
                 };
             };
         };
@@ -3109,6 +3336,206 @@ export interface operations {
                 "application/json": components["schemas"]["RideUpload"];
             };
         };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_status_api_me_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountStatus"];
+                };
+            };
+        };
+    };
+    sign_in_with_google_api_me_google_login_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GoogleLoginRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountStatus"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    sign_out_api_me_logout_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    consent_api_me_consent_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConsentRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    withdraw_consent_api_me_consent_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    list_rides_api_me_rides_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RideSummary"][];
+                };
+            };
+        };
+    };
+    get_ride_api_me_rides__ride_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                ride_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RideDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_ride_api_me_rides__ride_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                ride_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
             204: {

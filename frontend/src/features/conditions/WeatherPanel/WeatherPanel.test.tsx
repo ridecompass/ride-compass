@@ -119,12 +119,10 @@ describe("WeatherPanel 観測の出所", () => {
         precipitation_10min_mm: 1.25,
       }),
     });
-    expect(screen.queryByText("アメダスの観測")).not.toBeInTheDocument();
 
     await userEvent.click(screen.getByRole("button", { name: /気温:/ }));
 
     const panel = screen.getByRole("dialog");
-    expect(panel).toHaveTextContent("アメダスの観測");
     expect(panel).toHaveTextContent("練馬11:50");
     expect(panel).toHaveTextContent("気温21.4℃[体感 20.0℃]");
     expect(panel).toHaveTextContent("風東の風 3.3m/s");

@@ -1,5 +1,6 @@
 import { textVariants } from "@/components/ui/Text/Text";
 import { useClientConfig } from "@/hooks/useClientConfig";
+import { reachesMinute } from "@/lib/duration";
 import { formatAlongDistance } from "@/lib/geoDistance";
 import { formatPenalty } from "@/lib/routePenalty";
 import { mapDisplay } from "@/types/generated/mapDisplay";
@@ -30,7 +31,9 @@ function RailMark({ avoided }: { avoided: boolean }) {
 /**
  * 区間の小窓の、地図のルートの両脇の線（避ける・好むにした道を通る区間）の理由: 避け方の倍率が秒を足し引きした道を、倍率を決めた
  * 行ごとに（応答の`avoidance_stretches`）。行・まとまり・段の名前は道路タブと同じ画面の設定から引く。スマホの幅に収まるよう、
- * 1つの道を2行（線の印・道の名前・秒と、小さい字のまとまり・長さ・段）にする。
+ * 1つの道を2行（線の印・道の名前・秒と、小さい字のまとまり・長さ・段）にする。秒は分に丸めて1分以上の道だけに出す——1分に満たない
+ * 足し引きは区間を避けるかの判断を変えず、道の名前・まとまり・段だけで線の理由になる。分を出さない道は、線の印（読み上げない）の
+ * 代わりに、避けた道か好んだ道かを読み上げにだけ添える。
  */
 export default function RailReason({ segment }: { segment: RouteSegmentDetail }) {
   const { rows, sections, levels } = useClientConfig().roadClasses.avoidance;
@@ -46,7 +49,11 @@ export default function RailReason({ segment }: { segment: RouteSegmentDetail })
             <span className="flex items-center gap-1.5">
               <RailMark avoided={stretch.seconds > 0} />
               <span>{row?.label ?? stretch.row_key}</span>
-              <span className="ml-auto pl-2 font-semibold">{formatPenalty(stretch.seconds)}</span>
+              {reachesMinute(stretch.seconds) ? (
+                <span className="ml-auto pl-2 font-semibold">{formatPenalty(stretch.seconds)}</span>
+              ) : (
+                <span className="sr-only">{stretch.seconds > 0 ? "避けた道" : "好んだ道"}</span>
+              )}
             </span>
             <span className={textVariants({ variant: "hint" })} style={{ paddingLeft: MARK_WIDTH_PX + 6 }}>
               {[section?.label, formatAlongDistance(stretch.distance_km * 1000), level?.label]
@@ -56,6 +63,12 @@ export default function RailReason({ segment }: { segment: RouteSegmentDetail })
           </li>
         );
       })}
+      {segment.regulation_margin && (
+        // ルートは通る見込みの時間帯を前後に広げて交通規制を見込むので、地図（出発の時刻そのもので塗る）では規制の外に見える道もある。
+        <li className={textVariants({ variant: "hint" })}>
+          通る見込みの時間帯（前後に幅を持たせたもの）に、時間で変わる交通規制が効くとみなしました
+        </li>
+      )}
     </ul>
   );
 }

@@ -33,6 +33,7 @@ export function sceneState(overrides: SceneStateOverrides = {}): SceneState {
       roadAvoidanceShown: false,
       wayMaterials: new Map(),
       wayConditions: {},
+      roadSurfaceFrame: undefined,
       hiddenLegendKeys: {},
       mapTheme: "light",
       ...look,

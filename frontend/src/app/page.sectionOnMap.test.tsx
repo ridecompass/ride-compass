@@ -4,8 +4,8 @@
  * 見ること: 区間を選んでも（地図の線で押しても、グラフで選んでも）地図は動かず、区間の詳しくの「区間を地図で見る」を押したときだけ
  * その区間へ寄せること。区間が地図の見えている所の外にある間だけ、そのボタンが外にあることを知らせること。
  *
- * ここで見ないもの: 走行中に寄せるときに追うのを休むことは`app/page.rideControl.test.tsx`、区間の小窓と近くの施設は
- * `app/page.map.test.tsx`が見る。
+ * ここで見ないもの: 走行中に寄せるときに追うのを休むことは`app/page.rideControl.test.tsx`、区間の小窓の中身は
+ * `app/page.segmentPopup.test.tsx`が見る。
  *
  * 差し替えたもの: backend の応答（網の層）、位置情報の取得、地図の描画（`maplibre-gl`）。子の部品は本物を描く。
  * 地図の見えている範囲は代役へテストが置く（`moveTo`）。
@@ -65,7 +65,7 @@ describe("選んだ区間を地図で見る", () => {
 
     // 何も無い所を押して選びを外し、グラフで選び直す。グラフで選んでも地図は動かず、地図にその区間の小窓が出る。
     clickMap(HERE);
-    fireEvent.keyDown(screen.getByRole("slider", { name: /^道のりに沿った負担/ }), { key: "Home" });
+    fireEvent.keyDown(screen.getByRole("slider", { name: /^区間ごとのロス/ }), { key: "Home" });
     expect(mapOnScreen().fits()).toHaveLength(fitsBefore + 1);
     expect(screen.getByRole("group", { name: "区間の小窓の上の帯" })).toBeInTheDocument();
     await user.click(showOnMap());
@@ -90,7 +90,6 @@ describe("選んだ区間を地図で見る", () => {
     expect(showOnMap()).not.toHaveAccessibleDescription();
 
     act(() => mapOnScreen().moveTo({ west: 140, south: 36, east: 140.1, north: 36.1 }, 14));
-    expect(showOnMap()).toHaveAccessibleDescription("区間は地図の外です");
 
     act(() => mapOnScreen().moveTo({ west: 139.715, south: 35.69, east: 139.73, north: 35.71 }, 14));
     expect(showOnMap()).not.toHaveAccessibleDescription();

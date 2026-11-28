@@ -5,16 +5,19 @@ import type { ReactNode } from "react";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/ToggleGroup/ToggleGroup";
 import { useRowDescription } from "@/features/map/LegendCheckboxList/LegendRow";
 import type { MapTheme } from "@/lib/mapTheme";
+import { BURDEN_PAINT_NAME, SPOT_GROUP_NAME } from "@/lib/screenNames";
 
 export interface MapLookSettingsProps {
-  /** 道に付く層（負担で塗った道・スポット）をルート沿いだけに出すか。ルートの区間がまだ無い（`selectable`が偽の）間は地図全体に出す。 */
+  /** 道に付く層（ロスで塗った道・スポット）をルート沿いだけに出すか。ルートの区間がまだ無い（`selectable`が偽の）間は地図全体に出す。 */
   range: { routeOnly: boolean; selectable: boolean; onChange: (routeOnly: boolean) => void };
   /** 地図の地の明るさ。 */
   mapTheme: { value: MapTheme; onChange: (theme: MapTheme) => void };
 }
 
-const RANGE_DESCRIPTION =
-  "ルートを選んでいる間、負担で塗った道とスポットを、ルート沿いだけに表示するか、地図全体に表示するかを選びます。\n・ルートを選ぶまでは、地図全体に表示します。";
+/** 範囲を切り替える層（「難所を色で見る」の道の塗りと、スポットのまとまりの層）。 */
+const RANGE_TARGETS = `「${BURDEN_PAINT_NAME}」の道と${SPOT_GROUP_NAME}`;
+const RANGE_DESCRIPTION = `ルートを選んでいる間、${RANGE_TARGETS}をルート沿いだけに出すか、地図全体に出すかを選びます。
+・ルートを選ぶまでは、地図全体に出します。`;
 const THEME_DESCRIPTION = "暗い色にすると、夜のまぶしさと、有機ELの画面での電池の減りを抑えます。";
 
 /** 見出しと、見出しの（i）で行のすぐ下に開く説明と、選ぶ口。 */
@@ -41,7 +44,7 @@ export default function MapLookSettings({ range, mapTheme }: MapLookSettingsProp
           value={range.routeOnly ? "route" : "all"}
           onValueChange={(next) => range.onChange(next === "route")}
           aria-label="表示する範囲"
-          usage="押すと、負担で塗った道とスポットを表示する範囲が切り替わります。"
+          usage={`押すと、${RANGE_TARGETS}を表示する範囲が切り替わります。`}
           className="self-start"
         >
           <ToggleGroupItem value="route" disabled={!range.selectable}>

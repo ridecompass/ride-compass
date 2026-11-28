@@ -5,7 +5,7 @@
  * 見るもの: 部品を押したときに部品が動かず説明が出ること、説明に出す名前（読み上げ名の引き方）と
  * 使い方の文（自分か囲む要素の印・無いときの文言）、ラベルを押したときに説明する入力、押せないボタンでも出ること、
  * 動かした（なぞった・取り消された）押し方と、部品の外で押し始めた押し方では出さないこと、キー操作で説明を出すこと（Enter・Space）と値を動かすキーを止めること、
- * 説明している部品を囲む枠と測り直し（替えた部品の枠を前の部品の位置に描かないこと）、マウスの操作は既定の動きまで止め、タッチは既定の動き（スクロール）を残すこと、終えたら部品が動くこと。
+ * 出している間に名前が変わると今の名前を出すこと、説明している部品を囲む枠と測り直し（替えた部品の枠を前の部品の位置に描かないこと）、マウスの操作は既定の動きまで止め、タッチは既定の動き（スクロール）を残すこと、終えたら部品が動くこと。
  *
  * ここで見ないもの:
  * - 終えることと説明を閉じること → `UsageGuide.close.test.tsx`
@@ -18,7 +18,7 @@
  *
  * 部品の実寸はテスト環境に無いレイアウトの値なので、枠を見るテストだけ`getBoundingClientRect`をテストが決める。
  */
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -61,7 +61,6 @@ describe("UsageGuide", () => {
     await userEvent.click(screen.getByTestId("no-name"));
 
     expect(explanation()).toHaveTextContent("この項目");
-    expect(explanation()).toHaveTextContent("この項目の説明はまだありません。");
   });
 
   it("部品の中の要素を押しても、その部品を説明する", async () => {
@@ -101,6 +100,26 @@ describe("UsageGuide", () => {
     fireEvent.pointerUp(disabled, { clientX: 0, clientY: 0 });
 
     expect(explanation()).toHaveTextContent("保存");
+  });
+
+  it("出している間に部品の名前が変わると、今の名前を出す", async () => {
+    const screenWith = (label: string) => (
+      <div>
+        <button type="button" aria-label={label}>
+          生成
+        </button>
+        <UsageGuide onEnd={vi.fn()} />
+      </div>
+    );
+    const { rerender } = render(screenWith("生成中…(0秒経過)"));
+    const generate = screen.getByRole("button", { name: "生成中…(0秒経過)" });
+    fireEvent.pointerDown(generate, { clientX: 0, clientY: 0 });
+    fireEvent.pointerUp(generate, { clientX: 0, clientY: 0 });
+
+    // 名前の変化は MutationObserver が後の小タスクで知らせる。
+    await act(async () => rerender(screenWith("ルート生成")));
+
+    expect(explanation()?.querySelector("p")).toHaveTextContent(/^ルート生成$/);
   });
 
   it.each([

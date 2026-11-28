@@ -35,9 +35,6 @@ import pytest
 from app.domain.attributes import ElevationAttribute
 from app.domain.graph import LeanEdge
 from app.domain.route import (
-    PenaltyBreakdown,
-    EvaluatedRoute,
-    RouteFacts,
     concat_edge_geometries,
     reverse_elevation_by_edge,
     elevation_gain,
@@ -64,6 +61,7 @@ from app.domain.routing import TurnExpandedTree, build_turn_expanded_tree
 from app.domain.tree_paths import NodeJunction, add_terminal_candidate
 from app.domain.geo import KM_PER_DEGREE_LATITUDE
 from tests.tuning_fixture import TUNED, TUNING
+from tests.route_world import evaluated_route
 from tests.search_graph_world import LINE_EDGES, LINE_NODES, build_all, make_graph, state_index
 
 
@@ -102,16 +100,8 @@ def turn_tree(state_count, *, node_cost, node_length_m, node_seconds, node_best_
 
 
 def draft(distance_km, duration_seconds, cost_seconds):
-    """並びの鍵が読む距離・所要時間・費用だけを持つ候補。ほかの欄は空。"""
-    return EvaluatedRoute(
-        direction_label="", distance_km=distance_km, geometry={"type": "LineString", "coordinates": []},
-        point_distances_m=[], elevation_gain_m=None, segments=[], estimated_duration_seconds=duration_seconds, wind_previous_run_from=None,
-        cost_seconds=cost_seconds,
-        penalty=PenaltyBreakdown(axis_seconds={}, preferred_seconds=0.0, avoided_seconds=0.0, turn_penalty_seconds=0.0),
-        facts=RouteFacts(axes={}),
-        missing_travel_data_share=None,
-        edge_ids=[], edge_point_offsets=[], node_ids=[], turns=[], waypoint_distances_km=[],
-    )
+    """並びの鍵が読む距離・所要時間・費用だけを持つ候補。"""
+    return evaluated_route(distance_km=distance_km, estimated_duration_seconds=duration_seconds, cost_seconds=cost_seconds)
 
 
 # --------------------------------------------------------------------------------------
@@ -360,7 +350,7 @@ def test_rank_treats_distances_within_the_calibrated_quantum_as_the_same():
 
 def test_alternative_routes_are_at_most_the_calibrated_stretch_of_the_cost_of_the_best():
     """目的地への代わりの道は、最良路（費用1000秒）の費用の較正値の倍まで（ちょうどを含む）を候補にする。伸び率を長さで測ると、
-    最良路と同じ長さでも費用のずっと高い道（避ける道・負担の重い道）が候補に残り、遠い道でも費用の近い道が落ちる。届かない
+    最良路と同じ長さでも費用のずっと高い道（避ける道・ロスの大きい道）が候補に残り、遠い道でも費用の近い道が落ちる。届かない
     経由Nodeは候補にしない。"""
     highest = 1000.0 * TUNING["search.alternative_max_cost_stretch"]
 

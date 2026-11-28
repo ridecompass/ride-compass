@@ -19,21 +19,18 @@ from dataclasses import dataclass
 import numpy as np
 
 from app.domain.cost_preference import STANDARD_COST_FACTOR, CostPreference
-from app.domain.cost_axes import EFFORT_AXES, CostAxisDefinitions, EffortItem
+from app.domain.cost_axes import EFFORT_AXES, EFFORT_ITEM_RULES
 from app.domain.cycling_speed import SegmentRide, SegmentSpeedModel
 from app.domain.tuning import Tuning
 
+#: 代償（利用者にはロスと呼ぶ）が何を数えるかを、利用者に言う文（名詞句）。体力と道のストレスの項を変えたら、ここも変える。
+PENALTY_WORDING = "平地を走るより余分に踏む力と、避けたい道を通る道のりを、時間に直したもの"
+#: 費用の式（所要時間と代償の和）を、利用者に言う名詞句。式の項を足す・消すなら、ここも変える。
+COST_WORDING = "所要時間とロスの和"
 
-#: 曲がる所の漕ぎ出しを数える体力の費目。
-_KICKOFF_ITEM: EffortItem = "inertia"
 
-#: 体力の費目 → 走りの内訳のその費目の欄（`EFFORT_AXES`の費目と1対1）。
-_EFFORT_ITEM_J: dict[EffortItem, Callable[[SegmentRide], np.ndarray]] = {
-    "gravity": lambda ride: ride.gravity_extra_j,
-    "air": lambda ride: ride.air_extra_j,
-    "inertia": lambda ride: ride.inertia_extra_j,
-    "rolling": lambda ride: ride.rolling_extra_j,
-}
+#: 曲がる所の漕ぎ出しを数える体力の費目（決まりのうち1つだけ。2つ以上か0なら読み込みで落ちる）。
+(_KICKOFF_ITEM,) = [item for item, rule in EFFORT_ITEM_RULES.items() if rule.kickoff]
 
 
 @dataclass(frozen=True)
@@ -68,7 +65,7 @@ def ledger_parameters(preference: CostPreference, tuning: Tuning) -> LedgerParam
 class LedgerCosts:
     """1回の生成の、道1本と曲がる所の代償の秒を組む。道のストレスは時刻に依らないので1回だけ求め、体力は風の時刻ごとに渡す。"""
 
-    def __init__(self, axes: CostAxisDefinitions, parameters: LedgerParameters, flat_power_w: float, kickoff_j: float,
+    def __init__(self, parameters: LedgerParameters, flat_power_w: float, kickoff_j: float,
                  burden_per_km: Mapping[str, np.ndarray], distance_m: np.ndarray) -> None:
         """`flat_power_w`は平地の出力、`kickoff_j`は重みを掛けた漕ぎ出し1回の体力（`SegmentSpeedModel.kickoff_effort_j`）、
         `burden_per_km`は数える道のストレスの軸ごとの区間の1kmあたりの重さ（`domain/leg_costs.py: burden_weights`）、`distance_m`は区間の
@@ -95,11 +92,11 @@ class LedgerCosts:
         }
 
     @classmethod
-    def for_model(cls, axes: CostAxisDefinitions, parameters: LedgerParameters, model: SegmentSpeedModel,
+    def for_model(cls, parameters: LedgerParameters, model: SegmentSpeedModel,
                   burden_per_km: Mapping[str, np.ndarray]) -> "LedgerCosts":
         """走行の模型`model`の平地の出力・漕ぎ出しの体力（式の重み`γ`を掛けたもの）・区間の長さと、道のストレスの軸ごとの区間の
         1kmあたりの重さ（`domain/leg_costs.py: burden_weights`）で組む。"""
-        return cls(axes, parameters, model.flat_power_w, model.kickoff_effort_j(parameters.effort_weight_exponent),
+        return cls(parameters, model.flat_power_w, model.kickoff_effort_j(parameters.effort_weight_exponent),
                    burden_per_km, model.distance_m)
 
     def penalty_by_axis(self, ride: SegmentRide, rows: np.ndarray | None = None) -> dict[str, np.ndarray]:
@@ -107,7 +104,7 @@ class LedgerCosts:
         重さ×km）。数える軸だけを、体力の軸を`EFFORT_AXES`の順、続けて道のストレスの軸で、和が`penalty_seconds`。`ride`は重みを掛けた体力の内訳で、
         区間の行`rows`だけを走ったもの（`domain/cycling_speed.py: SegmentSpeedModel.ride`に`rows`を渡したもの）なら`rows`も渡す。"""
         effort = {
-            axis_id: self._seconds_per_j * self._item_multipliers[item] * _EFFORT_ITEM_J[item](ride)
+            axis_id: self._seconds_per_j * self._item_multipliers[item] * EFFORT_ITEM_RULES[item].ride_j(ride)
             for axis_id, item in self._effort_axes.items()
         }
         burden = self._burden_axis_seconds if rows is None else {

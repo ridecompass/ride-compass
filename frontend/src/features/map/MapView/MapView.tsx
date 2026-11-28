@@ -32,9 +32,13 @@ import { useMapPopups } from "@/features/map/MapView/useMapPopups";
 import { useMapScene } from "@/features/map/MapView/useMapScene";
 import { useRideFollow, type RideFollow } from "@/features/map/MapView/useRideFollow";
 import { useSectionFocus } from "@/features/map/MapView/useSectionFocus";
+import { useStreetViewAim } from "@/features/map/MapView/useStreetViewAim";
 import { type TurnMarkPoint, useTurnMark } from "@/features/map/MapView/useTurnMark";
+import { useDebugEnabled } from "@/hooks/useDebugLog";
+import { observeLayerRenderTimes } from "@/lib/layerRenderLog";
 import { routeSide } from "@/lib/mapDisplay/sidePoints";
 import { segmentPath } from "@/lib/routeDistance";
+import type { StreetViewAim } from "@/lib/streetViewUrl";
 
 interface MapViewProps {
   routes: RouteCandidate[];
@@ -99,8 +103,12 @@ interface MapViewProps {
   travelledKm: number | null;
   /** 走行中に次に曲がる所の地点と向き。印を出す。無ければnull。 */
   turnPoint: TurnMarkPoint | null;
-  /** いまの「負担で塗る」の周りの道の塗りが地図の向きで決まる（方位磁針のボタンに印を付ける）。 */
+  /** いまの「難所を色で見る」の周りの道の塗りが走行中の進む向きで決まる（方位磁針のボタンに印を付ける）。 */
   compassLinked: boolean;
+  /** Street View を開く地点と向きの矢印。出さなければnull。 */
+  streetViewAim: StreetViewAim | null;
+  /** 矢印の点をつまんで動かした・つまみを回したとき。 */
+  onStreetViewAimChange: (aim: StreetViewAim) => void;
 }
 
 /** ルートの線を薄める境目の刻み（m）。走った距離が変わるたびに薄める所を動かすと、走っている間ずっと地図の中身を組み直して
@@ -145,6 +153,8 @@ export default function MapView({
   travelledKm,
   turnPoint,
   compassLinked,
+  streetViewAim,
+  onStreetViewAimChange,
 }: MapViewProps) {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
@@ -182,6 +192,8 @@ export default function MapView({
     routePath: side?.path ?? null,
   });
   const tapsLocked = ride?.locked ?? false;
+  // 地図で押して選んだ区間（グラフで選んだ区間と見分ける。グラフをなぞるたびに地図が跳ぶと、見ていた所を見失う）。
+  const tappedSegment = useRef<SelectedRouteSegment | null>(null);
   // 地図のイベント（初期化のeffectで一度だけ登録する）が、いまのpropsを読むための参照。
   const latestProps = {
     scene,
@@ -191,7 +203,10 @@ export default function MapView({
     tapMode,
     tapsLocked,
     onPointPlace,
-    onRouteSegmentSelect,
+    onRouteSegmentSelect: (selection: SelectedRouteSegment | null) => {
+      tappedSegment.current = selection;
+      onRouteSegmentSelect(selection);
+    },
     sidePointAlong: (lngLat: readonly [number, number]) => side?.locate(lngLat, travelledKm) ?? null,
     onSpliceStretchSelect,
     onRouteSelect,
@@ -227,6 +242,12 @@ export default function MapView({
   );
 
   // 地図を作るeffectより後に呼ぶ（印のeffectは地図ができてから走る）。
+  // デバッグモードの間は、地図の長いコマで時間を使った層をデバッグログへ出す（地図は上の`useMapLifecycle`が先に作る）。
+  const debugEnabled = useDebugEnabled();
+  useEffect(() => {
+    const map = mapRef.current;
+    return debugEnabled && map ? observeLayerRenderTimes(map) : undefined;
+  }, [debugEnabled]);
   const markerContents = useMapMarkers(mapRef, {
     location,
     locationSource,
@@ -241,6 +262,7 @@ export default function MapView({
 
   const rideControls = useRideFollow(mapRef, ride, here);
   const turnMarkContent = useTurnMark(mapRef, turnPoint);
+  useStreetViewAim(mapRef, streetViewAim, onStreetViewAimChange);
   const focus = useSectionFocus(mapRef, {
     sectionPath: selectedSectionPath,
     request: segmentFocus,
@@ -253,13 +275,13 @@ export default function MapView({
     controls: popups,
     segmentDetail,
     segmentPath: selectedSectionPath,
-    routePath: (selectedRoute?.geometry.coordinates as [number, number][] | undefined) ?? null,
-    travelBearing: ride?.bearing ?? null,
     rideConditions,
     costPreference,
     travelledKm,
     onBackToSegment: backToSegment,
     onFocus: focus,
+    tappedSegment,
+    onMakeRoom: focus,
   });
 
   // 住所の検索で置いた地点・取り直した現在地へ寄せる。出発地を置いたときは印のフックの位置の更新も寄せるが、このeffectが

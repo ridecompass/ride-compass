@@ -7,6 +7,9 @@ import type { MapTapMode } from "@/features/map/MapView/mapTapHits";
 import type { SettingsTab } from "@/features/route/RouteForm/RouteForm";
 import type { RouteOutcomeKind } from "@/features/route/useRouteGeneration";
 
+/** 区分の中に置いても、押して区分の操作に数えない部品に付ける印（`touchPanel`が見る）。 */
+export const PANEL_NEUTRAL_ATTRIBUTE = "data-panel-neutral";
+
 const GENERATE_OPEN_STORAGE_KEY = "ridecompass:generate-open";
 const OUTCOME_OPEN_STORAGE_KEY = "ridecompass:outcome-open";
 
@@ -95,11 +98,17 @@ export function usePagePanels({ navigating, isMobile }: { navigating: boolean; i
             : null;
   // 区分の中を押す・中へ移ると、その区分が地図で効く。効いているかは包む要素の印で見せ、区分のクラスは変えない（変えると中の
   // 部品の見た目の見分けが、押すたびに変わる）。
+  // 区分の中に置いても区分の操作に数えない部品（`PANEL_NEUTRAL_ATTRIBUTE`。パネル全体を畳む✕等）は、効いている区分を移さない
+  // （移すと、前の区分で地図に出した選択を外してしまう）。
+  const touch = (panel: Panel) => (event: { target: EventTarget }) => {
+    if (event.target instanceof Element && event.target.closest(`[${PANEL_NEUTRAL_ATTRIBUTE}]`)) return;
+    setLastTouchedPanel(panel);
+  };
   const touchPanel = (panel: Panel) => ({
     className: "group/panel",
     "data-active": activePanel === panel,
-    onPointerDownCapture: () => setLastTouchedPanel(panel),
-    onFocusCapture: () => setLastTouchedPanel(panel),
+    onPointerDownCapture: touch(panel),
+    onFocusCapture: touch(panel),
   });
 
   // モバイルのタブ。同じタブをもう一度押したら閉じる。

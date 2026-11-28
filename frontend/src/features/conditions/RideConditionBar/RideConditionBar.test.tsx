@@ -2,8 +2,6 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { serveClientConfig } from "@/testing/backendServer";
-import { clientConfigResponse } from "@/testing/clientConfig";
 import { jst } from "@/testing/jst";
 import routeGenerateConfig from "@/types/generated/route-generate-config.json";
 
@@ -24,7 +22,6 @@ beforeEach(() => {
   window.localStorage.clear();
   vi.useFakeTimers({ toFake: ["Date"] });
   vi.setSystemTime(NOW);
-  serveClientConfig();
 });
 
 afterEach(() => {
@@ -165,14 +162,6 @@ describe("RideConditionBar 想定速度", () => {
     await userEvent.clear(input);
     await userEvent.type(input, `${MAX + 10}{Enter}`);
     expect(props.onSpeedKmhChange).toHaveBeenCalledWith(MAX);
-  });
-
-  it("(i)の奥に、画面の設定が配る走行モデルの決まりの文を書く", async () => {
-    serveClientConfig(clientConfigResponse({ travel_model_wording: "走行モデルの決まりの文" }));
-    renderBar();
-    await userEvent.click(screen.getByRole("button", { name: /^想定速度:/ }));
-    await userEvent.click(await screen.findByRole("button", { name: "想定速度の説明を表示" }));
-    expect(await screen.findByText("走行モデルの決まりの文")).toBeInTheDocument();
   });
 });
 

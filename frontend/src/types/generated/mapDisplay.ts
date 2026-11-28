@@ -29,10 +29,6 @@ export const mapDisplay = {
     "noData": {
       "label": "データなし",
       "description": "元にする地図のデータに値が無く、どの行にも分けられない道。道が無いのではなく、値が分からない。"
-    },
-    "undetermined": {
-      "label": "向きで決まらない",
-      "description": "地図の上の向き[走行中は進む向き]とほぼ直角に交わるため、値を決められない道[勾配なら登りか下りか]。\n・地図を回して向きが変わると色が付く。"
     }
   },
   "layerCategories": [
@@ -214,7 +210,7 @@ export const mapDisplay = {
         "雨の降っている所と、この先の雨雲を、時刻を動かして見られます"
       ],
       "panelHint": [
-        "・60分先までは実況に近い予測、15時間先までは短時間予報、48時間先までは数値予報モデルの値で、赤は線状降水帯です。\n・数値予報モデルの計算結果で、大きな誤差を含む可能性があります。予報ではありません。\n・取得に失敗することがあります。"
+        "・60分先までは実況に近い予測、15時間先までは短時間予報、48時間先までは数値予報モデルの値です。\n・数値予報モデルの計算結果で、大きな誤差を含む可能性があります。予報ではありません。\n・取得に失敗することがあります。"
       ],
       "hideMissingRows": false,
       "segmentSeries": null
@@ -227,7 +223,7 @@ export const mapDisplay = {
       "dataNature": "dynamic",
       "drawMinZoom": null,
       "description": [
-        "風の向きと強さを、約5kmごとの矢印で見られます"
+        "風の向きと強さを、矢印で見られます"
       ],
       "panelHint": [
         "・矢印は風の吹いていく向きで、長く太いほど強い風です。\n・48時間先まで時刻で切り替えられます。\n・数値予報モデルの計算結果で、大きな誤差を含む可能性があります。予報ではありません。"
@@ -314,7 +310,8 @@ export const mapDisplay = {
       "tile": {
         "minZoom": 4,
         "maxZoom": 10,
-        "vectorLayer": null
+        "vectorLayer": null,
+        "rasterSizePx": 256
       }
     },
     {
@@ -364,7 +361,8 @@ export const mapDisplay = {
       "tile": {
         "minZoom": 4,
         "maxZoom": 10,
-        "vectorLayer": null
+        "vectorLayer": null,
+        "rasterSizePx": 256
       }
     },
     {
@@ -378,7 +376,7 @@ export const mapDisplay = {
       },
       "gridValue": null,
       "levelScale": null,
-      "description": "大雨災害発生の危険度が急激に高まっている線状降水帯の雨域[赤い輪郭線。実況〜30分先のみ]",
+      "description": "大雨災害発生の危険度が急激に高まっている線状降水帯の雨域[輪郭線。実況〜30分先のみ]",
       "legendColor": "#ff0000",
       "initiallyHidden": false,
       "jmaElements": [
@@ -407,7 +405,7 @@ export const mapDisplay = {
       },
       "gridValue": null,
       "levelScale": null,
-      "description": "大雨災害発生の危険度が急激に高まっている線状降水帯の雨域[赤い輪郭線。実況〜30分先のみ]",
+      "description": "大雨災害発生の危険度が急激に高まっている線状降水帯の雨域[輪郭線。実況〜30分先のみ]",
       "legendColor": "#ff0000",
       "initiallyHidden": false,
       "jmaElements": [
@@ -472,7 +470,8 @@ export const mapDisplay = {
       "tile": {
         "minZoom": 4,
         "maxZoom": 10,
-        "vectorLayer": null
+        "vectorLayer": null,
+        "rasterSizePx": 256
       }
     },
     {
@@ -505,7 +504,8 @@ export const mapDisplay = {
       "tile": {
         "minZoom": 4,
         "maxZoom": 10,
-        "vectorLayer": null
+        "vectorLayer": null,
+        "rasterSizePx": 256
       }
     },
     {
@@ -538,7 +538,8 @@ export const mapDisplay = {
       "tile": {
         "minZoom": 4,
         "maxZoom": 10,
-        "vectorLayer": null
+        "vectorLayer": null,
+        "rasterSizePx": 256
       }
     },
     {
@@ -571,7 +572,8 @@ export const mapDisplay = {
       "tile": {
         "minZoom": 4,
         "maxZoom": 8,
-        "vectorLayer": null
+        "vectorLayer": null,
+        "rasterSizePx": 256
       }
     },
     {
@@ -604,7 +606,8 @@ export const mapDisplay = {
       "tile": {
         "minZoom": 4,
         "maxZoom": 8,
-        "vectorLayer": null
+        "vectorLayer": null,
+        "rasterSizePx": 256
       }
     },
     {
@@ -637,7 +640,8 @@ export const mapDisplay = {
       "tile": {
         "minZoom": 4,
         "maxZoom": 10,
-        "vectorLayer": "flood"
+        "vectorLayer": "flood",
+        "rasterSizePx": null
       }
     },
     {
@@ -693,7 +697,7 @@ export const mapDisplay = {
     "住所: 「<a href=\"https://www.digital.go.jp/policies/base_registry_address/\" target=\"_blank\" rel=\"noreferrer\">アドレス・ベース・レジストリ</a>」[デジタル庁]の町字マスター・住居表示の街区マスター・位置参照拡張を加工して作成 (<a href=\"https://creativecommons.org/licenses/by/4.0/\" target=\"_blank\" rel=\"noreferrer\">CC BY 4.0</a>)",
     "住所の境界: 出典 <a href=\"https://www.e-stat.go.jp/\" target=\"_blank\" rel=\"noreferrer\">政府統計の総合窓口(e-Stat)</a>。「令和2年国勢調査 小地域(町丁・字等別)境界データ」[総務省統計局]を加工して作成",
     "住所の地番: 「<a href=\"https://nlftp.mlit.go.jp/isj/\" target=\"_blank\" rel=\"noreferrer\">街区レベル位置参照情報</a>」[国土交通省]を加工して作成",
-    "地点: <a href=\"https://overturemaps.org/\" target=\"_blank\" rel=\"noreferrer\">Overture Maps Foundation</a>の名前のある地点を、種類で分け近くの同じ店をまとめて加工。Data from Meta, Microsoft, PinMeTo, DAC, Uberall, OpenTravel (<a href=\"https://cdla.dev/permissive-2-0/\" target=\"_blank\" rel=\"noreferrer\">CDLA Permissive 2.0</a>), AllThePlaces (<a href=\"https://creativecommons.org/publicdomain/zero/1.0/\" target=\"_blank\" rel=\"noreferrer\">CC0 1.0</a>), Foursquare (Copyright 2024 Foursquare Labs, Inc. All rights reserved. Available under <a href=\"/licenses/apache-2.0.txt\" target=\"_blank\" rel=\"noreferrer\">Apache 2.0</a>. Foursquare data was transformed to the Overture schema. <a href=\"/licenses/foursquare-places-NOTICE.txt\" target=\"_blank\" rel=\"noreferrer\">NOTICE</a>)",
+    "地点: <a href=\"https://overturemaps.org/\" target=\"_blank\" rel=\"noreferrer\">Overture Maps Foundation</a>の名前のある地点を、種類で分け近くの同じ店をまとめて加工。Data from Meta, Microsoft, PinMeTo, Krick, RenderSEO, DAC, BrightQuery, Birdeye, Uberall, OpenTravel Alliance (<a href=\"https://cdla.dev/permissive-2-0/\" target=\"_blank\" rel=\"noreferrer\">CDLA Permissive 2.0</a>), Foursquare (Copyright 2024 Foursquare Labs, Inc. All rights reserved. Available under <a href=\"/licenses/apache-2.0.txt\" target=\"_blank\" rel=\"noreferrer\">Apache 2.0</a>. Foursquare data was transformed to the Overture schema. Changed: 2026-03-18. <a href=\"/licenses/foursquare-places-NOTICE.txt\" target=\"_blank\" rel=\"noreferrer\">NOTICE</a>), AllThePlaces (<a href=\"https://creativecommons.org/publicdomain/zero/1.0/\" target=\"_blank\" rel=\"noreferrer\">CC0 1.0</a>)",
     "寺社: ジャパンサーチ「<a href=\"https://jpsearch.go.jp/database/bunka\" target=\"_blank\" rel=\"noreferrer\">文化遺産オンライン[文化庁・国立情報学研究所]</a>」のメタデータを改変して利用[所有者で寺社ごとにまとめた]",
     "交通規制: 公益財団法人日本道路交通情報センター「<a href=\"https://www.jartic.or.jp/service/opendata/\" target=\"_blank\" rel=\"noreferrer\">交通規制情報</a>」を加工して作成"
   ],
@@ -752,7 +756,10 @@ export const mapDisplay = {
     "membersProperty": "members"
   },
   "area": {
-    "opacity": 0.55,
+    "opacity": 0.35,
+    "landcoverOpacity": 0.55,
+    "hazardOpacity": 0.55,
+    "elevationSaturation": -0.4,
     "hillshadeIlluminationDeg": 315,
     "hillshadeMethod": "igor",
     "hillshadeExaggeration": 1,

@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
 
-import { popupInsideVisible, type ScreenBox } from "./popupPlacement";
+import { popupBesideLine, popupInsideVisible, type ScreenBox } from "./popupPlacement";
 
 const VISIBLE: ScreenBox = { left: 0, top: 50, right: 400, bottom: 600 };
 
@@ -35,5 +35,35 @@ describe("popupInsideVisible", () => {
 
   it("見えている所が無い（描く前・隠れている地図）なら選ばない", () => {
     expect(popupInsideVisible(popupAt(100, 200), { left: 0, top: 50, right: 0, bottom: 600 })).toBeNull();
+  });
+});
+
+describe("popupBesideLine", () => {
+  /** 縦に走る線（上の端`top`・下の端`bottom`の間の点を、真ん中・下の端・上の端の順に持つ）。 */
+  const lineFrom = (top: number, bottom: number) => [
+    { x: 200, y: (top + bottom) / 2 },
+    { x: 210, y: bottom },
+    { x: 190, y: top },
+  ];
+
+  // 落ちると、区間の小窓が区間に重なり、押した区間が隠れる。見えている所は y=50〜600、間は8px。
+  it.each([
+    {
+      what: "下に収まれば、一番下の点の下へ出す",
+      top: 200,
+      bottom: 300,
+      height: 292,
+      expected: { index: 1, anchor: "top" },
+    },
+    {
+      what: "下に収まらず上に収まれば、一番上の点の上へ出す",
+      top: 300,
+      bottom: 400,
+      height: 242,
+      expected: { index: 2, anchor: "bottom" },
+    },
+    { what: "下にも上にも収まらなければ選ばない", top: 300, bottom: 400, height: 243, expected: null },
+  ])("$what", ({ top, bottom, height, expected }) => {
+    expect(popupBesideLine(lineFrom(top, bottom), height, VISIBLE, 8)).toEqual(expected);
   });
 });

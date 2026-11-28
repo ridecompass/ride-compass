@@ -23,7 +23,7 @@ async def test_a_dropped_check_an_extra_check_and_a_loosened_column_are_each_rep
             for ddl in (
                 "ALTER TABLE road_edges DROP CONSTRAINT road_edges_distance_m_positive",
                 "ALTER TABLE road_edges ADD CONSTRAINT extra CHECK (segment_index < 10000)",
-                "ALTER TABLE road_edges ALTER COLUMN reverse_bearing_deg DROP NOT NULL",
+                "ALTER TABLE road_edges ALTER COLUMN bearing_deg DROP NOT NULL",
                 # 名前だけが違う制約は差ではない。
                 "ALTER TABLE road_edges RENAME CONSTRAINT road_edges_geom_has_two_points TO renamed",
             ):
@@ -38,7 +38,7 @@ async def test_a_dropped_check_an_extra_check_and_a_loosened_column_are_each_rep
     loosened, missing, extra = added
     assert missing.startswith("road_edges: ORMが宣言しているが実DBに無いCHECK") and "distance_m >" in missing
     assert extra.startswith("road_edges: 実DBにあるがORMが宣言していないCHECK") and "segment_index <" in extra
-    assert loosened == "road_edges.reverse_bearing_deg: NULL許容が違う（実DB=NULL ORM=NOT NULL）"
+    assert loosened == "road_edges.bearing_deg: NULL許容が違う（実DB=NULL ORM=NOT NULL）"
 
 
 async def test_a_missing_and_an_extra_not_null_on_a_source_partition_are_each_reported(road_graph_engine):

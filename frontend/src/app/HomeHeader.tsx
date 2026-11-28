@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import DebugConsole from "@/components/DebugConsole/DebugConsole";
 import HeaderMenu from "@/components/HeaderMenu/HeaderMenu";
 import { Button } from "@/components/ui/Button/Button";
@@ -14,6 +14,7 @@ import type { RideRemaining } from "@/features/ride/rideRemaining";
 import { clientConfigFetchFailure, useClientConfig } from "@/hooks/useClientConfig";
 import { costAxisCatalogFetchFailure, useCostAxisCatalog } from "@/hooks/useCostAxisCatalog";
 import { useDebugEnabled } from "@/hooks/useDebugLog";
+import { observeLongFrames } from "@/lib/longFrameLog";
 import type { Coordinates } from "@/types/route";
 import type { FetchFailure } from "@/types/fetchFailure";
 
@@ -53,6 +54,8 @@ export default function HomeHeader({
 }: HomeHeaderProps) {
   const debugEnabled = useDebugEnabled();
   const [debugConsoleOpen, setDebugConsoleOpen] = useState(false);
+  // デバッグモードの間は、画面を止めた長いコマをデバッグログへ出す（重さの原因を利用者の端末で測る）。
+  useEffect(() => (debugEnabled ? observeLongFrames() : undefined), [debugEnabled]);
 
   // 最寄りの実測・警報の類（位置が分かってから、位置が変わるたびに取る。仮の地点では取らない）。
   const { amedas, amedasError, gridPointToday, gridPointTodayError, warningBadgeItems, warningFetchFailures } =

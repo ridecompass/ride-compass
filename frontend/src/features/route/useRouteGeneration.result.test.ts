@@ -13,7 +13,7 @@
 import { act } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { heldReplies } from "@/testing/backendServer";
+import { heldReplies, onBackend } from "@/testing/backendServer";
 import {
   A,
   B,
@@ -131,6 +131,7 @@ describe("生成の結果", () => {
   });
 
   it("選んだつまみと倍率を、費用の軸の一覧が届いていなくても、そのまま送る", async () => {
+    onBackend("GET", "/api/cost-axes", heldReplies().reply);
     const rendered = renderGeneration();
     act(() =>
       rendered.result.current.conditions.setCostPreference({

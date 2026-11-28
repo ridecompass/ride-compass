@@ -16,7 +16,7 @@ export const textVariants = cva("", {
       hint: "text-[length:var(--font-size-sm)] text-[var(--color-muted)]",
       /** 数値の単位・件数のような、いちばん小さい補足。 */
       note: "text-[length:var(--font-size-xs)] text-[var(--color-muted)]",
-      error: "text-[length:var(--font-size-sm)] text-[var(--color-danger)]",
+      error: "text-[length:var(--font-size-sm)] text-[var(--color-danger-text)]",
       /** 表示中の値について注意を促す文。誤り（`error`）と違い、操作を止めない。 */
       warning: "text-[length:var(--font-size-sm)] text-[var(--color-warning-strong)]",
       /** 識別子・コマンド・ログのような、そのまま読む文字列。 */

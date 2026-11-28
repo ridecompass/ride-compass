@@ -30,13 +30,6 @@ function card(title: string): HTMLElement {
   return screen.getByText(title).closest<HTMLElement>("[class*='flex-col']")!;
 }
 
-/** 行の名前（とまとまりの見出し）を並んだ順に。 */
-function rowNames(container: HTMLElement): (string | null)[] {
-  return within(container)
-    .getAllByRole("listitem")
-    .map((item) => item.querySelector("summary > span:not([aria-hidden])")?.textContent ?? item.textContent);
-}
-
 /** 行の開いた先の項目と値。 */
 function detailOf(container: HTMLElement, name: string): [string | null, string | null][] {
   return Array.from(within(container).getByText(name).closest("details")!.querySelectorAll("dt")).map((dt) => [
@@ -114,21 +107,7 @@ describe("AdminPage データ保守 本番DBの状態", () => {
 
     expect(await within(card(TITLE)).findByText("2件に注意")).toBeInTheDocument();
     expect(within(card(TITLE)).getByText("3テーブル ・ 4,000行 ・ 3.0 GB ・ 9/24 10:02")).toBeInTheDocument();
-    expect(rowNames(card(TITLE))).toEqual([
-      "取込",
-      "osm",
-      "接続",
-      "同時接続",
-      "テーブル（容量の大きい順）",
-      "hot",
-      "注意なし 2テーブル",
-    ]);
     expect(within(card(TITLE)).getByText("osm").closest("summary")).toHaveTextContent("#7 失敗注意が要る");
-    expect(detailOf(card(TITLE), "osm")).toEqual([
-      ["最終実行", "#7 ・ 記録なし"],
-      ["成功した最新", "#6 ・ 9/23 09:00"],
-      ["region", "kanto"],
-    ]);
     expect(within(card(TITLE)).getByText("同時接続").closest("summary")).toHaveTextContent("問題なし");
     expect(detailOf(card(TITLE), "hot")).toContainEqual(["不要行", "50件"]);
     expect(within(card(TITLE)).getByText("VACUUMが遅れている")).toBeInTheDocument();

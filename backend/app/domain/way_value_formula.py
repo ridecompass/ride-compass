@@ -30,6 +30,8 @@ _FormulaConditionName = Literal["bearing_deg", "speed_kmh"]
 
 #: 地図の式の木が読む走る条件（条件の葉`condition`の名前）。地図のレンズの要求のクエリパラメータの名前でもある。
 WayValueConditionName = Literal["at", "bearing_deg", "speed_kmh"]
+#: 走る条件の並び（条件の一覧はこの順に並べる）。
+RIDE_CONDITION_ORDER: tuple[WayValueConditionName, ...] = ("bearing_deg", "speed_kmh", "at")
 
 
 class Constant(StrictModel):
@@ -125,13 +127,11 @@ for _model in (Unary, Binary, Case, Interpolate, Round):
 
 
 class WayValueFormula(StrictModel):
-    """道ごとに地図が塗る値の木。`undetermined`が真の道は、その条件では値が決まらない（地図は「向きで決まらない」）。
-    `undetermined`が偽で`value`がNaNの道は、値が無い（地図は「データなし」）。"""
+    """道ごとに地図が塗る値の木。`value`がNaNの道は、値が無い（地図は「データなし」）。"""
 
     model_config = ConfigDict(frozen=True)
 
     value: FormulaNode
-    undetermined: FormulaNode
 
 
 TRUE = Constant(value=1.0)

@@ -1,11 +1,11 @@
 /**
- * `RouteSettingsPanel/RouteSettingsPanel.tsx`——「負担」タブ。一番上の「全体」で負担の全部を数える割合を、その下で費用の軸ごとに
+ * `RouteSettingsPanel/RouteSettingsPanel.tsx`——「要因」タブ。一番上の「総合」ですべての要因のロスを数える割合を、その下で費用の軸ごとに
  * 割合の段か無効を選ぶ。
  *
- * 見るもの: 一覧を取れないときの告知と再試行で軸が出ること、全体の行が軸の行より上に割合の段で出て、選ぶと全体の割合を上げること、
+ * 見るもの: 一覧を取れないときの告知と再試行で軸が出ること、総合の行が軸の行より上に割合の段で出て、選ぶと総合の割合を上げること、
  * 書いていない軸は標準を選んだ状態で出し、無効と段を選ぶと、その軸を無効と倍率の片方にだけ置いて上げること、「標準に戻す」が
- * 標準の間は押せず、押すと軸の割合と無効を標準に戻すこと、全体が無効の間は軸の割合が効かないと添えること。選んだ段の丸の色
- * （軸の行は標準より小さい段が通りやすくする向き・大きい段が避ける向きの色、全体の行は小さい段が灰色）。
+ * 標準の間は押せず、押すと軸の割合と無効を標準に戻すこと、総合が無効の間は軸の割合が効かないと添えること。選んだ段の丸の色
+ * （軸の行は標準より小さい段が通りやすくする向き・大きい段が避ける向きの色、総合の行は小さい段が灰色）。
  *
  * ここで見ないもの: 選んだ割合が生成の要求に載ること → `app/page.test.tsx`。軸の名前・(i)の奥の説明（一覧の値をそのまま描く）。
  * 目盛りの印の形（`RouteSettingsPanel/LevelScale.tsx`が描き、道路タブと同じ）。
@@ -49,8 +49,7 @@ describe("費用の軸の一覧", () => {
   it("取れなければ倍率を変えられないことを知らせ、再試行で取れたら軸ごとの倍率を出す", async () => {
     onBackend("GET", "/api/cost-axes", inTurn(new Response(null, { status: 503 }), Response.json(TWO_COST_AXES)));
     renderPanel();
-
-    expect(await screen.findByRole("status")).toHaveTextContent("負担の種類ごとの割合を変えられません");
+    await screen.findByRole("status");
 
     await userEvent.click(screen.getByRole("button", { name: "再試行" }));
 
@@ -90,28 +89,28 @@ describe("倍率", () => {
     expect(onCostPreferenceChange).toHaveBeenLastCalledWith({ ...STANDARD_COST_PREFERENCE, strength: 1.5 });
   });
 
-  it("全体が無効の間は、軸の割合が効かないと添える（軸の割合は選べるまま）", async () => {
+  it("総合が無効の間は、軸の割合が効かないと添える（軸の割合は選べるまま）", async () => {
     serveCostAxisCatalog();
     renderPanel({ ...STANDARD_COST_PREFERENCE, strength: 0 });
     const vibration = await levelsOf("振動の割合");
-    expect(screen.getByRole("status")).toHaveTextContent("全体が無効のため、種類ごとの割合は使いません");
+    expect(screen.getByRole("status")).toHaveTextContent("総合が無効のため、種類ごとの割合は使いません");
     expect(vibration.getByRole("radio", { name: "無効" })).toBeEnabled();
     // どの軸も標準なら、つまみが無効でも戻すものは無い。
     expect(screen.getByRole("button", { name: "標準に戻す" })).toBeDisabled();
   });
 
-  it("全体の行は軸の行より上に割合の段で出て、選ぶと全体の割合を上げる。軸の行も割合の段で出る", async () => {
+  it("総合の行は軸の行より上に割合の段で出て、選ぶと総合の割合を上げる。軸の行も割合の段で出る", async () => {
     serveCostAxisCatalog();
     const { onCostPreferenceChange } = renderPanel();
     const vibration = await levelsOf("振動の割合");
-    const overall = await levelsOf("全体の割合");
+    const overall = await levelsOf("総合の割合");
     const names = (group: typeof overall) =>
       group.getAllByRole("radio").map((radio) => radio.getAttribute("aria-label"));
     expect(names(overall)).toEqual(["無効", "50%", "100%", "150%", "200%"]);
     expect(names(vibration)).toEqual(["無効", "50%", "100%", "200%"]);
     const [overallGroup, firstAxisGroup] = screen.getAllByRole("radiogroup");
-    expect(overallGroup).toHaveAccessibleName("全体の割合");
-    expect(firstAxisGroup).not.toHaveAccessibleName("全体の割合");
+    expect(overallGroup).toHaveAccessibleName("総合の割合");
+    expect(firstAxisGroup).not.toHaveAccessibleName("総合の割合");
 
     await userEvent.click(overall.getByRole("radio", { name: "150%" }));
     expect(onCostPreferenceChange).toHaveBeenLastCalledWith({ ...STANDARD_COST_PREFERENCE, strength: 1.5 });

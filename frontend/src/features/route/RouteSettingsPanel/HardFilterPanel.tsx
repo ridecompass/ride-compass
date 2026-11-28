@@ -19,8 +19,9 @@ import {
 import { cn } from "@/lib/cn";
 import LevelScale from "./LevelScale";
 import type { RoadAvoidanceOverride, RoadAvoidanceView } from "@/types/route";
+import routeGenerateConfig from "@/types/generated/route-generate-config.json";
 
-// 「ルート設定」区分の「道路」タブ。道の区分の行ごとに、所要時間に掛けて費用にする倍率の段（好む・少し好む・通る・少し避ける・なるべく避ける・通らない）を目盛りで選び、
+// 「ルート設定」区分の「道路」タブ。道の区分の行ごとに、避け方の段を目盛りで選び、
 // 選べない行（自転車が通れない道）は既定の段に固定して同じ並びの先頭に出す。行・段の名前（倍率）と色は画面の設定が配る。並びの上の
 // 「地図で見る」は、このタブを出している間に段を地図の道に塗るかを選ぶ。
 
@@ -52,23 +53,26 @@ export default function HardFilterPanel({
     .filter(({ rows }) => rows.length > 0);
   return (
     <div className="flex flex-col">
-      <label
-        className="flex items-center gap-1.5 pb-1 text-[length:var(--font-size-sm)]"
-        data-usage="このタブを出している間、選んだ段の色で地図の道を塗り、下の地図を灰色に薄めます。選んだものはこの端末に保存します。"
-      >
-        <Checkbox checked={roadTabMap.on} onCheckedChange={roadTabMap.onChange} aria-label="地図で見る" />
-        地図で見る
-      </label>
-      {/* 地図の色が段のどれかを、段の向きの名前と、行に出る段の名前（倍率）で読ませる。 */}
-      <MarkLegend role="group" aria-label="段の凡例" className="pb-1">
-        {levels.filter(isPainted).map(({ key, name, label, color }) => (
-          <MarkLegendItem key={key}>
-            <Dot tone="none" style={{ backgroundColor: color }} />
-            {name}
-            <span className="tabular-nums">{label}</span>
-          </MarkLegendItem>
-        ))}
-      </MarkLegend>
+      {/* 「地図で見る」と段の凡例を1行に並べ、収まらない幅でだけ凡例を折り返す。 */}
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 pb-1">
+        <label
+          className="flex items-center gap-1.5 text-[length:var(--font-size-sm)]"
+          data-usage="このタブを出している間、選んだ段の色で地図の道を塗り、下の地図を灰色に薄めます。選んだものはこの端末に保存します。"
+        >
+          <Checkbox checked={roadTabMap.on} onCheckedChange={roadTabMap.onChange} aria-label="地図で見る" />
+          地図で見る
+        </label>
+        {/* 地図の色が段のどれかを、行と見出しに出る段の名前（倍率）だけで見せる。段の向きの名前は読み上げにだけ渡す。 */}
+        <MarkLegend role="group" aria-label="段の凡例">
+          {levels.filter(isPainted).map(({ key, name, label, color }) => (
+            <MarkLegendItem key={key}>
+              <Dot tone="none" style={{ backgroundColor: color }} />
+              <span className="sr-only">{name}</span>
+              <span className="tabular-nums">{label}</span>
+            </MarkLegendItem>
+          ))}
+        </MarkLegend>
+      </div>
       {roadTabMap.notice !== null && (
         <p className={cn(textVariants({ variant: "note" }), "pb-1")} role="status">
           {roadTabMap.notice}
@@ -89,7 +93,7 @@ export default function HardFilterPanel({
           <span
             role="img"
             aria-label={`${row.label}はいつも経路から外れます（変えられません）`}
-            data-usage="自転車が通れない道で、いつも経路から外れます。変えられません。"
+            data-usage="いつも経路から外れます。変えられません。"
             className="flex flex-shrink-0 items-center gap-1 text-[length:var(--font-size-xs)] text-[var(--color-muted)]"
           >
             <LockedIcon size={14} />
@@ -172,9 +176,7 @@ function AvoidanceLevelRow({
       </InfoPopover>
       <LevelScale
         aria-label={`${label}の避け方`}
-        usage={
-          "この行に当たる道の所要時間に掛けて費用にする倍率を、目盛りの点を押して選びます。\n・長い目盛りは指定なしです。\n・左ほど好んで通ります[遠回りでも選びやすくなります]。\n・右ほど避けます[遠回りが小さければ別の道を通ります]。\n・右端は経路から完全に外します。"
-        }
+        usage={`この行に当たる道の${routeGenerateConfig.avoidance_multiplier_wording}を、目盛りの点を押して選びます。\n・長い目盛りは指定なしです。\n・左ほど好んで通ります[遠回りでも選びやすくなります]。\n・右ほど避けます[遠回りが小さければ別の道を通ります]。\n・右端は経路から完全に外します。`}
         levels={levels}
         value={level}
         onChange={onLevelChange}

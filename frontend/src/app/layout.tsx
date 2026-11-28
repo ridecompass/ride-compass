@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
+import { CONSENT_MARK_SCRIPT } from "@/lib/consentMark";
 import { paletteCssText } from "@/lib/paletteCssVariables";
 import { APP_NAME } from "@/lib/screenNames";
 
@@ -21,8 +22,10 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html lang="ja" className={`${geistSans.variable} ${geistMono.variable}`}>
+    // `<html>` の印（data-consented）は、描く前に下のスクリプトが付けるので、ハイドレーションで食い違いを言わせない。
+    <html lang="ja" className={`${geistSans.variable} ${geistMono.variable}`} suppressHydrationWarning>
       <head>
+        <script dangerouslySetInnerHTML={{ __html: CONSENT_MARK_SCRIPT }} />
         <style>{paletteCssText()}</style>
       </head>
       <body>{children}</body>

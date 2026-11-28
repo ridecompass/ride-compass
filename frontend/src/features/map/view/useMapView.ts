@@ -35,6 +35,7 @@ import type { Coordinates, RoadAvoidanceOverride } from "@/types/route";
 import { avoidanceChoiceOf, type RoadTabMap } from "@/lib/roadAvoidance";
 import type { MapTheme } from "@/lib/mapTheme";
 import { ROAD_SURFACE_ALL_WAYS_MIN_ZOOM, type RideConditions } from "@/features/map/regionApi";
+import { useTimeFrames } from "@/features/map/useTimeFrames";
 import { snapDeg } from "@/lib/cardinalLabel";
 import { countsAxis, DISABLED_LABEL, STANDARD_COST_FACTOR } from "@/lib/costPreference";
 import type { WayValueCondition } from "@/lib/mapDisplay/mapLens";
@@ -60,7 +61,7 @@ interface MapViewInputs {
   hasDetail: boolean;
   /** 出発時刻と想定速度。専用配信軸の値と気象レイヤーの表示時刻がこれに従う。 */
   ride: { at: Date; speedKmh: number };
-  /** 走行中に、地図の向きと想定速度の代わりに使う向きと速さ。走っていなければnull。 */
+  /** 走行中に道の値を求める向きと、想定速度の代わりに使う速さ。走っていなければnull。 */
   riding: { bearingDeg: number; speedKmh: number } | null;
   /** 刻みへ丸めた現在時刻（`useDepartureTime`）。 */
   now: Date;
@@ -95,7 +96,7 @@ interface MapViewState {
   costPreference: CostPreference;
 }
 
-/** レンズ`lensId`が数える負担を塗るか。総合は数える軸が1つでもあるとき（`totalCounted`）、軸はその軸を数えるとき。 */
+/** レンズ`lensId`が数えるロスを塗るか。総合は数える軸が1つでもあるとき（`totalCounted`）、軸はその軸を数えるとき。 */
 function lensCounted(
   lensId: string,
   preference: CostPreference,
@@ -127,13 +128,13 @@ export function useMapView({
     NO_STORED_VALUES,
   );
   const totalLens = costCatalog.lenses?.totalLens ?? null;
-  // 数える軸が1つも無い間は総合も数えないので、総合を選べず、総合の名前と凡例を出さず、ルートの線も負担で塗らず、選べる負担が
+  // 数える軸が1つも無い間は総合も数えないので、総合を選べず、総合の名前と凡例を出さず、ルートの線もロスで塗らず、選べるロスが
   // 無いことを添える。
   const totalCounted = useMemo(
     () => costCatalog.axes.some((axis) => countsAxis(costPreference, axis.axisId)),
     [costCatalog.axes, costPreference],
   );
-  const [storedLens, setLens] = useStoredState<LensId>("ridecompass:route-style-mode", "塗る負担", UNSELECTED_LENS_ID);
+  const [storedLens, setLens] = useStoredState<LensId>("ridecompass:route-style-mode", "塗る要因", UNSELECTED_LENS_ID);
   // 選んでいたレンズの軸をあとから数えなくしたら、選んでいない状態として扱う（選びは残し、数え直せばまた塗る）。
   const lens = lensCounted(storedLens, costPreference, totalLens?.axisId, totalCounted)
     ? storedLens
@@ -177,11 +178,16 @@ export function useMapView({
   const painted = surroundingsShown ? lens : null;
   // 道ごとの材料は、全道路を塗っているレンズの分だけ取る（塗っていないレンズの値は地図に出ない。表示中のものだけ叩く）。
   const fetchLenses = useMemo(() => lenses.filter((candidate) => candidate.lensId === painted), [lenses, painted]);
-  // 走っていない間の走る向きは、地図の上の向きそのもの。向きを段に丸めるのは、回転や走行中の細かな向きの揺れのたびに式の木を
-  // 解き直さないため。式の木と道の窓は同じ丸めた向きで値を求める。
-  const bearingDeg = snapDeg(riding?.bearingDeg ?? viewport?.bearing ?? 0, WAY_BEARING_STEP_DEG);
+  // 走る向きは走行中の進む向きだけ。ルートの前はどちら向きに走るか決まらないので渡さない（式の木はどの道も両向きのきつい方で
+  // 塗る）。向きを段に丸めるのは、走行中の細かな向きの揺れのたびに式の木を解き直さないため。式の木と道の窓は同じ丸めた向きで
+  // 値を求める。
+  const bearingDeg = riding === null ? null : snapDeg(riding.bearingDeg, WAY_BEARING_STEP_DEG);
   const speedKmh = riding?.speedKmh ?? ride.speedKmh;
-  const wayConditions = useMemo(() => ({ bearingDeg, at: ride.at, speedKmh }), [bearingDeg, ride.at, speedKmh]);
+  const frames = useTimeFrames(ride.at);
+  const wayConditions = useMemo(
+    () => ({ bearingDeg, lensFrame: frames.lens, speedKmh, paintedLensId: painted }),
+    [bearingDeg, frames.lens, speedKmh, painted],
+  );
   const wayMaterials = useWayMaterials(fetchLenses, viewport, wayConditions, costPreference, totalLens?.axisId ?? null);
   const [roadTabOnMap, setRoadTabOnMap] = useStoredState("ridecompass:road-tab-on-map", "道路タブを地図で見るか", true);
   // 道路タブを出していて「地図で見る」がONの間だけ、段を地図の道に塗る。段の値は出し入れで作り直さない。
@@ -202,9 +208,12 @@ export function useMapView({
         : thinRoadsOmitted
           ? THIN_ROADS_OMITTED_NOTICE
           : null;
-  // 式の木の条件の名前（`bearing_deg`・`speed_kmh`）で地図へ渡す。速度が数でない間は値の無いことにする。
+  // 式の木の条件の名前（`bearing_deg`・`speed_kmh`）で地図へ渡す。向きが無い・速度が数でない間は値の無いことにする。
   const formulaConditions = useMemo(
-    () => ({ bearing_deg: bearingDeg, ...(Number.isFinite(speedKmh) ? { speed_kmh: speedKmh } : {}) }),
+    () => ({
+      ...(bearingDeg !== null ? { bearing_deg: bearingDeg } : {}),
+      ...(Number.isFinite(speedKmh) ? { speed_kmh: speedKmh } : {}),
+    }),
     [bearingDeg, speedKmh],
   );
   const debouncedHidden = useDebouncedValue(hidden, LEGEND_FILTER_DEBOUNCE_MS);
@@ -222,6 +231,7 @@ export function useMapView({
       roadAvoidanceShown,
       wayMaterials,
       wayConditions: formulaConditions,
+      roadSurfaceFrame: frames.roadSurface,
       hiddenLegendKeys: debouncedHidden,
       refreshToken,
       mapTheme,
@@ -239,6 +249,7 @@ export function useMapView({
       roadAvoidanceShown,
       wayMaterials,
       formulaConditions,
+      frames.roadSurface,
       debouncedHidden,
       refreshToken,
       mapTheme,
@@ -279,12 +290,12 @@ export function useMapView({
       hasDetail,
       caveat:
         [
-          // 段の名前の事実は、標準の負担の割合で求めたもの。軸のレンズは割合を変えると同じ事実の道が別の段で塗られる。
+          // 段の名前の事実は、標準のロスの割合で求めたもの。軸のレンズは割合を変えると同じ事実の道が別の段で塗られる。
           painted !== null &&
           painted !== totalLens?.axisId &&
           (costPreference.strength !== STANDARD_COST_FACTOR ||
             (costPreference.multipliers[painted] ?? STANDARD_COST_FACTOR) !== STANDARD_COST_FACTOR)
-            ? "凡例の事実は標準の負担の割合での値です。いまは「負担」タブで割合を変えているので、色はその割合で塗っています。"
+            ? "凡例の事実は標準の割合での値です。いまは「要因」タブで割合を変えているので、色はその割合で塗っています。"
             : null,
           windPreviousRunNotice(lensFetch?.windPreviousRunFrom),
         ]
@@ -292,16 +303,16 @@ export function useMapView({
           .join(" ") || null,
       catalogNotice: !costCatalog.loaded
         ? costCatalog.failed
-          ? "負担の種類の一覧を取得できないため、塗る負担を選べません。"
-          : "負担の種類の一覧を読み込んでいます。"
+          ? "要因の一覧を取得できないため、塗る要因を選べません。"
+          : "要因の一覧を読み込んでいます。"
         : totalCounted
           ? null
-          : `「負担」タブの全体か全部の種類が${DISABLED_LABEL}のため、塗れる負担はありません。`,
+          : `「要因」タブの総合か全部の要因が${DISABLED_LABEL}のため、塗れるロスはありません。`,
       dataStatus: lensFetch
         ? deriveFetchLayerStatus(
             lensFetch.loading,
             lensFetch.error,
-            lensFetch.materials.size > 0,
+            [...lensFetch.materials.values()].some((leaves) => Object.keys(leaves).length > 0),
             lensFetch.hasFetched,
             lensFetch.truncated,
           )
@@ -327,7 +338,10 @@ export function useMapView({
       // 最初に隠す行を持つ層も、空の並びで「出す」と覚える。
       onShowAllLegendRows: () => setHidden((prev) => Object.fromEntries(Object.keys(prev).map((key) => [key, []]))),
     },
-    lensConditions: lenses.find((candidate) => candidate.lensId === painted)?.conditions ?? [],
+    // 走る向きで塗りが変わるのは、走る向きを渡している走行中だけ。
+    lensConditions: (lenses.find((candidate) => candidate.lensId === painted)?.conditions ?? []).filter(
+      (condition) => condition !== "bearing_deg" || bearingDeg !== null,
+    ),
     redrawMap: () => setRefreshToken((token) => token + 1),
     roadTabMap: { on: roadTabOnMap, onChange: setRoadTabOnMap, notice: roadTabMapNotice },
     center,

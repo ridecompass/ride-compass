@@ -14,6 +14,8 @@ import type { LayerDataStatusByLayer, MapLayerDescriptor } from "@/features/map/
 import { buildLayerDataSources } from "@/features/map/MapView/layerDataSources";
 import { useLayerDataStatus } from "@/features/map/MapView/useLayerDataStatus";
 import { ORIGIN_ZOOM } from "@/features/map/MapView/useMapMarkers";
+import { ROAD_LINE_SOURCE_ID } from "@/features/map/scene/groups/roadLines";
+import { refreshTimeFramesIfStale } from "@/features/map/useTimeFrames";
 import { debugLog } from "@/lib/debugLog";
 import { bindRideMetrics } from "@/lib/rideMetrics";
 import { roundToDigits } from "@/lib/numberFormat";
@@ -105,6 +107,9 @@ export function useMapLifecycle(
         setInitialTilesLoading(false);
       }
       if (sourceId) layerDataStatusRef.current.markSourceErrored(sourceId);
+      // 路面タイルが古い印で断られたら、コマの一覧を読み直す（新しい印でタイルのURLが変わり、取り直す）。
+      if (sourceId === ROAD_LINE_SOURCE_ID)
+        refreshTimeFramesIfStale((e.error as { status?: number } | undefined)?.status);
     }
     function handleFirstIdle() {
       if (cancelled) return;

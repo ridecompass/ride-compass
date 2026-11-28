@@ -53,7 +53,9 @@ export interface CaptureContext {
    * backend は撮影用の資格情報を通さない）。選べなければ、選べるタブを並べて止まる。
    */
   openAdmin(options?: OpenAdminOptions): Promise<Locator>;
-  /** 「負担で塗る」のレンズを名前で選び（null は選んでいない状態へ戻す）、読み終わりまで待つ。選べなければ、選べる名前を並べて止まる。 */
+  /** 「難所を色で見る」で選べるレンズの名前（一覧の並び順）。一覧は閉じた状態で返す。 */
+  lenses(): Promise<string[]>;
+  /** 「難所を色で見る」のレンズを名前で選び（null は選んでいない状態へ戻す）、読み終わりまで待つ。選べなければ、選べる名前を並べて止まる。 */
   chooseLens(label: string | null): Promise<void>;
   /**
    * 「表示」の一覧の行の名前で凡例の内訳を開き、その内訳を返す。一覧が閉じていれば開く。`row` を渡せば、その行の説明も開く。
@@ -78,7 +80,9 @@ export interface CaptureContext {
    * 本物の応答が失敗（本番の backend にまだ無い経路の 404 等）なら、`transform` に undefined を渡し、返した JSON を成功（200）の
    * 応答として CORS のヘッダーを付けて返す。新しい経路の応答も、作業ツリーの版を本番の backend へ向けたまま替えられる（例は examples/place-area.ts）。
    * open より前に呼ぶ（open が開くときに取る応答も替える）。
-   * 本物の backend へ向けたときに使う（モックの応答を替えるなら open の routes で page.route を足す。例は examples/cost-axes.ts）。
+   * 本物の backend へ向けたときに使い、モックの応答では断る（モックは open が patch より後に登録して先に当たり、patch が元の応答を
+   * 取りに行く先の backend も無い）。モックの応答を替えるなら、open の routes で page.route を足し、fixtures の雛形
+   * （doneJobFixture 等）を替えて返す（例は examples/cost-axes.ts）。
    * 本文を JSON として読み替えるだけなので、画像等の JSON でない応答は替えられない。作業ツリーの backend が変える、DB を読まない
    * 経路の応答は、scripts/capture.mjs の --backend で作業ツリーの backend に返させる（例は examples/jma-precipitation.ts）。
    */
@@ -107,12 +111,21 @@ const STILL = { animations: "disabled" } as const;
 /** 「表示」のボタンと、押すと開く一覧の名前（`MapOverlayControls`）。 */
 const OVERLAY_LIST_NAME = "地図に出す情報";
 
-/** 選び損ねた直後に呼ぶので、選択肢が閉じていれば開く。 */
+/** レンズの一覧の行の名前。選び損ねた直後にも呼ぶので、一覧が開いていても閉じていても読み、閉じて返す。 */
 async function lensLabels(page: Page): Promise<string[]> {
-  const group = page.getByRole("radiogroup", { name: "負担で塗る" });
-  if (!(await group.isVisible())) await page.getByRole("button", { name: /^負担で塗る: / }).click();
-  const labels = await group.getByRole("radio").allInnerTexts();
-  return labels.map((label) => label.replace(/\s+/g, " ").trim());
+  const group = page.getByRole("radiogroup", { name: "難所を色で見る" });
+  if (!(await group.isVisible())) await page.getByRole("button", { name: /^難所を色で見る/ }).click();
+  // 行の文から、読み上げだけの文（.sr-only）と隠した絵を除き、chooseLens が当てる見えている名前だけにする。
+  const labels = await group.getByRole("radio").evaluateAll((radios) =>
+    radios.map((radio) => {
+      const copy = radio.cloneNode(true) as HTMLElement;
+      copy.querySelectorAll(".sr-only, [aria-hidden='true']").forEach((node) => node.remove());
+      return (copy.textContent ?? "").replace(/\s+/g, " ").trim();
+    }),
+  );
+  await page.keyboard.press("Escape");
+  await expect(group).toBeHidden();
+  return labels;
 }
 
 async function ariaLabels(scope: Page | Locator, suffix: string): Promise<string[]> {
@@ -147,6 +160,7 @@ export function captureContext(
         throw new Error(`知らないレイヤー: ${unknown.join(" / ")}。選べるレイヤー: ${layerIds.join(" / ")}`);
       }
       if (mocked) await fixtures.installApiMocks(page);
+      else await fixtures.signInAsConsented(page);
       if (point || !mocked) {
         await page.context().grantPermissions(["geolocation"]);
         await page.context().setGeolocation(point ?? LIVE_POINT);
@@ -196,6 +210,7 @@ export function captureContext(
       const selected = await tabs.getByRole("tab", { selected: true }).innerText();
       return page.getByRole("tabpanel", { name: selected.trim(), exact: true });
     },
+    lenses: () => lensLabels(page),
     async chooseLens(label) {
       try {
         await chooseLens(page, label);
@@ -223,7 +238,9 @@ export function captureContext(
         const info = panel.getByRole("button", { name: `${row}の説明を表示`, exact: true });
         if (!(await info.isVisible())) {
           const rows = await ariaLabels(panel, "の説明を表示");
-          throw new Error(`凡例「${layer}」の行「${row}」の説明を開けない。説明のある行: ${rows.join(" / ")}`);
+          // 行が1つも無ければ、内訳が出している文を添えて、止まった原因を読めるようにする。
+          const shown = rows.length > 0 ? rows.join(" / ") : `（無い。内訳の文: ${(await panel.innerText()).trim()}）`;
+          throw new Error(`凡例「${layer}」の行「${row}」の説明を開けない。説明のある行: ${shown}`);
         }
         await info.click();
       }
@@ -245,6 +262,11 @@ export function captureContext(
       await fixtures.longPressRoad(page);
     },
     async patch(glob, transform) {
+      if (mocked) {
+        throw new Error(
+          "patch はモックの応答では使えない（モックが先に当たり、元の応答を取る backend も無い）。open の routes で page.route を足して替える（例は examples/cost-axes.ts）",
+        );
+      }
       await page.route(glob, async (route) => {
         // 後から登録したこのルートが先に当たるので、作業ツリーの backend へ向けるパスも、ここで向けて取る。
         const response = await upstream(page, route, worktreeBackend);

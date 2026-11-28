@@ -10,7 +10,7 @@ const COST_AXIS_CATALOG_QUERY_KEY = ["cost-axis-catalog"] as const;
 type CostAxisEntry = CostAxisCatalogResponse["axes"][number];
 
 /** 費用の軸1本（`GET /api/cost-axes`の1行を画面が読む形へ移したもの）。 */
-export interface CostAxis {
+interface CostAxis {
   /** 軸id。倍率の辞書のキーで、地図のレンズのidでもある。 */
   axisId: string;
   /** 軸の費目を書く帳簿。 */
@@ -92,11 +92,11 @@ export function retryCostAxisCatalogFetch(): void {
 const COST_AXIS_CATALOG_FETCH_FAILURE: FetchFailure = {
   id: "cost-axis-catalog",
   label: COST_AXIS_CATALOG_LABEL,
-  effect: "負担の種類ごとの割合を変えられません。",
+  effect: "要因ごとの割合を変えられません。",
   onRetry: retryCostAxisCatalogFetch,
 };
 
-/** 費用の軸の一覧が取れていないことの項目（取れていれば・取得中なら無い）。常設ヘッダーの印と、負担タブの告知が読む。 */
+/** 費用の軸の一覧が取れていないことの項目（取れていれば・取得中なら無い）。常設ヘッダーの印と、要因タブの告知が読む。 */
 export function costAxisCatalogFetchFailure(catalog: CostAxisCatalog): FetchFailure | null {
   return catalog.failed ? COST_AXIS_CATALOG_FETCH_FAILURE : null;
 }

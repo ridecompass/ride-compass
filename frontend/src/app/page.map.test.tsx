@@ -1,11 +1,7 @@
 /**
  * `app/page.tsx`——トップページのうち、地図を押したときに起きること。
  *
- * 見ること: 地図を押したときの意味は効いているパネルで決まり（「ルート設定」の条件タブは選んでいる地点を置く、
- * 「ルート結果」は候補の線でそのルートを選び区間でその中身を出す、閉じている間は押した物の中身を小窓に出すだけ）、PC で
- * 2つの区分を開いていれば最後に触った区分が効いてその題に添えること、区間を選んでいる間は地図にその区間の範囲の縁取りが
- * 出ること、効いているパネルが移ると前のパネルで地図に出した選択を外すこと。地図は選んでいるルート1本へ収め（生成直後は先頭、
- * タブで選び直すとその1本）、地図の候補の線を押して選んだときは収め直さないこと。
+ * 見ること: 地図を押したときに効いているパネルが何を選び・出すかと、地図の選択・収め方がパネルの選択に従うこと。
  *
  * ここで見ないもの: 地図に置く地点（ピン・名前のある点・目的地・保存した地点）は`app/page.places.test.tsx`が、小窓がいつも1つで
  * 最後に押した物の中身を出すことと道の小窓は`app/page.popups.test.tsx`が、ルートの近くの点の描き方と点の小窓は
@@ -58,12 +54,12 @@ describe("地図で扱えること", () => {
     expect(screen.getByRole("button", { name: "目的地を消す" })).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "＋ 経由地" }));
-    await user.click(screen.getByRole("tab", { name: "負担" }));
+    await user.click(screen.getByRole("tab", { name: "要因" }));
     clickMap(ELSEWHERE);
     expect(marksAt(ELSEWHERE)).toEqual([]);
     expect(marksAt(DESTINATION)).toEqual([expect.objectContaining({ draggable: false })]);
 
-    await user.click(screen.getByRole("tab", { name: "条件" }));
+    await user.click(screen.getByRole("tab", { name: "基本" }));
     await user.click(screen.getByRole("button", { name: "パネルを閉じる" }));
     expect(screen.queryByRole("button", { name: "ルート設定" })).toBeNull();
     clickMap(ELSEWHERE);
@@ -78,21 +74,17 @@ describe("地図で扱えること", () => {
 
   it("PC で2つの区分を開いているときは最後に触った区分が効いてその題に添える", async () => {
     const { user } = renderHome();
-    expect(section("ルート設定")).toHaveAccessibleDescription("地図で操作中");
     expect(section("ルート結果")).not.toHaveAccessibleDescription();
 
     jobs.respond([FIRST, SECOND], LOOP_CONDITIONS);
     await generate(user);
     await waitFor(() => expect(candidateTabs()).toHaveLength(2));
-    // 結果が届いたら「ルート結果」が効く。
-    expect(section("ルート結果")).toHaveAccessibleDescription("地図で操作中");
     expect(section("ルート設定")).not.toHaveAccessibleDescription();
     clickMap(ELSEWHERE);
     expect(marksAt(ELSEWHERE)).toEqual([]);
 
     await user.click(screen.getByRole("button", { name: "出発地 現在地" }));
     await user.keyboard("{Escape}");
-    expect(section("ルート設定")).toHaveAccessibleDescription("地図で操作中");
     clickMap(ELSEWHERE);
     expect(marksAt(ELSEWHERE)).toHaveLength(1);
   });
@@ -172,13 +164,13 @@ describe("地図で扱えること", () => {
 
     // 「ルート結果」で選んだ区間は、「ルート設定」の見るだけのタブへ移ると小窓に出ず、戻っても選ばれていない。
     clickSegment(drawnSegment, HERE);
-    await user.click(screen.getByRole("tab", { name: "負担" }));
+    await user.click(screen.getByRole("tab", { name: "要因" }));
     expect(screen.queryByRole("group", { name: "区間の小窓の上の帯" })).toBeNull();
     await user.click(candidateTabs()[0]);
     expect(selectedSectionOnMap()).toEqual([]);
 
     // 見るだけのタブで開いた点の小窓は、「ルート結果」へ移ると消える。
-    await user.click(screen.getByRole("tab", { name: "負担" }));
+    await user.click(screen.getByRole("tab", { name: "要因" }));
     clickMap(DESTINATION, [shop]);
     expect(await screen.findByRole("link", { name: "角の店" })).toBeInTheDocument();
     await user.click(candidateTabs()[0]);

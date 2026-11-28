@@ -18,22 +18,23 @@
 | `lib/mapDisplay/costLensPaint.ts` | 費用のレンズの段の塗りの宣言（`lib/mapDisplay/costLensPaint.ts: costLensPaint`）と、レンズの値と事実の数の書き方。地図の道・ルートの線・候補の帯・道の窓が同じ段と同じ書き方にする |
 | `hooks/useCostAxisCatalog.ts` | 費用の軸の一覧（`GET /api/cost-axes`）を画面が読む形で共有する取得（`services/costAxisCatalogApi.ts: getCostAxisCatalog`） |
 | `lib/mapDisplay/valueScale.ts` | 地図が値を塗る宣言（`lib/mapDisplay/valueScale.ts: MapPaintDeclaration`）・段の並び（`lib/mapDisplay/valueScale.ts: valueBands`）・値が段に入るかの式（`lib/mapDisplay/valueScale.ts: bandCondition`・`lib/mapDisplay/valueScale.ts: bandStep`）・数の値が入る段（`lib/mapDisplay/valueScale.ts: bandAt`）。ルート前の道の線・ルート後の色分け・凡例・候補の帯が共有する（下記「valueScale.ts」） |
-| `features/map/scene/groups/axisLines.ts` | ルート確定前にレンズの値で道を塗る線の宣言。道ごとの材料のfeature-stateと走る条件のglobal-state、段の色、値が無い道・取得中の道の色と濃さ、値が無い道の破線、凡例で隠した段の落とし方（下記「レンズの線」） |
+| `features/map/scene/groups/axisLines.ts` | ルート確定前にレンズの値で道を塗る線の宣言。道ごとの材料と走る条件から求めた道の値のfeature-state、段の色、値が無い道・取得中の道の色と濃さ（下記「レンズの線」） |
 | `features/map/scene/wayValueFormula.ts` | 式の木をMapLibreの式へ置き換える唯一の所（下記「レンズの線」）。木の中身は持たず、節の種類ごとの置き換え方だけを持つ |
 | `features/map/layers/dynamicWayValues.ts` | 材料を引く道路タイルの選び方（地図のズームをタイルのある範囲へ丸め、画面を覆うタイルを並べる。1回の数の上限を超える傾けた・回した大きな画面では、画面の中心に近いタイルから上限まで取り、端を落としたことを返す）・複数タイル応答の統合 |
 | `features/map/layers/webMercatorTile.ts` | Web MercatorのXYZタイルと緯度経度の行き来（点のタイル座標・点を含むタイル（世界の端はタイルの番号の範囲へ寄せる）・タイルが覆う範囲）。backendと同じ式で、一致は表の組`region`で照らす。道路タイルの値を引くタイルと、気象庁のタイルの在否の判定（`jmaTileIndex.ts`）が同じ式を通る |
-| `lib/mapDisplay/mapColorLegend.ts` | 地図上の色分け凡例（`lib/mapDisplay/mapColorLegend.ts: MapColorLegendBand`型・`lib/mapDisplay/mapColorLegend.ts: buildRangeLegendBands`・`lib/mapDisplay/mapColorLegend.ts: rangeStepLabel`）の共通ロジックと、値が無い行（`lib/mapDisplay/mapColorLegend.ts: NO_DATA_LEGEND_BAND`）・向きで決まらない行（`lib/mapDisplay/mapColorLegend.ts: UNDETERMINED_LEGEND_BAND`）。凡例を作る関数（`features/map/view/lens.ts`）・道の属性の凡例（`features/map/scene/legends.ts`）が使う |
+| `lib/mapDisplay/mapColorLegend.ts` | 地図上の色分け凡例（`lib/mapDisplay/mapColorLegend.ts: MapColorLegendBand`型・`lib/mapDisplay/mapColorLegend.ts: buildRangeLegendBands`・`lib/mapDisplay/mapColorLegend.ts: rangeStepLabel`）の共通ロジックと、値が無い行（`lib/mapDisplay/mapColorLegend.ts: NO_DATA_LEGEND_BAND`）。凡例を作る関数（`features/map/view/lens.ts`）・道の属性の凡例（`features/map/scene/legends.ts`）が使う |
 | `features/map/view/lens.ts` | レンズの凡例（`features/map/view/lens.ts: lensLegend`。ルート後はルートの線のモードの凡例） |
-| `features/map/LensControl/LensControl.tsx` | レンズ（地図を何で塗るか）の唯一の入口。画面での名前は「負担で塗る」（見出し・読み上げ名。「レンズ」はコードの中の名前で、画面には出さない）。地図の上のピルが、道のりのグラフの「負担で塗る」の切り替えと同じ筆の絵（`lucideIcons.tsx: BurdenPaintIcon`）と、選んでいるレンズの名前と色の帯（段の数に依らない固定の幅）と、帯の右に一番濃い段の名前（その値から一番濃い色）を示し、タップで縦の一覧（各行にアイコン・値が変わる走る条件のアイコン・(i) の説明）を開く。一覧は「表示」の一覧（`MapOverlayControls.tsx`）と同じ形と操作にそろえる——選んでも閉じず、選んでいる行をもう一度押すと外れ、一覧の頭に塗りの但し書きを出し、下に「選択を外す」を置く。凡例は持たない（段は事実で細かく刻むので、ピルの帯と右端の値で見せ、道の値は道を押した窓に出す）（選択肢・凡例は`features/map/view/useMapView.ts`が組み立て、`app/HomeMapPane.tsx`はそのまま渡す）。走行中も同じ大きさで出す |
-| `features/map/LensControl/LensRow.tsx` | 一覧の1行（`features/map/LensControl/LensRow.tsx: LensRow`）と選択肢の型（`features/map/LensControl/LensRow.tsx: LensOption`）。行の (i) の開閉は「表示」の一覧の行と同じ部品（`features/map/LegendCheckboxList/LegendRow.tsx: useRowDescription`）を使い、チェックの代わりに1つだけ選ぶ印を出し、(i) で説明を、▶（選んでいる行だけ）で凡例を行のすぐ下に開く。一覧の頭の印の意味の文（`features/map/LensControl/LensRow.tsx: LensMarksNote`）は、どれかの行に出る走る条件の印だけを並べる |
+| `features/map/LensControl/LensControl.tsx` | レンズ（地図を何で塗るか）の唯一の入口。画面での名前は「難所を色で見る」（見出し・読み上げ名。「レンズ」はコードの中の名前で、画面には出さない）。地図の上のピルが、道のりのグラフの「難所を色で見る」の切り替えと同じ筆の絵（`lucideIcons.tsx: BurdenPaintIcon`）と、選んでいるレンズの名前と色の帯（段の数に依らない固定の幅）と、帯の右に一番濃い段の名前（その値から一番濃い色）を示し、タップで縦の一覧（各行にアイコン・(i) の説明）を開く。一覧は「表示」の一覧（`MapOverlayControls.tsx`）と同じ形と操作にそろえる——選んでも閉じず、選んでいる行をもう一度押すと外れ、一覧の頭に塗りの但し書きを出し、下に「選択を外す」を置く。凡例は持たない（段は事実で細かく刻むので、ピルの帯と右端の値で見せ、道の値は道を押した窓に出す）（選択肢・凡例は`features/map/view/useMapView.ts`が組み立て、`app/HomeMapPane.tsx`はそのまま渡す）。走行中も同じ大きさで出す |
+| `features/map/LensControl/LensRow.tsx` | 一覧の1行（`features/map/LensControl/LensRow.tsx: LensRow`）と選択肢の型（`features/map/LensControl/LensRow.tsx: LensOption`）。行の (i) の開閉は「表示」の一覧の行と同じ部品（`features/map/LegendCheckboxList/LegendRow.tsx: useRowDescription`）を使い、チェックの代わりに1つだけ選ぶ印を出し、(i) で説明を、▶（選んでいる行だけ）で凡例を行のすぐ下に開く |
 | `lib/lensLink.ts` | 走る条件のボタン（地図の向きの方位磁針・出発時刻・想定速度）に付ける、いまの周りの道の塗りがその条件で決まっている印（輪と読み上げ）。下記「周りの道の色が拠る走る条件」 |
 | `features/map/layers/mapLayers.ts` | レンズの層（`features/map/layers/mapLayers.ts: isLensLayer`。記述子の印で判定。地図上チップの一覧`overlayChips`が除くのに使う） |
 | `features/map/MapView/MapView.tsx`（レンズの線の箇所のみ） | 画面の状態を宣言の入力へ渡すだけの配線（下記「MapView.tsx側の配線」）。レンズごとの処理は持たない |
 | `features/map/scene/groups/routes.ts` | 色分け線そのものを引く側。レンズの配色式・凡例フィルタを受け取ってMapLibreの線レイヤーへ流す |
 | `features/map/useWayMaterials.ts` | 道ごとの材料のフェッチ・状態管理（viewportデバウンス＋タイル単位取得、全レンズを1つのフックで賄う） |
+| `features/map/useTimeFrames.ts` | 時刻で変わる値のコマの一覧（backend `GET /api/region/time-frames`）を読み直しながら持ち、出発時刻を含むコマの印を値の種類（路面タイル・レンズ）ごとに選ぶ。要求には時刻ではなくこの印を載せる |
 | `features/map/tileQueries.ts` | 道ごとの値をタイル1枚ずつ取る問い合わせ（レンズの材料が使う）。タイルを鍵にして新しく入ったタイルだけを取り、入力が変わったタイルを取り直す間は前の入力の値を仮に見せる。取れなかったタイルは値を持たず、次に見えたときに取り直す。失敗はタイルの取得が投げたまま TanStack Query が持ち、その文言を層の取得の状態へ渡す |
 | `features/map/regionApi.ts`（`features/map/regionApi.ts: fetchLensMaterials`・`features/map/regionApi.ts: fetchRoadInspection`） | backend APIラッパー |
-| `features/map/MapView/RoadInspectorPopup.tsx` | 道を押したときの窓。開いたら道の負担を取りに行き、地図が塗っている向きの区間の合計と負担のある軸ごとの秒を、区間の小窓と同じ1行（`components/MapPopup/PenaltyBreakdown.tsx`）で並べる。「秒／換算前」の切り替えで、軸ごとの秒の元の事実（backendが名前と単位を付けたもの。区分の事実は区分の名前だけ）に替える。属性は畳む |
+| `features/map/MapView/RoadInspectorPopup.tsx` | 道を押したときの窓。開いたら道のロスを取りに行き、地図が塗っている向きの区間の合計とロスのある軸ごとの秒を、区間の小窓と同じ1行（`components/MapPopup/PenaltyBreakdown.tsx`）で並べる。「秒／換算前」の切り替えで、軸ごとの秒の元の事実（backendが名前と単位を付けたもの。区分の事実は区分の名前だけ）に替える。向きは地図が塗っているレンズの塗り方で選ばせる。出発時刻の風のコマが無ければ、今の風で求めずに風を読まないで取らせ、風に依らないロスだけを合計なしで出し、風に依るロスと合計を出せないことを1行で言う。属性は畳む |
 
 **`MapView.tsx`は路面タイル・動的気象（降水/雷/竜巻）・POI等のロジックも持つ
 ファイルで、それらは[地図: 静的レイヤー・道路表示](static-map-layers.md)・
@@ -72,14 +73,15 @@
 数える軸が1つも無い（全体のつまみを無効（0）にしたか、全部の軸を無効にした）なら、総合も数えないので、総合を含めてどのレンズも
 選択肢に無く、凡例も出さない（`features/map/view/useMapView.ts: totalCounted`）。軸を数えるかは利用者の値だけで決め、生成の側
 （`backend/app/domain/cost_preference.py: CostPreference.counts`）も同じ値から同じ答えを出すので、較正値を画面へ配らない。
-**レンズを選んでいない状態は`UNSELECTED_LENS_ID`で表す**: ルート前は道を塗らず（ピルは「負担を色で見る」）、ルート後はルートの
+**レンズを選んでいない状態は`UNSELECTED_LENS_ID`で表す**: ルート前は道を塗らず（ピルは画面の名前の短い形`lib/screenNames.ts: BURDEN_PAINT_SHORT_NAME`を出し、読み上げは画面の名前`lib/screenNames.ts: BURDEN_PAINT_NAME`）、ルート後はルートの
 線を総合のレンズで塗る（ピルは費用の軸の一覧の総合の名前）。塗らない選択肢は持たない——レンズを選ばないことで表せ、ルートの線は「表示」で消せる。
 
 **周りの道の色が拠る走る条件は、その条件を決めるボタンに印を付けて見せる**（`features/map/view/useMapView.ts: lensConditions`を
 `app/HomeMapPane.tsx`が地図の右の列の方位磁針・出発時刻・想定速度のボタンへ渡し、ボタンは`lib/lensLink.ts`の輪と読み上げを付ける）。
 周りの道を塗っている間、そのレンズが変わる条件（`MapLens.conditions`。材料の要求へ載せる条件と、式の木の条件の節が読む条件）の
-ボタンにだけ付ける。走る向きは地図の向きで決まり、保存されない——印が無いと、見えない条件で同じ道の色が変わる。一覧の各行
-には、値が変わる走る条件を同じアイコンで添える。
+ボタンにだけ付ける。走る向きは走行中の進む向きだけを木へ渡すので、方位磁針の印も走行中だけ付く（ルートの前は木がどの道も
+両向きのきつい向きで塗り、地図を回しても色は変わらない）。走行中の進む向きは保存されない——印が無いと、見えない条件で同じ道の
+色が変わる。
 
 **レンズ状態は1つ**（`features/map/view/useMapView.ts: lens`。localStorageキーは`ridecompass:route-style-mode`。選択肢に無い値は
 `UNSELECTED_LENS_ID`へ戻す——費用の軸の一覧が届いてから読み直す）。ルート前は全道路、ルート後はルート線をこの1つの値から
@@ -102,30 +104,33 @@
   **ルート前の道の線（`scene/sceneInputs.ts`）・ルート後のルート線（`routeStyleModes.ts`）・凡例（`features/map/view/lens.ts`）・候補の帯
   （`bandAt`）がすべてこの1つの関数を通る**ため、同じレンズの同じ段はどこでも同じ鍵・色になる。
 - `bandCondition(bands, index, value)`: 値（MapLibreの式）が段に入るときに真になる式（`>= 下限`・`< 次の下限`）。
-  ルート後のルート線の色・ルート後の凡例の絞り込みはこれで段を引き、ルート前の道の線の色は下の`bandStep`で引く。どれも
+  ルート後のルート線の色はこれで段を引き、ルート前の道の線の色は下の`bandStep`で引く。どれも
   `>= 下限`で分けるので、**境界ちょうどの値はどこでも上の段に入る**。値が無い場合は呼ぶ側が先に分ける（欠損との大小比較は評価時エラーになる）。
 - `bandStep(bands, value, output)`: 値が入る段の出力を、値を1回だけ読む`step`で選ぶ式。ルート前の道の値の式は木を
   置き換えた大きな式で、MapLibre は式を読む所ごとに写して運ぶため、段ごとに値を読む`bandCondition`を使わない。
 - `bandAt(bands, value)`: 数の値が入る段。地図の外の部品（「ルート結果」の候補のカードの帯）が地図と同じ段の色を引く口で、
   判定は`bandCondition`と同じ`>= 下限`・`< 次の下限`。
-- **配色**: 段の色は評価の配色（緑→黄→赤→暗赤。中継点の色はbackendの`SEMANTIC_COLORS`の`evaluation_*`）の上をHSL色空間で段の
-  数だけ均等に補間する。固定の色配列を持たないため、しきい値の個数が変わっても色が自動追従する。**色相だけでなく明度も動かす**
-  ——良い・悪いの2色を色相だけで補間すると、軽い側の2段がどちらも緑に見え、段が細かいほど「楽」に見える区間が増える。
-  配色は1組で、どのレンズも同じものを使う。
+- **配色**: 段の色は評価の配色（緑→黄→赤→暗赤。中継点の色はbackendの`SEMANTIC_COLORS`の`evaluation_*`）の上にHSL色空間で
+  置く。固定の色配列を持たないため、しきい値の個数が変わっても色が自動追従する。**緑は一番下の段だけ**——2段目から上は緑と黄の
+  中間から暗赤までを均等に分ける。全部の段を均等に置くと、段が細かいほど下の数段がどれも緑に見え、「楽」に見える道が増える。
+  **色相だけでなく明度も動かす**（良い・悪いの2色を色相だけで補間すると、隣の段が見分けにくい）。配色は1組で、どのレンズも同じものを使う。
 
 ## レンズの線（`scene/groups/axisLines.ts`）
 
-ルート確定前に道を塗る線は、道ごとの材料をfeature-state（鍵は`<レンズのid>:<材料の名前>`）で路面タイルの道へ載せ、走る向きを
-地図全体のglobal-state（式の木の条件の名前`bearing_deg`）に置き、式の木を置き換えた式で道ごとの値を求めて、レンズごとに2本の
-線で描く。実線の線（レイヤーの役割はレンズのid）が値のある道を段の色で塗り、破線の線（役割は`<レンズのid>-no-data`）が値の無い
-道だけを描く。
+ルート確定前に道を塗る線は、式の木を置き換えた式を、MapLibreと同じ評価器（`@maplibre/maplibre-gl-style-spec`の
+`createExpression`）で道ごとの材料と走る条件から画面のコードで1回ずつ求め、道の値1つをfeature-state（鍵は`<レンズのid>:value`）で
+路面タイルの道へ載せる。線はレンズごとに、段の色の実線（レイヤーの役割はレンズのid）と、値の無い道を描く破線（役割は
+`<レンズのid>-no-data`）の2本で、どちらの式も道の値から色か濃さを選ぶだけにする——
+式の木と材料を地図へ渡すと、道の状態が変わるたびに地図が道1本ごとに式の木を求め直して描く配列へ書き直し、レンズの値が届いた
+直後に地図が止まる。求めた値は道の材料の参照ごとに覚え、
+タイルが届いたときは新しく届いた道だけを求める。
 
-- **木が読む条件は、変えても材料を取り直さない。** global-stateを置き直すだけで色が変わる。材料の要求へ載せる条件（時刻・想定
-  速度）が変わると取り直す。
-- **走る条件は段に丸めてから置く。** 走る向きは地図の上の向き（走行中は実際の進む向き）を[0, 360)の
+- **木が読む条件は、変えても材料を取り直さない。** 道の値を求め直し、値が変わった道のfeature-stateだけを置き直す。材料の要求へ
+  載せる条件（時刻・想定速度）が変わると取り直す。
+- **走る条件は段に丸めてから置く。** 走る向き（走行中の進む向き。走っていなければ置かない）を[0, 360)の
   `features/map/mapHeading.ts: WAY_BEARING_STEP_DEG`刻みへ、走行中の速さは`features/ride/useRideWayConditions.ts: RIDING_SPEED_STEP_KMH`
-  刻みへ丸める。丸めないと、地図を回すたび・速さが揺れるたびに取り直す。
-- **式の木を地図の式へ置き換えるのは`scene/wayValueFormula.ts: wayValueExpressions`だけ。** 値の無いことはNaN
+  刻みへ丸める。丸めないと、向き・速さが揺れるたびに取り直す。
+- **式の木を地図の式へ置き換えるのは`scene/wayValueFormula.ts: wayValueExpression`だけ。** 値の無いことはNaN
   （`["/", 0, 0]`）で表し、木の値の約束（backend `domain/way_value_formula.py`の先頭）に合わせる。丸め（`round`）と
   折れ線（`interpolate`）は、MapLibreの同名の式を使わずに書く——MapLibreの`round`は中点を0から遠い側へ倒し、`interpolate`は
   NaNで評価が止まり計算の順もnumpyと違う。段の境界で色が分かれるので、最下位の桁のずれがbackendと違う色になる。
@@ -134,9 +139,11 @@
 - **置き換えた式は、材料を読む所を少なく保つ。** MapLibreは`let`で束ねた式を、`var`で読む所ごとに評価し、描画の裏の処理へ
   運ぶときも読む所ごとに写す。節が引数を読む所の数（場合分けのどの枝も含む）は入れ子の深さだけ掛け合わさるので、
   大きな木で読む所が多いと、式を運ぶ間に画面が止まりページが落ちる。節の種類ごとの上限は`scene/wayValueFormula.test.ts`が見る。
-- **値が無い道は段の色で塗らない。** 式の値がNaN（読む材料が欠ける）の道が該当する。値が無い道は「データなし」の色の
-  破線（`mapDisplay.noDataDash`）で、**取得中**（まだ一度も値を受け取っていない間）は取得中の色の実線で塗る
-  （取得中は値が無いと決まっていない）。
+- **値が無い道は段の色で塗らない。** 式の値がNaN（読む材料が欠ける）の道が該当し、feature-stateは値の代わりに`none`を持つ
+  （feature-stateにNaNを置けない）。値が無い道は「データなし」の色の破線（`mapDisplay.noDataDash`）で、**取得中**（その道を載せた
+  タイルがまだ届いていない間）はfeature-stateを持たず、取得中の色の実線で塗る（取得中は値が無いと決まっていない）。応答はタイルの
+  どの道も、値が無ければ空の材料で名指すので、届いた道は必ずfeature-stateを持つ。地図全体の「どれかを取っている」印で分けると、
+  1枚を取る間に取り終えた所の値の無い道まで描き方が切り替わり、地図を動かすたびにちらつく。
   **破線は線を分けて出し入れする**——MapLibreの破線の刻み（`line-dasharray`）はfeature-stateを読めない。読めない
   場所に書いた式はスタイル検証も通り、例外も出さず、どの道も値が無いものとして評価される（全部の道が破線になる）。
   破線の線は刻みを定数で持ち、どの道に出すかを濃さ（`line-opacity`、feature-stateを読める）で決める。実線の線は
@@ -145,15 +152,6 @@
 - **値が無い道は薄く、値を持つ道は濃く塗る**（濃さは源泉が配る`mapDisplay.road.unknownOpacity`/`knownOpacity`をそのまま使い、
   地図全体の「薄い＝対象外、濃い＝分類あり」という読み方に揃える）。取得中は薄くしない——取得中の色が見えなくなり「取得中」と
   「対象外」の区別が付かなくなる。
-- **走行方位で値が決まらない道（式の木の`undetermined`が真）は、「データなし」と別の色で実線で塗る**（`palette.semantic.undetermined`）。
-  方位を1つ指定すると、**その向きに対して直角に近く、どちら向きに辿るかが決まらない道**（backend
-  `domain/gradient.py: travel_direction_formula`の`undetermined`が真）が街区の半分近くを占めうる。値と真偽は別の式で求め、真偽を
-  先に分ける——段の大小比較は値のある道でだけ評価させる。凡例の行は`mapColorLegend.ts: UNDETERMINED_LEGEND_BAND`（鍵
-  `LEGEND_UNDETERMINED_KEY`）で、ルート前の凡例にだけ足す（`view/lens.ts`。ルートの線は実際に走る向きで決まるので持たない）。
-- **凡例で隠した段は、色を透明にして下の路面レイヤーを見せる。** **feature-state経由の値はMapLibreの`filter`から読めない**ので、
-  絞り込みでは落とさない。レンズの線は当たり判定を持たない（道を押すと下の路面の線が受ける）ので、透明にした線が押せてしまう
-  ことは起きない。「データなし」を隠すと値の無い道の破線も出さない。取得中の色だけは「データなし」を隠していても残す
-  （「まだ来ていない」と「隠した」が区別できなくなるため）。
 
 ## routeStyleModes.ts（ルート確定後）
 
@@ -164,8 +162,6 @@
 **ルート確定の前と後は同じ段で塗る**（どちらも同じレンズの`lens`の境界）。同じ理由で段の識別子も前後で共通
 （`mapColorLegend.ts: legendBandKey`＝`step-N`、値を持たない道の受け皿は`LEGEND_NO_DATA_KEY`）。値を持たない道・区間の行は、
 道の属性の凡例も含めてどこでも`mapColorLegend.ts: NO_DATA_LEGEND_BAND`の1行（「データなし」）で、前後で呼び方が変わらない。
-**レンズのidを綴りへ混ぜない**——非表示にした段の保存先は前後で同じ鍵（レンズのid）のため、別の綴りにすると隠した段がルート
-生成で黙って戻る。
 
 値を持たない区間（「データなし」）はルート前の道と同じく破線で描く。モードは色の式と同じ「値が無い」の判定を
 `noDataExpression`として持ち、区間の線（役割`detailLine`）がそれで破線にする。
@@ -206,17 +202,6 @@
   当たり判定は太く（幅24px）ルート全体を覆うため、乗り換え区間の帯の当たり判定はその前面へ
   置く——後ろだと帯を一度も押せない。
 
-### 段階の表示ON/OFF（凡例のチェック）
-
-保存先はレンズを問わず隠した行の保存先（`useMapView`が持つ1つの表）の同じ鍵（レンズのid）で、
-「表示」の一覧の▶の内訳の絞り込み・「絞り込みをすべて解除」もこの同じ場所を読み書きする。
-段階キーは`mapColorLegend.ts: legendBandKey`/`LEGEND_NO_DATA_KEY`が唯一の出どころで、ルート前とルート後が同じキーを使う
-——**ルート生成をまたいでも同じ段階が隠れたまま**になる。効かせ方だけが前後で異なる。
-
-| ルート確定前 | ルート確定後 |
-|---|---|
-| 色式で透明にする（`scene/groups/axisLines.ts`） | ルート線モードのfilter（`scene/groups/routes.ts`） |
-
 ## useWayMaterials.ts（道ごとの材料のフェッチ・状態管理）
 
 viewportと走る条件（時刻・想定速度）をそれぞれデバウンス（500ms）してから、表示中のタイルを1枚ずつ取得する
@@ -232,12 +217,12 @@ viewportと走る条件（時刻・想定速度）をそれぞれデバウンス
 戻り値はレンズのid→1レンズぶんの結果の`ReadonlyMap`で、対象外のレンズは含まない（読む側は`get`で引き、
 無ければ未取得として扱う。`scene/sceneInputs.ts`・`useMapView.ts`）。1レンズぶんの結果:
 
-- `materials`（feature_key→材料の名前→値、表示中のタイルを統合済み）——レンズの線のfeature-stateへそのまま移す。
+- `materials`（feature_key→材料の名前→値、表示中のタイルを統合済み。届いたタイルの値の無い道は空の材料）——レンズの線の
+  feature-stateへそのまま移し、鍵があることを届いた印にする。
   **鍵は文字列のまま保つ**——路面タイルの`feature_key`はズームによってway_idにもedge_idにもなり
   （backendの`EDGE_UNIT_MIN_ZOOM`）、数値へ変換するとedge_idがNaNへ潰れて色が一切付かない。
-- `loading: boolean`（表示中のタイルのどれかを取っている最中か）——
-  `loading`だけを見て「まだ一度も材料を受け取っていない道が読込中なのか、取得済みだが値が無いのか」を
-  呼び出し側（上記「レンズの線」）が塗り分ける。
+- `loading: boolean`（表示中のタイルのどれかを取っている最中か）——下の状態の判定にだけ使う。道ごとの塗り分けには使わない
+  （上記「レンズの線」）。
 - `error: string | null`（表示中のタイルのどれかの取得が失敗したときの文言）——
   `regionApi.ts: fetchLensMaterials`が投げた失敗のうち最初の1つの文言。
   backendが正常応答で空オブジェクトを返した場合（対象範囲に本当に道路が無い）は
@@ -280,11 +265,10 @@ features/map/view/useMapView.ts
 <MapView look={{ …, lens, surroundingsShown, wayMaterials: 上のMapそのもの, wayConditions: 走る条件 }} .../>
   │   （レンズの一覧は MapView が地図の一覧の共有ストアから読む）
   ├─ sceneInputsFrom(...)（scene/sceneInputs.ts）がレンズごとの段（レンズのdisplayから）・式の木・材料・
-  │   取得中フラグ・隠した段と走る条件をレンズの線の入力へ移す
+  │   走る条件をレンズの線の入力へ移す
   ├─ buildMapScene → レンズの線（scene/groups/axisLines.ts）が、路面タイルのソースへ
-  │   レンズごとのfeature-state（キーはレンズのidと材料の名前から機械的に決まる）と、地図全体のglobal-stateと、
-  │   レンズごとの線レイヤーを宣言する
-  └─ applyScene → 前回の宣言との差だけを地図へ当てる（applyMapScene.ts。global-stateは変わった名前だけ置き直す）
+  │   レンズごとの道の値のfeature-state（キーはレンズのidから機械的に決まる）と、レンズごとの線レイヤーを宣言する
+  └─ applyScene → 前回の宣言との差だけを地図へ当てる（applyMapScene.ts。feature-stateは値が変わった道だけ置き直す）
 ```
 
 - **feature-stateは道の識別子`feature_key`で載せる。** 路面タイルのソースは
@@ -303,7 +287,7 @@ features/map/view/useMapView.ts
   宣言の一部なので、値が変わっていなくても再び載る——宣言の外で当てると、スタイル切替後に
   レイヤーはあるのに完全に無色のまま残る。
 
-レンズの取得結果（材料と取得中か）は、見え方の値（`MapLook.wayMaterials`）の中でレンズのid→
+レンズの取得結果は、見え方の値（`MapLook.wayMaterials`）の中でレンズのid→
 取得結果の1つの`Map`にまとまっている（design-principles.md構造仕様3「軸ごとにpropを新設しない」）。
 
 ## 動的気象レイヤーとの関係

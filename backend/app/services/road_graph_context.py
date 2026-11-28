@@ -2,7 +2,7 @@
 そこから区間・ノードを引く部品。
 
 区間は探索用グラフの番号（`LazyRoadGraph`の区間）、ノードは探索範囲の切り出しの番号で持ち、
-区間の文字列の鍵（`edge_key`）は経路の区間の分だけ作る。
+区間の文字列の鍵（`edge_id_of`）は経路の区間の分だけ作る。
 """
 
 import logging
@@ -16,7 +16,7 @@ import numpy as np
 
 from app.domain.errors import RoutingError
 from app.domain.leg_costs import LegCostArrays, LegCostComposer
-from app.domain.graph import LeanEdge, edge_key, node_key, parse_edge_key
+from app.domain.graph import LeanEdge, edge_id_of, node_key, parse_edge_id
 from app.domain.road_network import RoadSlice, edge_profile, edge_row_of, edge_shape
 from app.domain.route import (
     Coordinates,
@@ -87,7 +87,7 @@ class RoadGraphContext:
     # A*のヒューリスティック（(向かうノード番号, 費用の最小の倍率)→各Nodeからの費用の下界[秒]）。向かう先（置いた点・終点）は
     # 1回の生成で固定のため、向かう先と倍率（費用で探すか所要時間で探すか）ごとに初回だけ計算し、区間の探索・最速の経路・
     # 全候補の帰りの探索で共有する。
-    heuristics: dict[int, np.ndarray] = field(default_factory=dict)
+    heuristics: dict[tuple[int, float], np.ndarray] = field(default_factory=dict)
     # 評価（`road_graph_candidates.py: evaluate_routes`と候補単位へのまとめ）の段ごとの所要時間（段の名前→ミリ秒、
     # 候補をまたいだ和）。生成器が評価の時間と一緒にログの行へ出す。
     evaluate_steps_ms: dict[str, int] = field(default_factory=dict)
@@ -238,7 +238,7 @@ def lean_edge(context: RoadGraphContext, index: int) -> LeanEdge:
     network = road.network
     row = network_row_of(context, index)
     return LeanEdge(
-        edge_id=edge_key(int(network.edge_way_id[row]), int(network.edge_segment[row]), bool(network.edge_forward[row])),
+        edge_id=edge_id_of(int(network.edge_way_id[row]), int(network.edge_segment[row]), bool(network.edge_forward[row])),
         from_node_id=node_key_of(road, int(lazy_graph.edge_from[index])),
         to_node_id=node_key_of(road, int(lazy_graph.edge_to[index])),
         geometry=edge_shape(network, row),
@@ -255,7 +255,7 @@ def lazy_index_of(context: RoadGraphContext, edge_id: str) -> int | None:
 
     道路網にあるのに探索範囲の外の区間は`RuntimeError`——範囲は送られた区間を覆って作るので、外にあるのは範囲を作る側の誤りで、
     利用者への理由（つながっていない等）にすると原因を誤って伝える。"""
-    parsed = parse_edge_key(edge_id)
+    parsed = parse_edge_id(edge_id)
     if parsed is None:
         return None
     network_row = edge_row_of(context.road.network, *parsed)
@@ -303,9 +303,11 @@ def learn_detour_ratio(context: RoadGraphContext, measured: float) -> float:
 def heuristic_to(context: RoadGraphContext, node: int) -> np.ndarray:
     """`node`へ向かうA*のヒューリスティック（各Nodeからの直線距離を費用の下界[秒]へ直したもの、`heuristic_seconds`。
     好む側の段の区間で費用が下がる分を`LegCostComposer.min_cost_scale`で緩め、所要時間で探すときも同じ値を使う）。"""
-    heuristic = context.heuristics.get(node)
+    # 倍率はレグの交通規制の判定で下がりうるので、下がる前に求めた見込みを使い回さない（下界でなくなる）。
+    key = (node, context.composer.min_cost_scale)
+    heuristic = context.heuristics.get(key)
     if heuristic is None:
-        heuristic = context.heuristics[node] = heuristic_seconds(
+        heuristic = context.heuristics[key] = heuristic_seconds(
             straight_distances_m(context.node_lat, context.node_lon, node), context.composer.speed_kmh,
             context.composer.min_cost_scale, context.tuning,
         )

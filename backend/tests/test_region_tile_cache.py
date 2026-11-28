@@ -9,16 +9,20 @@
 """
 
 
+import importlib
+from types import MappingProxyType
+
 import pytest
 
 
+from app.domain import region
 from app.infrastructure import region_tile_cache, tile_cache
 from app.infrastructure.cache_identity import LANDCOVER_TILE_VERSION, region_tile_key
 from app.infrastructure.landcover_raster import raster_paths
 from tests.fake_external_log import record_external_calls
 
 EMPTY = b"empty-tile"
-TILE = {"kind": "kind", "generation": "1", "z": 10, "x": 905, "y": 403, "extension": "png"}
+TILE = {"kind": "kind", "generation": "1", "z": 10, "x": 905, "y": 403, "extension": "png", "variant": ""}
 KEY = region_tile_key(**TILE)
 
 
@@ -113,11 +117,11 @@ def test_only_the_generations_being_served_stay_on_disk(configure_rasters):
     landcover_now = region_tile_cache.landcover_generation(raster_paths())
     road_surface_now = region_tile_cache.MVT_TILE_GENERATIONS["road_surface"]
     keys = {
-        "路面の今の形": region_tile_key("road_surface", road_surface_now, 12, 1, 1, "pbf"),
-        "路面の前の形": region_tile_key("road_surface", "another-shape", 12, 1, 1, "pbf"),
-        "表に無い系統": region_tile_key("road-surface", road_surface_now, 12, 1, 1, "pbf"),
-        "土地被覆の今のラスタ構成": region_tile_key("landcover", landcover_now, 12, 1, 1, "png"),
-        "土地被覆の別のラスタ構成": region_tile_key("landcover", landcover_with_another_zone, 12, 1, 1, "png"),
+        "路面の今の形": region_tile_key("road_surface", road_surface_now, 12, 1, 1, "pbf", ""),
+        "路面の前の形": region_tile_key("road_surface", "another-shape", 12, 1, 1, "pbf", ""),
+        "表に無い系統": region_tile_key("road-surface", road_surface_now, 12, 1, 1, "pbf", ""),
+        "土地被覆の今のラスタ構成": region_tile_key("landcover", landcover_now, 12, 1, 1, "png", ""),
+        "土地被覆の別のラスタ構成": region_tile_key("landcover", landcover_with_another_zone, 12, 1, 1, "png", ""),
         "地理院の標高タイル（地域タイルでない）": "xyz/dem_png/12/3637/1612.png",
     }
     _store(*keys.values())
@@ -142,11 +146,25 @@ async def test_discarding_after_a_rebuild_drops_every_region_tile(configure_rast
     """作り直しのあと、前の表で焼いた絵を配らない。地理院のタイルは表から作らないので残す。"""
     landcover = region_tile_cache.landcover_generation(raster_paths())
     region_keys = [
-        region_tile_key("road_surface", region_tile_cache.MVT_TILE_GENERATIONS["road_surface"], 12, 1, 1, "pbf"),
-        region_tile_key("landcover", landcover, 12, 1, 1, "png"),
+        region_tile_key("road_surface", region_tile_cache.MVT_TILE_GENERATIONS["road_surface"], 12, 1, 1, "pbf", ""),
+        region_tile_key("landcover", landcover, 12, 1, 1, "png", ""),
     ]
     _store(*region_keys, "xyz/dem_png/12/3637/1612.png")
 
     removed = region_tile_cache.discard_region_tiles()
 
     assert (removed, _kept(*region_keys, "xyz/dem_png/12/3637/1612.png")) == (len(region_keys), {"xyz/dem_png/12/3637/1612.png"})
+
+
+def test_the_road_surface_generation_changes_when_the_roads_drawn_per_zoom_change():
+    """ズームごとに描く道の種別を変えると、路面タイルの世代が変わる。変わらないと、表を変えたデプロイが前の表で焼いたタイルを
+    配り続ける。"""
+    before = region_tile_cache.MVT_TILE_GENERATIONS["road_surface"]
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(region, "ROAD_SURFACE_TILE_HIGHWAYS", MappingProxyType(
+            {**region.ROAD_SURFACE_TILE_HIGHWAYS, 10: (*region.ROAD_SURFACE_TILE_HIGHWAYS[10], "unclassified")}))
+        changed = importlib.reload(region_tile_cache).MVT_TILE_GENERATIONS["road_surface"]
+    importlib.reload(region_tile_cache)
+
+    assert changed != before
+    assert region_tile_cache.MVT_TILE_GENERATIONS["road_surface"] == before

@@ -31,14 +31,14 @@ import { SectionOnMapButton, type SectionOnMap } from "@/features/route/SegmentD
 import { useChosenProfileLayers, type ProfileLayerSelection } from "./useProfileLayers";
 
 const PROFILE_AXES_STORAGE_KEY = "ridecompass:profile-axes";
-/** 選んでいない間に積む軸の数（このルートで負担の大きい順）。全部を積むと色が混ざって、どの軸の難所かが読めない。 */
+/** 選んでいない間に積む軸の数（このルートでロスの大きい順）。全部を積むと色が混ざって、どの軸の難所かが読めない。 */
 const DEFAULT_SHOWN_AXES = 2;
 
 interface RouteProfileProps {
   segments: readonly RouteSegmentDetail[];
-  /** 負担を下から積む費用の軸の並び（一覧の順）と色。 */
+  /** ロスを下から積む費用の軸の並び（一覧の順）と色。 */
   catalog: PenaltyCatalog;
-  /** ルート全体の代償の内訳と、軸ごとの事実（RouteCandidate.penalty・facts.axes）。積む負担の一覧の行に出す。 */
+  /** ルート全体の代償の内訳と、軸ごとの事実（RouteCandidate.penalty・facts.axes）。積むロスの一覧の行に出す。 */
   penalty: PenaltyValues;
   facts: Readonly<Record<string, AxisFact>>;
   /** 横軸の右端の距離。 */
@@ -60,7 +60,7 @@ interface RouteProfileProps {
   riding?: boolean;
 }
 
-/** 道のりのグラフ。地図の2つの入口と同じ名前のタブで、「負担で塗る」は区間の1kmあたりの負担を、「表示」は選んだ情報（標高の折れ線・道の区分の帯等）を、
+/** 道のりのグラフ。地図の2つの入口と同じ名前のタブで、「難所を色で見る」は区間の1kmあたりのロスを、「表示」は選んだ情報（標高の折れ線・道の区分の帯等）を、
  * 同じ横軸で出す。選んだ地点の中身は地図の区間の小窓が出す。 */
 export default function RouteProfile({
   segments,
@@ -86,10 +86,10 @@ export default function RouteProfile({
     const byAxis = profileBoxes(scale.columns, axisOrder);
     return axes.filter((axis) => (byAxis.get(axis.axisId)?.length ?? 0) > 0);
   }, [scale, axes, axisOrder]);
-  // 積む軸の選び（端末に覚える）。選んでいなければ（null）、このルートで負担の大きい軸から積む。
+  // 積む軸の選び（端末に覚える）。選んでいなければ（null）、このルートでロスの大きい軸から積む。
   const [chosenAxes, setChosenAxes] = useStoredState<readonly string[] | null>(
     PROFILE_AXES_STORAGE_KEY,
-    "グラフに積む負担",
+    "グラフに積む要因",
     null,
   );
   const shownAxes = useMemo(() => {
@@ -127,7 +127,7 @@ export default function RouteProfile({
     <Tabs value={tab} onValueChange={setTab} className="relative flex flex-col gap-1">
       {/* 切り替えと見方・出す情報のボタンは右上に重ねる。結果の図では図の上の端の名前の帯に載って中身に掛からず、帯の無い走行中の図では
           図に重なる（低い高さで図を大きく見せる）。図の左上は値の目盛りに空けておく。重ねた部品の外では、図をなぞって地点を選べる。切り替えは地図の「表示」の
-          ボタンと「負担で塗る」のピルと同じ絵だけで出し、名前は読み上げに残す。 */}
+          ボタンと「難所を色で見る」のピルと同じ絵だけで出し、名前は読み上げに残す。 */}
       <div className="pointer-events-none absolute top-0.5 right-1 z-10 flex items-start gap-1 [&>*]:pointer-events-auto">
         <TabsList aria-label="道のりのグラフ" variant="overlay">
           <TabsTrigger value="layer" usage="選んだ情報[標高・道の区分等]を、道のりに沿って出します。">
@@ -136,7 +136,7 @@ export default function RouteProfile({
           </TabsTrigger>
           <TabsTrigger
             value="lens"
-            usage={`区間ごとの${LENS_QUANTITY_LABEL}を、負担の種類の色で積んで道のりに沿って出します。`}
+            usage={`区間ごとの${LENS_QUANTITY_LABEL}を、要因の色で積んで道のりに沿って出します。`}
           >
             <BurdenPaintIcon size={14} />
             <span className="sr-only">{BURDEN_PAINT_NAME}</span>
@@ -144,20 +144,20 @@ export default function RouteProfile({
         </TabsList>
         {tab === "lens" && (
           <InfoPopover
-            triggerAriaLabel="負担のグラフの見方"
+            triggerAriaLabel="ロスのグラフの見方"
             triggerClassName="rounded-full bg-[color-mix(in_srgb,var(--background)_85%,transparent)]"
           >
             <p>
               <GuideText
-                text={`チェックした種類だけを積み上げます。\n・高さは、区間ごとの${LENS_QUANTITY_LABEL}です。\n・上端は、このルートで最大の区間の値です[曲がる所の負担と、好む道・避ける道の増減は含みません]。\n・色ごとの面積は、その種類の負担の合計です。\n・横軸の右端は、最も長い候補の距離です。`}
+                text={`チェックした種類だけを積み上げます。\n・高さは、区間ごとの${LENS_QUANTITY_LABEL}です。\n・上端は、このルートで最大の区間の値です[曲がる所のロスと、好む道・避ける道の増減は含みません]。\n・色ごとの面積は、その要因のロスの合計です。\n・横軸の右端は、最も長い候補の距離です。`}
               />
             </p>
           </InfoPopover>
         )}
         {tab === "lens" && (
           <ProfileLayerPicker
-            title="グラフに積む負担"
-            usage="グラフに積む負担の種類を選ぶ一覧を開きます。数字は今積んでいる数です。"
+            title="グラフに積む要因"
+            usage="グラフに積む要因を選ぶ一覧を開きます。数字は今積んでいる数です。"
             count={shownOrder.length}
           >
             {burdenRows.map((row) => {
@@ -166,7 +166,7 @@ export default function RouteProfile({
               return (
                 <li
                   key={row.id}
-                  data-usage="チェックした種類の負担を、グラフに積みます。選んだ種類はこの端末に保存します。"
+                  data-usage="チェックした要因のロスを、グラフに積みます。選んだ要因はこの端末に保存します。"
                 >
                   <label className="flex cursor-pointer items-center gap-1.5">
                     <Checkbox

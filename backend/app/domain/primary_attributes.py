@@ -13,36 +13,15 @@ from app.domain.registry import (
     PrimaryAttributeSpec,
 )
 from app.domain.stop_place import StopPlaceGroup
-from app.domain.traffic import NODE_KINDS, STOP_POI_KINDS, TAG_KIND_RULES, kind_map_sql, kinds_shown_as, stop_kind_sql
+from app.domain.traffic import NODE_KINDS, STOP_POI_KINDS, kind_map_sql, stop_kind_sql
 
 #: 補給の点のタイル（`poi`）が地点の表から出す立ち寄り先の群。ほかの群は立ち寄り先のタイル（`stop_place`）が出す。
 SUPPLY_PLACE_GROUPS = frozenset({StopPlaceGroup.CONVENIENCE})
 
-#: 元のタグの値をこの数より多く持つ種別は、説明でタグの名前だけを言う（値を並べると説明が値の一覧になる）。
-_LISTED_TAG_VALUES = 3
-
-
-def _kinds_note(kinds: tuple[str, ...]) -> str:
-    """種別を行の値に持つ行の、説明の末尾に添える元のタグ。タグ→種別の表（`domain/traffic.py: TAG_KIND_RULES`）と
-    信号の読み替え（`kinds_shown_as`）から引くので、どちらを変えても説明に出る。"""
-    shown = {k for kind in kinds for k in kinds_shown_as(kind)}
-    tags: dict[str, list[str]] = {}
-    for tag_key, value, kind, _priority in TAG_KIND_RULES:
-        if kind in shown:
-            tags.setdefault(tag_key, []).append(value)
-    if not tags:
-        raise ValueError(f"種別{kinds}にタグ→種別の表の行が無い")
-    return "[OSM の " + " と ".join(
-        f"{key} タグ" if len(values) > _LISTED_TAG_VALUES else f"{key}={'・'.join(values)}"
-        for key, values in tags.items()
-    ) + "]"
-
 
 def _kind_row(key: str, label: str, values: tuple[str, ...], meaning: str, *, glyph: str) -> DisplayCategorySpec:
-    """種別を行の値に持つ行。説明は意味の文`meaning`に元のタグを添える。"""
-    return DisplayCategorySpec(
-        key=key, label=label, values=values, glyph=glyph, description=f"{meaning}{_kinds_note(values)}。"
-    )
+    """種別を行の値に持つ行。説明は意味の文`meaning`。"""
+    return DisplayCategorySpec(key=key, label=label, values=values, glyph=glyph, description=f"{meaning}。")
 
 
 #: 一次属性の宣言。材料が指す要素には、表の中で`:=`により名前を付ける（材料が表の要素そのものを指すことは
@@ -56,7 +35,9 @@ PRIMARY_ATTRIBUTES: tuple[PrimaryAttributeSpec, ...] = (
     ATTR_CYCLEWAY := PrimaryAttributeSpec(attr_id="cycleway", label="自転車インフラ", geometry="line"),
     ATTR_SURFACE := PrimaryAttributeSpec(attr_id="surface", label="路面の種類", geometry="line"),
     ATTR_TRACKTYPE := PrimaryAttributeSpec(attr_id="tracktype", label="農道・林道の等級", geometry="line"),
-    ATTR_MOTOR_VEHICLE_ACCESS := PrimaryAttributeSpec(attr_id="motor_vehicle_access", label="自動車通行可否", geometry="line"),
+    ATTR_MOTOR_VEHICLE_ACCESS := PrimaryAttributeSpec(
+        attr_id="motor_vehicle_access", label="自動車通行可否", geometry="line"
+    ),
     ATTR_LIT := PrimaryAttributeSpec(attr_id="lit", label="街灯", geometry="line"),
     ATTR_TUNNEL := PrimaryAttributeSpec(attr_id="tunnel", label="トンネル", geometry="line"),
     ATTR_ONEWAY := PrimaryAttributeSpec(attr_id="oneway", label="一方通行", geometry="line"),
@@ -131,12 +112,11 @@ PRIMARY_ATTRIBUTES: tuple[PrimaryAttributeSpec, ...] = (
                 hue_slot=0,
                 tone="light",
                 categories=(
-                    # 自転車関連だけが事故密度の材料になる。
                     DisplayCategorySpec(
                         key="bicycle",
                         label="自転車関連",
                         values=(True,),
-                        description="当事者に自転車が含まれる事故[警察庁の交通事故統計の当事者種別]。",
+                        description="当事者に自転車が含まれる事故。",
                         glyph="bicycle_crash",
                     ),
                     DisplayCategorySpec(
@@ -157,7 +137,7 @@ PRIMARY_ATTRIBUTES: tuple[PrimaryAttributeSpec, ...] = (
                         key="fatal",
                         label="死亡事故",
                         values=(True,),
-                        description="死者が1人以上記録された事故[事故後24時間以内の死者。警察庁の交通事故統計の死者数]。",
+                        description="死者が1人以上記録された事故[事故後24時間以内の死者]。",
                         radius_px=6,
                     ),
                     DisplayCategorySpec(
@@ -198,7 +178,7 @@ PRIMARY_ATTRIBUTES: tuple[PrimaryAttributeSpec, ...] = (
                         label="コンビニ",
                         values=(StopPlaceGroup.CONVENIENCE.value,),
                         glyph="bag",
-                        description="コンビニのチェーンの店[Overture Maps の地点のコンビニの分類のうち、チェーンの名前に当たるもの]。",
+                        description="コンビニのチェーンの店。",
                     ),
                     # 自販機は「ここで飲み物が買える」という約束として読まれる。中身が
                     # 分からないものを同じ確からしさに見せない。
@@ -207,7 +187,7 @@ PRIMARY_ATTRIBUTES: tuple[PrimaryAttributeSpec, ...] = (
                         label="飲料自販機",
                         values=("vending_drinks",),
                         glyph="bottle",
-                        description="飲み物か食べ物を売ると書かれた自動販売機[OSM の amenity=vending_machine と vending タグ]。",
+                        description="飲み物か食べ物を売ると書かれた自動販売機。",
                     ),
                     DisplayCategorySpec(
                         key="vending_unknown",
@@ -223,8 +203,12 @@ PRIMARY_ATTRIBUTES: tuple[PrimaryAttributeSpec, ...] = (
                         "公衆トイレなど、地図のデータにトイレとして載っている所",
                         glyph="toilet",
                     ),
-                    _kind_row("drinking_water", "給水", ("drinking_water",), "水飲み場など、飲み水をくめる所", glyph="drop"),
-                    _kind_row("bicycle_parking", "駐輪場", ("bicycle_parking",), "自転車を止められる所", glyph="parking"),
+                    _kind_row(
+                        "drinking_water", "給水", ("drinking_water",), "水飲み場など、飲み水をくめる所", glyph="drop"
+                    ),
+                    _kind_row(
+                        "bicycle_parking", "駐輪場", ("bicycle_parking",), "自転車を止められる所", glyph="parking"
+                    ),
                 ),
             ),
         ),
@@ -254,42 +238,42 @@ PRIMARY_ATTRIBUTES: tuple[PrimaryAttributeSpec, ...] = (
                         label="飲食店",
                         values=(StopPlaceGroup.EAT_DRINK.value,),
                         glyph="cup",
-                        description="飲食店・カフェ・酒場[Overture Maps の地点の飲食の分類]。",
+                        description="飲食店・カフェ・酒場。",
                     ),
                     DisplayCategorySpec(
                         key=StopPlaceGroup.BATH.value,
                         label="銭湯・温泉",
                         values=(StopPlaceGroup.BATH.value,),
                         glyph="steam",
-                        description="銭湯・温泉・サウナ[Overture Maps の地点の分類]。",
+                        description="銭湯・温泉・サウナ。",
                     ),
                     DisplayCategorySpec(
                         key=StopPlaceGroup.BICYCLE.value,
                         label="自転車",
                         values=(StopPlaceGroup.BICYCLE.value,),
                         glyph="wrench",
-                        description="自転車の店・修理・貸し自転車[Overture Maps の地点の分類]。",
+                        description="自転車の店・修理・貸し自転車。",
                     ),
                     DisplayCategorySpec(
                         key=StopPlaceGroup.SCENIC.value,
                         label="景色・名所",
                         values=(StopPlaceGroup.SCENIC.value,),
                         glyph="mountain",
-                        description="公園・庭園・湖・滝・山・浜・城・展望台・博物館の類[Overture Maps の地点の分類]。",
+                        description="公園・庭園・湖・滝・山・浜・城・展望台・博物館の類。",
                     ),
                     DisplayCategorySpec(
                         key=StopPlaceGroup.LODGING.value,
                         label="宿",
                         values=(StopPlaceGroup.LODGING.value,),
                         glyph="bed",
-                        description="ホテル・旅館・民宿・キャンプ場の類[Overture Maps の地点の分類]。",
+                        description="ホテル・旅館・民宿・キャンプ場の類。",
                     ),
                     DisplayCategorySpec(
                         key=StopPlaceGroup.TEMPLE_SHRINE.value,
                         label="寺社",
                         values=(StopPlaceGroup.TEMPLE_SHRINE.value,),
                         glyph="gate",
-                        description="国の指定・登録の文化財の建造物を持つ寺社[文化遺産オンライン]。",
+                        description="国の指定・登録の文化財の建造物を持つ寺社。",
                     ),
                 ),
             ),
@@ -308,7 +292,9 @@ def check_primary_attributes(attributes: tuple[PrimaryAttributeSpec, ...]) -> No
     repeated = sorted(attr_id for attr_id, n in Counter(a.attr_id for a in attributes).items() if n > 1)
     if repeated:
         raise ValueError(f"一次属性が2度宣言されている: {repeated}")
-    slots = [a.display_axes[0].hue_slot for a in attributes if a.display_axes and a.display_axes[0].palette == "nominal"]
+    slots = [
+        a.display_axes[0].hue_slot for a in attributes if a.display_axes and a.display_axes[0].palette == "nominal"
+    ]
     if len(slots) != len(set(slots)):
         raise ValueError(f"順序を持たない列挙の色相の起点が属性をまたいで重なる: {slots}")
 
@@ -330,16 +316,16 @@ check_point_rows(ATTR_STOP_POI, STOP_POI_KINDS)
 check_point_rows(PRIMARY_ATTRIBUTES_BY_ID["supply_poi"], NODE_KINDS - STOP_POI_KINDS | SUPPLY_PLACE_GROUPS)
 
 
-
-def stop_poi_map_group_sql(alias: str) -> str:
-    """地図の停止要因の点を近いものどうしまとめる単位を返すSQL式（`node_kinds`の別名`alias`）。
+def stop_poi_map_group_sql(alias: str, signal_place: str) -> str:
+    """地図の停止要因の点を近いものどうしまとめる単位を返すSQL式（`node_kinds`の別名`alias`。`signal_place`は
+    `domain/traffic.py: stop_kind_sql`と同じ）。
 
     単位は凡例の行で、数える種別（`COUNT_KIND_OF`）ではない。地図の点は「そこに何があるか」を
     示すため、凡例で分けて見せている種別（例: 車止めとハンプ・狭さく）は近くても別の点のまま
     出し、評価では1回と数える。凡例で同じ行に入る種別は地図で見分けられないので1点にまとめる。
     凡例の行に無い種別（補給休憩）は種別そのままを返す。
     """
-    kind = stop_kind_sql(alias)
+    kind = stop_kind_sql(alias, signal_place)
     row_of = {
         value: category.key
         for category in ATTR_STOP_POI.display_axes[0].categories

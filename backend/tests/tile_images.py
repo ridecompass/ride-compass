@@ -7,12 +7,19 @@ import io
 
 from PIL import Image, ImageColor
 
+from app.infrastructure.gsi_dem_png import read_gsi_dem_png, terrain_rgb_png
+
 
 def encode(image: Image.Image, **options) -> bytes:
     """`image`をPNGのバイト列にする。`options`は`Image.save`へそのまま渡す（`transparency`等）。"""
     buffer = io.BytesIO()
     image.save(buffer, format="PNG", **options)
     return buffer.getvalue()
+
+
+def terrain_rgb(png: bytes) -> bytes:
+    """地理院の標高タイル1枚をTerrain-RGBのPNGにする。"""
+    return terrain_rgb_png(*read_gsi_dem_png(png))
 
 
 def palette_tile(colors: list[str]) -> bytes:

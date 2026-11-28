@@ -18,8 +18,9 @@ interface SectionFocus {
   ride: RideFollow | null;
 }
 
-/** 地図を形へ寄せる（頼まれたときだけ。押す・選ぶだけでは地図は動かさない）と、選んでいる区間が見えている所の外にあるかの知らせ。
- * 返す関数は、渡した形へ寄せる（点ならその点へ、線ならその線を収める）。区間の頼みも同じ関数で寄せる。
+/** 地図を形へ寄せる（頼まれたときだけ: 寄せるアイコン・ボタンと、地図で押した区間の小窓の入る所を作るとき。ほかは押す・選ぶだけでは地図は動かさない）と、選んでいる区間が見えている所の外にあるかの知らせ。
+ * 返す関数は、渡した形へ寄せる（点ならその点へ、線ならその線を収める。線の下に空ける高さを渡すと、その分を空けて収める）。区間の頼みも
+ * 同じ関数で寄せる。
  * 走行中は寄せるために追うのを休み、休ませたときだけ、小窓が閉じると追い直す（区間の選びを外すと区間の小窓も閉じる）。 */
 export function useSectionFocus(
   mapRef: RefObject<MapLibreMap | null>,
@@ -32,13 +33,13 @@ export function useSectionFocus(
 
   const paused = useRef(false);
   const focus = useCallback(
-    (shape: readonly Position[]) => {
+    (shape: readonly Position[], reserveBelowPx = 0) => {
       const map = mapRef.current;
       if (!map || shape.length === 0) return;
       paused.current = true;
       latest.current.ride?.onPause();
       if (shape.length === 1) flyToVisible(map, { longitude: shape[0][0], latitude: shape[0][1] });
-      else fitBoundsToSection(map, shape);
+      else fitBoundsToSection(map, shape, reserveBelowPx);
     },
     [mapRef],
   );

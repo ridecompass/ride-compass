@@ -21,7 +21,7 @@ from app.batch.common import write_fetch_record
 from app.batch.ingest import ingest_source
 from app.batch.source_adapters import abr, estat_small_area
 from app.infrastructure.source_models import Source
-from tests.source_ingest import ingest_records, overture_place_record, profile_within
+from tests.source_ingest import ingest_records, overture_place_record, profile_within, stage_tuning
 
 pytestmark = pytest.mark.asyncio(loop_scope="module")
 
@@ -102,7 +102,7 @@ async def _areas(conn, places: dict[str, tuple[float, float]]) -> dict[str, str 
     await ingest_records("overture_place", [
         overture_place_record(key, lon, lat, f"喫茶{key}")
         for key, (lon, lat) in places.items()], conn=conn)
-    await derive_places.derive(conn)
+    await derive_places.derive(conn, **stage_tuning("places"))
     return {row["source_key"]: row["area"] for row in await conn.fetch("SELECT source_key, area FROM places")}
 
 

@@ -2,6 +2,9 @@
 //
 // **既定値は型を満たすための空だけ。** 道の区分と層は管理DBが持つ任意の値なので、見たい性質は呼び出し側が書く。
 import { clientConfigFromResponse, type ClientConfig } from "@/lib/clientConfig";
+// 地図の口（`features/map/regionApi.ts`）を読まない——テストの準備がこの足場を先に読むので、口を読むと、口のテストのタイルの
+// オリジンの差し替え（`vi.mock`）が効かなくなる。
+import regionTileConfig from "@/types/generated/region-tile-config.json";
 import type {
   ClientConfigResponse,
   RoadAvoidanceView,
@@ -10,13 +13,12 @@ import type {
   RoadMapLayerView,
 } from "@/types/route";
 
-/** 応答。較正値・事故の収録年・道の区分・走行モデルの文は、見たい呼び出し側が上書きする。 */
+/** 応答。較正値・事故の収録年・道の区分は、見たい呼び出し側が上書きする。 */
 export function clientConfigResponse(overrides: Partial<ClientConfigResponse> = {}): ClientConfigResponse {
   return {
     client_tuning: {},
     accident_years: [],
     road_classes: roadClassCatalog(),
-    travel_model_wording: "",
     ...overrides,
   };
 }
@@ -42,6 +44,7 @@ export function roadMapLayer(id: string, overrides: Partial<RoadMapLayerView> = 
     panel_hint: "",
     hide_missing_rows: false,
     has_no_data: false,
+    min_zoom: regionTileConfig.road_surface_tile_min_zoom,
     classes: [],
     ...overrides,
   };

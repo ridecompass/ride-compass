@@ -9,11 +9,17 @@ import { API_BASE_URL } from "@/lib/apiBaseUrl";
 import { clientConfigResponse } from "@/testing/clientConfig";
 import { TWO_COST_AXES } from "@/testing/costAxes";
 import type { ClientConfigResponse, CostAxisCatalogResponse } from "@/types/route";
+import type { TimeFrames } from "@/features/map/regionApi";
+import { accountStatus } from "@/testing/accountStatus";
+import { WIDE_TIME_FRAMES } from "@/testing/timeFrames";
 
-// 走行モードを使うと、どのテストでも走り始めに画面の版を読み、案内を終えたときに走りを送る（`lib/rideTrack.ts`）。走りの記録を
-// 見ないテストでも出る要求なので、既定で応える（テストごとの片付けでも残る）。応え方を見るテストは、自分で上書きする。
+// 地図の画面は開くと自分の状態を読み、ログインして同意した人にだけ地図を出す（`features/account/AccountGate/AccountGate.tsx`）。走行モードを
+// 使うと、どのテストでも走り始めに画面の版を読み、案内を終えたときに走りを送る（`lib/rideTrack.ts`・`features/ride/useRideKeep.ts`）。
+// 地図の画面を開くテストや走りの記録を見ないテストでも出る要求なので、既定で応える（ログインして同意した人として。テストごとの
+// 片付けでも残る）。応え方を見るテストは、自分で上書きする。
 export const backendServer = setupServer(
   http.get("*/api/version", () => HttpResponse.json({ commit: null, started_at: "2026-11-16T00:00:00Z" })),
+  http.get(`${API_BASE_URL}/api/me`, () => HttpResponse.json(accountStatus())),
   http.post(`${API_BASE_URL}/api/rides`, () => new HttpResponse(null, { status: 204 })),
 );
 
@@ -91,6 +97,11 @@ export function gunzippedJson(request: Request): Promise<unknown> {
 /** 画面の設定の取得に`response`を返す（多くの画面が描くと同時に取る）。 */
 export function serveClientConfig(response: ClientConfigResponse = clientConfigResponse()): void {
   onBackend("GET", "/api/client-config", () => Response.json(response));
+}
+
+/** 時刻で変わる値のコマの一覧（`GET /api/region/time-frames`）に`response`を返す。 */
+export function serveTimeFrames(response: TimeFrames = WIDE_TIME_FRAMES): void {
+  onBackend("GET", "/api/region/time-frames", () => Response.json(response));
 }
 
 /** 費用の軸の一覧の取得に`response`を返す。 */

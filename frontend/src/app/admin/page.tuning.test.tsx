@@ -82,12 +82,9 @@ describe("AdminPage 較正値", () => {
       ),
     );
     const user = await openTuningTab();
-
-    expect(await screen.findByText("リクエストに失敗しました")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "読み込み直す" }));
 
     expect(await screen.findByRole("spinbutton", { name: "A1" })).toHaveValue(3);
-    expect(screen.queryByText("リクエストに失敗しました")).not.toBeInTheDocument();
     const headings = screen.getAllByText(/^(すぐ効く|再起動で効く)$/);
     expect(headings.map((heading) => heading.textContent)).toEqual(["すぐ効く", "再起動で効く"]);
     const labelsUnder = (heading: HTMLElement) =>

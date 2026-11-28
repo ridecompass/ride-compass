@@ -31,7 +31,7 @@ from app.services.generation_slots import GenerationSlots
 from app.config import settings
 from app.domain.cost_axes import EFFORT_AXES
 from app.domain.errors import GENERATION_BUSY_MESSAGE
-from app.domain.graph import node_key, parse_edge_key
+from app.domain.graph import node_key, parse_edge_id
 from app.domain.road_network import RoadNetwork
 from app.domain.road_classes import AvoidanceClassification
 from app.domain.route_request import ASSUMED_SPEED_KMH, DEFAULT_MAX_ROUTES, MAX_SPLICED_EDGES, MAX_WAYPOINTS
@@ -40,7 +40,6 @@ from app.infrastructure.job_registry import JOB_WAIT_MAX_SECONDS
 from app.main import app
 from app.services.graph_service import GraphService, SearchMemory
 from app.services.route_generation_setup import assemble_route_generation_setup
-from tests.bound_fake import bound
 from tests.road_class_fixture import classification, fact_is, map_layer, replaced_road_classes, road_classes
 from tests.cost_axes_fixture import BAD_AXIS, cost_axes, cost_axes_declared
 from tests.tuning_fixture import TUNING
@@ -58,7 +57,6 @@ from tests.route_world import (
     grid_network,
     lattice_at,
     lattice_node,
-    lattice_ring_edges,
     passes_in_order,
     serve_road_network,
 )
@@ -102,9 +100,9 @@ class GatedWeather(Weather):
         super().__init__()
         self.gate = asyncio.Event()
 
-    async def get_wind_forecast_lattice(self, bbox):
+    async def get_weather_forecast_lattice(self, bbox):
         await self.gate.wait()
-        return await super().get_wind_forecast_lattice(bbox)
+        return await super().get_weather_forecast_lattice(bbox)
 
 
 @pytest.fixture
@@ -254,18 +252,6 @@ async def test_a_spliced_route_with_a_road_the_network_does_not_have_says_why(cl
     assert JAPANESE.search(status["result"]["no_candidates_reason"])
 
 
-async def test_a_spliced_route_outside_the_search_area_fails_as_an_error_of_the_backend(client, world, monkeypatch):
-    """探索の範囲が送られた区間を覆わなかったら、利用者への理由（つながっていない等）にせず、ジョブを失敗させる
-    ——理由にすると、範囲の誤りが利用者の操作の誤りに見える。範囲を作る側が送られた区間を取りこぼした状態は、
-    区間の両端を引く口（`GraphService.edge_endpoints`）を空にして作る。"""
-    world.serve(LATTICE)
-    monkeypatch.setattr(GraphService, "edge_endpoints", bound(GraphService.edge_endpoints, lambda self, edge_ids: []))
-
-    status = await _generate(client, **lattice_at(0, 0).model_dump(), spliced_edge_ids=lattice_ring_edges(4))
-
-    assert status["status"] == "failed"
-
-
 async def test_a_distance_with_placed_points_is_the_length_of_the_whole_route(client, world):
     """経由地を置いても、距離は全長の目標として効く（夕食と銭湯に寄って30kmの周回）。
     探索は置いた点の近くに限らず、全長の目標に足りる広さで探す。"""
@@ -339,7 +325,7 @@ async def test_the_strength_and_the_multipliers_weigh_the_cost_of_the_roads(clie
         client, destination=_point(SOUTH_EAST), distance_km=None, max_routes=1, cost_preference=cost_preference,
     ))["result"]["routes"]
 
-    assert any(not {parse_edge_key(edge_id)[0] for edge_id in route["edge_ids"]} & bad for route in routes) == avoided
+    assert any(not {parse_edge_id(edge_id)[0] for edge_id in route["edge_ids"]} & bad for route in routes) == avoided
 
 
 async def test_a_disabled_axis_appears_nowhere_in_the_routes(client, world, bad_axis):

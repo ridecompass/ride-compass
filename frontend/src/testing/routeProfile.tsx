@@ -29,7 +29,7 @@ export function serveProfileCatalog() {
   serveClientConfig(clientConfigResponse({ road_classes: roadClassCatalog({ map_layers: ROAD_LAYERS }) }));
 }
 
-/** 道のりのグラフが負担を積む費用の軸。 */
+/** 道のりのグラフがロスを積む費用の軸。 */
 export const PROFILE_COST_CATALOG = {
   axes: [
     { axisId: "ascent", label: "登坂", iconId: "" },
@@ -40,7 +40,7 @@ export const PROFILE_COST_CATALOG = {
   failed: false,
 };
 
-/** ルート全体の代償の内訳（積む負担の一覧の行）。 */
+/** ルート全体の代償の内訳（積むロスの一覧の行）。 */
 const PROFILE_PENALTY = {
   axis_seconds: { ascent: 40, vibration: 0 },
   preferred_seconds: 0,
@@ -49,7 +49,7 @@ const PROFILE_PENALTY = {
   total_seconds: 40,
 };
 
-// 北緯35度の上を東へ1kmずつ進む2区間。前は登坂だけが効き、標高を持つ。後ろは負担の内訳も標高も無い。
+// 北緯35度の上を東へ1kmずつ進む2区間。前は登坂だけが効き、標高を持つ。後ろはロスの内訳も標高も無い。
 export const CLIMB = makeRouteSegment({
   distance_km: 1,
   ...penaltyFields({ ascent: 40 }, 1),

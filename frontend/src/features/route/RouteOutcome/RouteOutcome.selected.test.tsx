@@ -2,11 +2,11 @@
  * `features/route/RouteOutcome/RouteOutcome.tsx`——「ルート結果」の中身のうち、選んだ候補の中身。
  *
  * 見るもの: 編集で作ったルートの「元との違い」の元と名前、道のりのグラフ（横軸・押した区間・動かして選ぶこと）、経由地の着く見込みの時刻、
- * 平均で計算した道のりの注意、候補の内訳、編集中は編集面だけを出し、
+ * データが欠けた道のりの注意、候補の内訳、編集中は編集面だけを出し、
  * 同じ道の候補を一覧の名前で渡すこと。
  *
  * ここで見ないもの: 候補が無い間の案内・候補の上の知らせ・候補の一覧 → `RouteOutcome.test.tsx`。選んだ区間の中身
- * （地図の区間の小窓）→ `app/page.popups.test.tsx`、区間の値の計算 → `features/route/RouteProfile/profileLayers.test.ts`。子の部品（道のりのグラフ・
+ * （地図の区間の小窓）→ `app/page.segmentPopup.test.tsx`、区間の値の計算 → `features/route/RouteProfile/profileLayers.test.ts`。子の部品（道のりのグラフ・
  * 内訳・元との違い・編集面）は本物を描き、ここでは受け渡し（親の値が子のどこに出るか・子の操作で親の
  * 何が変わるか）だけを見る。子が値をどう描くか（書式・並び・空のときの案内）は各部品のテストが見る。道のりのグラフの塗り
  * （積む軸の並び・色）は読み上げに出ないので見ない。
@@ -69,7 +69,7 @@ describe("選んだ候補の中身", () => {
         selectedRouteSegment: { segment: second, latitude: 35, longitude: 139 },
       }),
     });
-    const graph = screen.getByRole("slider", { name: /^道のりに沿った負担/ });
+    const graph = screen.getByRole("slider", { name: /^区間ごとのロス/ });
     expect(graph).toHaveAttribute("aria-valuetext", "1.0 km地点");
     expect(screen.getByText("20.0km")).toBeInTheDocument();
     graph.focus();
@@ -101,24 +101,26 @@ describe("選んだ候補の中身", () => {
   it.each([
     [null, null],
     [0.004, null],
-    [0.012, "1%の道のりはデータが欠けていて、平均の値で計算しています"],
+    [0.012, `1%の${routeGenerateConfig.missing_travel_data_heading}`],
   ])(
     "選んだ候補の値の無い区間の割合が%sなら、注意は%s（百分率へ丸めて1以上のときだけ出し、どう推定したかは(i)の中に開く）",
     async (share, expected) => {
       const candidate = route("fast", { missing_travel_data_share: share });
       renderOutcome({ results: resultsOf({ generated: [candidate, SLOW], selectedRouteId: "fast" }) });
       if (expected === null) {
-        expect(screen.queryByText(/平均の値で計算しています/)).not.toBeInTheDocument();
+        expect(
+          screen.queryByText(routeGenerateConfig.missing_travel_data_heading, { exact: false }),
+        ).not.toBeInTheDocument();
         return;
       }
       const [wordingHead] = routeGenerateConfig.missing_travel_data_wording.split("\n");
       expect(screen.getByText(expected)).not.toHaveTextContent(wordingHead);
-      await userEvent.click(screen.getByRole("button", { name: "平均で計算した道のりの説明を表示" }));
+      await userEvent.click(screen.getByRole("button", { name: "データが欠けた道のりの説明を表示" }));
       expect(await screen.findByText(wordingHead)).toBeInTheDocument();
     },
   );
 
-  it("道のりのグラフの「グラフに積む負担」の一覧に軸の名前（費用の軸の一覧）の付いた内訳と事実を出す", async () => {
+  it("道のりのグラフの「グラフに積む要因」の一覧に軸の名前（費用の軸の一覧）の付いた内訳と事実を出す", async () => {
     const candidate = route("fast", {
       segments: [makeRouteSegment({ distance_km: 1 })],
       penalty: {
@@ -131,7 +133,7 @@ describe("選んだ候補の中身", () => {
       facts: { axes: { ascent: { label: "登り", value: 120, unit: "m" } } },
     });
     renderOutcome({ results: resultsOf({ generated: [candidate] }) });
-    await userEvent.click(screen.getByRole("button", { name: "グラフに積む負担" }));
+    await userEvent.click(screen.getByRole("button", { name: "グラフに積む要因" }));
     expect(await within(screen.getByRole("dialog")).findByText("登坂")).toBeInTheDocument();
     expect(screen.getByText("登り 120m")).toBeInTheDocument();
   });

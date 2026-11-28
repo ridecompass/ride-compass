@@ -4,7 +4,7 @@ import { formatDelta } from "@/features/route/routeEditDiff";
 import { MINUTE_UNIT } from "@/lib/duration";
 import { cn } from "@/lib/cn";
 
-/** 1つの軸の負担の差（分、編集後−元）。 */
+/** 1つの軸のロスの差（分、編集後−元）。 */
 export interface AxisDelta {
   axisId: string;
   label: string;
@@ -43,7 +43,9 @@ export default function SpliceDeltaBar({
 
   return (
     <div className="mt-0.5 flex items-center gap-1.5">
-      <span className="text-[length:var(--font-size-sm)] leading-none font-bold text-[var(--color-accent)]">−</span>
+      <span className="text-[length:var(--font-size-sm)] leading-none font-bold text-[var(--color-accent-text)]">
+        −
+      </span>
       <div
         className="flex h-3 min-w-0 flex-1 items-stretch"
         role="img"

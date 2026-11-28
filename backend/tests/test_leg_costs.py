@@ -12,7 +12,7 @@
 """
 
 import dataclasses
-from datetime import datetime, timedelta
+from datetime import datetime
 
 import numpy as np
 import pytest
@@ -28,14 +28,12 @@ from app.domain.ledger_costs import LedgerParameters
 from app.domain.leg_costs import LegCostArrays, LegCostComposer, LegValues
 from app.domain.model_settings import ModelSettings
 from app.domain.road_network import MaterialFills
-from app.domain.msm import MsmBlock, MsmGrid
 from app.domain.road_avoidance import RoadAvoidanceMasks
 from app.domain.road_classes import EMPTY_ROAD_CLASSES
-from app.domain.cycling_speed import STANDARD_TEMPERATURE_C
-from app.domain.wind import WindForecastSeries
 from app.domain.wind_height import WindHeights
 from app.domain.material_catalog import MATERIAL_CATALOG
 from app.domain.route import AxisFact
+from tests.weather_forecast import weather_forecast
 from tests.cost_axes_fixture import BAD_AXIS, cost_axes
 from tests.route_world import BAD_MATERIAL
 from tests.profile_fixture import grade_spans, profiles
@@ -73,8 +71,10 @@ def _column(values, n: int) -> np.ndarray:
 
 
 def _matrix(n: int, *, distance=1000.0, gradient=0.0, bearing=NORTH, surface="paved",
-            materials: dict | None = None, categories: dict | None = None, mid_lat=35.0) -> SearchMaterials:
-    """`n`区間の材料の表。引数は全区間に同じ値か、区間ごとの並び。停止の密度は`materials`で渡さなければ0。"""
+            materials: dict | None = None, categories: dict | None = None, mid_lat=35.0,
+            landcover_filled=False) -> SearchMaterials:
+    """`n`区間の材料の表。引数は全区間に同じ値か、区間ごとの並び。停止の密度は`materials`で渡さなければ0。
+    `landcover_filled`は、土地被覆の割合が欠けて埋めた値で風の高さの倍率を求めた区間。"""
     materials = {**dict.fromkeys(STOP_DENSITY.values(), 0.0), **(materials or {})}
     categories = {SURFACE: [surface] * n if isinstance(surface, str) else surface, **(categories or {})}
     return SearchMaterials(
@@ -85,26 +85,13 @@ def _matrix(n: int, *, distance=1000.0, gradient=0.0, bearing=NORTH, surface="pa
         categorical_material_columns=[CategoricalColumn.encode(v) for v in categories.values()],
         elevation_spans=grade_spans(_column(gradient, n), _column(distance, n)),
         # 予報の風をそのまま乗り手の風として解く（高さの換算は`test_wind_height.py`）。
-        wind_heights=WindHeights(lambda _grid: np.ones((n, 2)), np.arange(n)),
-    )
-
-
-def _series(speeds_by_hour: list[float], from_deg: float = NORTH) -> WindForecastSeries:
-    """格子点1つの、`START`から1時間刻みの予報。"""
-    return WindForecastSeries(
-        times=[START + timedelta(hours=h) for h in range(len(speeds_by_hour))],
-        speed_ms=np.array([speeds_by_hour], dtype=float),
-        direction_deg=np.full((1, len(speeds_by_hour)), from_deg),
-        temperature_c=np.full((1, len(speeds_by_hour)), STANDARD_TEMPERATURE_C),
-        lattice=MsmBlock(
-            grid=MsmGrid(lat_min=35.0, lon_min=139.0, d_lat=0.05, d_lon=0.0625, n_lat=1, n_lon=1), row0=0, col0=0, rows=1, cols=1,
-        ),
-        latest_run_end=START + timedelta(hours=len(speeds_by_hour)),
+        wind_heights=WindHeights(lambda _grid: np.ones((n, 2)), np.arange(n),
+                                 lambda: _column(landcover_filled, n).astype(bool)),
     )
 
 
 #: 無風の予報（格子点1つ・2時刻）。
-CALM_SERIES = _series([0.0, 0.0])
+CALM_SERIES = weather_forecast(START, [0.0, 0.0])
 
 
 def _composer(matrix: SearchMaterials, *, excluded=None, cost_scale=None, series=CALM_SERIES, lazy=None,
@@ -131,7 +118,7 @@ def _shown(matrix, **kwargs) -> tuple[LegCostArrays, LegValues]:
     """`_snapshot`のレグと、その全区間の表示の値（区間の表示と同じく、レグのビンの時刻で合成し直したもの）。"""
     composer = _composer(matrix, **kwargs)
     leg = composer.compose("leg", 0.0, +1)
-    return leg, composer.values_at_rows(np.arange(len(matrix.distance_m)), leg.bin_times[0])
+    return leg, composer.values_at_rows(np.arange(len(matrix.distance_m)), leg.bin_times[0], None)
 
 
 # --- 所要時間 -------------------------------------------------------------
@@ -187,7 +174,7 @@ def test_an_excluded_segment_cannot_be_passed():
 
 def test_the_avoidance_multiplier_scales_only_the_travel_time_in_the_cost():
     """避け方の倍率は費用の中の所要時間にだけ掛かり、代償（道のストレス）にも予想の所要時間にも掛からない。代償に掛かると、
-    負担の重い道ほど「好む」で大きく割り引かれ、避ける・好むの強さが道の負担で変わる。所要時間に混ざると、避けた道・好む道を
+    ロスの大きい道ほど「好む」で大きく割り引かれ、避ける・好むの強さが道のロスで変わる。所要時間に混ざると、避けた道・好む道を
     通った候補の所要時間と到着の予想が延び縮みする。区間の内訳の避け方の秒も、所要時間に倍率を掛けた分だけ。"""
     matrix = _matrix(3, categories={"class:surface_estimate": ["gravel"] * 3})
     scales = [COST_SCALE, 1.0, 1.0 / COST_SCALE]
@@ -205,16 +192,16 @@ def test_the_avoidance_multiplier_scales_only_the_travel_time_in_the_cost():
 @pytest.mark.parametrize(("values", "expected"), [([np.nan, 0.5], 0.5), ([np.nan, 0.0], None)])
 def test_the_fact_of_a_numeric_axis_is_the_value_of_the_road_that_has_it_and_weighs_most(values, expected):
     """数の材料の軸の事実は、材料の値のある区間のうち、その軸の秒に一番効いた区間の値。材料の無い区間の秒は取込の範囲全体の重さの
-    平均から出て、その区間に値が無いので、事実にすると負担の秒を説明しない値（材料の値の平均等）を見せる。値のある区間の秒が
+    平均から出て、その区間に値が無いので、事実にするとロスの秒を説明しない値（材料の値の平均等）を見せる。値のある区間の秒が
     どれも0なら、事実を出さない。"""
     matrix = _matrix(2, materials={BAD_MATERIAL: values})
     composer = _composer(matrix, axes=cost_axes(BAD_MATERIAL), parameters=STRENGTH, burden_fills={BAD_AXIS: 2.0})
     leg = composer.compose("leg", 0.0, +1)
     rows = np.arange(2)
-    shown = composer.values_at_rows(rows, leg.bin_times[0])
+    shown = composer.values_at_rows(rows, leg.bin_times[0], None)
     assert shown.penalty_by_axis[BAD_AXIS][0] > shown.penalty_by_axis[BAD_AXIS][1]  # 材料の無い区間のほうが重い
 
-    facts = composer.axis_facts(rows, shown.penalty_by_axis, None, shown.headwind_ms, 0.0)
+    facts = composer.axis_facts(rows, shown.penalty_by_axis, None, 0.0)
 
     bad = MATERIAL_CATALOG[BAD_MATERIAL]
     assert facts.get(BAD_AXIS) == (None if expected is None else AxisFact(label=bad.label, value=expected, unit=bad.unit))
@@ -251,7 +238,7 @@ def test_the_search_order_holds_only_the_segments_on_the_search_graph():
     ],
 )
 def test_a_leg_is_cut_into_hourly_bins_over_its_expected_duration(offset, direction, duration_hours, bin_starts):
-    composer = _composer(_matrix(1), series=_series([0.0] * 12))
+    composer = _composer(_matrix(1), series=weather_forecast(START, [0.0] * 12))
 
     leg = composer.compose("leg", offset, direction, duration_hours=duration_hours)
 
@@ -262,7 +249,7 @@ def test_a_leg_is_cut_into_hourly_bins_over_its_expected_duration(offset, direct
 
 def test_legs_with_the_same_bins_but_a_different_middle_are_not_mixed_up():
     """同じ開始時刻・同じ本数でも、見込み時間が違えば代表のビンは変わる。"""
-    composer = _composer(_matrix(1), series=_series([float(h) for h in range(12)]))
+    composer = _composer(_matrix(1), series=weather_forecast(START, [float(h) for h in range(12)]))
 
     shorter = composer.compose("a", 0.0, +1, duration_hours=4.0)
     longer = composer.compose("b", 0.0, +1, duration_hours=7.0)
@@ -282,7 +269,7 @@ def test_a_leg_sharing_hours_with_an_earlier_leg_gets_the_bins_of_its_own_hours(
     """レグのどのビンも、その時刻だけを新しく合成したものと同じ（取り違えると、別の時刻の風で探す）。
     前のレグと時刻が重なっても同じ。"""
     def composer() -> LegCostComposer:
-        return _composer(_matrix(1), parameters=STRENGTH, series=_series(speeds_by_hour))
+        return _composer(_matrix(1), parameters=STRENGTH, series=weather_forecast(START, speeds_by_hour))
     shared = composer()
     shared.compose("outbound", 7.5, +1, duration_hours=3.0)
 
@@ -296,7 +283,7 @@ def test_a_leg_sharing_hours_with_an_earlier_leg_gets_the_bins_of_its_own_hours(
 
 def test_a_tree_without_a_clock_reads_the_wind_at_each_segment_s_own_passage():
     """目的地から遡る木は時刻ビンを使えず、区間ごとの通過時刻で1本に合成する。"""
-    composer = _composer(_matrix(2), series=_series([0.0, 8.0]))
+    composer = _composer(_matrix(2), series=weather_forecast(START, [0.0, 8.0]))
     passage = np.array([0.0, 1.0])
 
     leg = composer.compose("inbound", 3.0, -1, passage_hours=passage)
@@ -308,7 +295,7 @@ def test_a_tree_without_a_clock_reads_the_wind_at_each_segment_s_own_passage():
 def test_trees_without_a_clock_that_pass_at_different_hours_are_not_mixed_up():
     """同じ時刻・向きのレグでも、区間ごとの通過時刻が違えば前の合成を使い回さない（使い回すと別の時刻の風で探す）。
     通過時刻の和が同じで並びだけ違う2本でも同じ。"""
-    composer = _composer(_matrix(2), series=_series([0.0, 8.0]))
+    composer = _composer(_matrix(2), series=weather_forecast(START, [0.0, 8.0]))
 
     first = composer.compose("inbound", 3.0, -1, passage_hours=np.array([0.0, 1.0]))
     second = composer.compose("inbound", 3.0, -1, passage_hours=np.array([1.0, 0.0]))
@@ -320,17 +307,16 @@ def test_values_recomposed_for_the_rows_on_the_route_match_the_composition_used_
     """表示は経路上の行だけをその時刻で合成し直す。全区間で合成した値の同じ行と同じで、探索の費用は所要時間と代償の秒の
     和になる（探索コストと表示の一致）。"""
     matrix = _matrix(3, bearing=[NORTH, SOUTH, 90.0], gradient=[0.0, 3.0, -2.0])
-    composer = _composer(matrix, parameters=STRENGTH, series=_series([0.0, 6.0]))
+    composer = _composer(matrix, parameters=STRENGTH, series=weather_forecast(START, [0.0, 6.0]))
     leg = composer.compose("leg", 1.0, +1)
 
-    values = composer.values_at_rows(np.array([2, 0]), leg.bin_times[0])
-    whole = composer.values_at_rows(np.arange(3), leg.bin_times[0])
+    values = composer.values_at_rows(np.array([2, 0]), leg.bin_times[0], None)
+    whole = composer.values_at_rows(np.arange(3), leg.bin_times[0], None)
 
     penalty = sum(values.penalty_by_axis.values(), np.zeros(2))
     assert leg.cost_lazy[[2, 0]] == pytest.approx(leg.travel_seconds_lazy[[2, 0]] + penalty, rel=1e-6)
     assert {a: v.tolist() for a, v in values.penalty_by_axis.items()} == {
         a: v[[2, 0]].tolist() for a, v in whole.penalty_by_axis.items()}
-    assert values.headwind_ms.tolist() == whole.headwind_ms[[2, 0]].tolist()
 
 
 # --- 所要時間の欠け ---------------------------------------------------
@@ -345,14 +331,15 @@ _PARTLY_UNMEASURED = dataclasses.replace(
 
 
 @pytest.mark.parametrize(("matrix", "expected"), [
-    # 標高の無い区間（1000m）と停止要因の件数の無い区間（3000m）は、区間の全体を平均で埋める。
-    (_matrix(3, distance=[1000.0, 3000.0, 6000.0], gradient=[np.nan, 0.0, 0.0],
-             materials={STOP_DENSITY["signal"]: [0.0, np.nan, 0.0]}), 0.4),
+    # 標高の無い区間（1000m）と停止要因の件数の無い区間（3000m）と土地被覆の割合の無い区間（2000m）は、区間の全体を数える。
+    (_matrix(4, distance=[1000.0, 3000.0, 2000.0, 4000.0], gradient=[np.nan, 0.0, 0.0, 0.0],
+             materials={STOP_DENSITY["signal"]: [0.0, np.nan, 0.0, 0.0]},
+             landcover_filled=[False, False, True, False]), 0.6),
     # 坂を測れない間が区間の一部だけなら、その間の長さだけを数える。区間の長さで数えると、1か所の揺れで画面が
     # 平均で計算した道のりを何倍にも大きく知らせる。
     (_PARTLY_UNMEASURED, 0.05),
 ])
-def test_the_share_of_distance_timed_with_averages(matrix, expected):
+def test_the_share_of_distance_timed_with_filled_values(matrix, expected):
     composer = _composer(matrix)
 
     assert composer.missing_travel_data_share(np.arange(len(matrix.distance_m))) == expected
@@ -376,6 +363,6 @@ def test_composing_compiles_nothing_after_baking_whatever_arrays_the_matrix_hold
     with event.install_recorder("numba:compile") as compiled:
         for each in matrices:
             _composer(each, parameters=STRENGTH, cost_scale=[COST_SCALE, 1.0, 1.0],
-                      series=_series([0.0, 3.0])).compose("leg", 0.0, +1, duration_hours=2.0)
+                      series=weather_forecast(START, [0.0, 3.0])).compose("leg", 0.0, +1, duration_hours=2.0)
 
     assert compiled.buffer == []

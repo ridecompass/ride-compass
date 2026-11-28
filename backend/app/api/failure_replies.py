@@ -1,4 +1,4 @@
-"""想定した失敗（上流から取れない・MSMを読めない・観測値の置き場を読めない・DBに届かない・較正値で計算できない）を、利用者へ返す状態と文にする。
+"""想定した失敗（上流から取れない・DBに届かない等）を、利用者へ返す状態と文にする。どの失敗をどの状態にするかは`failure_reply`が持つ。
 
 失敗は途中の層で値に替えずに投げ、口では捕まえずに、ここがアプリ単位の例外の扱いで返す（口ごとに書くと、書き忘れた口だけが
 500になる）。ルート生成のジョブの失敗の文も同じ`failure_reply`で決める。決め方に無い例外（実装の誤り等）は500のまま表へ出す。
@@ -10,8 +10,10 @@ import json
 
 import httpx
 from fastapi import FastAPI, Request, status
+from google.auth.exceptions import TransportError as GoogleTransportError
 from fastapi.responses import JSONResponse
 
+from app.domain.time_frames import StaleTimeFrameError
 from app.domain.tuning import TuningValueError
 from app.infrastructure.database import DB_UNAVAILABLE_ERRORS
 from app.infrastructure.debug_log import error_type_label
@@ -19,8 +21,8 @@ from app.infrastructure.jma_amedas_store import AmedasUnavailableError
 from app.infrastructure.msm_client import MsmUnavailableError
 from app.infrastructure.simple_api_client import UnexpectedShapeError
 
-#: 上流が返した本文がJSONでないとき（`httpx.Response.json`）も、上流の障害として数える。
-UPSTREAM_ERRORS: tuple[type[Exception], ...] = (httpx.HTTPError, json.JSONDecodeError, UnexpectedShapeError)
+#: 上流が返した本文がJSONでないとき（`httpx.Response.json`）も、上流の障害として数える。Google の証明書を取れないとき（ログインの確かめ）も上流の障害。
+UPSTREAM_ERRORS: tuple[type[Exception], ...] = (httpx.HTTPError, json.JSONDecodeError, UnexpectedShapeError, GoogleTransportError)
 
 
 def failure_reply(exc: BaseException) -> tuple[int, str] | None:
@@ -33,6 +35,9 @@ def failure_reply(exc: BaseException) -> tuple[int, str] | None:
         return status.HTTP_503_SERVICE_UNAVAILABLE, str(exc)
     if isinstance(exc, TuningValueError):
         return status.HTTP_503_SERVICE_UNAVAILABLE, str(exc)
+    if isinstance(exc, StaleTimeFrameError):
+        # 画面はコマの一覧を読み直してから求め直す。
+        return status.HTTP_409_CONFLICT, "時刻のコマが古くなりました"
     if isinstance(exc, DB_UNAVAILABLE_ERRORS):
         return status.HTTP_503_SERVICE_UNAVAILABLE, "DBへのアクセスに失敗しました[DB接続と、テーブルが作られているかを確認してください]"
     return None
@@ -48,5 +53,6 @@ async def _reply(request: Request, exc: Exception) -> JSONResponse:
 
 
 def install_failure_replies(app: FastAPI) -> None:
-    for error_type in (*UPSTREAM_ERRORS, MsmUnavailableError, AmedasUnavailableError, TuningValueError, *DB_UNAVAILABLE_ERRORS):
+    for error_type in (*UPSTREAM_ERRORS, MsmUnavailableError, AmedasUnavailableError, TuningValueError, StaleTimeFrameError,
+                       *DB_UNAVAILABLE_ERRORS):
         app.add_exception_handler(error_type, _reply)

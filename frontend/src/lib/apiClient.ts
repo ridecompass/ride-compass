@@ -73,6 +73,16 @@ function errorDetail(body: unknown): unknown {
  * 文言（"Failed to fetch"）は`cause`とdebugLogにだけ残す——呼び出し元の多くは`message`をそのまま
  * 画面へ出す。`x-request-id`は失敗のログに残し、画面へ出す文言には混ぜない。
  */
+/** backend が応答の状態で断った失敗（文は利用者へ出す文、`status`は HTTP の状態）。 */
+export class ApiHttpError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+  ) {
+    super(message);
+  }
+}
+
 export async function requestApi<R extends ApiResult>(
   send: (init: SkeletonInit) => Promise<R>,
   options: ApiRequestOptions<DataOf<R>>,
@@ -128,7 +138,10 @@ export async function requestApi<R extends ApiResult>(
   const fields = { url: seen.url, durationMs: elapsedMs(), requestId: response.headers.get("x-request-id") };
   if (!response.ok) {
     debugLog(category, `失敗 (HTTP ${response.status})`, { ...fields, errorBody: result.error }, "error");
-    throw new Error(formatErrorDetail(errorDetail(result.error)) ?? `${messages.failure}[HTTP ${response.status}]`);
+    throw new ApiHttpError(
+      formatErrorDetail(errorDetail(result.error)) ?? `${messages.failure}[HTTP ${response.status}]`,
+      response.status,
+    );
   }
   const data = result.data as DataOf<R>;
   debugLog(category, "成功", { ...fields, ...successMeta?.(data) });

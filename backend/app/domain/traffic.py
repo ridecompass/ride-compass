@@ -108,7 +108,7 @@ _TRAFFIC_CALMING_VALUES: frozenset[str] = frozenset(
 STOP_POI_KINDS: frozenset[str] = frozenset(get_args(_StopPoiKind))
 
 
-# 停止要因の集計キー（`edge_counts`・`way_counts`の件数列`poi_<キー>`）と、
+# 停止要因の集計キー（`edge_counts`の件数列`poi_<キー>`）と、
 # その日本語ラベル。止まる出来事の宣言（`domain/stop_events.py: STOP_EVENT_KINDS`）の停止要因から導き、材料
 # （`domain/material_catalog.py`の`poi_*_per_km`）はこの一覧から生成する。
 #
@@ -189,7 +189,7 @@ def stop_event(group: EventGroup, name: str, tuning: Tuning) -> StopEvent:
 
 
 def poi_count_column(kind: str) -> str:
-    """停止要因の種別`kind`の件数を持つ列（`edge_counts`・`way_counts`）の名前。"""
+    """停止要因の種別`kind`の件数を持つ列（`edge_counts`）の名前。"""
     return f"poi_{kind}"
 
 
@@ -225,11 +225,16 @@ def stop_cluster_sql(geom: str, eps_m: str, partition: str) -> str:
     return f"ST_ClusterDBSCAN({ground_m_sql(geom)}, eps := {eps_m}, minpoints := 1) OVER (PARTITION BY {partition})"
 
 
+
+#: 範囲の境目で`stop_cluster_sql`のまとまりが切れないよう範囲の外へ読む幅の、まとめる距離に対する倍率（まとめる距離ずつ
+#: この数だけ先まで連なる点を読む）。まとまりは鎖のようにどこまでも延びうるので、それより先まで連なるまとまりは境目で割れうる。
+STOP_CLUSTER_REACH_STEPS = 2
+
 # コンビニは OpenStreetMap からは取らない——補給の点のコンビニは Overture の地点（`domain/stop_place.py`の群
 # 「コンビニ」）から出し、1つの種類を2つの出どころから出さない。
 _SupplyPoiKind = Literal["vending_drinks", "vending_unknown", "toilets", "drinking_water", "bicycle_parking"]
 
-#: `node_kinds.kind`の語彙。`tag_kind_sql`が付けうる種別で、表の検査制約もここから作る。
+#: `node_kinds.kind`の語彙。タグの規則と自販機の式が付けうる種別で、表の検査制約もここから作る。
 NODE_KINDS: frozenset[str] = STOP_POI_KINDS | frozenset(get_args(_SupplyPoiKind))
 
 _AMENITY_SUPPLY_KINDS: dict[str, _SupplyPoiKind] = {
@@ -308,7 +313,7 @@ TAG_KIND_RULES: tuple[tuple[str, str, str, int], ...] = tuple(
 
 #: 自販機だけは`vending`の値が`;`で連なるため表に落ちない。式で当てる。どの群よりも
 #: 後に見る（`amenity`の表に`vending_machine`は無いので、ここが最後の引き当てになる）。
-_VENDING_PRIORITY = len(_TAG_KIND_GROUPS) + 1
+VENDING_PRIORITY = len(_TAG_KIND_GROUPS) + 1
 _VENDING_MACHINE = ("amenity", "vending_machine")
 
 #: 補給・休憩の種別が付きうるタグ（タグ名, 値）。自販機は何を売るかによらず含む。
@@ -319,7 +324,7 @@ _SUPPLY_POI_TAG_KEYS = frozenset(key for key, _value in SUPPLY_POI_TAGS)
 
 
 def has_supply_poi_tag(tags: Mapping[str, str]) -> bool:
-    """`tags`が補給・休憩の種別が付きうるタグを持つか。値は`tag_kind_sql`と同じく、前後の
+    """`tags`が補給・休憩の種別が付きうるタグを持つか。値は`rule_match_sql`と同じく、前後の
     空白を落として小文字にしてから比べる。"""
     return any((value := tags.get(key)) is not None and (key, value.strip(" ").lower()) in SUPPLY_POI_TAGS
                for key in _SUPPLY_POI_TAG_KEYS)
@@ -346,8 +351,9 @@ _ONEWAY_DIRECTIONS: dict[str, str] = {
 
 #: 引き当ての順。`oneway:bicycle`（自転車に限り一方通行規制の対象外、という例外タグ）を
 #: `oneway`より前へ、`junction`からの含意を最後へ置く。
+_BICYCLE_ONEWAY_KEY = "oneway:bicycle"
 _DIRECTION_GROUPS: tuple[tuple[str, dict[str, str]], ...] = (
-    ("oneway:bicycle", _ONEWAY_DIRECTIONS),
+    (_BICYCLE_ONEWAY_KEY, _ONEWAY_DIRECTIONS),
     ("oneway", _ONEWAY_DIRECTIONS),
     ("junction", {value: _DIRECTION_FORWARD for value in sorted(_ONEWAY_JUNCTION_VALUES)}),
 )
@@ -358,6 +364,10 @@ DIRECTION_RULES: tuple[tuple[str, str, str, int], ...] = tuple(
     for priority, (tag_key, values) in enumerate(_DIRECTION_GROUPS, start=1)
     for value, direction in values.items()
 )
+
+#: 車両の通行方向（自転車の例外のタグを読まない）。JARTIC の一方通行の規制が当たる道で、規制が自転車も対象なら自転車もこの向き。
+VEHICLE_DIRECTION_RULES: tuple[tuple[str, str, str, int], ...] = tuple(
+    rule for rule in DIRECTION_RULES if rule[0] != _BICYCLE_ONEWAY_KEY)
 
 #: `way_directions.direction`の語彙。表の検査制約もここから作る。
 DIRECTIONS: frozenset[str] = frozenset(
@@ -373,30 +383,34 @@ def one_way_sql(direction: str) -> str:
     return f"{direction} <> {_quote(_DIRECTION_DEFAULT)}"
 
 
+def regulated_direction_sql(tagged: str, vehicle: str, bicycle_regulated: str) -> str:
+    """JARTIC の一方通行の規制を効かせた、自転車が辿れる向きのSQL式。`tagged`はタグの通行方向（`DIRECTION_RULES`）、
+    `vehicle`は車両の通行方向（`VEHICLE_DIRECTION_RULES`）、`bicycle_regulated`は道に当たった一方通行の規制が自転車も対象か
+    （当たらなければ NULL）。規制は車両が一方通行の道の自転車の扱いだけを決め、向きはタグのまま使い、両方向の道へ一方通行を足さない。"""
+    return (f"(CASE WHEN {bicycle_regulated} IS NULL OR NOT {one_way_sql(vehicle)} THEN {tagged}"
+            f" WHEN {bicycle_regulated} THEN {vehicle} ELSE {_quote(_DIRECTION_DEFAULT)} END)")
+
+
 def travel_allowed(direction: str) -> tuple[bool, bool]:
     """通行方向`direction`の道を、道の形の向き（始点→終点）に通れるか・逆に通れるか。"""
     return direction != DIRECTION_BACKWARD, direction != _DIRECTION_FORWARD
 
 
-#: 信号の読み替え。近くに信号がある（`has_traffic_signals`）これらの種別の点は、利用者から
+#: 信号の読み替え。信号の交差点に入る（`signal_place_nodes`）これらの種別の点は、利用者から
 #: 見れば信号である（信号は流入路ごと・横断歩道位置ごとの複数ノードで描かれる）。
 _SIGNAL_READ_KINDS: tuple[_StopPoiKind, ...] = ("traffic_signals", "crossing")
-_SIGNAL_KIND: _StopPoiKind = "traffic_signals"
+SIGNAL_KIND: _StopPoiKind = "traffic_signals"
 
-def stop_kind_sql(alias: str) -> str:
-    """`node_kinds`の別名`alias`の行の種別を、信号の読み替えを済ませて返すSQL式。
+def stop_kind_sql(alias: str, signal_place: str) -> str:
+    """`node_kinds`の別名`alias`の行の種別を、信号の読み替えを済ませて返すSQL式。`signal_place`は、その点が入る信号の
+    交差点の番号の式（`signal_place_nodes.place_id`。入らなければNULL）。
 
     地図へ出す種別も数える種別もこの式から導く——別々に書くと、見えている点の数と
     評価の停止回数が合わなくなる。
     """
     read = ", ".join(_quote(kind) for kind in _SIGNAL_READ_KINDS)
-    return (f"(CASE WHEN {alias}.has_traffic_signals AND {alias}.kind IN ({read})"
-            f" THEN {_quote(_SIGNAL_KIND)} ELSE {alias}.kind END)")
-
-
-def kinds_shown_as(kind: str) -> tuple[str, ...]:
-    """地図へ`kind`として出る取込時の種別（`stop_kind_sql`の信号の読み替えで`kind`になるものを含む）。"""
-    return _SIGNAL_READ_KINDS if kind == _SIGNAL_KIND else (kind,)
+    return (f"(CASE WHEN {signal_place} IS NOT NULL AND {alias}.kind IN ({read})"
+            f" THEN {_quote(SIGNAL_KIND)} ELSE {alias}.kind END)")
 
 
 def kind_map_sql[K: str](kind_sql: str, mapping: Mapping[K, str], *, otherwise: str = "NULL") -> str:
@@ -406,12 +420,16 @@ def kind_map_sql[K: str](kind_sql: str, mapping: Mapping[K, str], *, otherwise: 
     return f"(CASE {kind_sql} {whens} ELSE {otherwise} END)"
 
 
-def count_kind_sql(alias: str) -> str:
-    """`node_kinds`の別名`alias`の行を、数える種別（`POI_COUNT_KINDS`のキー）へ畳むSQL式。
+#: 信号の数える種別。この種別の点は、信号の交差点ごとに1つの止まる場所に数える。
+SIGNAL_COUNT_KIND = COUNT_KIND_OF[SIGNAL_KIND]
+
+
+def count_kind_sql(alias: str, signal_place: str) -> str:
+    """`node_kinds`の別名`alias`の行を、数える種別（`POI_COUNT_KINDS`のキー）へ畳むSQL式。`signal_place`は`stop_kind_sql`と同じ。
 
     停止要因でない行（補給休憩・ただの交差点）はNULL。
     """
-    return kind_map_sql(stop_kind_sql(alias), COUNT_KIND_OF)
+    return kind_map_sql(stop_kind_sql(alias, signal_place), COUNT_KIND_OF)
 
 
 def _values_clause(rules: tuple[tuple[str, str, str, int], ...]) -> str:
@@ -420,48 +438,36 @@ def _values_clause(rules: tuple[tuple[str, str, str, int], ...]) -> str:
         for key, value, result, priority in rules)
 
 
-def _rule_match_sql(rules: tuple[tuple[str, str, str, int], ...]) -> str:
-    """表の規則に当たった候補を (id, result, priority) で返す断片。"""
+def rule_match_sql(source: str, rules: tuple[tuple[str, str, str, int], ...]) -> str:
+    """`source`（`id`・`tags`を返す関係の名前）の行のうち、表の規則`rules`に当たったものを (id, result, priority) で返す断片。
+
+    タグの値は前後の空白を落として小文字にしてから比べる。
+    """
     return f"""
     SELECT s.id, r.result, r.priority
-    FROM src s JOIN (VALUES {_values_clause(rules)})
+    FROM {source} s JOIN (VALUES {_values_clause(rules)})
                  AS r(tag_key, tag_value, result, priority)
       ON lower(btrim(s.tags->>r.tag_key)) = r.tag_value"""
 
 
-def tag_kind_sql(source: str) -> str:
-    """`source`（`id`・`tags`を返す関係）の各行へ、停止要因・補給休憩の種別を1つ付ける。
+def first_rule_sql(matched: str) -> str:
+    """当たった規則の行`matched`（`id`・`result`・`priority`を返す関係の名前）から、行ごとに優先順位の一番先の結果を選ぶ (id, result)。"""
+    return f"SELECT DISTINCT ON (id) id, result FROM {matched} ORDER BY id, priority"
 
-    どれにも当たらない行は返らない。
+
+def vending_kind_sql(tags: str) -> str:
+    """タグ`tags`の点が自販機なら、何を売るかで決めた種別のSQL式。自販機でない・飲食物を売ると言い切れない値だけなら NULL。
+
+    `vending`が無い・空なら`vending_unknown`。
     """
     vending = ", ".join(_quote(v) for v in sorted(_SUPPLY_VENDING_VALUES))
-    return f"""
-WITH src AS ({source}),
-matched AS ({_rule_match_sql(TAG_KIND_RULES)}
-    UNION ALL
-    SELECT s.id, v.result, {_VENDING_PRIORITY}
-    FROM src s
-    CROSS JOIN LATERAL (
+    return f"""(CASE WHEN lower(btrim({tags}->>{_quote(_VENDING_MACHINE[0])})) = {_quote(_VENDING_MACHINE[1])} THEN (
         SELECT CASE WHEN coalesce(array_length(q.vals, 1), 0) = 0 THEN 'vending_unknown'
-                    WHEN q.vals && ARRAY[{vending}] THEN 'vending_drinks' END AS result
+                    WHEN q.vals && ARRAY[{vending}] THEN 'vending_drinks' END
         FROM (SELECT array_remove(array_agg(nullif(btrim(lower(t)), '')), NULL) AS vals
-              FROM unnest(string_to_array(coalesce(s.tags->>'vending', ''), ';')) AS t) q
-    ) v
-    WHERE lower(btrim(s.tags->>{_quote(_VENDING_MACHINE[0])})) = {_quote(_VENDING_MACHINE[1])} AND v.result IS NOT NULL
-)
-SELECT DISTINCT ON (id) id, result AS kind FROM matched ORDER BY id, priority
-"""
+              FROM unnest(string_to_array(coalesce({tags}->>'vending', ''), ';')) AS t) q) END)"""
 
 
-def direction_sql(source: str) -> str:
-    """`source`（`id`・`tags`を返す関係）の各行へ通行方向を付ける。
-
-    どれにも当たらない行も`_DIRECTION_DEFAULT`で返る——道は必ずどちらかに通れる。
-    """
-    return f"""
-WITH src AS ({source}),
-matched AS ({_rule_match_sql(DIRECTION_RULES)}),
-best AS (SELECT DISTINCT ON (id) id, result FROM matched ORDER BY id, priority)
-SELECT s.id, coalesce(b.result, {_quote(_DIRECTION_DEFAULT)}) AS direction
-FROM src s LEFT JOIN best b ON b.id = s.id
-"""
+def direction_or_default_sql(direction: str) -> str:
+    """規則で決めた通行方向の式`direction`（どれにも当たらなければ NULL）を、当たらない道を両方向にして返すSQL式。"""
+    return f"coalesce({direction}, {_quote(_DIRECTION_DEFAULT)})"

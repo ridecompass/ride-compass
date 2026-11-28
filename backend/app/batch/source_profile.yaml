@@ -89,13 +89,13 @@ sources:
   - name: jartic_regulation
     adapter: jartic_regulation
     rows:
-      # 共通規制種別コード（配布元の説明書の共通コード表）。1 は歩行者用道路。
-      kinds: ["1"]
+      # 共通規制種別コード（配布元の説明書の共通コード表）。1 は歩行者用道路、11 は一方通行。
+      kinds: ["1", "11"]
 
   # --- ラスタ ---------------------------------------------------------------
   # ズームは元データの分解能から導く。UIの都合で決めない。
   # 標高は製品ごとに、配信元が公表する最大ズームで取る（https://maps.gsi.go.jp/development/hyokochi.html）。
-  # どの製品の値を採るかは画素ごとに派生が決める（順は domain/gsi_tiles.py の PRODUCT_PRIORITY）。
+  # どの製品の値を採るかは点ごとに派生が決める（順は domain/gsi_tiles.py の PRODUCT_PRIORITY）。
   # DEM1Aを取らない理由は docs/modules/backend/elevation.md。
   - name: dem
     adapter: gsi_dem_tile

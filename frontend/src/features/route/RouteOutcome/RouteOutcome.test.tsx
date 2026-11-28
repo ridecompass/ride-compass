@@ -1,13 +1,6 @@
 /**
  * `features/route/RouteOutcome/RouteOutcome.tsx`——「ルート結果」の中身のうち、候補が無い間の案内と、候補の上の知らせと、候補の一覧。
  *
- * 見るもの:
- * - 候補が無い間の案内（生成中の進み方・生成前）と、候補がある間の条件のずれ・既定の配分で作ったこと・目的地の補正・
- *   前に出た予報の風で作ったことの知らせ、乗り換えで作った経路と同じ道だったので選んだ候補の知らせと、選んだカードを一覧の横の見える範囲へ送ること
- * - 候補の一覧: 群（最速・生成した候補・合成）の間の区切りの線と名前の印（意味を読み上げの名前に持つ）、カードに出す
- *   名前・距離・所要時間・負担（内訳が無ければ「—」）と、下の帯の色（1kmあたりの負担を
- *   地図の総合のレンズと同じ段の色・内訳が無ければ値の無い色）、並びの先頭の数字の見方の見本（押しても候補を選ばない）と、その(i)のカードの数字と印の説明（費用の軸の一覧の名前と文を差し込む）、選ばれているタブ（選んだ候補・無ければ先頭）と、タブを押したときに上がる操作
- *
  * ここで見ないもの: 選んだ候補の中身（元との違い・道のりのグラフ・内訳・区間の詳しく・編集面） → `RouteOutcome.selected.test.tsx`。
  * 一覧の並び・群・名前の決め方 → `features/route/routeTabLabel.ts`。
  * 結果の状態の移り変わり → `features/route/useRouteResults.ts`。値を子・文へそのまま渡すだけの所
@@ -112,9 +105,9 @@ describe("候補の上の知らせ", () => {
 });
 
 describe("候補の一覧", () => {
-  it("最速の印の無い生成は最速を分けず、番号・距離・所要時間・負担の列だけで並べ、区切りの線も群の印も出さない", () => {
+  it("最速の印の無い生成は最速を分けず、番号・距離・所要時間・ロスの列だけで並べ、区切りの線も群の印も出さない", () => {
     renderOutcome({ results: resultsOf({ generated: [FAST, SLOW] }) });
-    expect(listTexts()).toEqual(["1 10.0km 30分 負担+5分", "2 20.0km 42分 負担+0分"]);
+    expect(listTexts()).toEqual(["1 10.0km 30分 ロス+5分", "2 20.0km 42分 ロス+0分"]);
     expect(within(screen.getByRole("tablist")).queryByRole("img")).not.toBeInTheDocument();
   });
 
@@ -126,34 +119,34 @@ describe("候補の一覧", () => {
     };
     renderOutcome({ results: resultsOf({ generated: [SLOW, { ...FAST, is_fastest: true }], edits: [edit] }) });
     expect(listTexts()).toEqual([
-      " 10.0km 30分 負担+5分",
+      " 10.0km 30分 ロス+5分",
       "―",
-      "1 20.0km 42分 負担+0分",
+      "1 20.0km 42分 ロス+0分",
       "―",
-      "1 12.0km 27分 負担+0分",
+      "1 12.0km 27分 ロス+0分",
     ]);
     const [fastest, , spliced] = screen.getAllByRole("tab");
     expect(within(fastest).getByRole("img", { name: "最速ルート" })).toHaveAttribute("title", "最速ルート");
     expect(within(spliced).getByRole("img", { name: "合成ルート" })).toHaveAttribute("title", "合成ルート");
   });
 
-  it("並びの先頭の見本は、カードの数字の位置に距離と所要・負担を出し、押しても候補を選ばない。その(i)を開くと、段と印の読み方・所要時間の見積もり方・費用の軸の一覧の名前を差し込んだ負担・候補の並べ方を、1つずつ箇条書きの1行か1文で出す", async () => {
+  it("並びの先頭の見本は、カードの数字の位置に距離と所要・ロスを出し、押しても候補を選ばない。その(i)を開くと、段と印の読み方・所要時間の見積もり方・費用の軸の一覧の名前を差し込んだロス・候補の並べ方を、1つずつ箇条書きの1行か1文で出す", async () => {
     serveCostAxisCatalog(
       costAxisCatalog(costAxisEntry("ascent", { label: "軸ア" }), costAxisEntry("stopping", { label: "軸イ" })),
     );
     const results = resultsOf({ generated: [FAST, SLOW] });
     renderOutcome({ results });
-    expect(cardSample()).toHaveTextContent(/^距離所要負担$/);
+    expect(cardSample()).toHaveTextContent(/^距離所要ロス$/);
     await userEvent.click(within(cardSample()).getByText("距離"));
     expect(results.selectRoute).not.toHaveBeenCalled();
     expect(results.focusRoute).not.toHaveBeenCalled();
     expect(screen.getByRole("tab", { name: /^1 / })).toHaveAttribute("aria-selected", "true");
 
-    await userEvent.click(within(cardSample()).getByRole("button", { name: "所要時間と負担の説明を表示" }));
+    await userEvent.click(within(cardSample()).getByRole("button", { name: "所要時間とロスの説明を表示" }));
     const items = (await screen.findAllByRole("listitem")).map((item) => item.textContent);
     expect(items).toEqual(expect.arrayContaining(["・上の段: 距離", "・稲妻の印: 最速ルート"]));
     expect(screen.getByText(`所要時間: ${routeGenerateConfig.duration_estimate_wording}`)).toBeInTheDocument();
-    expect(screen.getByText("負担: 避けたいもの[軸ア・軸イ]を通る分を時間に直したものです。")).toBeInTheDocument();
+    expect(screen.getByText(`ロス[軸ア・軸イ]: ${routeGenerateConfig.penalty_wording}です。`)).toBeInTheDocument();
     expect(
       screen.getByText(`並び: 先頭は最速、残りは${routeGenerateConfig.candidate_order_wording}です。`),
     ).toBeInTheDocument();
@@ -167,7 +160,7 @@ describe("候補の一覧", () => {
     expect(screen.getByRole("tab", { name })).toHaveAttribute("aria-selected", "true");
   });
 
-  it("カードの下の帯は、1kmあたりの負担を地図の総合のレンズと同じ段の色で塗り、内訳の無い候補は値の無い色で塗る", async () => {
+  it("カードの下の帯は、1kmあたりのロスを地図の総合のレンズと同じ段の色で塗り、内訳の無い候補は値の無い色で塗る", async () => {
     renderOutcome({ results: resultsOf({ generated: [FAST, SLOW] }) });
     const bandOf = (name: RegExp) => screen.getByRole("tab", { name }).querySelector(":scope > span[aria-hidden]");
     // 速い候補は1kmあたり30秒で、総合のレンズの境目（10秒）より上の段。

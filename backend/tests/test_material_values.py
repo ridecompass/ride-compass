@@ -29,7 +29,7 @@ import pytest
 from sqlalchemy import text
 
 from app.domain import material_sql
-from app.domain.material_catalog import ACCIDENT_COUNT_PER_KM_YEAR, material_value_sql
+from app.domain.material_catalog import material_value_sql
 from app.domain.region import BoundingBox
 from app.infrastructure.source_models import WAYS_SOURCE_SQL
 from tests.source_ingest import ingest_records, parallel_way_record
@@ -51,7 +51,7 @@ async def _way_values(session, expression: str, tags_by_way: dict[int, dict[str,
     return dict(rows.all())
 
 
-async def _edge_value(session, expression: str, *, distance_m: float, accident_years: int = 1,
+async def _edge_value(session, expression: str, *, distance_m: float,
                       **edge_values: float | None) -> object:
     """区間の長さと区間の値を与えて、式を1区間ぶん評価する。"""
     row = await session.execute(
@@ -60,8 +60,7 @@ async def _edge_value(session, expression: str, *, distance_m: float, accident_y
              " (SELECT * FROM json_populate_record(NULL::edge_counts, CAST(:em AS json)) c,"
              "  json_populate_record(NULL::edge_elevation, CAST(:em AS json)) e,"
              "  json_populate_record(NULL::edge_landcover, CAST(:em AS json)) l) em"),
-        {"re": json.dumps({"distance_m": distance_m}), "em": json.dumps(edge_values),
-         "accident_years": accident_years})
+        {"re": json.dumps({"distance_m": distance_m}), "em": json.dumps(edge_values)})
     return row.scalar_one()
 
 
@@ -113,17 +112,6 @@ async def test_a_cycleway_value_on_any_side_counts(road_graph_session):
 # --- カタログに直に書かれた式（domain/material_catalog.py） -----------------------------
 
 
-@pytest.mark.parametrize(("years", "expected"), [
-    (2, 3.0),
-    (0, None),  # 収録年の無い取込
-])
-async def test_the_accident_density_is_per_km_and_per_year_covered(road_graph_session, years, expected):
-    value = await _edge_value(road_graph_session, material_value_sql()[ACCIDENT_COUNT_PER_KM_YEAR],
-                              distance_m=500.0, accident_years=years, accident_count=3.0)
-
-    assert value == (None if expected is None else pytest.approx(expected))
-
-
 async def test_a_road_is_a_cycleway_by_its_own_kind(road_graph_session):
     values = await _way_values(road_graph_session, material_value_sql()["highway_is_cycleway"],
                                {1: {"highway": "cycleway"}, 2: {"highway": "residential", "cycleway": "track"}})
@@ -150,8 +138,8 @@ async def test_every_declared_expression_reads_only_what_each_reading_path_provi
     解決するので、行が無くても確かめられる。"""
     area = BoundingBox(min_latitude=35.0, min_longitude=139.0, max_latitude=35.01, max_longitude=139.01)
 
-    arrays = await road_graph_repository.get_edge_material_arrays([1], [0], [True], 1)
+    arrays = await road_graph_repository.get_edge_material_arrays([1], [0], [True])
     assert len(arrays.distance_m) == 1
     # 取込範囲の外なので焼かずにNoneを返すが、タイルの列は先に解決される。
-    assert await road_graph_repository.get_road_surface_tile_mvt(14, 14552, 6451, area, {}) is None
-    assert await road_graph_repository.roads_at(139.005, 35.005, 14, 10.0, 1) == []
+    assert await road_graph_repository.get_road_surface_tile_mvt(14, 14552, 6451, area, [], [], {}) is None
+    assert await road_graph_repository.get_way_names([1]) == {}

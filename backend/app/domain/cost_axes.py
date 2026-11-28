@@ -12,19 +12,23 @@
 軸の定義の全体（`CostAxisDefinitions`）は1つのJSONで読み、1つのJSONで書く（道の区分と同じ）。
 """
 
-from collections.abc import Mapping
-from typing import Annotated, Literal, cast
+from collections.abc import Callable, Mapping
+from dataclasses import dataclass
+from typing import Annotated, Literal, NamedTuple, cast, get_args
 
 import numpy as np
 from pydantic import Field, field_validator, model_validator
 
 from app.domain.attributes import CategoricalColumn, MaterialColumn
 from app.domain.axis_templates import evaluate_breakpoint_linear
+from app.domain.cycling_speed import SegmentRide
 from app.domain.display_palette import cost_series_colors
 from app.domain.lens_total import TOTAL_LENS_ID
 from app.domain.material_catalog import MATERIAL_CATALOG
 from app.domain.road_classes import CLASS_MATERIAL_PREFIX, RoadClassDefinitions
+from app.domain.route import STOP_COUNT_DECIMALS
 from app.domain.strict_model import StrictModel
+from app.domain.way_value_formula import RIDE_CONDITION_ORDER, WayValueConditionName
 
 #: 体力の費目（走行の模型の抵抗。`domain/cycling_speed.py: SegmentRide`の`*_extra_j`と1対1）。
 EffortItem = Literal["gravity", "air", "inertia", "rolling"]
@@ -37,16 +41,77 @@ EFFORT_AXES: dict[str, EffortItem] = {
     "friction": "rolling",
 }
 
+class EffortFactInputs(NamedTuple):
+    """体力の費目の数で言う事実の元（区間かルートのまとまり1つ）。"""
+
+    ascent_m: float | None
+    stops: float
+
+
+@dataclass(frozen=True)
+class EffortShownFact:
+    """ルートの事実と道の窓が出す、数で言う体力の費目の事実の名前・単位・値。"""
+
+    label: str
+    unit: str
+    value: Callable[[EffortFactInputs], float | None]
+
+
+@dataclass(frozen=True)
+class EffortNumberFact:
+    """数で言う体力の費目の事実（ルートの事実・道の窓）と、地図のレンズの色の物差しの事実（1kmの道の値）。"""
+
+    #: Noneの費目は、ルートの事実と道の窓に事実を出さない（秒だけを出す）。
+    shown: EffortShownFact | None
+    lens_unit: str
+    #: 物差しの事実の値を、`domain/lens_equivalents.py`の1kmの道のどの事実として渡すか。
+    lens_road: Literal["grade_percent", "headwind_ms", "kickoffs"]
+
+
+@dataclass(frozen=True)
+class EffortItemRule:
+    """体力の費目1つの決まり。"""
+
+    #: 走りの内訳の、その費目の欄。
+    ride_j: Callable[[SegmentRide], np.ndarray]
+    #: 地図のレンズの値が変わる走る条件（`domain/cycling_speed.py: SegmentSpeedModel.ride`が読む入力のうち、地図が読むもの）。時刻を
+    #: 持たない費目は、地図では無風・標準の気温で解く。
+    conditions: tuple[WayValueConditionName, ...]
+    #: 数で言う事実。Noneの費目は、事実を転がり抵抗の分け方の材料で言い、物差しの端を区分の鍵で書く。
+    number: EffortNumberFact | None
+    #: 曲がる所の漕ぎ出しを数える費目か。
+    kickoff: bool = False
+
+
+#: 体力の費目 → その決まり。費目ごとの事実は、ここだけが持つ。漕ぎ出しの慣性は、止まる回数と巡航速度（½mv² と平地の出力）だけで
+#: 決まる。ほかの費目は、平地を越えて踏む出力を勾配（走る向き）・空気（風と気温、つまり時刻）・転がりの増えた抵抗の比で分け合うので、
+#: ルートではどれも向き・速度・時刻で変わる。地図では、坂と路面は時刻で変わらない道の性質として塗る（同じ坂は時刻を変えても同じ色）
+#: ので、登りと転がりは時刻を持たない。止まる回数は、止まる出来事（と、ルートなら曲がる所）を止まってから漕ぎ出す回数に換えたもの
+#: （`domain/traffic.py: StopEvent.kickoffs`）。向かい風は予報の風を乗り手の高さへ直して区間で平均した、格子点に無い値なので、事実に出さない
+#: （`docs/architecture/data-sources.md`「今の扱い」。地図のレンズの物差しの m/s は、1kmの道の仮の値で予報の値ではない）。
+_TIMELESS = tuple(name for name in RIDE_CONDITION_ORDER if name != "at")
+EFFORT_ITEM_RULES: dict[EffortItem, EffortItemRule] = {
+    "gravity": EffortItemRule(
+        ride_j=lambda ride: ride.gravity_extra_j, conditions=_TIMELESS,
+        number=EffortNumberFact(shown=EffortShownFact(label="登り", unit="m", value=lambda inputs: inputs.ascent_m),
+                                lens_unit="%", lens_road="grade_percent")),
+    "air": EffortItemRule(
+        ride_j=lambda ride: ride.air_extra_j, conditions=RIDE_CONDITION_ORDER,
+        number=EffortNumberFact(shown=None, lens_unit="m/s", lens_road="headwind_ms")),
+    "inertia": EffortItemRule(
+        ride_j=lambda ride: ride.inertia_extra_j, conditions=("speed_kmh",), kickoff=True,
+        number=EffortNumberFact(
+            shown=EffortShownFact(label="止まる回数", unit="回", value=lambda inputs: round(inputs.stops, STOP_COUNT_DECIMALS)),
+            lens_unit="回/km", lens_road="kickoffs")),
+    "rolling": EffortItemRule(ride_j=lambda ride: ride.rolling_extra_j, conditions=_TIMELESS, number=None),
+}
+if set(EFFORT_ITEM_RULES) != set(get_args(EffortItem)) or set(EFFORT_AXES.values()) != set(get_args(EffortItem)):
+    raise RuntimeError(f"体力の費目の決まりと軸は、費目の全部を持つ: {sorted(EFFORT_ITEM_RULES)}・{sorted(EFFORT_AXES.values())}")
+
 _NonNegative = Annotated[float, Field(ge=0.0, allow_inf_nan=False)]
 
-#: 体力の費目の事実のうち、ルートの事実・道の窓・レンズの段の名前の2つ以上が出すものの名前（同じ事実は同じ名前で出す）。止まる回数は、
-#: 止まる出来事（と、ルートなら曲がる所）を止まってから漕ぎ出す回数に換えたもの（`domain/traffic.py: StopEvent.kickoffs`）。向かい風は
-#: 乗り手の高さの風の成分で、予報の地上10mの風速と別の値だと名前で分かるようにする。
-STOPS_FACT_LABEL = "止まる回数"
-HEADWIND_FACT_LABEL = "向かい風[乗り手の高さ]"
-
 #: 地図のレンズの量（道の1kmあたりの代償の秒）を、利用者に言う名前と単位。
-LENS_QUANTITY_LABEL = "1kmあたりの負担"
+LENS_QUANTITY_LABEL = "1kmあたりのロス"
 LENS_UNIT = "秒/km"
 
 
@@ -158,7 +223,8 @@ def check_cost_axes(definitions: CostAxisDefinitions, road_classes: RoadClassDef
     区分を書き換えたときも、今の軸の定義を新しい区分で通し直す。分け方に無い区分の重さは断らない（`surplus_class_weights`）。"""
     problems: list[str] = []
     rolling = set(road_classes.rolling_resistance_classes.get(road_classes.rolling_resistance_classification or "", {}))
-    class_ends: dict[str, set[str]] = {axis_id: rolling for axis_id, item in EFFORT_AXES.items() if item == "rolling"}
+    class_ends: dict[str, set[str]] = {
+        axis_id: rolling for axis_id, item in EFFORT_AXES.items() if EFFORT_ITEM_RULES[item].number is None}
     class_ends |= {axis_id: set(axis.burden.per_km) for axis_id, axis in definitions.burden.items()
                    if isinstance(axis.burden, CategoricalBurden)}
     presentations = {**definitions.effort, **definitions.burden, TOTAL_LENS_ID: definitions.total_lens}

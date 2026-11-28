@@ -87,7 +87,7 @@ export default function GenerateRouteActions({ generation, routeCount, labeled }
               ? `ルート生成（${CONDITIONS_DIRTY_TEXT}）`
               : "ルート生成"
         }
-        usage={`${showDirty ? `${CONDITIONS_DIRTY_TEXT}。表示中の候補は変更前の条件で作ったものです。\n` : ""}いまの条件・負担・${ROAD_SETTINGS_TAB_NAME}でルートの候補を作ります。候補は「ルート結果」に並び、地図に線が出ます。`}
+        usage={`${showDirty ? `${CONDITIONS_DIRTY_TEXT}。表示中の候補は変更前の条件で作ったものです。\n` : ""}いまの条件・ロスの要因・${ROAD_SETTINGS_TAB_NAME}でルートの候補を作ります。候補は「ルート結果」に並び、地図に線が出ます。`}
       >
         {showDirty && (
           <span

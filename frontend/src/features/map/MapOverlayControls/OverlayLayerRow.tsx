@@ -13,6 +13,7 @@ import { Checkbox } from "@/components/ui/Checkbox/Checkbox";
 import type { MapIconComponent } from "@/components/ui/icons/icons";
 import { cn } from "@/lib/cn";
 import { Dot } from "@/components/ui/Dot/Dot";
+import { useShownDataStatus } from "@/features/map/useShownDataStatus";
 import { textVariants } from "@/components/ui/Text/Text";
 import LegendDetails, { type LegendFilterSummaryAxis } from "./LegendDetails";
 
@@ -102,11 +103,12 @@ export default function OverlayLayerRow({
   onToggle: (id: MapLayerId, on: boolean) => void;
 }) {
   const hint = useRowDescription(layer.label, layer.panelHint, "この情報の説明を、行のすぐ下に開きます。");
-  const panel = useRowPanel(layer.label, panelContentFor(layer, handlers));
-  const showStatusDot = layer.on && layer.dataStatus != null;
+  const dataStatus = useShownDataStatus(layer.dataStatus);
+  const panel = useRowPanel(layer.label, panelContentFor({ ...layer, dataStatus }, handlers));
+  const showStatusDot = layer.on && dataStatus != null;
   const filtered = isLegendFiltered(layer);
   const notes = [
-    showStatusDot ? LAYER_DATA_STATUS_LABELS[layer.dataStatus!] : undefined,
+    showStatusDot ? LAYER_DATA_STATUS_LABELS[dataStatus!] : undefined,
     filtered ? FILTERED_LABEL : undefined,
   ]
     .filter(Boolean)
@@ -121,7 +123,7 @@ export default function OverlayLayerRow({
             <layer.icon size={16} />
           </span>
           <span className="min-w-0 flex-1">{layer.label}</span>
-          {showStatusDot && <Dot aria-hidden="true" tone={layer.dataStatus} />}
+          {showStatusDot && <Dot aria-hidden="true" tone={dataStatus} />}
           {filtered && <FilteredMark />}
         </label>
         {hint.toggle}

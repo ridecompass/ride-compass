@@ -17,6 +17,7 @@ import {
 import PenaltyBreakdown from "@/components/MapPopup/PenaltyBreakdown";
 import { useCostAxisCatalog } from "@/hooks/useCostAxisCatalog";
 import { cn } from "@/lib/cn";
+import { reachesMinute } from "@/lib/duration";
 import { formatPenalty, penaltyRows } from "@/lib/routePenalty";
 import type { RoadTrackRow } from "@/lib/mapDisplay/roadTracks";
 import { formatJstHourMinute } from "@/lib/time";
@@ -56,7 +57,8 @@ export function SectionOnMapButton({ onMap }: { onMap: SectionOnMap }) {
 }
 
 /** 選んだ区間の小窓（道のりのグラフの表示の断面）。上の帯に到達予想、その下にグラフで選んでいる層の区間の値（線の層は平均と最大の
- * 勾配、帯の層は区間に占める区分の割合の多い順）と、区間の負担の内訳を出す。 */
+ * 勾配、帯の層は区間に占める区分の割合の多い順）と、分に丸めて1分以上になる軸のロスを出す。1分に満たないロスは、どの軸でも
+ * 区間を避けるかの判断を変えないので出さない。 */
 export default function SegmentDetail({
   selection,
   layers,
@@ -110,7 +112,7 @@ export default function SegmentDetail({
             </span>
           ))}
           {bands.length > 0 && (
-            // 負担の内訳の行と同じ形の行で並べる。札にして横へ並べると、小窓の幅が札の行で決まって広がる。
+            // ロスの内訳の行と同じ形の行で並べる。札にして横へ並べると、小窓の幅が札の行で決まって広がる。
             <ul className="m-0 flex list-none flex-col gap-0.5 p-0 text-[length:var(--font-size-sm)]">
               {bands.map(({ layer, row, share }) => (
                 <li key={`${layer.id}-${row.key}`} className="flex items-baseline gap-1.5">
@@ -127,9 +129,9 @@ export default function SegmentDetail({
         </div>
       )}
       <PenaltyBreakdown
-        total={formatPenalty(segment.penalty.total_seconds)}
+        total={null}
         items={penaltyRows(segment.penalty.axis_seconds, costCatalog).flatMap((row) =>
-          row.seconds === 0 ? [] : [{ row, text: formatPenalty(row.seconds) }],
+          reachesMinute(row.seconds) ? [{ row, text: formatPenalty(row.seconds) }] : [],
         )}
       />
     </div>

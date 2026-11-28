@@ -1,6 +1,7 @@
 // 意味の決まった汎用の形（lucide-react）を、自前の形と同じ呼び方と線の太さへ包んで書き出す。
 import {
   Mountain,
+  NotebookText,
   Road,
   Sigma,
   ArrowUp,
@@ -111,9 +112,9 @@ export const ChooseItemsIcon = fromLucide(ListChecks);
 /** 項目を選ぶ間の、一覧に並べる項目（`UnlistedIcon`と対で、並べるかを形で見分ける）。 */
 export const ListedIcon = fromLucide(Eye);
 export const UnlistedIcon = fromLucide(EyeOff);
-/** 負担で道を塗る（「負担で塗る」の入口）。 */
+/** ロスで道を塗る（「難所を色で見る」の入口）。 */
 export const BurdenPaintIcon = fromLucide(Paintbrush);
-/** 負担（所要時間に足す代償）の量。 */
+/** ロス（所要時間に足す代償）の量。 */
 export const BurdenIcon = fromLucide(Weight);
 export const RouteSettingsIcon = fromLucide(SlidersHorizontal);
 export const ShieldIcon = fromLucide(Shield);
@@ -128,6 +129,8 @@ export const SpeedGaugeIcon = fromLucide(Gauge);
 export const HelpIcon = fromLucide(CircleQuestionMark);
 /** 初めて開いたときに出す案内を、もう一度出す。 */
 export const IntroIcon = fromLucide(BookOpen);
+/** 自分の走りを見返す走行ログ。 */
+export const RideLogIcon = fromLucide(NotebookText);
 /** 地図で選んでいる区間の地点。 */
 export const SelectedSpotIcon = fromLucide(MapPin);
 /** 押さえたまま上下へ動かして、行の順を入れ替える所。 */

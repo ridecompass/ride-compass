@@ -24,7 +24,6 @@ from app.domain.jma_tile_specs import (
 from app.domain.region import BoundingBox, tile_bounds_lonlat, tile_position, tiles_covering_bbox
 from app.domain.time_zone import jst_local_text
 from app.domain.way_value_formula import (
-    FALSE,
     Binary,
     Case,
     Interpolate,
@@ -37,7 +36,8 @@ from app.domain.way_value_formula import (
     evaluate_formula,
     feature,
 )
-from app.domain.weather_elements import stage_first_frames
+from app.domain.weather_display import RGB, tile_pixel_colors, tile_pixel_level
+from app.domain.weather_elements import LEVELS_OF_SCALE, stage_first_frames
 from app.infrastructure.jma_tile_client import parse_target_times
 from app.infrastructure.jma_tile_paths import read_jma_tile_path
 
@@ -238,6 +238,22 @@ _READ_PATHS = [
 ]
 
 
+def _pixel_level_rows() -> list[dict]:
+    """段で塗る災害の段の表ごとに、見分ける色そのもの・隣り合う色の中ほど（近さが並びうる）・どの色からも遠い色の画素の段。
+    段は並びの番号＋1で、見分けられない画素は0。"""
+    rows = []
+    for scale, levels in LEVELS_OF_SCALE.items():
+        colors = tile_pixel_colors(levels)
+        drawn = [color for color in colors if color is not None]
+        midpoints: list[RGB] = [
+            ((a[0] + b[0]) // 2, (a[1] + b[1]) // 2, (a[2] + b[2]) // 2) for a, b in zip(drawn, drawn[1:], strict=False)
+        ]
+        for rgb in [*drawn, *midpoints, (255, 255, 255), (0, 0, 0), (128, 128, 128)]:
+            level = tile_pixel_level(rgb, colors)
+            rows.append({"scale": scale, "rgb": list(rgb), "level": 0 if level is None else level + 1})
+    return rows
+
+
 def jma_expectations() -> dict[str, list[dict]]:
     return {
         "read_target_times": [
@@ -275,6 +291,7 @@ def jma_expectations() -> dict[str, list[dict]]:
             {"path": path, "tile": None if (tile := read_jma_tile_path(path)) is None else _tile_row(tile)}
             for path in _READ_PATHS
         ],
+        "tile_pixel_level": _pixel_level_rows(),
     }
 
 
@@ -396,7 +413,7 @@ def time_expectations() -> dict[str, list[dict]]:
 
 
 def _values_only(value: object) -> WayValueFormula:
-    return WayValueFormula(value=value, undetermined=FALSE)
+    return WayValueFormula(value=value)
 
 
 _X = feature("x")
@@ -449,29 +466,33 @@ _WAY_VALUE_FORMULAS: list[tuple[str, WayValueFormula, list[tuple[dict[str, float
         [({"x": 2.0, "y": 4.0}, {}), ({"x": -1.0, "y": 1.0}, {}), ({"x": 9.0, "y": -3.0}, {})],
     ),
     (
-        "走る向きで選ぶ勾配（道の向き寄り・逆向き寄り・直角の付近・向きの無い道）",
+        "走る向きで選ぶ値（道の向き寄り・逆向き寄り・直角の付近と走る向きの無いときはきつい向き・辿れない向き・向きの無い道）",
         travel_direction_formula(feature("forward"), feature("backward"), _PERPENDICULAR_BAND_DEG),
-        [({ROAD_BEARING_LEAF: road, "forward": 3.0, "backward": -3.0}, {"bearing_deg": bearing})
+        [({ROAD_BEARING_LEAF: road, "forward": forward, "backward": backward}, {"bearing_deg": bearing})
          for road, bearing in ((10.0, 0.0), (10.0, 200.0), (350.0, 5.0), (0.0, 104.0), (0.0, 105.0), (0.0, 106.0),
-                               (0.0, 255.5), (180.0, 359.75))]
-        + [({"forward": 3.0, "backward": -3.0}, {"bearing_deg": 90.0}), ({ROAD_BEARING_LEAF: 0.0}, {"bearing_deg": 0.0})],
+                               (0.0, 255.5), (180.0, 359.75))
+         for forward, backward in ((3.0, -3.0), (-3.0, 3.0))]
+        + [({ROAD_BEARING_LEAF: road, "forward": forward, "backward": backward}, {"bearing_deg": math.nan})
+           for road, forward, backward in ((10.0, 3.0, -3.0), (10.0, -3.0, 3.0))]
+        + [({ROAD_BEARING_LEAF: 0.0, "backward": -3.0}, {"bearing_deg": 90.0}),
+           ({ROAD_BEARING_LEAF: 0.0, "forward": -3.0}, {"bearing_deg": 90.0}),
+           ({"forward": 3.0, "backward": -3.0}, {"bearing_deg": 90.0}), ({ROAD_BEARING_LEAF: 0.0}, {"bearing_deg": 0.0})],
     ),
 ]
 
 
 def _formula_row(formula: WayValueFormula, features: dict[str, float], conditions: dict[str, float]) -> dict:
     value = float(evaluate_formula(formula.value, features, conditions))
-    undetermined = float(evaluate_formula(formula.undetermined, features, conditions))
     return {
         "features": features,
-        "conditions": conditions,
+        # 値の無い条件（NaN）は JSON に書けないので載せない（地図は置かれていない条件を値の無いものとして読む）。
+        "conditions": {name: value for name, value in conditions.items() if not math.isnan(value)},
         "value": None if math.isnan(value) else value,
-        "undetermined": not math.isnan(undetermined) and undetermined != 0,
     }
 
 
 def way_value_expectations() -> dict[str, list[dict]]:
-    """地図が塗る値の木を、道ごとの材料と条件で評価した値（値の無い道はnull）と、向きで決まらないか。丸めの中点・
+    """地図が塗る値の木を、道ごとの材料と条件で評価した値（値の無い道はnull）。丸めの中点・
     折れ線の端・値の無い材料のように、地図の式と食い違いうる場面を並べる。"""
     return {
         "way_value_formula": [

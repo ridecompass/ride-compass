@@ -18,7 +18,7 @@ DB接続・Redis・HTTPクライアント・レート制限・ログ・デバッ
 | domain | `stopwatch.py` | ログへ出す所要時間の測り方（測り始めの`stopwatch.py: start_timer`とミリ秒の整数の`stopwatch.py: elapsed_ms`）。測り始めと終わりは同じ時計で読む |
 | domain | `strict_model.py` | 全Pydanticモデルの基底（`strict_model.py: StrictModel`）。未知のフィールドを黙って捨てず例外にする |
 | api | `admin_auth.py` | 管理API共通の認可境界 |
-| api | `failure_replies.py` | 想定した失敗（上流から取れない→502・MSMを読めない・アメダスの観測値の置き場を読めない・DBに届かない→503）を、どの口でも理由つきで返すアプリ単位の例外の扱い。ルート生成のジョブの失敗の文も同じ`api/failure_replies.py: failure_reply`で決める（下の「DB障害として扱う例外」・`fetch_upstream`の段） |
+| api | `failure_replies.py` | 想定した失敗（上流から取れない・DBに届かない等）を、どの口でも理由つきで返すアプリ単位の例外の扱い。ルート生成のジョブの失敗の文も同じ`api/failure_replies.py: failure_reply`で決める（下の「DB障害として扱う例外」・`fetch_upstream`の段） |
 | api | `admin_paths.py` | 管理APIの経路の接頭辞（認可・キャッシュの決まりが、この下の口をまとめて扱う） |
 | api | `cache_policy.py` | 応答の`Cache-Control`（パスとポリシーの対応表・付与ミドルウェア） |
 | api | `dependencies.py`（横断的な部分のみ、他は各モジュール参照） | DI工場（公開関数は注入の口だけ） |
@@ -39,11 +39,17 @@ DB接続・Redis・HTTPクライアント・レート制限・ログ・デバッ
 | infrastructure | `debug_control.py` | `debug_control.py: debug_mode`のランタイム切替・直近ログの保持 |
 | infrastructure | `host_markers.py` | 本番VMのホストの定期の仕組み（`ops/`）が最後に通ってからの時間（`/health`が返す）。下の「本番DBのバックアップ」「元の取り直し」 |
 | infrastructure | `job_registry.py` | 汎用の非同期ジョブレジストリ（プロセス内メモリのみ） |
-| domain | `ride_track.py` | 端末が送る走り（`POST /api/rides`の本文）の型 |
-| infrastructure | `ride_gpx.py` | 走りを GPX 1.1 に直す処理。時刻・緯度経度・標高（走った地点の地形の標高。無い点は端末の高さ）は標準の欄、速さと進む向きは Garmin の`TrackPointExtension` v2、端末の高さ・位置と標高の誤差・出来事・画面とサーバーの版・端末の名前は自前の名前空間。休むごとに`trkseg`を分ける |
-| infrastructure | `ride_track_models.py` | 走りの記録の表`ride_tracks`（走り1回を1行。GPX と、推したルート（候補を受けたまま）、生成の条件と予報（`context`）を受けたまま）。同じ走りの id は先の行のまま書かない。走った地点ごとの地形の標高を、取り込んだ標高タイルから製品の優先の順に引く問い合わせ（`infrastructure/dem_elevation.py: fill_elevations`）も持つ。読むのは開発機の較正の道具だけ（`run_probe.py`） |
-| services | `ride_track_service.py` | 走り1回を書く取引。送り直し（同じ id の行がある）なら地形の標高を引かずに終え、無ければ標高を引いて GPX に直して書く。接続は1本を長く持つ工場のもの |
-| api | `ride_tracks.py` | 走りを受ける口`POST /api/rides`。受けたサーバーの版を添えて書く。gzip で縮めた本文は戻して読む（戻した大きさに上限） |
+| domain | `ride_track.py` | 端末が送る走り（`POST /api/rides`の本文）の型と、自分の走りの一覧・1件の応答の型。走った線の長さ（休んで途切れた線の間は数えない） |
+| domain | `account.py` | 規約の今の版（`domain/account.py: TERMS_VERSION`）・札の期限・自分の状態の応答の型 |
+| infrastructure | `ride_gpx.py` | 走りを GPX 1.1 に直す処理。時刻・緯度経度・標高（走った地点の地形の標高。無い点は端末の高さ）は標準の欄、速さと進む向きは Garmin の`TrackPointExtension` v2、端末の高さ・位置と標高の誤差・出来事・画面とサーバーの版・端末の名前は自前の名前空間。休むごとに`trkseg`を分ける。書いた GPX から線を読み戻す（`infrastructure/ride_gpx.py: read_ride_lines`。走りを受けたときの距離と、1件の口が使う） |
+| infrastructure | `ride_track_models.py` | 走りの記録の表`ride_tracks`（走り1回を1行。GPX と、推したルート（候補を受けたまま）、生成の条件と予報（`context`）を受けたまま）。同じ走りの id は先の行のまま書かない。走った地点ごとの地形の標高を、取り込んだ標高タイルから製品の優先の順に引く問い合わせ（`infrastructure/dem_elevation.py: fill_elevations`）も持つ。行は送った人（`accounts`）に結び、本人の分だけを読んで消す口を持つ。一覧に出す走り始めの時刻・距離・かかった時間は列に持ち（利用者のある行は表の制約で空にできない）、一覧は GPX を読まない。利用者の無い行はログインを入れる前の走りで、本人の口からは読まれない。開発機の較正の道具（`run_probe.py`）は全部を読む |
+| infrastructure | `account_models.py` | 利用者（ログインの方法とその方法での番号で1行）・ログインの札（乱数は持たず hash だけ）・同意（版ごとに1行、やめたら時刻を書いて残す）の表と読み書き |
+| infrastructure | `google_identity.py` | Google の ID トークンを公式のライブラリで確かめて`sub`を取り出す。クライアント ID が無ければログインを断り、証明書を取れない失敗はトークンの誤りと分けて送り出す |
+| services | `account_service.py` | ログイン（札を作る）・ログアウト・状態・同意・同意のやめ・自分の走りの一覧と1件と消す取引。一覧の距離とかかった時間は GPX から求める |
+| api | `account_auth.py` | 利用者の札（cookie）の書き方・消し方と、札から利用者を引く注入（札が無ければ401・同意が無ければ403） |
+| api | `routers/account.py` | 自分の口`/api/me`（ログイン・ログアウト・状態・同意）と`/api/me/rides` |
+| services | `ride_track_service.py` | 走り1回を書く取引。送り直し（同じ id の行がある）なら地形の標高を引かずに終え、無ければ標高を引いて GPX に直し、一覧に出す距離とかかった時間を1回だけ求めて書く。接続は1本を長く持つ工場のもの |
+| api | `ride_tracks.py` | 走りを受ける口`POST /api/rides`。ログインして今の版に同意した人の走りだけを受け、その人と受けたサーバーの版を添えて書く。gzip で縮めた本文は戻して読む（戻した大きさに上限） |
 | infrastructure | `tuning_overrides.py` | 較正値の値（宣言の全idの行をDBへ持つ。値の正本）の読み書き。プロセス内の値へは書かない |
 | services | `definitions_loading.py` | DBの定義（道の区分・軸定義・較正値）をプロセスへ読み込む1つの入口と、その順。起動時と、起動を通らない道具が呼ぶ |
 | services | `tuning_service.py` | 較正値の書き込みの取引境界（構造仕様7）と、プロセス内の値への反映（起動時の読み込みと、書いた直後） |
@@ -101,31 +107,17 @@ FastAPI(lifespan=lifespan)
         ├─ (1) services/definitions_loading.py: refresh_definitions を1回呼び、道の区分 → 費用の軸の定義
         │       （[費用・材料](evaluation-scoring.md)参照）→ 較正値（[ルーティングエンジン](routing-engine.md)参照）の
         │       順に読む。費用の軸は区分から作る材料を指せるので、区分が先。費用の軸の定義の行が無いか
-        │       通らないと、ここで捕捉されず起動自体が失敗する。較正値も、宣言にあるidの行が無ければ起動しない。
-        │       起動を通らずに生成・評価を回す道具（ベンチ・scripts/）も同じ関数で読む
+        │       通らないと、ここで捕捉されず起動自体が失敗する。較正値も、宣言にあるidの行が無ければ起動しない
         ├─ (1') 全体のGCを1回回してから`gc.freeze()`で、ここまでに読み込んだオブジェクト（モジュール・定義）を
         │       恒久の世代へ移す。世代2のGCは追う全オブジェクトを走査してその間イベントループを止めるので、
         │       長生きのものを外して1回を短くする。先に集めるのは、凍らせたゴミは二度と集められないため
-        ├─ (1'') スケジューラをここで作り（アプリの寿命の間だけ動くので、モジュールの大域に持たない）、
-        │       失敗の受け口（EVENT_JOB_ERROR）を付ける（下記「定期ジョブの失敗」）
-        ├─ (2) APSchedulerでJMAアメダス定期更新ジョブを登録（interval分ごと＋
-        │       next_run_time=nowで起動直後にも1回即時実行、コールドスタート対策）
-        ├─ (3) 同じくAPSchedulerでJMA動的タイルの定期プリウォームジョブを登録
-        │       （interval=jma_tile_prewarm_interval_minutes分＋next_run_time=nowで
-        │       同様に起動直後にも即時実行、[動的気象レイヤー](weather-dynamic-layers.md)
-        │       「定期プリウォーム」節参照）
-        ├─ (4) 同じくAPSchedulerで気象庁MSM（風の予報）の.omファイル定期同期ジョブを
-        │       登録（interval=msm_sync_interval_minutes分＋next_run_time=now。初回は
-        │       ローカルにファイルが無く、完了するまでルート評価と地図の道ごとの風が使えない）
-        ├─ (5) 同じくAPSchedulerでディスク永続キャッシュの旧世代掃除ジョブを登録
-        │       （trigger="date"で起動直後に1回だけ。世代を上げたデプロイの直後がこの
-        │       タイミングに当たる、.claude/rules/caching-retention.md「無効化」参照）
-        └─ (6) 同じくAPSchedulerで地域タイルの旧世代掃除ジョブを登録（interval=24時間＋
-                next_run_time=now。世代は派生の作り直し・取込でも再起動なしに変わるため定期に回す。
-                [静的道路属性](static-road-attributes.md)「共通骨格」の旧世代の掃除）
+        └─ (1'') スケジューラをここで作り（アプリの寿命の間だけ動くので、モジュールの大域に持たない）、
+                失敗の受け口（EVENT_JOB_ERROR）を付け（下記「定期ジョブの失敗」）、定期ジョブを登録する。
+                どのジョブをどの間隔で回すかは`main.py: lifespan`が持つ。外部の値を溜めるジョブは
+                起動直後にも1回回し、次の定期実行までキャッシュが空のままにしない
         ▼
   CORSMiddleware → ContentTypeGZipMiddleware（応答のgzip圧縮）
-            → CachePolicyMiddleware（Cache-Control付与、下記「Cache-Controlの一元化」節）
+            → CachePolicyMiddleware（Cache-Control付与、下記「応答のCache-Control」）
             → request_log_middleware（アクセスログ）
             → CorrelationIdMiddleware（リクエストID付与、最も外側）
         ▼
@@ -134,9 +126,11 @@ FastAPI(lifespan=lifespan)
       yield（アプリ稼働中）
         ▼
   シャットダウン: (1) APSchedulerを停止（`wait=False`）→
-                 (2) プロセスで持ち回る接続と資源を閉じる（`process_resources.py: close_process_resources`。
+                 (2) 区切りの途中の外部呼び出しの集計を1行出す（`debug_log.py: log_window_summary`。デプロイで
+                     入れ替わる直前の分も前後の比べに残す）→
+                 (3) プロセスで持ち回る接続と資源を閉じる（`process_resources.py: close_process_resources`。
                      httpxクライアント・Redisクライアント・DBの2系統のエンジン・土地被覆ラスタ・ディスクのキャッシュ）
-                 (3) `gc.unfreeze()`。lifespanは1プロセスで何度も通りうる（テスト等）ので、通るたびに凍らせた循環のゴミを溜めない
+                 (4) `gc.unfreeze()`。lifespanは1プロセスで何度も通りうる（テスト等）ので、通るたびに凍らせた循環のゴミを溜めない
 ```
 
 - ログレベルは`debug_mode`の値でINFO/DEBUGを切り替える（`main.py`のlogging.basicConfig）。
@@ -176,6 +170,7 @@ backendは**1プロセスでしか正しく動かない**。プロセス内に�
 |---|---|---|
 | `database_url` | localhost | PostGIS接続文字列。[ルート生成エンジン](routing-engine.md)・地図のタイル配信・管理APIのどれもこの接続を必須とし、DBなしで動く構成は無い |
 | `admin_basic_auth_username`/`password` | 空文字（常に拒否） | 管理API（`/api/admin/...`）の認可 |
+| `google_client_id` | 空文字（ログインを断る。起動は止めない） | Google でのログイン（`/api/me/google-login`）が確かめるトークンの宛先。秘密の値ではない |
 | `redis_url` | localhost | Redis接続文字列 |
 | `git_commit` | None（ローカル） | `/health`が返すデプロイ確認用コミットSHA |
 | 各種`*_rate_limit_per_minute`/`*_max_concurrent` | エンドポイントごとに個別 | per-IPレート制限・同時実行数上限 |
@@ -206,7 +201,7 @@ composeのfrontendの公開先に従う値で、既定値（手元で`next dev`�
 
 DI工場はどちらの系統を使うかを、工場を受ける依存（`api/dependencies.py: TileSessions`・`api/dependencies.py: LongSessions`）の
 型で宣言し、中で工場を呼んで開かない。テストは`app.dependency_overrides`で工場を差し替える（例: DBに届かない状態）。
-HTTPの要求の外（定期ジョブ・ベンチマーク）は、工場を引数で渡して同じ開き方を使う。
+HTTPの要求の外（定期ジョブ・`backend/scripts/`の道具）は、工場を引数で渡して同じ開き方を使う。
 
 ### DB障害として扱う例外（`database.py: DB_UNAVAILABLE_ERRORS`）
 

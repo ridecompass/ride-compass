@@ -1,4 +1,5 @@
-"""`infrastructure/road_network_store.py`——取込範囲全体の道路網をDBから組み、ディスクの置き場へ置き、読む。
+"""`infrastructure/road_network_store.py`と`infrastructure/road_network_assembly.py`——取込範囲全体の道路網をDBから組み、
+ディスクの置き場へ置き、読む。
 
 入口は`ensure_current`（DBから組んで置く）・`write_pending`と`publish`（派生の作り直しが置く2段）・`save`・
 `current`（読む）・`prune_other_shapes`（起動後の片付け）。置き場（`ROOT`）はテストごとの一時ディレクトリ（`backend/tests/conftest.py: road_network_root`）。
@@ -15,12 +16,11 @@ DBから組むテストは、道とノードを取込の入口から入れ、派
 - 形の署名の組み立て → `test_cache_identity.py`
 
 材料を区間の束に分けて引くとき、束をまたいで行を続けて詰め、分類の語彙を1つへ付け替えることは、詰める部品
-（`MaterialColumns`）へ束を値で渡して見る——束の大きさ（20万区間）の区間をテストのDBに作らない。
+（`infrastructure/road_network_assembly.py: MaterialColumns`）へ束を値で渡して見る——束の大きさ（20万区間）の区間をテストのDBに作らない。
 """
 
 import importlib
 import inspect
-import json
 import logging
 import math
 import os
@@ -34,24 +34,15 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 from app.batch import derive_cli
 from app.domain import elevation_profile, road_network_build
 from app.domain.attributes import CategoricalColumn, EdgeMaterialArrays
-from app.domain.material_catalog import ELEVATION_GAIN_PER_KM, GRADIENT_PERCENT
+from app.domain.material_catalog import ELEVATION_GAIN_PER_KM, GRADIENT_PERCENT, MATERIAL_CATALOG
+from app.domain.road_network_build import per_km
 from app.domain.road_network import RoadNetwork, edge_shape
 from app.domain.traffic import highway_rank
-from app.infrastructure import road_network_store
+from app.infrastructure import road_network_assembly, road_network_store
 from app.infrastructure.road_graph_repository import RoadGraphRepository
-from tests.conftest import postgis_database_url, raw_connection
+from tests.conftest import on_test_db, postgis_database_url, raw_connection
 from tests.source_ingest import abr_prefecture_record, ingest_records, point_record, way_record, zigzag_point
 from tests.road_network_fixture import road_network
-
-#: DBから組むテストの印（テスト用DBへ繋ぎ、接続とイベントループをファイルで共有する。testing-backend.md パターン2）。
-_ON_TEST_DB = (pytest.mark.asyncio(loop_scope="module"), pytest.mark.usefixtures("road_graph_session"))
-
-
-def _on_test_db(test):
-    for mark in _ON_TEST_DB:
-        test = mark(test)
-    return test
-
 
 @pytest.fixture(autouse=True)
 def store(road_network_root):
@@ -166,7 +157,7 @@ def test_cleaning_up_after_start_removes_only_networks_of_other_shapes(store):
         [road_network_store.directory_name(2), "not-a-network", _other_shape(3)])
 
 
-@pytest.mark.parametrize("module", [road_network_build, elevation_profile])
+@pytest.mark.parametrize("module", [road_network_assembly, road_network_build, elevation_profile])
 def test_the_shape_changes_when_the_code_that_builds_the_network_changes(module):
     """事実から配列を組むコードを直すと、置き場の形の署名が変わる。変わらないと、直したコードのデプロイが、直す前のコードで
     組んだ置き場を読み続ける。"""
@@ -197,7 +188,7 @@ def _batch(distance_m: list[float], surface: list[str | None]) -> EdgeMaterialAr
 
 def test_batches_fill_consecutive_rows_and_share_one_vocabulary():
     """本番の道路網は束（20万区間）より大きく、束ごとに分類の語彙の番号が違う。"""
-    columns = road_network_store.MaterialColumns(4)
+    columns = road_network_assembly.MaterialColumns(4)
     columns.add(_batch([1.0, 2.0], ["砂利", "舗装"]))
     columns.add(_batch([3.0, 4.0], ["舗装", None]))
 
@@ -239,7 +230,7 @@ async def _derive(ways=_WAYS) -> None:
     shutil.rmtree(road_network_store.ROOT)
 
 
-@_on_test_db
+@on_test_db
 async def test_the_network_is_built_from_the_derived_tables_with_one_row_per_drivable_direction(
         road_graph_engine, caplog):
     await _derive()
@@ -259,7 +250,7 @@ async def test_the_network_is_built_from_the_derived_tables_with_one_row_per_dri
         assert network.node_osm_id.tolist() == list(_INGESTED_NODES)
         assert network.node_lon.tolist() == pytest.approx([_NODES[n][0] for n in _INGESTED_NODES])
         assert network.node_lat.tolist() == pytest.approx([_NODES[n][1] for n in _INGESTED_NODES])
-        assert network.node_has_signals.tolist() == [n == _SIGNAL_NODE for n in _INGESTED_NODES]
+        assert (network.node_signal_place >= 0).tolist() == [n == _SIGNAL_NODE for n in _INGESTED_NODES]
 
         # 区間ごとに走れる向きだけ、道・区間の番号順に順方向が先。端点のノードが無い道400の区間は落ちる。
         osm = network.node_osm_id
@@ -299,8 +290,7 @@ async def test_the_network_is_built_from_the_derived_tables_with_one_row_per_dri
 
         # 材料は、同じ有向の区間をリポジトリから引いた値と行ごとに揃う。
         materials = await repository.get_edge_material_arrays(
-            network.edge_way_id.tolist(), network.edge_segment.tolist(), network.edge_forward.tolist(),
-            await repository.get_accident_years_covered())
+            network.edge_way_id.tolist(), network.edge_segment.tolist(), network.edge_forward.tolist())
     assert network.categorical_ids == materials.categorical_ids
     assert materials.categorical_columns
     for column, (expected, vocab) in enumerate(zip(materials.categorical_columns, network.categorical_vocab)):
@@ -313,8 +303,13 @@ async def test_the_network_is_built_from_the_derived_tables_with_one_row_per_dri
     assert copied
     for name in copied:
         np.testing.assert_array_equal(getattr(network, name), getattr(materials, name), err_msg=name)
+    # 1kmあたりにする材料（`MaterialSpec.per_km`）は、読み出した区間の量を配列が区間の長さで割る。
     read = [i for i, material_id in enumerate(network.numeric_ids) if material_id not in (GRADIENT_PERCENT, ELEVATION_GAIN_PER_KM)]
-    np.testing.assert_array_equal(network.numeric_values[:, read], materials.numeric_values[:, read])
+    read_values = materials.numeric_values[:, read].astype(np.float64)
+    for position, column in enumerate(read):
+        if MATERIAL_CATALOG[network.numeric_ids[column]].per_km:
+            read_values[:, position] = per_km(read_values[:, position], materials.distance_m)
+    np.testing.assert_allclose(network.numeric_values[:, read], read_values, rtol=1e-6)
 
 
 def _bearing(a: int, b: int) -> float:
@@ -325,7 +320,7 @@ def _bearing(a: int, b: int) -> float:
     return math.degrees(math.atan2(x, y)) % 360
 
 
-@_on_test_db
+@on_test_db
 async def test_each_directed_edge_carries_the_bearings_beside_the_node_it_leaves_and_the_node_it_enters(
         road_graph_engine):
     """折れた1区間（ノード2で曲がり、分かれ道は無い）は、出る点のそばと入る点のそばで別の向きを持つ。
@@ -341,13 +336,13 @@ async def test_each_directed_edge_carries_the_bearings_beside_the_node_it_leaves
     assert network.edge_end_bearing_deg.tolist() == pytest.approx([_bearing(2, 3), _bearing(2, 1)], abs=0.5)
 
 
-@_on_test_db
+@on_test_db
 async def test_a_network_already_placed_for_the_current_revision_is_not_built_again(road_graph_engine):
     await _derive()
     session_factory = async_sessionmaker(road_graph_engine)
     placed = await road_network_store.ensure_current(session_factory)
-    manifest = json.loads((placed / "manifest.json").read_text(encoding="utf-8"))
-    (placed / "manifest.json").write_text(json.dumps({**manifest, "stop_cluster_distance_m": -1.0}), encoding="utf-8")
+    # 作り直せば置き場ごと置き換わり、この印は残らない。
+    (placed / "kept").write_text("", encoding="utf-8")
 
     assert await road_network_store.ensure_current(session_factory) == placed
-    assert road_network_store.current().stop_cluster_distance_m == -1.0
+    assert (placed / "kept").exists()

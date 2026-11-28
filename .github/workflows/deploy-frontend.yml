@@ -27,8 +27,9 @@ jobs:
     # 判定・入れ替え・反映の待ちを1つのジョブにし、まとめて1本ずつ走らせる。反映を待たずに次の判定へ進むと、後から終わった
     # 古いCIの実行が新しいコミットを上書きしうる。どの ref から起こしても本番（公開先）は1つなので、
     # レーンの鍵は master に決めてある（レーンは docs/architecture/tech-stack.md「CIの実行枠」）。
+    # deploy-backend と同じレーンに置き、本番の VM の上の docker の操作（ビルド・取得・片付け）を重ねない。
     concurrency:
-      group: master-lane-4
+      group: master-lane-5
       queue: max
     env:
       IMAGE: ghcr.io/${{ github.repository_owner }}/ride-compass-frontend
@@ -37,6 +38,7 @@ jobs:
         with:
           fetch-depth: 0
       - run: echo "VERSION_URL=$(jq -r .frontend production-origins.json)/api/version" >> "$GITHUB_ENV"
+      - run: echo "BACKEND_ORIGIN=$(jq -r .backend production-origins.json)" >> "$GITHUB_ENV"
       # 本番のVMへは、ランナーにある ssh で `ssh prod` として入る（deploy-backend.yml と同じ形）。
       - name: 本番のVMへ入る鍵を置く
         env:
@@ -101,6 +103,15 @@ jobs:
             sudo docker pull -q "$IMAGE:$COMMIT"
             # 新旧を同時に起こすと3000番を取り合うので、止めてから起こす（入れ替えの間の数秒は nginx が 502 を返す）。
             sudo docker rm -f ridecompass-frontend 2>/dev/null || true
+            # 管理画面（/admin）の Basic 認証の資格情報は backend と同じ値で、backend の環境のファイルから VM の中で写して渡す
+            # 毎回写すので、backend の資格情報を変えても次のデプロイで揃う。管理 API を取り次ぐ先の backend は、コンテナの中の
+            # localhost ではないので、公開の宛先を渡す。
+            FRONT_ENV=/home/ubuntu/ridecompass-frontend.env
+            { grep -E '^ADMIN_BASIC_AUTH_(USERNAME|PASSWORD)=' /home/ubuntu/ridecompass-backend.env
+              echo "BACKEND_INTERNAL_URL=${{ env.BACKEND_ORIGIN }}"; } > "$FRONT_ENV.new"
+            [ "$(wc -l < "$FRONT_ENV.new")" = 3 ] || { echo "backend の環境のファイルに管理の資格情報が2行ない" >&2; exit 1; }
+            chmod 600 "$FRONT_ENV.new"
+            mv "$FRONT_ENV.new" "$FRONT_ENV"
             # 上限は、同じVMの backend と DB の資源を食わないため。
             # --log-driver=journald: ログをVMのjournalへ送り、入れ替えでコンテナを消したあとも読めるようにする（docs/architecture/tech-stack.md「本番のログ」）。
             sudo docker run -d \
@@ -109,6 +120,7 @@ jobs:
               --memory=512m --memory-swap=512m --cpus=0.5 \
               -p 127.0.0.1:3000:3000 \
               --log-driver=journald \
+              --env-file "$FRONT_ENV" \
               "$IMAGE:$COMMIT"
             # 入れ替えたコンテナが今のコミットとして/api/versionに応答するまで待つ。`docker run -d`は起動の成否を見ない。
             WAIT_SECONDS=60
@@ -123,6 +135,11 @@ jobs:
               sleep 2
             done
             echo "入れ替えたコンテナが/api/versionに応答するまで $((SECONDS - WAIT_STARTED))秒 commit=$COMMIT"
+            # 管理画面に入れて、管理 API を backend へ取り次げるか（資格情報と宛先がコンテナに渡っているか）を1回見る。
+            ADMIN_USER=$(grep -E '^ADMIN_BASIC_AUTH_USERNAME=' "$FRONT_ENV" | cut -d= -f2-)
+            ADMIN_PASS=$(grep -E '^ADMIN_BASIC_AUTH_PASSWORD=' "$FRONT_ENV" | cut -d= -f2-)
+            ADMIN_STATUS=$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 -u "$ADMIN_USER:$ADMIN_PASS" http://127.0.0.1:3000/admin/api/db-status)
+            [ "$ADMIN_STATUS" = 200 ] || { echo "管理画面から管理 API を取り次げませんでした status=$ADMIN_STATUS" >&2; exit 1; }
             # 前のコミットの像を消す（置き場の像はコミットごとのタグで、残すとVMの空きを食う）。
             sudo docker images "$IMAGE" --format '{{.Repository}}:{{.Tag}}' | grep -vxF "$IMAGE:$COMMIT" | xargs -r sudo docker rmi > /dev/null
             sudo docker image prune -f > /dev/null

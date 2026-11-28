@@ -8,7 +8,7 @@
  *
  * 差し替えたもの: 道の区分の層は画面の設定の応答としてテストが組む（本番の層は管理DBが持つ）。
  *
- * ここで見ないもの: タブ・負担のグラフの見方・経由地の印 → `RouteProfile.test.tsx`。折れ線の点・帯の切れ目・地点の値・行の計算 →
+ * ここで見ないもの: タブ・ロスのグラフの見方・経由地の印 → `RouteProfile.test.tsx`。折れ線の点・帯の切れ目・地点の値・行の計算 →
  * `profileLayers.test.ts`。選んだレイヤを覚えること → `useProfileLayers.test.ts`。
  */
 import { screen, waitFor, within } from "@testing-library/react";
@@ -35,7 +35,7 @@ describe("RouteProfile の「表示」の図", () => {
     const chart = screen.getByRole("img", { name: "道のりに沿った情報" });
     expect(chart.querySelectorAll("polyline")).toHaveLength(1);
     expect(screen.getByText("標高 最高 32m・最低 12m")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "負担のグラフの見方を表示" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "ロスのグラフの見方を表示" })).toBeNull();
 
     await userEvent.click(screen.getByRole("button", { name: "グラフに出す情報" }));
     const elevation = within(screen.getByRole("dialog")).getByRole("checkbox", { name: "標高" });

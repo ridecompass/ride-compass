@@ -15,6 +15,7 @@ from typing import Annotated
 
 from cachetools import LRUCache
 from fastapi import Depends
+from google.auth.transport.requests import Request as GoogleRequestsTransport
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.services.generation_slots import GenerationSlots
@@ -25,6 +26,7 @@ from app.infrastructure.address_search import AddressSearchQuery
 from app.infrastructure.database import get_long_session_factory, get_session_factory
 from app.infrastructure.db_status import DbStatusQuery
 from app.infrastructure.flood_client import new_flood_cache
+from app.infrastructure.google_identity import GoogleIdTokenVerifier
 from app.infrastructure.gsi_tile_client import NOT_FOUND_MAX_ENTRIES, GsiTileClient
 from app.infrastructure.http_client import get_http_client
 from app.infrastructure.jma_amedas_client import new_latest_time_cache, new_station_table_cache
@@ -38,13 +40,15 @@ from app.infrastructure.facility_search import FacilitySearchQuery
 from app.infrastructure.place_address_query import PlaceAddressQuery
 from app.infrastructure.tuning_overrides import TuningOverrideStore
 from app.infrastructure.wbgt_client import new_forecast_cache, new_point_master_cache
+from app.services.account_service import AccountService
 from app.services.db_status_service import DbStatusService
 from app.services.flood_service import FloodService
 from app.services.graph_service import GraphService, SearchMemory
 from app.services.jma_amedas_service import JmaAmedasService
 from app.services.jma_tile_prewarm_service import prewarm_ingested_area
 from app.services.landcover_tile_service import get_landcover_tile
-from app.services.lens_service import LensService
+from app.services.time_frame_service import TimeFrameService, new_frame_cache
+from app.services.lens_service import LensService, new_response_cache
 from app.services.material_coverage_service import MaterialCoverageService
 from app.services.nearest_point_areas import new_cells_cache
 from app.services.place_search_service import PlaceSearchReads, PlaceSearchService
@@ -163,10 +167,14 @@ def get_landcover_tile_reader() -> LandcoverTileReader:
     return get_landcover_tile
 
 
+def _region_service(session: AsyncSession) -> RegionService:
+    return RegionService(repository=RoadGraphRepository(session))
+
+
 @asynccontextmanager
 async def _open_region_service(tile_sessions: async_sessionmaker[AsyncSession]) -> AsyncIterator[RegionService]:
     async with tile_sessions() as session:
-        yield RegionService(repository=RoadGraphRepository(session))
+        yield _region_service(session)
 
 
 async def get_region_service(tile_sessions: TileSessions):
@@ -177,7 +185,7 @@ async def get_region_service(tile_sessions: TileSessions):
 @asynccontextmanager
 async def _open_place_search_reads(tile_sessions: async_sessionmaker[AsyncSession]) -> AsyncIterator[PlaceSearchReads]:
     async with tile_sessions() as session:
-        yield PlaceSearchReads(RegionService(repository=RoadGraphRepository(session)), AddressSearchQuery(session),
+        yield PlaceSearchReads(_region_service(session), AddressSearchQuery(session),
                                FacilitySearchQuery(session), PlaceAreaQuery(session), PlaceAddressQuery(session))
 
 
@@ -185,18 +193,27 @@ def get_place_search_service(tile_sessions: TileSessions):
     return PlaceSearchService(partial(_open_place_search_reads, tile_sessions))
 
 
-async def get_lens_service(tile_sessions: TileSessions, weather_service: WeatherService = Depends(get_weather_service)):
-    """地図のレンズの道ごとの値。タイルのフィーチャーの鍵を読むセッション（値は取込範囲全体の道の網から求める）。"""
-    async with tile_sessions() as session:
-        yield LensService(weather_service, RoadGraphRepository(session))
+#: 地図のレンズの応答の持ち。サービスは要求ごとに作られるため、プロセスの側で持つ。
+_lens_responses = new_response_cache()
+#: 時刻で変わる値のコマの一覧の持ち。同じ理由でプロセスの側で持つ。
+_time_frames = new_frame_cache()
 
 
-async def get_road_inspector_service(tile_sessions: TileSessions,
-                                     weather_service: WeatherService = Depends(get_weather_service)):
-    """道の窓。道の一次属性とタイルのフィーチャーの鍵を、同じセッションで引く。"""
-    async with tile_sessions() as session:
-        repository = RoadGraphRepository(session)
-        yield RoadInspectorService(RegionService(repository=repository), LensService(weather_service, repository))
+def get_time_frame_service(weather_service: WeatherService = Depends(get_weather_service)) -> TimeFrameService:
+    """時刻で変わる値のコマの一覧と、要求に載ったコマの印を判定の時刻へ戻すこと。"""
+    return TimeFrameService(weather_service, _time_frames)
+
+
+def get_lens_service(weather_service: WeatherService = Depends(get_weather_service),
+                     time_frames: TimeFrameService = Depends(get_time_frame_service)):
+    """地図のレンズの道ごとの値（フィーチャーも値も、取込範囲全体の道の網から求める）。"""
+    return LensService(weather_service, _lens_responses, time_frames)
+
+
+async def get_road_inspector_service(tile_sessions: TileSessions, lens_service: LensService = Depends(get_lens_service)):
+    """道の窓。道の一次属性をDBから引く。"""
+    async with _open_region_service(tile_sessions) as region_service:
+        yield RoadInspectorService(region_service, lens_service)
 
 
 def get_jma_tile_client():
@@ -214,6 +231,19 @@ def get_gsi_tile_client():
 def get_jma_tile_prewarm() -> Callable[[], Awaitable[None]]:
     """気象庁タイルの定期プリウォームの1回（HTTPの要求の外の定期ジョブが呼ぶ）。"""
     return partial(prewarm_ingested_area, partial(_open_region_service, get_session_factory()), get_jma_tile_client())
+
+
+async def get_account_service(tile_sessions: TileSessions):
+    async with tile_sessions() as session:
+        yield AccountService(session)
+
+
+#: Google の証明書を取る口。接続を使い回すよう、プロセスで1つを持つ。
+_google_transport = GoogleRequestsTransport()
+
+
+def get_google_id_token_verifier() -> GoogleIdTokenVerifier:
+    return GoogleIdTokenVerifier(client_id=settings.google_client_id, transport=_google_transport)
 
 
 async def get_ride_track_service(long_sessions: LongSessions):

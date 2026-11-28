@@ -100,21 +100,12 @@ def queried_group(query: str) -> StopPlaceGroup | None:
     return _GROUP_BY_WORD.get(normalized_form(query))
 
 
-#: 同じ群・同じチェーンの地点を1つにまとめる距離（地面の m）。同じ店が出どころごとに少しずれた位置で
-#: 重なって入っているのを1つにする。チェーンの分からない地点は別々の店として扱い、まとめない。群を持たない地点が、同じ
-#: チェーンでこの距離の中の群を持つ地点と重なれば、群を持つほうへ寄せる（分類の違う出どころが同じ店を別の行で入れている）。
-MERGE_RADIUS_M = 30.0
-
-#: 名前に日本語の文字（かな・漢字）が無い地点を、同じ連絡先を持つ日本語の名前の地点へ寄せる群と、寄せる距離（地面の m）。
-#: 同じ場所が出どころの中で言語違いの別の行（Facebook のページ等）として重なって入っているのを1つにする。Overture の地点には
-#: 重なりを結ぶ ID も言語ごとの名前も無い。飲食は入れない——同じ連絡先を持つ近くの店は、同じビル・同じ会社の別の店が多い。
-#: 景色・名所は場所が広く、同じ公園の行が100m以上離れて入る。値の根拠は docs/modules/backend/static-road-attributes.md「立ち寄り先」。
-CONTACT_MERGE_RADIUS_M: dict[StopPlaceGroup, float] = {
-    StopPlaceGroup.SCENIC: 200.0,
-    StopPlaceGroup.LODGING: MERGE_RADIUS_M,
-    StopPlaceGroup.BATH: MERGE_RADIUS_M,
-    StopPlaceGroup.BICYCLE: MERGE_RADIUS_M,
-}
+#: 名前に日本語の文字（かな・漢字）が無い地点を、同じ連絡先を持つ日本語の名前の地点へ寄せる群。寄せる距離は群ごとの較正値
+#: （`domain/tuning.py: place_contact_merge_id`）。同じ場所が出どころの中で言語違いの別の行（Facebook のページ等）として
+#: 重なって入っているのを1つにする。Overture の地点には重なりを結ぶ ID も言語ごとの名前も無い。飲食は入れない——同じ連絡先を持つ
+#: 近くの店は、同じビル・同じ会社の別の店が多い。値の根拠は docs/modules/backend/static-road-attributes.md「立ち寄り先」。
+CONTACT_MERGE_GROUPS: tuple[StopPlaceGroup, ...] = (
+    StopPlaceGroup.SCENIC, StopPlaceGroup.LODGING, StopPlaceGroup.BATH, StopPlaceGroup.BICYCLE)
 
 @dataclass(frozen=True)
 class Chain:
@@ -213,13 +204,10 @@ def japanese_name_sql(name_expr: str) -> str:
 
 
 def contacts_sql(websites_expr: str, phones_expr: str) -> str:
-    """地点の連絡先（ウェブサイト・電話。文字列の配列か NULL）を、1つずつ比べられる形の行に出す副問い合わせ
-    （列`contact`）。ウェブサイトは小文字にして`http(s)://`・`www.`・末尾の`/`を除き、電話は数字だけにして頭の国番号を0にする
-    （配布には`+81339412222`と`03-3941-2222`の両方の書き方がある）。"""
-    website = "regexp_replace(lower(trim(w)), '^https?://(www\\.)?|^www\\.|/+$', '', 'g')"
-    phone = "regexp_replace(regexp_replace(t, '[^0-9]', '', 'g'), '^81', '0')"
-    return (f"SELECT 'w:' || {website} AS contact FROM unnest({websites_expr}) w WHERE {website} <> ''"
-            f" UNION SELECT 't:' || {phone} FROM unnest({phones_expr}) t WHERE {phone} <> ''")
+    """地点の連絡先（ウェブサイト・電話。書き方の揺れを外した文字列の配列か NULL）を、1つずつ比べられる形の行に出す副問い合わせ
+    （列`contact`）。ウェブサイトと電話は別の連絡先として比べ、空の値は連絡先に数えない。"""
+    return (f"SELECT 'w:' || w AS contact FROM unnest({websites_expr}) w WHERE w <> ''"
+            f" UNION SELECT 't:' || t FROM unnest({phones_expr}) t WHERE t <> ''")
 
 
 def store_name_sql(name_expr: str) -> str:
@@ -301,10 +289,6 @@ def overture_group_sql(categories: str) -> str:
         for group, words in OVERTURE_GROUP_WORDS)
     return f"CASE {whens} END"
 
-
-#: 同じ所有者の文化財の建物を1つの寺社にまとめる距離（地面の m）。境内に散らばる建物（本堂・山門・別院）は1つにし、
-#: 同じ名前の別の寺社・離れた奥之院は分ける。値の根拠は docs/modules/backend/static-road-attributes.md「立ち寄り先」。
-HERITAGE_MERGE_RADIUS_M = 1000.0
 
 #: 所有者の名前がこの語で終われば寺社。所有者の欄が寺社を名指すのは、法人の名前が寺社そのものの名前だから。
 #: キリスト教の教会・教団・教区と、新しい宗教団体（「〜教」「〜殿」等）はどれでも終わらない。
