@@ -218,7 +218,7 @@ describe("画面の枠", () => {
   it("区分の開閉は、次に開いたときも同じになる。「ルート設定」を畳んでもタブと生成の行は残る", async () => {
     const { user, unmount } = renderHome();
     await user.click(section("ルート設定"));
-    expect(screen.getByRole("tab", { name: "要因" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "難所" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /^ルート生成/ })).toBeInTheDocument();
     unmount();
 
