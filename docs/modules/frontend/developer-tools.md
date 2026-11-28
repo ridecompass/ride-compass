@@ -17,7 +17,7 @@
 | `features/admin/AdminPanels/TuningPanel.tsx` | 走ってみて決める較正値（backendの`domain/tuning.py`の宣言）をデプロイなしに変える画面。並べる項目はbackendが宣言から導き、効き方ごとにまとめる（変えたのに効かない群を見分ける）。入力は「DBへ保存」でまとめて送る（値の正本はDBで、画面に既定は無い） | `/admin`「較正値」タブ |
 | `features/admin/AdminPanels/DbStatusPanel.tsx` | 本番DBの土台（取込のrunの失敗・行の有無・プランナの統計・放置されたトランザクション）を、ほかのパネルと同じ1行の形で見せる | `/admin`「データ保守」タブ |
 | `features/admin/AdminPanels/ReportCard.tsx`・`features/admin/AdminPanels/StatusRowList.tsx` | 「材料」「データ保守」の集計のカード（DB全体の走査を伴うので、開いたときには取らず「集計する」を押したときだけ取る。説明はⓘの奥）と、点検の行の一覧（名前の右に規模、開くと中身。手当ての要否を丸の色と読み上げの文の両方で持つ）。件数・時点の書き方（`features/admin/AdminPanels/ReportCard.tsx: formatCount`・`features/admin/AdminPanels/ReportCard.tsx: formatMoment`）も持つ | 上記のパネル |
-| `components/HeaderMenu/HeaderMenu.tsx` | 頭のアプリの名前と版・使い方の説明の入口（「使い方を見る」。[ページ全体構成](page-composition.md)「使い方の説明」）・初回の案内を出し直す入口（[ページ全体構成](page-composition.md)「初回の案内」）・走行の記録のコピー（下記「走行の計測」。記録があるときだけ）・デバッグログ表示と、区切りの下の地図を描き直す（[地図: 静的レイヤー](static-map-layers.md)「まとめて戻す操作」）を1個のメニューアイコンへ集約したRadix Popover。頭の版は動いている版（コミットの頭8文字）で、確かめ待ちの変更が本番に出たかを利用者が画面から見分けられるようにする | `app/HomeHeader.tsx`（`/`のヘッダー） |
+| `components/HeaderMenu/HeaderMenu.tsx` | 頭のアプリの名前と版・使い方の説明の入口（「使い方を見る」。[ページ全体構成](page-composition.md)「使い方の説明」）・初回の案内を出し直す入口（[ページ全体構成](page-composition.md)「初回の案内」）・走行ログのページ（下記「走りの記録」）へのリンク・走行の記録のコピー（下記「走行の計測」。記録があるときだけ）・デバッグログ表示と、区切りの下の地図を描き直す（[地図: 静的レイヤー](static-map-layers.md)「まとめて戻す操作」）を1個のメニューアイコンへ集約したRadix Popover。頭の版は動いている版（コミットの頭8文字）で、確かめ待ちの変更が本番に出たかを利用者が画面から見分けられるようにする | `app/HomeHeader.tsx`（`/`のヘッダー） |
 | `features/admin/DebugPanel/DebugPanel.tsx` | デバッグログ表示のON/OFFトグル | `/admin`「開発者」タブ |
 | `components/DebugConsole/DebugConsole.tsx` | 地図イベント・外部API呼び出しの詳細ログを時系列表示するフローティングパネル。**表示中の行をそのままの形でコピーできる**（絞り込みを無視して全件にすると、絞って見つけた数行を渡したいときに関係ない行まで混ざる） | `app/HomeHeader.tsx`（`/`のヘッダーの下）、`HeaderMenu.tsx: HeaderMenu`から開閉 |
 | `features/admin/SystemStatusPanel/SystemStatusPanel.tsx` | backend `/api/debug/stats`の集計・フロントバージョン・予報（MSM）の同期鮮度を表示するフローティングパネル | `/admin`「開発者」タブ |
@@ -32,10 +32,13 @@
 | `lib/rideTrack.ts` | 走りの記録: 走行モードの間の位置と出来事・推したルート・生成の条件・見せた予報を走りごとに溜める（下記「走りの記録」） | 位置・出来事（`features/ride/rideRecording.ts`）・候補と条件と読み込み直し（`app/useRideGuidance.ts`）・予報（`features/conditions/useWeatherConditions.ts`）が記録の口を呼ぶ |
 | `lib/rideTrackStore.ts` | 走りの記録の端末の置き場: 走りを一覧・見出し・変わったときだけ書くもの・点の区切りの鍵に分けて読み書きし、書けなければ古い走りを消して書き直し、走り終えたものを送る形で組み立てる | `lib/rideTrack.ts`が書き、`services/rideTrackApi.ts`が送るものを読んで送れたものを消し、`features/ride/useRideKeep.ts`が残さない走りを消し、`app/error.tsx`が鍵の頭で残す |
 | `services/rideTrackApi.ts` | 走り終えて送っていない走りを、ログインの札（cookie）を付けて`POST /api/rides`へ古い順に送り、書けたものを端末で消し、全部を書けたかを返す。本文は本番の nginx の要求の大きさの上限（既定の 1MB）に長い走りも収めるため、gzip で縮めて送る | 残すと決まったとき（`features/ride/useRideKeep.ts`） |
-| `services/accountApi.ts` | 自分の状態（ログイン・同意・ログインのボタンに使うクライアント ID）を読む・Google の ID トークンでログインする・規約の版に同意する口。どれもログインの札（cookie）を付けて送る | `features/ride/useRideKeep.ts` |
+| `services/accountApi.ts` | 自分の状態（ログイン・同意・ログインのボタンに使うクライアント ID）を読む・Google の ID トークンでログインする・ログアウトする・規約の版に同意する・同意をやめる口と、自分の走りの一覧・1件（走った線つき）を読む・1件を消す口。どれもログインの札（cookie）を付けて送る | `features/ride/useRideKeep.ts`・`features/ride/RideLog/RideLog.tsx` |
 | `features/ride/useRideKeep.ts` | 案内を終えた走りを残すか: 同意済みなら聞かずに送り、そうでなければ送っていない走りがあるときだけ聞き、ログインと同意を経て送る。残さなければ端末から消す（下記「走りの記録」） | 案内を終えたとき（`useRideMode.ts`の終えたときの知らせを`app/page.tsx`が渡す） |
 | `features/ride/RideKeepCard/RideKeepCard.tsx`・`features/ride/RideKeepCard/GoogleSignInButton.tsx` | 残すかを聞く地図の上のカード（残す・残さない・ログイン・同意・残した・残せなかった）と、Google Identity Services の公式のログインのボタン（スクリプトを1回だけ読み、初期化を1回だけ呼ぶ） | `app/HomeMapPane.tsx`が、走行モードでない間に初回の案内と同じ所へ出す |
+| `app/ride-log/page.tsx`・`app/ride-log/RideLogWithMap.tsx`・`features/ride/RideLog/RideLog.tsx` | 走行ログのページ（下記「走りの記録」）: ログインした人の走りの一覧（始めた日時・距離・かかった時間）と、押した1件の走った線の地図と消す操作、記録をやめる・ログアウト。ログインしていなければ Google のログインのボタンを出す。地図は機能をまたぐので、ページが走行ログの部品へ地図を描く関数を渡す | ヘッダーのメニュー（`components/HeaderMenu/HeaderMenu.tsx`）の「走行ログ」と、残したときのカードの「見る」が開く |
+| `features/map/RideTrackMap/RideTrackMap.tsx`・`features/map/scene/groups/rideTrack.ts` | 走行ログで1件の走った線を描く地図（線の範囲へ寄せる）と、その場面の群（休むごとに分かれた線を、つながずに予定の線と違う色で描く） | `app/ride-log/RideLogWithMap.tsx` |
 | `app/terms/page.tsx`・`app/privacy/page.tsx`・`components/LegalPage/LegalPage.tsx` | 利用規約とプライバシーポリシーのページと、その骨組み・運営者と問い合わせの節 | 同意のカードと規約のページどうしがリンクする |
+| `components/AppPage/AppPage.tsx` | 地図の画面の外に開くページ（規約のページ・走行ログ）の骨組み: トップへ戻るリンクと見出し | `components/LegalPage/LegalPage.tsx`・`app/ride-log/page.tsx` |
 | `app/api/version/route.ts`・`services/versionApi.ts` | フロントエンドの動いている版（コミット・起動時刻）を返すNext.js route handlerと、それを読む口（`SystemStatusPanel`と`HeaderMenu`の頭の版が読む） | |
 
 ## 開発の道具（`frontend/scripts/`）
@@ -132,6 +135,8 @@ Chrome にだけある口で、無い端末ではその項目を null・0 のま
 - 位置ごとに書き直す走りの見出しは小さく保ち、ルートの線・生成の条件・予報は別の鍵に、変わったときだけ書く。
 - 画面のエラーの境目の「端末に保存した値を消して再試行」は、走りの記録（鍵の頭`lib/rideTrackStore.ts: RIDE_TRACK_KEY_PREFIX`）を消さない。
   記録の読みは、読めない値を無いものとして扱って画面を落とさず、送るまでほかに写しが無いため。
+- 残した走りは、ヘッダーのメニューの「走行ログ」から開く走行ログのページで見返し、1件ずつ消せる（消すと戻せないので、確かめてから消す）。
+  同意をやめる（記録をやめる）のもこのページで、やめても残した走りは消えず、次に走りを残すときに同意を聞き直す。
 - 受けた走りは backend が GPX にして表に残す（[横断的なインフラ](../backend/cross-cutting-infrastructure.md)の`ride_tracks`の行）。
 
 ## 暗黙の前提

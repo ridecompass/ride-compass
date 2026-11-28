@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useId } from "react";
 
-import { Button } from "@/components/ui/Button/Button";
+import { Button, buttonVariants } from "@/components/ui/Button/Button";
 import { MAP_TOP_CARD_CLASS } from "@/components/FirstVisitIntro/FirstVisitIntro";
 import { textVariants } from "@/components/ui/Text/Text";
 import { cn } from "@/lib/cn";
@@ -107,6 +107,16 @@ export default function RideKeepCard({ rideKeep }: { rideKeep: RideKeep }) {
             同意して残す
           </Button>
         </>
+      )}
+
+      {step.kind === "kept" && (
+        <Link
+          href="/ride-log"
+          className={cn(buttonVariants({ variant: "primary", size: "sm" }), "self-end")}
+          data-usage="残した走りを、走行ログのページで見返します。"
+        >
+          見る
+        </Link>
       )}
 
       {step.kind === "failed" && <p className={cn(textVariants({ variant: "body" }), "m-0")}>{step.message}</p>}

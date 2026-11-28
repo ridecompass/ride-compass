@@ -16,6 +16,7 @@ import { stopRideTrack } from "@/lib/rideTrack";
 import { pendingRideUploads, type RideUploadBody } from "@/lib/rideTrackStore";
 import { accountStatus, gunzippedJson, inTurn, onBackend, onSameOrigin, onUrl } from "@/testing/backendServer";
 import { installGeolocation } from "@/testing/geolocation";
+import { installGoogleSignIn } from "@/testing/googleSignIn";
 import {
   HERE,
   LOOP_CONDITIONS,
@@ -127,6 +128,7 @@ describe("走りの記録", () => {
     await user.click(screen.getByRole("button", { name: "同意して残す" }));
 
     expect(await screen.findByRole("heading", { name: "走行ログに残しました" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "見る" })).toHaveAttribute("href", "/ride-log");
     expect(consent.map(({ body }) => body)).toEqual([{ terms_version: 3 }]);
     expect(sent).toHaveLength(1);
     expect(pendingRideUploads().length).toBe(0);
@@ -145,27 +147,4 @@ async function rideOnce() {
   await rendered.user.click(screen.getByRole("button", { name: "走行モード" }));
   await rendered.user.click(screen.getByRole("button", { name: "案内を終える" }));
   return rendered;
-}
-
-/** Google のログインの口を置く。描いたボタンを押すと、初めに渡された受け口へ ID トークンを渡す。 */
-function installGoogleSignIn() {
-  const seen: { clientId: string | null } = { clientId: null };
-  let callback: ((response: { credential: string }) => void) | null = null;
-  window.google = {
-    accounts: {
-      id: {
-        initialize(config) {
-          seen.clientId = config.client_id;
-          callback = config.callback;
-        },
-        renderButton(parent) {
-          const button = document.createElement("button");
-          button.textContent = "Google のボタン";
-          button.onclick = () => callback?.({ credential: "id-token" });
-          parent.append(button);
-        },
-      },
-    },
-  };
-  return seen;
 }

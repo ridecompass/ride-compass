@@ -1,11 +1,12 @@
 "use client";
 
+import Link from "next/link";
 import { useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/Popover/Popover";
-import { Button } from "@/components/ui/Button/Button";
+import { Button, buttonVariants } from "@/components/ui/Button/Button";
 import { LogIcon } from "@/components/ui/icons/icons";
-import { CopyIcon, HelpIcon, IntroIcon, MenuIcon, RedrawMapIcon } from "@/components/ui/icons/lucideIcons";
+import { CopyIcon, HelpIcon, IntroIcon, MenuIcon, RedrawMapIcon, RideLogIcon } from "@/components/ui/icons/lucideIcons";
 import { textVariants } from "@/components/ui/Text/Text";
 import { Toggle } from "@/components/ui/Toggle/Toggle";
 import { useCopyToClipboard } from "@/hooks/useCopyToClipboard";
@@ -100,6 +101,14 @@ export default function HeaderMenu({
           <IntroIcon size={15} />
           初回の案内をもう一度見る
         </Button>
+        <Link
+          href="/ride-log"
+          className={buttonVariants({ variant: "menu", size: "sm" })}
+          data-usage="Google でログインして残した自分の走りを、一覧と地図で見返して消せるページを開きます。"
+        >
+          <RideLogIcon size={15} />
+          走行ログ
+        </Link>
         {rideMetrics !== null && (
           // 写したことはメニューの中の名前で見せるので、押しても閉じない。
           <Button

@@ -1,6 +1,7 @@
 // 意味の決まった汎用の形（lucide-react）を、自前の形と同じ呼び方と線の太さへ包んで書き出す。
 import {
   Mountain,
+  NotebookText,
   Road,
   Sigma,
   ArrowUp,
@@ -128,6 +129,8 @@ export const SpeedGaugeIcon = fromLucide(Gauge);
 export const HelpIcon = fromLucide(CircleQuestionMark);
 /** 初めて開いたときに出す案内を、もう一度出す。 */
 export const IntroIcon = fromLucide(BookOpen);
+/** 自分の走りを見返す走行ログ。 */
+export const RideLogIcon = fromLucide(NotebookText);
 /** 地図で選んでいる区間の地点。 */
 export const SelectedSpotIcon = fromLucide(MapPin);
 /** 押さえたまま上下へ動かして、行の順を入れ替える所。 */

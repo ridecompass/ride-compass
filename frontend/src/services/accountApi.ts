@@ -37,3 +37,60 @@ export async function consentToTerms(termsVersion: number): Promise<void> {
     },
   );
 }
+
+/** 同意をやめる（`DELETE /api/me/consent`）。以後の走りは受けられず、それまでの走りは残る。 */
+export async function withdrawConsent(): Promise<void> {
+  await requestApi((init) => backendApi.DELETE("/api/me/consent", { ...init, ...WITH_SESSION }), {
+    category: "api:account",
+    messages: { failure: "記録をやめられませんでした", parseFailure: "記録をやめられませんでした" },
+  });
+}
+
+/** ログアウトする（`POST /api/me/logout`）。札の cookie は応答が消す。 */
+export async function signOut(): Promise<void> {
+  await requestApi((init) => backendApi.POST("/api/me/logout", { ...init, ...WITH_SESSION }), {
+    category: "api:account",
+    messages: { failure: "ログアウトできませんでした", parseFailure: "ログアウトできませんでした" },
+  });
+}
+
+/** 走行ログの1件の要約（始めた時刻・距離・かかった時間）。 */
+export type RideSummary = components["schemas"]["RideSummary"];
+/** 走行ログの1件と、走った線（休むごとに分けた線。点は[経度, 緯度]）。 */
+export type RideDetail = components["schemas"]["RideDetail"];
+
+/** 自分の走りの一覧を、新しい順に読む（`GET /api/me/rides`）。 */
+export function listMyRides(): Promise<RideSummary[]> {
+  return requestApi((init) => backendApi.GET("/api/me/rides", { ...init, ...WITH_SESSION }), {
+    category: "api:account",
+    messages: { failure: "走行ログを読めませんでした", parseFailure: "走行ログを読めませんでした" },
+  });
+}
+
+/** 自分の走りの1件を読む（`GET /api/me/rides/{ride_id}`）。 */
+export function getMyRide(rideId: string): Promise<RideDetail> {
+  return requestApi(
+    (init) =>
+      backendApi.GET("/api/me/rides/{ride_id}", { ...init, ...WITH_SESSION, params: { path: { ride_id: rideId } } }),
+    {
+      category: "api:account",
+      messages: { failure: "走りを読めませんでした", parseFailure: "走りを読めませんでした" },
+    },
+  );
+}
+
+/** 自分の走りの1件を消す（`DELETE /api/me/rides/{ride_id}`）。 */
+export async function deleteMyRide(rideId: string): Promise<void> {
+  await requestApi(
+    (init) =>
+      backendApi.DELETE("/api/me/rides/{ride_id}", {
+        ...init,
+        ...WITH_SESSION,
+        params: { path: { ride_id: rideId } },
+      }),
+    {
+      category: "api:account",
+      messages: { failure: "走りを消せませんでした", parseFailure: "走りを消せませんでした" },
+    },
+  );
+}
