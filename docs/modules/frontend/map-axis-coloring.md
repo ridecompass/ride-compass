@@ -18,7 +18,7 @@
 | `lib/mapDisplay/costLensPaint.ts` | 費用のレンズの段の塗りの宣言（`lib/mapDisplay/costLensPaint.ts: costLensPaint`）と、レンズの値と事実の数の書き方。地図の道・ルートの線・候補の帯・道の窓が同じ段と同じ書き方にする |
 | `hooks/useCostAxisCatalog.ts` | 費用の軸の一覧（`GET /api/cost-axes`）を画面が読む形で共有する取得（`services/costAxisCatalogApi.ts: getCostAxisCatalog`） |
 | `lib/mapDisplay/valueScale.ts` | 地図が値を塗る宣言（`lib/mapDisplay/valueScale.ts: MapPaintDeclaration`）・段の並び（`lib/mapDisplay/valueScale.ts: valueBands`）・値が段に入るかの式（`lib/mapDisplay/valueScale.ts: bandCondition`・`lib/mapDisplay/valueScale.ts: bandStep`）・数の値が入る段（`lib/mapDisplay/valueScale.ts: bandAt`）。ルート前の道の線・ルート後の色分け・凡例・候補の帯が共有する（下記「valueScale.ts」） |
-| `features/map/scene/groups/axisLines.ts` | ルート確定前にレンズの値で道を塗る線の宣言。道ごとの材料のfeature-stateと走る条件のglobal-state、段の色、値が無い道・取得中の道の色と濃さ、値が無い道の破線（下記「レンズの線」） |
+| `features/map/scene/groups/axisLines.ts` | ルート確定前にレンズの値で道を塗る線の宣言。道ごとの材料のfeature-stateと走る条件のglobal-state、段の色、値が無い道・取得中の道の色と濃さ（下記「レンズの線」） |
 | `features/map/scene/wayValueFormula.ts` | 式の木をMapLibreの式へ置き換える唯一の所（下記「レンズの線」）。木の中身は持たず、節の種類ごとの置き換え方だけを持つ |
 | `features/map/layers/dynamicWayValues.ts` | 材料を引く道路タイルの選び方（地図のズームをタイルのある範囲へ丸め、画面を覆うタイルを並べる。1回の数の上限を超える傾けた・回した大きな画面では、画面の中心に近いタイルから上限まで取り、端を落としたことを返す）・複数タイル応答の統合 |
 | `features/map/layers/webMercatorTile.ts` | Web MercatorのXYZタイルと緯度経度の行き来（点のタイル座標・点を含むタイル（世界の端はタイルの番号の範囲へ寄せる）・タイルが覆う範囲）。backendと同じ式で、一致は表の組`region`で照らす。道路タイルの値を引くタイルと、気象庁のタイルの在否の判定（`jmaTileIndex.ts`）が同じ式を通る |
@@ -118,9 +118,10 @@
 ## レンズの線（`scene/groups/axisLines.ts`）
 
 ルート確定前に道を塗る線は、道ごとの材料をfeature-state（鍵は`<レンズのid>:<材料の名前>`）で路面タイルの道へ載せ、走る向きを
-地図全体のglobal-state（式の木の条件の名前`bearing_deg`）に置き、式の木を置き換えた式で道ごとの値を求めて、レンズごとに2本の
-線で描く。実線の線（レイヤーの役割はレンズのid）が値のある道を段の色で塗り、破線の線（役割は`<レンズのid>-no-data`）が値の無い
-道だけを描く。
+地図全体のglobal-state（式の木の条件の名前`bearing_deg`）に置き、式の木を置き換えた式で道ごとの値を求めて、レンズごとに1本の
+線（レイヤーの役割はレンズのid）で描く。値のある道は段の色、値の無い道は薄い灰色、まだ材料の届いていない道は取得中の色にする。
+値の無い道を破線にしないのは、MapLibreの`line-dasharray`がfeature-stateを読めず、破線にするには全部の道を描く線をもう1本
+重ねることになり、レンズを出している間の描く量が倍になるため。
 
 - **木が読む条件は、変えても材料を取り直さない。** global-stateを置き直すだけで色が変わる。材料の要求へ載せる条件（時刻・想定
   速度）が変わると取り直す。
