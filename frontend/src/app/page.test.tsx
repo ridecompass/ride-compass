@@ -212,6 +212,54 @@ describe("ルートを作る", () => {
     });
   });
 
+  it("ひな形を押すと難所と道路の段がまとめてその設定になって生成の要求に載り、タブで変えると押した印が外れ、「標準」で両方とも標準に戻る", async () => {
+    serveCostAxisCatalog();
+    serveClientConfig(
+      clientConfigResponse({
+        road_classes: roadClassCatalog({
+          avoidance: {
+            levels: AVOIDANCE_LEVELS,
+            sections: [{ key: "surface", label: "路面" }],
+            rows: [avoidanceRow("surface.gravel", "surface")],
+          },
+        }),
+        route_profiles: [
+          {
+            name: "夜",
+            description: "",
+            cost_preference: { strength: 1.5, multipliers: { vibration: 2 }, disabled_axes: [] },
+            road_avoidance: { "surface.gravel": "avoid" },
+          },
+        ],
+      }),
+    );
+    const { user } = renderHome();
+    await user.click(screen.getByRole("tab", { name: "難所" }));
+    const profiles = () => within(screen.getAllByRole("radiogroup", { name: "ひな形" })[0]);
+    const pressed = () => profiles().getByRole("radio", { checked: true }).textContent;
+
+    expect(await screen.findAllByRole("radio", { name: "夜" })).not.toHaveLength(0);
+    expect(pressed()).toBe("標準");
+    await user.click(profiles().getByRole("radio", { name: "夜" }));
+
+    jobs.respond([FIRST], LOOP_CONDITIONS);
+    const request = await generate(user);
+    expect(request.cost_preference).toEqual({ strength: 1.5, multipliers: { vibration: 2 }, disabled_axes: [] });
+    expect(request.road_avoidance).toEqual({ "surface.gravel": "avoid" });
+    expect(pressed()).toBe("夜");
+
+    await user.click(
+      within(screen.getByRole("radiogroup", { name: "総合の割合" })).getByRole("radio", { name: "200%" }),
+    );
+    expect(profiles().queryByRole("radio", { checked: true })).toBeNull();
+
+    await user.click(profiles().getByRole("radio", { name: "標準" }));
+    jobs.respond([FIRST], LOOP_CONDITIONS);
+    const reset = await generate(user);
+    expect(reset.cost_preference).toEqual({ strength: 1, multipliers: {}, disabled_axes: [] });
+    expect(reset.road_avoidance).toEqual({});
+  });
+
   it("端末に残った、今の費用の軸の一覧に無い軸の倍率と無効は、生成の要求に載らない（載せると backend が断る）", async () => {
     localStorage.setItem(
       "ridecompass:cost-preference",

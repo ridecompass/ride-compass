@@ -26,6 +26,7 @@ from app.domain.road_features import (
 from app.domain.timed_regulations import regulated_rows_within, regulation_variant
 from app.domain.model_settings import ModelSettings, current_model_settings
 from app.domain.road_class_catalog import RoadClassCatalog, road_class_catalog
+from app.domain.route_profiles import PublishedRouteProfile, current_route_profiles
 from app.domain.strict_model import StrictModel
 from app.domain.tuning import REBUILT_CLIENT_TUNING_IDS, client_tuning_values
 from app.infrastructure.debug_log import log_external_call
@@ -58,6 +59,8 @@ class ClientConfigResponse(StrictModel):
     accident_years: list[int]
     # 道の区分（`domain/road_class_catalog.py: road_class_catalog`）。
     road_classes: RoadClassCatalog
+    # 公開したひな形（`domain/route_profiles.py: RouteProfiles.published`。並びは画面に出す順）。
+    route_profiles: list[PublishedRouteProfile]
 
 
 class RegionService:
@@ -195,6 +198,7 @@ class RegionService:
             client_tuning={**client_tuning_values(settings.tuning), **rebuilt},
             accident_years=years,
             road_classes=road_class_catalog(settings.road_classes, settings.tuning),
+            route_profiles=current_route_profiles().published(),
         )
 
     async def get_ingested_area(self) -> BoundingBox | None:

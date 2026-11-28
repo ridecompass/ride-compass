@@ -41,6 +41,8 @@ ROUTE_CASES = {
     ("PUT", "/api/admin/road-classes"): ("/api/admin/road-classes", EMPTY_ROAD_CLASSES.model_dump(mode="json"), 503),
     ("GET", "/api/admin/cost-axes"): ("/api/admin/cost-axes", None, 503),
     ("PUT", "/api/admin/cost-axes"): ("/api/admin/cost-axes", COST_AXES_BODY, 503),
+    ("GET", "/api/admin/route-profiles"): ("/api/admin/route-profiles", None, 503),
+    ("PUT", "/api/admin/route-profiles"): ("/api/admin/route-profiles", {"profiles": []}, 503),
     ("PUT", "/api/admin/tuning/{param_id}"): (f"/api/admin/tuning/{TUNING_PARAMETERS[0].id}", {"value": TUNING[TUNING_PARAMETERS[0].id]}, 503),
     ("GET", "/api/admin/material-catalog/coverage"): ("/api/admin/material-catalog/coverage", None, 503),
     ("GET", "/api/admin/db-status"): ("/api/admin/db-status", None, 503),

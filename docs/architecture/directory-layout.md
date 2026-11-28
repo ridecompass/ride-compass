@@ -179,7 +179,8 @@ VMはデプロイのたびに作業コピー（`~/ridecompass-repo`）をその�
 
 **費用の軸・道の区分の行データはコードに無い。** 管理DBの表（`cost_axis_definitions`・道の区分の表）が唯一の
 正本で、変更は管理API（`/api/admin/cost-axes`・`/api/admin/road-classes`）経由のみ
-（[deployment-sync.md](../../.claude/rules/deployment-sync.md)「コミットと同時に揃えるもの」）。
+（[deployment-sync.md](../../.claude/rules/deployment-sync.md)「コミットと同時に揃えるもの」）。運営が配るひな形（表`route_profiles`）も
+同じで、管理API（`/api/admin/route-profiles`）だけが書く。
 
 ## frontend（`frontend/src/`）
 

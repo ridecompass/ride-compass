@@ -10,8 +10,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domain.cost_axes import CostAxisDefinitions, check_cost_axes, replace_cost_axes, surplus_class_weights
 from app.domain.road_classes import RoadClassDefinitions, current_road_classes
+from app.domain.route_profiles import without_missing_axes
 from app.infrastructure.cost_axis_repository import read_cost_axes, replace_cost_axes_row
 from app.infrastructure.road_class_repository import read_road_classes
+from app.services.route_profile_service import apply_pruned_route_profiles, write_pruned_route_profiles
 
 logger = logging.getLogger("ridecompass.cost_axes")
 
@@ -60,7 +62,11 @@ class CostAxisAdminService:
             await self._session.rollback()
             raise CostAxesRejectedError(f"費用の軸の定義が通りません（{'／'.join(problems)}）")
         await replace_cost_axes_row(self._session, definitions)
+        # ひな形が名指す軸も、軸と同じ取引で今の軸へ揃える（ひな形はいつも今ある軸だけを指す）。
+        profiles, removed = await write_pruned_route_profiles(
+            self._session, lambda current: without_missing_axes(current, definitions))
         await self._session.commit()
         replace_cost_axes(definitions)
+        apply_pruned_route_profiles(profiles, removed)
         warn_surplus_class_weights(definitions, road_classes)
         return definitions
