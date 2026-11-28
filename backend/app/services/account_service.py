@@ -42,7 +42,7 @@ class AccountService:
         await insert_session(self._session, account_id, token_hash=_token_hash(token),
                              expires_at=datetime.now(UTC) + SESSION_LIFETIME)
         await self._session.commit()
-        return token, await self.status(account_id)
+        return token, await self.status(account_id, verifier.client_id)
 
     async def sign_out(self, token: str) -> None:
         await delete_session(self._session, _token_hash(token))
@@ -57,9 +57,10 @@ class AccountService:
     async def has_current_consent(self, account_id: UUID) -> bool:
         return await has_consent(self._session, account_id, TERMS_VERSION)
 
-    async def status(self, account_id: UUID | None) -> AccountStatus:
+    async def status(self, account_id: UUID | None, google_client_id: str) -> AccountStatus:
         consented = account_id is not None and await self.has_current_consent(account_id)
-        return AccountStatus(signed_in=account_id is not None, consented=consented, terms_version=TERMS_VERSION)
+        return AccountStatus(signed_in=account_id is not None, consented=consented, terms_version=TERMS_VERSION,
+                             google_client_id=google_client_id or None)
 
     async def consent(self, account_id: UUID) -> None:
         """今の規約の版に同意する。同意していれば何もしない。"""

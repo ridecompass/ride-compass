@@ -23,6 +23,7 @@ from app.infrastructure.account_models import AccountRow
 from app.infrastructure.ride_track_models import RideTrackRow
 from app.main import app
 from tests.google_login import (
+    CLIENT_ID,
     FORGED_KEY,
     CertsTransport,
     id_token,
@@ -71,7 +72,8 @@ async def test_a_google_id_token_signs_in_with_a_session_cookie_only_the_backend
     async with clients() as client:
         response = await sign_in(client, "google-sub-a")
         assert response.status_code == 200
-        assert response.json() == {"signed_in": True, "consented": False, "terms_version": TERMS_VERSION}
+        assert response.json() == {"signed_in": True, "consented": False, "terms_version": TERMS_VERSION,
+                                    "google_client_id": CLIENT_ID}
         cookie = response.headers["set-cookie"]
         assert cookie.startswith(f"{SESSION_COOKIE}=")
         attributes = {part.strip().split("=")[0].lower() for part in cookie.split(";")[1:]}
@@ -113,7 +115,10 @@ async def test_login_is_refused_when_it_cannot_be_checked(clients, override_depe
     use_google(override_dependency, client_id=client_id, transport=transport)
     async with clients() as client:
         response = await sign_in(client, "google-sub-a")
+        # 画面はクライアント ID を状態から読むので、設定の無い環境ではボタンを出さずに済む。
+        shown_client_id = (await _status(client))["google_client_id"]
     assert response.status_code == status
+    assert shown_client_id == (client_id or None)
     assert "set-cookie" not in response.headers
 
 
@@ -159,7 +164,8 @@ async def test_consent_is_given_to_the_current_terms_and_withdrawing_it_keeps_th
         ride_id = await _post_ride(client, [[1000, 35000000, 139000000, None, None, None, None, None]], [])
 
         assert (await client.delete("/api/me/consent")).status_code == 204
-        assert (await _status(client)) == {"signed_in": True, "consented": False, "terms_version": TERMS_VERSION}
+        assert (await _status(client)) == {"signed_in": True, "consented": False, "terms_version": TERMS_VERSION,
+                                           "google_client_id": CLIENT_ID}
         assert [ride["id"] for ride in (await client.get("/api/me/rides")).json()] == [ride_id]
 
 

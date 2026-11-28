@@ -688,6 +688,8 @@ export interface components {
             consented: boolean;
             /** Terms Version */
             terms_version: number;
+            /** Google Client Id */
+            google_client_id: string | null;
         };
         /** ActiveFloodForecast */
         ActiveFloodForecast: {

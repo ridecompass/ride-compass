@@ -102,11 +102,15 @@ export const writeExtras = (id: string, extras: TrackExtras) => writeStored(extr
 export const writeChunk = (id: string, index: number, points: StoredPoint[]) =>
   writeStored(chunkKey(id, index), LABEL, points);
 
+/** 走り終えて、まだ送っていない走りの id（古い順）。 */
+export function endedRideIds(): string[] {
+  return rideIds().filter((id) => readMeta(id)?.ended === true);
+}
+
 /** 走り終えて、まだ送っていない走り（古い順）。 */
 export function pendingRideUploads(): RideUploadBody[] {
-  return rideIds().flatMap((id) => {
-    const meta = readMeta(id);
-    if (meta === null || !meta.ended) return [];
+  return endedRideIds().flatMap((id) => {
+    const meta = readMeta(id)!;
     const points: StoredPoint[] = [];
     for (let index = 0; index < meta.chunks; index += 1) points.push(...readChunk(id, index));
     return [
@@ -123,7 +127,7 @@ export function pendingRideUploads(): RideUploadBody[] {
   });
 }
 
-/** 送れた走りを端末から消す。 */
+/** 走りを端末から消す（送れた・残さないと決めた）。 */
 export function removeRideTrack(id: string): void {
   const meta = readMeta(id);
   for (let index = 0; index < (meta?.chunks ?? 0); index += 1) removeStoredValue(chunkKey(id, index));

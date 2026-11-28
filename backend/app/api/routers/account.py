@@ -38,8 +38,9 @@ class ConsentRequest(StrictModel):
 
 @router.get("", response_model=AccountStatus)
 async def get_status(account_id: UUID | None = Depends(optional_account),
-                     accounts: AccountService = Depends(get_account_service)) -> AccountStatus:
-    return await accounts.status(account_id)
+                     accounts: AccountService = Depends(get_account_service),
+                     verifier: GoogleIdTokenVerifier = Depends(get_google_id_token_verifier)) -> AccountStatus:
+    return await accounts.status(account_id, verifier.client_id)
 
 
 @router.post("/google-login", response_model=AccountStatus)

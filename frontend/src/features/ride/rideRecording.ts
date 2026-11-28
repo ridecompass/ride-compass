@@ -7,7 +7,6 @@ import {
   startRideTrack,
   stopRideTrack,
 } from "@/lib/rideTrack";
-import { sendRideTracks } from "@/services/rideTrackApi";
 import { frontendVersionQuery } from "@/services/versionApi";
 
 /** 走行モードを始めたとき。走行の計測と走りの記録を始める。 */
@@ -23,11 +22,10 @@ export function startRideRecording(nowMs: number): void {
     );
 }
 
-/** 走行モードを止めたとき。計測と記録を止め、走り終えた走りを送る。 */
+/** 走行モードを止めたとき。計測と記録を止める（走りは端末に残り、送るかは利用者に聞いてから決める）。 */
 export function stopRideRecording(nowMs: number): void {
   stopRideMetrics();
   stopRideTrack(nowMs);
-  void sendRideTracks();
 }
 
 /** 走行の状態が変わったとき。 */

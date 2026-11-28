@@ -25,3 +25,5 @@ class AccountStatus(StrictModel):
     #: 今の規約の版（`terms_version`）に同意していて、やめていない。
     consented: bool
     terms_version: int
+    #: ログインのボタンに使う Google の OAuth のクライアント ID（トークンを確かめるのと同じ値）。ログインの設定が無い環境は null。
+    google_client_id: str | None

@@ -21,6 +21,12 @@ export function useFirstVisitIntro() {
   return { shown: !closed, close: () => setClosed(true), reopen: () => setClosed(false) };
 }
 
+/** 地図の上の中ほどに浮かべるカードの置き方（初回の案内と、案内を終えた走りを残すかのカードが同じ所に出る）。 */
+export const MAP_TOP_CARD_CLASS = cn(
+  cardVariants({ variant: "float" }),
+  "absolute top-16 left-1/2 z-[var(--z-map-detail)] flex w-[min(24rem,calc(100%-2*var(--space-3)))] -translate-x-1/2 flex-col gap-2 p-3",
+);
+
 interface FirstVisitIntroProps {
   /** 案内を出しているか（`useFirstVisitIntro`の`shown`）。 */
   shown: boolean;
@@ -42,13 +48,7 @@ export default function FirstVisitIntro({ shown, onClose, originLocateFailed }: 
   if (!mounted || !shown) return null;
 
   return (
-    <section
-      aria-labelledby={titleId}
-      className={cn(
-        cardVariants({ variant: "float" }),
-        "absolute top-16 left-1/2 z-[var(--z-map-detail)] flex w-[min(24rem,calc(100%-2*var(--space-3)))] -translate-x-1/2 flex-col gap-2 p-3",
-      )}
-    >
+    <section aria-labelledby={titleId} className={MAP_TOP_CARD_CLASS}>
       <div className="flex items-start justify-between gap-2">
         <h2 id={titleId} className={cn(textVariants({ variant: "heading" }), "m-0")}>
           {APP_NAME}

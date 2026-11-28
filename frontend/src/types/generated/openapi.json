@@ -2051,6 +2051,17 @@
           "terms_version": {
             "type": "integer",
             "title": "Terms Version"
+          },
+          "google_client_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Google Client Id"
           }
         },
         "additionalProperties": false,
@@ -2058,7 +2069,8 @@
         "required": [
           "signed_in",
           "consented",
-          "terms_version"
+          "terms_version",
+          "google_client_id"
         ],
         "title": "AccountStatus"
       },
