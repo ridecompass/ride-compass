@@ -14,6 +14,7 @@ import { cn } from "@/lib/cn";
 import { textVariants } from "@/components/ui/Text/Text";
 import { BURDEN_PAINT_NAME } from "@/lib/screenNames";
 import { LENS_QUANTITY_LABEL } from "@/lib/mapDisplay/costLensPaint";
+import { useShownDataStatus } from "@/features/map/useShownDataStatus";
 import { LensRow, type LensOption } from "./LensRow";
 
 interface LensControlProps {
@@ -51,9 +52,10 @@ export default function LensControl({
   hasDetail,
   caveat,
   catalogNotice,
-  dataStatus,
+  dataStatus: givenStatus,
 }: LensControlProps) {
   const [open, setOpen] = useState(false);
+  const dataStatus = useShownDataStatus(givenStatus);
   const statusLabel = dataStatus ? LAYER_DATA_STATUS_LABELS[dataStatus] : undefined;
   const statusNotice = layerDataStatusNotice(dataStatus);
   // レンズを選んでいないときは、ルートの前は道路を塗らず、ルートの後はルートの線を総合で塗る（費用の軸の一覧が届く前と、取れない間は1色）。

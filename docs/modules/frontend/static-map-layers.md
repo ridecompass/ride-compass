@@ -68,6 +68,7 @@
 | `features/map/MapOverlayControls/MapOverlayControls.tsx` | 地図の左上の「表示」のボタンと、押すと開く地図に出す情報の一覧（下記「最上位グルーピング」）。群への束ね方と並びはレイヤーカタログ（`features/map/MapOverlayControls/MapOverlayControls.tsx: mapOverlayGroupFor`・`mapLayers.ts: MAP_OVERLAY_GROUP_ORDER`）から導く。一覧は「重ねる情報」と「範囲と色」のタブに分ける。「重ねる情報」は群の見出しで中身をたため、群ごとに一覧に並べる項目を選べ、末尾にまとめて戻す操作（下記「まとめて戻す操作」）を並べる。「範囲と色」は`features/map/MapOverlayControls/MapLookSettings.tsx`が描く |
 | `features/map/MapOverlayControls/MapLookSettings.tsx` | 「表示」の「範囲と色」のタブ。表示する範囲（ルート沿い・地図全体。下記「ルートの近くの点」）と地図の色（明るい・暗い。下記「暗い地図」）を2択で選び、説明は見出しのⓘで行のすぐ下に開く |
 | `features/map/MapOverlayControls/OverlayLayerRow.tsx` | 一覧の1行（`features/map/MapOverlayControls/OverlayLayerRow.tsx: OverlayLayerChip`）。行のチェックでON/OFFし、ⓘで説明を、▶で凡例の内訳か案内・取得状態を行のすぐ下に開く。絞り込みの合図（漏斗の印と`features/map/MapOverlayControls/OverlayLayerRow.tsx: isLegendFiltered`）も持つ |
+| `features/map/useShownDataStatus.ts` | 一覧の行とレンズのピルが描く取得の状態。待ちは少し続いてから出す（下記「レイヤーのデータ取得状態（地図上チップの状態ドット）」） |
 | `features/map/MapOverlayControls/LegendDetails.tsx` | ▶の中の凡例の内訳（`features/map/MapOverlayControls/LegendDetails.tsx: LegendFilterSummaryAxis`）と、地図と同じ形の色見本。`features/map/MapOverlayControls/LegendDetails.tsx: axisId`を持つ軸はその場で絞り込める |
 | `features/map/MapOverlayControls/ItemChooser.tsx`・`useOverlayGroupChoices.ts` | 群ごとに一覧へ並べる項目を選ぶ一覧と、群のたたみ・外した項目の保存（下記「最上位グルーピング」の保存の鍵） |
 | `lib/backendRewrites.ts` | rewritesの向け先の組み立て（タイル類は`BACKEND_INTERNAL_URL`へ）と、開発機の画面を本番のデータで開く切り替えの判断（切り替えが入った開発サーバーのときだけ、タイルとAPIの`/prod/…`を本番のbackendへ向ける）・同じ Wi-Fi の端末から開くときの開発機の LAN の住所 |
@@ -506,6 +507,9 @@ MSMを配るOpen-MeteoのCC BY 4.0も、リンク付きのクレジット・ラ�
 スマホで読めない（規約は[ページ全体構成](page-composition.md)「失敗・空・待ちの伝え方」）。
 待ち（loading）は文にしない（`layerDataStatusNotice`）——凡例の絞り込みやON/OFFのたびに
 タイルが取り直され、開いたパネルの先頭に文が一瞬出ては消えて凡例が上下に揺れるため。
+待ちのドットも、`features/map/useShownDataStatus.ts: LOADING_STATUS_DELAY_MS`続いてから出し、それまでは待つ前の状態を出し続ける
+（`features/map/useShownDataStatus.ts: useShownDataStatus`。レンズのピルも同じものを通す）——サーバーの持ちに当たったタイルの取得は
+待ちが人に見えないほど短く、そのたびにドットが出ては消え、ドットの幅でピルの中身が横へ揺れて地図の上がちらついて見えるため。
 案内文（ズーム不足・配信情報なし）があるときは案内文だけを出し、状態の文は重ねない。
 タイル取得の失敗は原因（429・通信エラー・5xx）を区別せず同じ文言で出す（同節の規約4）。
 
