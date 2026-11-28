@@ -57,6 +57,7 @@ from app.services.route_generation_setup import (
 )
 from app.services.cost_axis_service import CostAxisAdminService
 from app.services.road_class_service import RoadClassAdminService
+from app.services.route_profile_service import RouteProfileAdminService
 from app.services.tuning_service import TuningService
 from app.services.warning_service import WarningService
 from app.services.warning_timeline_service import WarningTimelineService
@@ -250,6 +251,11 @@ async def get_road_class_admin_service(tile_sessions: TileSessions):
 async def get_cost_axis_admin_service(tile_sessions: TileSessions):
     async with tile_sessions() as session:
         yield CostAxisAdminService(session)
+
+
+async def get_route_profile_admin_service(tile_sessions: TileSessions):
+    async with tile_sessions() as session:
+        yield RouteProfileAdminService(session)
 
 
 async def get_material_coverage_service(long_sessions: LongSessions):

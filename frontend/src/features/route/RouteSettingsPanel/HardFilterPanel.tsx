@@ -31,8 +31,9 @@ interface HardFilterPanelProps {
   /** 選んだ段（選んでいない行は無い）。 */
   roadAvoidance: RoadAvoidanceOverride;
   onRoadAvoidanceChange: (next: RoadAvoidanceOverride) => void;
-  /** 「地図で見る」（このタブを出している間、段を地図の道に塗るか）と、塗れない理由。 */
-  roadTabMap: RoadTabMap;
+  /** 「地図で見る」（このタブを出している間、段を地図の道に塗るか）と、塗れない理由。地図の無い所（管理画面のひな形の編集）では
+   * 渡さず、「地図で見る」を出さない。 */
+  roadTabMap?: RoadTabMap;
 }
 
 export default function HardFilterPanel({
@@ -53,13 +54,15 @@ export default function HardFilterPanel({
     .filter(({ rows }) => rows.length > 0);
   return (
     <div className="flex flex-col">
-      <label
-        className="flex items-center gap-1.5 pb-1 text-[length:var(--font-size-sm)]"
-        data-usage="このタブを出している間、選んだ段の色で地図の道を塗り、下の地図を灰色に薄めます。選んだものはこの端末に保存します。"
-      >
-        <Checkbox checked={roadTabMap.on} onCheckedChange={roadTabMap.onChange} aria-label="地図で見る" />
-        地図で見る
-      </label>
+      {roadTabMap !== undefined && (
+        <label
+          className="flex items-center gap-1.5 pb-1 text-[length:var(--font-size-sm)]"
+          data-usage="このタブを出している間、選んだ段の色で地図の道を塗り、下の地図を灰色に薄めます。選んだものはこの端末に保存します。"
+        >
+          <Checkbox checked={roadTabMap.on} onCheckedChange={roadTabMap.onChange} aria-label="地図で見る" />
+          地図で見る
+        </label>
+      )}
       {/* 地図の色が段のどれかを、段の向きの名前と、行に出る段の名前（倍率）で読ませる。 */}
       <MarkLegend role="group" aria-label="段の凡例" className="pb-1">
         {levels.filter(isPainted).map(({ key, name, label, color }) => (
@@ -70,7 +73,7 @@ export default function HardFilterPanel({
           </MarkLegendItem>
         ))}
       </MarkLegend>
-      {roadTabMap.notice !== null && (
+      {roadTabMap !== undefined && roadTabMap.notice !== null && (
         <p className={cn(textVariants({ variant: "note" }), "pb-1")} role="status">
           {roadTabMap.notice}
         </p>

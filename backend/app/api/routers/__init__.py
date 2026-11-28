@@ -21,6 +21,7 @@ from app.api.routers import (
     cost_axis_admin,
     cost_axis_catalog,
     road_class_admin,
+    route_profile_admin,
     routes,
     tuning_admin,
     weather,
@@ -37,6 +38,7 @@ api_router.include_router(gsi_tile.router)
 api_router.include_router(tuning_admin.router)
 api_router.include_router(road_class_admin.router)
 api_router.include_router(cost_axis_admin.router)
+api_router.include_router(route_profile_admin.router)
 api_router.include_router(client_config.router)
 api_router.include_router(cost_axis_catalog.router)
 api_router.include_router(material_catalog.router)

@@ -9,6 +9,12 @@ import SystemStatusPanel from "@/features/admin/SystemStatusPanel/SystemStatusPa
 import MaterialCoveragePanel from "@/features/admin/AdminPanels/MaterialCoveragePanel";
 import DbStatusPanel from "@/features/admin/AdminPanels/DbStatusPanel";
 import TuningPanel from "@/features/admin/AdminPanels/TuningPanel";
+import RouteProfilesPanel, { type RouteProfileSettings } from "@/features/admin/AdminPanels/RouteProfilesPanel";
+import RouteSettingsPanel from "@/features/route/RouteSettingsPanel/RouteSettingsPanel";
+import HardFilterPanel from "@/features/route/RouteSettingsPanel/HardFilterPanel";
+import { STANDARD_PROFILE_SETTINGS } from "@/features/route/routeProfiles";
+import { useClientConfig } from "@/hooks/useClientConfig";
+import { ROAD_SETTINGS_TAB_NAME } from "@/lib/screenNames";
 import { useDebugEnabled } from "@/hooks/useDebugLog";
 import { buttonVariants } from "@/components/ui/Button/Button";
 import { Toggle } from "@/components/ui/Toggle/Toggle";
@@ -18,7 +24,43 @@ import { cardVariants } from "@/components/ui/Card/Card";
 
 const TAB_PANEL_CLASS = cn(cardVariants({ variant: "outline" }), "flex flex-col gap-3");
 
-// 管理（材料・較正値・データ保守）と開発者向け機能をまとめた画面。認証はこのページの外（URLの境界）が持つ。
+/** ひな形1つの設定を、利用者の画面の「負担」「道路」タブと同じ部品で選ぶ（利用者が選んだときに見る並びのまま作る）。 */
+function RouteProfileSettingsEditor({
+  settings,
+  onChange,
+}: {
+  settings: RouteProfileSettings;
+  onChange: (next: RouteProfileSettings) => void;
+}) {
+  const avoidance = useClientConfig().roadClasses.avoidance;
+  return (
+    <Tabs defaultValue="weights">
+      <TabsList>
+        <TabsTrigger usage={null} value="weights">
+          負担
+        </TabsTrigger>
+        <TabsTrigger usage={null} value="exclusions">
+          {ROAD_SETTINGS_TAB_NAME}
+        </TabsTrigger>
+      </TabsList>
+      <TabsContent value="weights" className="pt-2">
+        <RouteSettingsPanel
+          costPreference={settings.cost_preference}
+          onCostPreferenceChange={(cost_preference) => onChange({ ...settings, cost_preference })}
+        />
+      </TabsContent>
+      <TabsContent value="exclusions" className="pt-2">
+        <HardFilterPanel
+          avoidance={avoidance}
+          roadAvoidance={settings.road_avoidance}
+          onRoadAvoidanceChange={(road_avoidance) => onChange({ ...settings, road_avoidance })}
+        />
+      </TabsContent>
+    </Tabs>
+  );
+}
+
+// 管理（材料・較正値・ひな形・データ保守）と開発者向け機能をまとめた画面。認証はこのページの外（URLの境界）が持つ。
 export default function AdminPage() {
   const debugEnabled = useDebugEnabled();
   const [systemStatusOpen, setSystemStatusOpen] = useState(false);
@@ -35,6 +77,9 @@ export default function AdminPage() {
           <TabsTrigger usage={null} value="tuning">
             較正値
           </TabsTrigger>
+          <TabsTrigger usage={null} value="routeProfiles">
+            ひな形
+          </TabsTrigger>
           <TabsTrigger usage={null} value="maintenance">
             データ保守
           </TabsTrigger>
@@ -49,6 +94,15 @@ export default function AdminPage() {
 
         <TabsContent className={TAB_PANEL_CLASS} value="tuning">
           <TuningPanel />
+        </TabsContent>
+
+        <TabsContent className={TAB_PANEL_CLASS} value="routeProfiles">
+          <RouteProfilesPanel
+            standard={STANDARD_PROFILE_SETTINGS}
+            renderSettingsEditor={(settings, onChange) => (
+              <RouteProfileSettingsEditor settings={settings} onChange={onChange} />
+            )}
+          />
         </TabsContent>
 
         <TabsContent className={TAB_PANEL_CLASS} value="maintenance">

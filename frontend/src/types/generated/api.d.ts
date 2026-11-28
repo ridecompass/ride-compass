@@ -452,6 +452,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/admin/route-profiles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["read_route_profiles_api_admin_route_profiles_get"];
+        put: operations["replace_route_profiles_api_admin_route_profiles_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/client-config": {
         parameters: {
             query?: never;
@@ -788,6 +804,8 @@ export interface components {
             /** Accident Years */
             accident_years: number[];
             road_classes: components["schemas"]["RoadClassCatalog"];
+            /** Route Profiles */
+            route_profiles: components["schemas"]["PublishedRouteProfile"][];
         };
         /** Condition */
         Condition: {
@@ -1432,6 +1450,18 @@ export interface components {
             /** Candidates */
             candidates: components["schemas"]["PlaceCandidate"][];
         };
+        /** PublishedRouteProfile */
+        PublishedRouteProfile: {
+            /** Name */
+            name: string;
+            /** Description */
+            description: string;
+            cost_preference: components["schemas"]["CostPreference-Output"];
+            /** Road Avoidance */
+            road_avoidance: {
+                [key: string]: "pass" | "slight_prefer" | "prefer" | "slight_avoid" | "avoid" | "exclude";
+            };
+        };
         /** RideUpload */
         RideUpload: {
             /**
@@ -1797,6 +1827,44 @@ export interface components {
             conditions: components["schemas"]["GenerationConditions"];
             /** No Candidates Reason */
             no_candidates_reason: string | null;
+        };
+        /** RouteProfile */
+        "RouteProfile-Input": {
+            /** Name */
+            name: string;
+            /** Description */
+            description: string;
+            cost_preference: components["schemas"]["CostPreference-Input"];
+            /** Road Avoidance */
+            road_avoidance: {
+                [key: string]: "pass" | "slight_prefer" | "prefer" | "slight_avoid" | "avoid" | "exclude";
+            };
+            /** Published */
+            published: boolean;
+        };
+        /** RouteProfile */
+        "RouteProfile-Output": {
+            /** Name */
+            name: string;
+            /** Description */
+            description: string;
+            cost_preference: components["schemas"]["CostPreference-Output"];
+            /** Road Avoidance */
+            road_avoidance: {
+                [key: string]: "pass" | "slight_prefer" | "prefer" | "slight_avoid" | "avoid" | "exclude";
+            };
+            /** Published */
+            published: boolean;
+        };
+        /** RouteProfiles */
+        "RouteProfiles-Input": {
+            /** Profiles */
+            profiles: components["schemas"]["RouteProfile-Input"][];
+        };
+        /** RouteProfiles */
+        "RouteProfiles-Output": {
+            /** Profiles */
+            profiles: components["schemas"]["RouteProfile-Output"][];
         };
         /** RouteSegmentDetail */
         RouteSegmentDetail: {
@@ -2960,6 +3028,59 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CostAxisDefinitions"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_route_profiles_api_admin_route_profiles_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RouteProfiles-Output"];
+                };
+            };
+        };
+    };
+    replace_route_profiles_api_admin_route_profiles_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RouteProfiles-Input"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RouteProfiles-Output"];
                 };
             };
             /** @description Validation Error */

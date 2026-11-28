@@ -12,10 +12,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domain.cost_axes import CostAxisDefinitions, check_cost_axes
 from app.domain.road_classes import RoadClassDefinitions, replace_road_classes, undeclared_references
+from app.domain.route_profiles import without_missing_rows
 from app.infrastructure.cost_axis_repository import read_cost_axes
 from app.infrastructure.region_tile_cache import discard_region_tiles
 from app.infrastructure.road_class_repository import read_road_classes, replace_road_class_rows
 from app.services.cost_axis_service import warn_surplus_class_weights
+from app.services.route_profile_service import apply_pruned_route_profiles, write_pruned_route_profiles
 
 logger = logging.getLogger("ridecompass.road_classes")
 
@@ -71,6 +73,9 @@ class RoadClassAdminService:
             cost_axes = await read_cost_axes(session)
             _check_writable(definitions, cost_axes)
             await replace_road_class_rows(session, definitions)
+            # ひな形が名指す道の段の行も、区分と同じ取引で今の行へ揃える（ひな形はいつも今ある行だけを指す）。
+            profiles, removed = await write_pruned_route_profiles(
+                session, lambda current: without_missing_rows(current, definitions))
             await session.commit()
         except (IntegrityError, DataError) as error:
             await session.rollback()
@@ -79,6 +84,7 @@ class RoadClassAdminService:
             await session.rollback()
             raise
         _apply(definitions)
+        apply_pruned_route_profiles(profiles, removed)
         # 路面タイルは区分の色を焼いているので、前の区分で焼いたものを捨てる。
         await asyncio.to_thread(discard_region_tiles)
         if cost_axes is not None:

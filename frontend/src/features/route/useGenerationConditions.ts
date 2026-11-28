@@ -5,6 +5,7 @@ import { useCallback, useMemo, useState } from "react";
 import { samePosition } from "@/lib/geoDistance";
 import { useStoredState } from "@/hooks/useStoredState";
 import { STANDARD_COST_PREFERENCE } from "@/lib/costPreference";
+import { STANDARD_ROAD_AVOIDANCE } from "@/lib/roadAvoidance";
 import { type GenerationConditionsSnapshot } from "@/features/route/savedConditions";
 import type {
   Coordinates,
@@ -18,7 +19,6 @@ import routeGenerateConfig from "@/types/generated/route-generate-config.json";
 
 const COST_PREFERENCE_STORAGE_KEY = "ridecompass:cost-preference";
 const ROAD_AVOIDANCE_STORAGE_KEY = "ridecompass:road-avoidance";
-const NO_ROAD_AVOIDANCE: RoadAvoidanceOverride = {};
 
 /** 経由地を、生成が受け付ける数まで置いてあるか（置いてあれば、もう足さない）。 */
 export function waypointsFull(waypoints: readonly Coordinates[]): boolean {
@@ -190,7 +190,7 @@ export function useGenerationConditions({ onOriginPlace }: GenerationConditionsI
   const [roadAvoidance, setRoadAvoidance] = useStoredState<RoadAvoidanceOverride>(
     ROAD_AVOIDANCE_STORAGE_KEY,
     "避け方",
-    NO_ROAD_AVOIDANCE,
+    STANDARD_ROAD_AVOIDANCE,
   );
 
   // いまの条件を、保存・呼び出しと同じ形1つで返す（保存・生成の入力・保存の説明はこれを読む）。
