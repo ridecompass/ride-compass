@@ -1,6 +1,6 @@
 // @vitest-environment node
 /**
- * `features/route/DifficultyProfile/profileGeometry.ts`——道のりの負担のグラフの形と、グラフ上の距離が入る区間を引く計算。
+ * `features/route/DifficultyProfile/profileGeometry.ts`——道のりの走りにくさのグラフの形と、グラフ上の距離が入る区間を引く計算。
  * - `profileBoxes`: 1kmあたりの値（応答の`lens_seconds_per_km`）のある区間は、軸の値を指定の順に下から積み（値の無い軸は
  *   積まない）、図の上端をこのルートで最も高く積んだ区間にする。値の無い区間・長さの無い区間は描かない
  * - `columnAtKm`: 距離が入る柱と、その柱の中の割合。範囲の外は端の柱へ寄せ、長さの無い柱は選ばない

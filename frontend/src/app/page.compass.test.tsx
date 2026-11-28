@@ -32,7 +32,7 @@ describe("右上の方位磁針と拡大・縮小", () => {
       axes: [{ ...ascent, map_lens: { ...ascent.map_lens, formula } }, ...TWO_COST_AXES.axes.slice(1)],
     });
     const { user } = renderHome();
-    await user.click(screen.getByRole("button", { name: /^負担で塗る: / }));
+    await user.click(screen.getByRole("button", { name: /^走りにくさを色で見る/ }));
     await user.click(await screen.findByRole("radio", { name: /登坂/ }));
 
     expect(screen.getByRole("button", { name: "地図の向き" }).getAttribute("aria-description")).toBe(description);

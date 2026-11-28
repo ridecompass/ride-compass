@@ -1,5 +1,5 @@
 /**
- * `RouteSettingsPanel/RouteSettingsPanel.tsx`——「負担」タブ。一番上の「全体」で負担の全部を数える割合を、その下で費用の軸ごとに
+ * `RouteSettingsPanel/RouteSettingsPanel.tsx`——「走りにくさ」タブ。一番上の「全体」で走りにくさの全部を数える割合を、その下で費用の軸ごとに
  * 割合の段か無効を選ぶ。
  *
  * 見るもの: 一覧を取れないときの告知と再試行で軸が出ること、全体の行が軸の行より上に割合の段で出て、選ぶと全体の割合を上げること、
@@ -50,7 +50,7 @@ describe("費用の軸の一覧", () => {
     onBackend("GET", "/api/cost-axes", inTurn(new Response(null, { status: 503 }), Response.json(TWO_COST_AXES)));
     renderPanel();
 
-    expect(await screen.findByRole("status")).toHaveTextContent("負担の種類ごとの割合を変えられません");
+    expect(await screen.findByRole("status")).toHaveTextContent("走りにくさの種類ごとの割合を変えられません");
 
     await userEvent.click(screen.getByRole("button", { name: "再試行" }));
 

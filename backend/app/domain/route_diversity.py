@@ -54,7 +54,7 @@ def _pareto_front_mask(
     # aの昇順（同値内はbの昇順）に走査し、「自分より真に前にある点」の最小bと比べる。
     # 丸めた結果aもbも完全に同値になった点同士は互いを支配しないため、同じグループとして
     # まとめて同じ判定にする（1つだけ残す形にすると、完全に対称な候補群——例えば起点から
-    # 全方位が等距離・同じ負担の地形——が層へばらけ、後段の方位分散[prefer]が働く同点
+    # 全方位が等距離・同じ走りにくさの地形——が層へばらけ、後段の方位分散[prefer]が働く同点
     # グループを壊してしまう）。
     order = np.lexsort((b, a))
     sorted_a, sorted_b = a[order], b[order]
@@ -103,7 +103,7 @@ def pareto_layer_index(
     b = np.asarray(minimize_b, dtype=float)
     # 層max_items未満に入りえない点を先に落とす。落とす単位は
     # 点ではなく「aの段階×bの丸め値」のグループ——同値の点同士は互いを支配しないため
-    # 同じ層に入る。点単位で数えると、完全に対称な候補群（全方位が等距離・同じ負担の
+    # 同じ層に入る。点単位で数えると、完全に対称な候補群（全方位が等距離・同じ走りにくさの
     # 地形）がmax_items件で切られ、残りが層に入れないまま最後尾へ回ってしまう。
     bins = np.round(a / quantum_a).astype(np.int64)
     b_quantized = np.round(b / quantum_b).astype(np.int64)

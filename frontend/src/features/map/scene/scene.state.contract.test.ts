@@ -177,7 +177,7 @@ describe("状態を地図へ伝えた結果", () => {
     it.each([
       { case: "費用の軸の一覧が届く前（モードが0件）", look: {}, routeStyleModes: [] },
       {
-        case: "負担を数える軸が無い間（何も数えていないのに、評価して1色になったように読ませない）",
+        case: "走りにくさを数える軸が無い間（何も数えていないのに、評価して1色になったように読ませない）",
         look: { costsCounted: false },
         routeStyleModes: costRouteStyleModes(costAxisCatalogFromResponse(costAxisCatalog()), "light"),
       },

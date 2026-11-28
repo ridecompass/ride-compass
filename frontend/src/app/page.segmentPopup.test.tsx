@@ -1,7 +1,7 @@
 /**
  * `app/page.tsx`——トップページのうち、地図で押した区間の小窓の中身。
  *
- * 見ること: 区間の小窓が上の帯に到達予想を、その下に負担の内訳を出し、寄せるアイコンで区間へ寄せること。ルートの脇の線のある区間では、
+ * 見ること: 区間の小窓が上の帯に到達予想を、その下に走りにくさの内訳を出し、寄せるアイコンで区間へ寄せること。ルートの脇の線のある区間では、
  * 避け方の倍率を決めた道ごとに脇の線の理由を出すこと。
  *
  * ここで見ないもの: 小窓がいつも1つで最後に押した物の中身を出すことは`app/page.popups.test.tsx`が、
@@ -37,7 +37,7 @@ beforeEach(() => {
 });
 
 describe("区間の小窓", () => {
-  it("区間の小窓は、上の帯に到達予想、その下に分へ丸めて1分以上の軸の負担だけを出し、押しただけでは地図は動かず、寄せるアイコンで区間へ寄せる", async () => {
+  it("区間の小窓は、上の帯に到達予想、その下に分へ丸めて1分以上の軸の走りにくさだけを出し、押しただけでは地図は動かず、寄せるアイコンで区間へ寄せる", async () => {
     serveCostAxisCatalog();
     const segment = makeRouteSegment({
       estimated_arrival_time: "2026-10-05T00:30:00Z",
@@ -68,13 +68,13 @@ describe("区間の小窓", () => {
     const fitsBefore = mapOnScreen().fits().length;
     clickSegment(mapOnScreen().sourceFeatures("route-segments")[1], HERE);
     expect(await screen.findByRole("group", { name: "区間の小窓の上の帯" })).toBeInTheDocument();
-    expect(screen.queryByRole("group", { name: "負担の内訳" })).toBeNull();
+    expect(screen.queryByRole("group", { name: "走りにくさの内訳" })).toBeNull();
 
     clickSegment(mapOnScreen().sourceFeatures("route-segments")[0], HERE);
 
     expect(screen.getByRole("group", { name: "区間の小窓の上の帯" })).toHaveTextContent("到達予想 09:30着");
     // 軸は絵で出し、名前は読み上げに残す。分へ丸めて1分に満たない軸と合計は出さない。
-    expect(screen.getByRole("group", { name: "負担の内訳" })).toHaveTextContent(/^登坂\+2分$/);
+    expect(screen.getByRole("group", { name: "走りにくさの内訳" })).toHaveTextContent(/^登坂\+2分$/);
 
     expect(mapOnScreen().fits()).toHaveLength(fitsBefore);
     await user.click(screen.getByRole("button", { name: "地図をここへ寄せる" }));
