@@ -79,7 +79,7 @@ export default function LensControl({
             variant="float"
             size="bare"
             shape="pill"
-            className="max-w-full flex-row items-center gap-1.5 border-0 px-2.5 py-1 text-[length:var(--font-size-sm)] whitespace-nowrap focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-accent-strong)]"
+            className="max-w-full flex-row items-center gap-1 border-0 px-2.5 py-1 text-[length:var(--font-size-sm)] whitespace-nowrap focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-accent-strong)]"
             aria-label={`${pillLabel === LENS_SCREEN_NAME ? LENS_SCREEN_NAME : `${LENS_SCREEN_NAME}: ${pillLabel}`}（タップで変更）`}
             title={statusLabel}
             usage={`選んだ走りにくさの種類の${LENS_QUANTITY_LABEL}で、地図の道路[ルートを作った後はルートの線]を塗ります。\n・横の帯は左ほど小さく、右ほど大きい走りにくさです（右に値があれば、その値から一番濃い色）。\n・道を押すと、その道の値が出ます。`}
@@ -96,7 +96,7 @@ export default function LensControl({
             {/* 段の数に依らず固定の幅で等分し、段の多い軸でもピルを横に伸ばさない。地図が狭いときは名前より先に縮める。 */}
             {bands.length > 0 && (
               <span
-                className="flex min-w-0 shrink-[8] items-center gap-0.5 text-[0.65rem] text-[var(--color-muted-strong)]"
+                className="flex min-w-0 shrink-[8] items-center gap-0.5 overflow-hidden text-[0.65rem] text-[var(--color-muted-strong)]"
                 aria-hidden="true"
               >
                 <span className="flex h-1.5 w-12 min-w-0 shrink overflow-hidden rounded-[1px]">

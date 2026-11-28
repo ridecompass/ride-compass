@@ -116,7 +116,7 @@ export function DesktopRoutePanels(props: RoutePanelsProps) {
                 title="ルート設定"
                 active={panels.activePanel === "routeSettings"}
                 trailing={
-                  <div className="flex min-w-0 flex-auto items-center justify-between gap-2">
+                  <div className="flex min-w-0 flex-auto items-center justify-between gap-1">
                     <SettingsTabsList />
                     <GenerateRouteActions generation={route.generation} routeCount={props.routeCount} labeled={false} />
                   </div>

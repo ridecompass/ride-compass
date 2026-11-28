@@ -35,7 +35,7 @@ export default function SettingsTabsList() {
   return (
     <TabsList className="gap-0 overflow-visible border-b-0" aria-label="ルート設定">
       {tabs.map(({ value, label, usage }) => (
-        <TabsTrigger key={value} className="px-1.5" value={value} usage={usage}>
+        <TabsTrigger key={value} className="px-0.5" value={value} usage={usage}>
           {label}
         </TabsTrigger>
       ))}
