@@ -127,7 +127,7 @@ export function pendingRideUploads(): RideUploadBody[] {
   });
 }
 
-/** 走りを端末から消す（送れた・残さないと決めた）。 */
+/** 走りを端末から消す（送れた・同意する前に記録した）。 */
 export function removeRideTrack(id: string): void {
   const meta = readMeta(id);
   for (let index = 0; index < (meta?.chunks ?? 0); index += 1) removeStoredValue(chunkKey(id, index));

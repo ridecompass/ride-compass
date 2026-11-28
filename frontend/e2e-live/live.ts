@@ -4,7 +4,7 @@ import { PbfReader } from "pbf";
 import type { ClientConfigResponse, CostAxisCatalogResponse } from "@/types/route";
 import regionTileConfig from "@/types/generated/region-tile-config.json";
 import { lonLatToTileIndex } from "@/features/map/layers/webMercatorTile";
-import { INTRO_CLOSED, MOBILE_VIEWPORT, installMapFinder, seedStoredState } from "../e2e/fixtures";
+import { INTRO_CLOSED, MOBILE_VIEWPORT, installMapFinder, seedStoredState, signInAsConsented } from "../e2e/fixtures";
 import { installPageHelpers } from "../e2e/pageHelpers";
 import { settleMap } from "./mapReads";
 
@@ -156,6 +156,7 @@ export async function openLive(
   await page.context().grantPermissions(["geolocation"]);
   await page.context().setGeolocation(LIVE_POINT);
   await page.setViewportSize(viewport);
+  await signInAsConsented(page);
   await page.addInitScript(installPageHelpers);
   await page.addInitScript(installMapFinder);
   await seedStoredState(page, { ...INTRO_CLOSED, ...storedState });

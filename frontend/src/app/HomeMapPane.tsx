@@ -194,9 +194,9 @@ export default function HomeMapPane({
           {overview}
         </div>
       )}
-      {/* 案内を終えた走りを残すかのカードは、初回の案内と同じ所に出し、出している間は初回の案内を出さない。 */}
+      {/* 案内を終えた走りを送った結果のカードは、初回の案内と同じ所に出し、出している間は初回の案内を出さない。 */}
       {!navigating &&
-        (rideKeep.step.kind !== "hidden" ? (
+        (rideKeep.step !== "hidden" ? (
           <RideKeepCard rideKeep={rideKeep} />
         ) : (
           <FirstVisitIntro

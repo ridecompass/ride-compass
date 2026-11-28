@@ -28,14 +28,23 @@ import { DesktopRoutePanels, MobileRoutePanels } from "./RoutePanels";
 import { mapTapModeOf, usePagePanels } from "./usePagePanels";
 import { useRideGuidance } from "./useRideGuidance";
 import { countRideMetric } from "@/lib/rideMetrics";
+import AccountGate from "@/features/account/AccountGate/AccountGate";
 
 export default function Home() {
+  return (
+    <AccountGate>
+      <HomeMap />
+    </AccountGate>
+  );
+}
+
+function HomeMap() {
   countRideMetric("pageRenders");
   const clientConfig = useClientConfig();
   // 走行モード（現在地を追い続けて地図を動かす）。走りとしてありえる速さの上限は、走行モデルの下りの最高速度。
-  // 案内を終えた走りは、残すかを聞いてから送る。
+  // 案内を終えた走りは、聞かずに走行ログへ送る。
   const rideKeep = useRideKeep();
-  const riding = useRideMode(clientTuningValue(clientConfig, CLIENT_TUNING_IDS.maxDescentKmh), rideKeep.offer);
+  const riding = useRideMode(clientTuningValue(clientConfig, CLIENT_TUNING_IDS.maxDescentKmh), rideKeep.send);
   // 走行モードの間は、地図と予定ルートのプロファイルに集中する配置にする（地図の上の操作を出さず、パネルは帯の「ルート」で開く）。
   const navigating = riding.status !== "off";
   const ridePosition = riding.map?.position ?? null;

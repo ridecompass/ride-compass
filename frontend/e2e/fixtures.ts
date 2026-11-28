@@ -9,6 +9,7 @@ import {
 } from "./mockResponses";
 import { installMapFinder } from "./liveMap";
 import { BASEMAP_STYLE_URL } from "@/features/map/basemapStyle";
+import { accountStatus } from "@/testing/accountStatus";
 import { TWO_COST_AXES } from "@/testing/costAxes";
 import { WIDE_TIME_FRAMES } from "@/testing/timeFrames";
 import { mapDisplay } from "@/types/generated/mapDisplay";
@@ -37,6 +38,15 @@ export const BASEMAP_ORIGIN = new URL(BASEMAP_STYLE_URL).origin;
 const GSI_RELIEF_ORIGIN = new URL(regionTileConfig.gsi.relief.tile_url).origin;
 
 /**
+ * 自分の状態（`GET /api/me`）を、ログインして今の規約の版に同意した人として返す。地図の画面はこの人にだけ開き、ほかの人には
+ * 最初の画面を出す（`src/features/account/AccountGate/AccountGate.tsx`）。本物の backend へ向けて開くとき（e2e-live・撮影）も、
+ * この応答だけを差し替えて地図の画面まで進める。
+ */
+export async function signInAsConsented(page: Page): Promise<void> {
+  await page.route("**/api/me", (route) => route.fulfill({ json: accountStatus({ google_client_id: null }) }));
+}
+
+/**
  * バックエンド・外部APIへの依存を断ち切るネットワークモックを登録する。
  * 各テストの冒頭（page.goto前）で呼ぶ。ここの応答はアプリを起動して画面を進めるための
  * 既定値であり、テストが判定する値を持たせない（.claude/rules/testing-e2e.md パターン4）。
@@ -53,6 +63,7 @@ export async function installApiMocks(page: Page): Promise<void> {
   await page.route(`${API_BASE}/**`, (route) => route.abort("connectionrefused"));
 
   await page.route(`${API_BASE}/health`, (route) => route.fulfill({ json: { status: "ok" } }));
+  await signInAsConsented(page);
 
   await page.route(`${API_BASE}/api/weather/amedas*`, (route) => route.fulfill({ json: amedasObservationFixture() }));
   // `*` は `/` を越えないので、`/api/weather/...` の口には当たらない。

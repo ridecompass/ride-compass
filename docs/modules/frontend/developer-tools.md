@@ -30,14 +30,17 @@
 | `lib/rideMetricsObserve.ts` | 走行の計測のうち、標準の観測の口（通信・Long Tasks・Long Animation Frames・電池）を張って数えることと、地図が描き続けた理由の読み | `lib/rideMetrics.ts`が記録の間だけ張る |
 | `lib/rideMetricsFormat.ts` | 走行の計測の記録を、写す形（1分1行の CSV。下記「走行の計測」）にする | `HeaderMenu`の「走行の記録をコピー」 |
 | `lib/rideTrack.ts` | 走りの記録: 走行モードの間の位置と出来事・推したルート・生成の条件・見せた予報を走りごとに溜める（下記「走りの記録」） | 位置・出来事（`features/ride/rideRecording.ts`）・候補と条件と読み込み直し（`app/useRideGuidance.ts`）・予報（`features/conditions/useWeatherConditions.ts`）が記録の口を呼ぶ |
-| `lib/rideTrackStore.ts` | 走りの記録の端末の置き場: 走りを一覧・見出し・変わったときだけ書くもの・点の区切りの鍵に分けて読み書きし、書けなければ古い走りを消して書き直し、走り終えたものを送る形で組み立てる | `lib/rideTrack.ts`が書き、`services/rideTrackApi.ts`が送るものを読んで送れたものを消し、`features/ride/useRideKeep.ts`が残さない走りを消し、`app/error.tsx`が鍵の頭で残す |
-| `services/rideTrackApi.ts` | 走り終えて送っていない走りを、ログインの札（cookie）を付けて`POST /api/rides`へ古い順に送り、書けたものを端末で消し、全部を書けたかを返す。本文は本番の nginx の要求の大きさの上限（既定の 1MB）に長い走りも収めるため、gzip で縮めて送る | 残すと決まったとき（`features/ride/useRideKeep.ts`） |
-| `services/accountApi.ts` | 自分の状態（ログイン・同意・ログインのボタンに使うクライアント ID）を読む・Google の ID トークンでログインする・ログアウトする・規約の版に同意する・同意をやめる口と、自分の走りの一覧・1件（走った線つき）を読む・1件を消す口。どれもログインの札（cookie）を付けて送る | `features/ride/useRideKeep.ts`・`features/ride/RideLog/RideLog.tsx` |
-| `features/ride/useRideKeep.ts` | 案内を終えた走りを残すか: 同意済みなら聞かずに送り、そうでなければ送っていない走りがあるときだけ聞き、ログインと同意を経て送る。残さなければ端末から消す（下記「走りの記録」） | 案内を終えたとき（`useRideMode.ts`の終えたときの知らせを`app/page.tsx`が渡す） |
-| `features/ride/RideKeepCard/RideKeepCard.tsx`・`features/ride/RideKeepCard/GoogleSignInButton.tsx` | 残すかを聞く地図の上のカード（残す・残さない・ログイン・同意・残した・残せなかった）と、Google Identity Services の公式のログインのボタン（スクリプトを1回だけ読み、初期化を1回だけ呼ぶ） | `app/HomeMapPane.tsx`が、走行モードでない間に初回の案内と同じ所へ出す |
-| `app/ride-log/page.tsx`・`app/ride-log/RideLogWithMap.tsx`・`features/ride/RideLog/RideLog.tsx` | 走行ログのページ（下記「走りの記録」）: ログインした人の走りの一覧（始めた日時・距離・かかった時間）と、押した1件の走った線の地図と消す操作、記録をやめる・ログアウト。ログインしていなければ Google のログインのボタンを出す。地図は機能をまたぐので、ページが走行ログの部品へ地図を描く関数を渡す | ヘッダーのメニュー（`components/HeaderMenu/HeaderMenu.tsx`）の「走行ログ」と、残したときのカードの「見る」が開く |
+| `lib/rideTrackStore.ts` | 走りの記録の端末の置き場: 走りを一覧・見出し・変わったときだけ書くもの・点の区切りの鍵に分けて読み書きし、書けなければ古い走りを消して書き直し、走り終えたものを送る形で組み立てる | `lib/rideTrack.ts`が書き、`services/rideTrackApi.ts`が送るものを読んで送れたものを消し、`features/account/AccountGate/AccountGate.tsx`が同意する前に記録した走りを消し、`app/error.tsx`が鍵の頭で残す |
+| `services/rideTrackApi.ts` | 走り終えて送っていない走りを、ログインの札（cookie）を付けて`POST /api/rides`へ古い順に送り、書けたものを端末で消し、全部を書けたかを返す。本文は本番の nginx の要求の大きさの上限（既定の 1MB）に長い走りも収めるため、gzip で縮めて送る | 案内を終えたとき（`features/ride/useRideKeep.ts`） |
+| `services/accountApi.ts` | 自分の状態（ログイン・同意・ログインのボタンに使うクライアント ID）を読む・Google の ID トークンでログインする・ログアウトする・規約の版に同意する・同意をやめる口と、自分の走りの一覧・1件（走った線つき）を読む・1件を消す口。どれもログインの札（cookie）を付けて送る | `hooks/useAccountStatus.ts`・`features/account/AccountGate/AccountGate.tsx`・`features/ride/RideLog/RideLog.tsx` |
+| `hooks/useAccountStatus.ts` | 自分の状態の取得と Google でのログインを、画面の取得のキャッシュの1つの鍵（`hooks/useAccountStatus.ts: ACCOUNT_KEY`）で持つ。ログインの応答をそのまま今の状態として置く | `features/account/AccountGate/AccountGate.tsx`・`features/ride/RideLog/RideLog.tsx` |
+| `features/account/AccountGate/AccountGate.tsx` | 地図の画面の門: ログインして今の規約の版に同意した人にだけ中身を描き、ほかの人には最初の画面（アプリの説明・Google でログイン・規約へのリンク）か、ログインのあとの同意のカードを出す。断って使う選択肢は置かない。同意を見せている間に版が上がっていた（409）なら今の版を読み直す（下記「走りの記録」） | `app/page.tsx`が地図の画面を包む |
+| `features/ride/useRideKeep.ts` | 案内を終えた走りを、聞かずに送る（送っていない走りがあるときだけ）。送っている・送れた・送れなかったを結果のカードへ渡す（下記「走りの記録」） | 案内を終えたとき（`useRideMode.ts`の終えたときの知らせを`app/page.tsx`が渡す） |
+| `features/ride/RideKeepCard/RideKeepCard.tsx` | 送った結果の地図の上のカード（残している・残した〔走行ログを「見る」〕・残せなかった） | `app/HomeMapPane.tsx`が、走行モードでない間に初回の案内と同じ所へ出す |
+| `components/GoogleSignInButton/GoogleSignInButton.tsx` | Google Identity Services の公式のログインのボタン（スクリプトを1回だけ読み、初期化を1回だけ呼ぶ） | 最初の画面（`features/account/AccountGate/AccountGate.tsx`）と走行ログ（`features/ride/RideLog/RideLog.tsx`） |
+| `app/ride-log/page.tsx`・`app/ride-log/RideLogWithMap.tsx`・`features/ride/RideLog/RideLog.tsx` | 走行ログのページ（下記「走りの記録」）: ログインした人の走りの一覧（始めた日時・距離・かかった時間）と、押した1件の走った線の地図と消す操作、記録をやめる・ログアウト。ログインしていなければ Google のログインのボタンを出す（地図の画面を通らずに直に開いたとき）。地図は機能をまたぐので、ページが走行ログの部品へ地図を描く関数を渡す | ヘッダーのメニュー（`components/HeaderMenu/HeaderMenu.tsx`）の「走行ログ」と、残したときのカードの「見る」が開く |
 | `features/map/RideTrackMap/RideTrackMap.tsx`・`features/map/scene/groups/rideTrack.ts` | 走行ログで1件の走った線を描く地図（線の範囲へ寄せる）と、その場面の群（休むごとに分かれた線を、つながずに予定の線と違う色で描く） | `app/ride-log/RideLogWithMap.tsx` |
-| `app/terms/page.tsx`・`app/privacy/page.tsx`・`components/LegalPage/LegalPage.tsx` | 利用規約とプライバシーポリシーのページと、その骨組み・運営者と問い合わせの節 | 同意のカードと規約のページどうしがリンクする |
+| `app/terms/page.tsx`・`app/privacy/page.tsx`・`components/LegalPage/LegalPage.tsx` | 利用規約とプライバシーポリシーのページと、その骨組み・運営者と問い合わせの節 | ログインしなくても開ける。最初の画面・同意のカードと規約のページどうしがリンクする |
 | `components/AppPage/AppPage.tsx` | 地図の画面の外に開くページ（規約のページ・走行ログ）の骨組み: トップへ戻るリンクと見出し | `components/LegalPage/LegalPage.tsx`・`app/ride-log/page.tsx` |
 | `app/api/version/route.ts`・`services/versionApi.ts` | フロントエンドの動いている版（コミット・起動時刻）を返すNext.js route handlerと、それを読む口（`SystemStatusPanel`と`HeaderMenu`の頭の版が読む） | |
 
@@ -124,11 +127,13 @@ Chrome にだけある口で、無い端末ではその項目を null・0 のま
 - 位置が届くたびに走り全体を書き直すと、点の数に比例して重くなるので、点は区切りごとの鍵へ足す（区切りの点の数・1回の走りの点の上限・
   溜める走りの数は`lib/rideTrack.ts`の定数）。書けなかったら（容量の上限等）、送っていない古い走りを古い順に消して書き直し、消せる走りが
   無いのに書けなければ、案内を止めずにその走りの記録だけをやめる。
-- 案内を終えると自分の状態を読み、ログインして同意していれば聞かずに送り、地図の上のカードに「走行ログに残しました」を出す。
-  そうでなければ、送っていない走りがあるときだけ「この走りを残す」「残さない」を聞く。残すなら Google でログインし（ログインのボタンに
-  使うクライアント ID は、backend が Google のトークンを確かめるのと同じ値を自分の状態が配る）、今の版に同意していなければ同意を聞いてから送る。
-  残さないなら送っていない走りを端末から消す。カードを閉じた・状態を読めなかったときは端末に残し、次に案内を終えたときに聞き直す。
-- 送るのは残すと決まったときだけで、溜まっている走りを古い順に全部送る。送れなかった走りは（どの断りでも）端末に残し、後ろの走りは
+- アプリを使うこと＝走りを送る同意で、地図の画面はログインして今の規約の版に同意した人にだけ開く。ほかの人には地図の前に最初の画面を出し、
+  Google でログインして（ログインのボタンに使うクライアント ID は、backend が Google のトークンを確かめるのと同じ値を自分の状態が配る）、
+  同意してから地図へ進ませる。断って使う選択肢は置かない。止めるのは画面だけで、backend の口はログインを求めない（走りを受ける口だけが、もとからログインして同意した人の走りに限って受ける）。
+  最初の画面は読み込み中もアプリの説明とプライバシーポリシーへのリンクを出す（ログインしなくても見えるホームページに置く、Google のブランドの確認の条件）。
+  同意したとき、同意する前に記録して端末に置いたままの走りは送らずに消す。
+- 案内を終えると聞かずに送り、地図の上のカードに「走行ログに残しました」と走行ログを開く「見る」を出す。
+- 送るのは案内を終えたときで、溜まっている走りを古い順に全部送る。送れなかった走りは（どの断りでも）端末に残し、後ろの走りは
   続けて送り、次に案内を終えたときに一緒に送る（断りの理由で消すと、frontend と backend の版がずれる間の断りで、あとなら受けられた走りも
   失う）。送るまで消さないので、溜まりきったら一番古い走りを捨てて新しい走りを記録する。終える前に閉じた走りは、次に（読み込み直しの戻しでなく）始めたときに
   終えたものにして、次に案内を終えたときに送る。
@@ -136,7 +141,7 @@ Chrome にだけある口で、無い端末ではその項目を null・0 のま
 - 画面のエラーの境目の「端末に保存した値を消して再試行」は、走りの記録（鍵の頭`lib/rideTrackStore.ts: RIDE_TRACK_KEY_PREFIX`）を消さない。
   記録の読みは、読めない値を無いものとして扱って画面を落とさず、送るまでほかに写しが無いため。
 - 残した走りは、ヘッダーのメニューの「走行ログ」から開く走行ログのページで見返し、1件ずつ消せる（消すと戻せないので、確かめてから消す）。
-  同意をやめる（記録をやめる）のもこのページで、やめても残した走りは消えず、次に走りを残すときに同意を聞き直す。
+  同意をやめる（記録をやめる）のもこのページで、やめても残した走りは消えず、地図の画面を開くと最初の画面に戻って同意を聞き直す。
 - 受けた走りは backend が GPX にして表に残す（[横断的なインフラ](../backend/cross-cutting-infrastructure.md)の`ride_tracks`の行）。
 
 ## 暗黙の前提
