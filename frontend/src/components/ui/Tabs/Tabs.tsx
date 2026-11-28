@@ -47,7 +47,7 @@ const triggerVariants = cva(
         cards:
           "w-[5.25rem] flex-none flex-col items-stretch overflow-hidden rounded-sm border border-[var(--color-border)] px-1.5 pt-1 text-left tabular-nums data-[state=active]:border-transparent data-[state=active]:bg-[var(--color-accent-bg)] data-[state=active]:shadow-[inset_0_0_0_2px_var(--color-accent-strong)]",
         segmented:
-          "flex-none rounded-sm px-1 py-1 data-[state=active]:bg-[var(--color-accent-bg)] data-[state=active]:shadow-[0_1px_2px_rgba(0,0,0,0.18)] group-data-[cramped=true]/fit:px-0.5 group-data-[cramped=true]/fit:text-[length:var(--font-size-xs)]",
+          "flex-none rounded-sm px-1.5 py-1 data-[state=active]:bg-[var(--color-accent-bg)] data-[state=active]:shadow-[0_1px_2px_rgba(0,0,0,0.18)] group-data-[cramped=true]/fit:px-0.5 group-data-[cramped=true]/fit:text-[length:var(--font-size-xs)]",
         // 1つを選ぶ切り替え（`ToggleGroup`の`segmented`）と同じく、選んだ方を地の色で示す。
         overlay:
           "min-h-6 flex-none px-2 py-0.5 font-normal text-[length:var(--font-size-xs)] text-[var(--foreground)] data-[state=active]:bg-[var(--color-accent)] data-[state=active]:text-white",
