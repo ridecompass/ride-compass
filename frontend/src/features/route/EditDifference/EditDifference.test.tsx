@@ -77,7 +77,7 @@ describe("EditDifference", () => {
     expect(metric("距離")).toHaveTextContent("+2.3km");
     expect(metric("距離")).toHaveAttribute("data-worse", "true");
     expect(metric("所要")).toHaveTextContent("−10分");
-    expect(metric("ロス")).toHaveTextContent("±0分");
+    expect(metric("難所")).toHaveTextContent("±0分");
   });
 
   it("どちらかが値を持たない指標は「—」", () => {

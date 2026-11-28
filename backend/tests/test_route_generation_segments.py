@@ -325,7 +325,7 @@ DEAD_END_WAY, DEAD_END_NODE = 400, 95
 async def test_a_u_turn_penalty_goes_into_the_cost_and_its_own_row_but_not_into_the_duration_or_the_penalty_per_km(
     engine_over,
 ):
-    """行き止まりに置いた経由地では折り返すほかに道が無い。Uターンの秒は選ばせないための罰で、実際に失う時間でも道のロスでもない
+    """行き止まりに置いた経由地では折り返すほかに道が無い。Uターンの秒は選ばせないための罰で、実際に失う時間でも道の難所でもない
     ので、費用と内訳の罰の欄にだけ入り、所要時間と到着の予想にも、避ける道の秒にも、1kmあたりの代償（候補の帯の色と周回の並び）
     にも入らない。内訳の和と所要時間で費用になるので、所要時間に罰が入っていれば費用より罰の分だけ多くなる。"""
     end_lat, end_lon = COORDINATES[SOUTH_EAST]

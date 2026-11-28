@@ -118,7 +118,7 @@ describe("地図の小窓", () => {
 
   it("道は長押しで、点の上でも押した所に近い道（backend の答え）を開いて区間の選びを外し、道の層を出さずにその道の線を強調し、タップでは開かず、近くに道の無い所では開かない", async () => {
     serveRoadsAt([{ at: ELSEWHERE, properties: { osm_way_id: 1, feature_key: "1" } }]);
-    // 道の小窓は開いたらロスを取りに行く。
+    // 道の小窓は開いたら難所を取りに行く。
     onBackend("POST", "/api/region/road-inspector", () => Response.json(inspectorResult()));
     await openSegmentPopup();
 

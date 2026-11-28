@@ -66,9 +66,9 @@ export interface SceneLook {
   readonly hazardRanges?: GeoJSON.FeatureCollection;
   /** ルート線の色分けのモード。 */
   readonly lens: LensId;
-  /** ロスを数える軸があるか。無ければルートの線をロスで塗らず、中立色の1色にする。 */
+  /** 難所を数える軸があるか。無ければルートの線を難所で塗らず、中立色の1色にする。 */
   readonly costsCounted: boolean;
-  /** 道に付く層（塗るロスの周りの道・点の層）を地図全体に出すか。偽の間は、周りの道を塗らず、点はルート沿いだけに出す。 */
+  /** 道に付く層（塗る難所の周りの道・点の層）を地図全体に出すか。偽の間は、周りの道を塗らず、点はルート沿いだけに出す。 */
   readonly surroundingsShown: boolean;
   /** 地図の道に塗る、道路タブの段。 */
   readonly roadAvoidance: AvoidanceChoice;
@@ -248,7 +248,7 @@ export function basemapLookOf(look: Pick<SceneLook, "mapTheme" | "roadAvoidanceS
   return { theme: look.mapTheme, muted: look.roadAvoidanceShown };
 }
 
-// ロスを数える軸が無い間と、費用の軸の一覧が届く前・失敗の間（モードが0件）のルートの線。値を読まず中立色の1色で塗り、凡例を持たない。
+// 難所を数える軸が無い間と、費用の軸の一覧が届く前・失敗の間（モードが0件）のルートの線。値を読まず中立色の1色で塗り、凡例を持たない。
 const UNPAINTED_ROUTE_STYLE_MODE: RouteStyleMode = {
   id: UNSELECTED_LENS_ID,
   legend: [],

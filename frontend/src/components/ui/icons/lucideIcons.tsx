@@ -49,11 +49,11 @@ import {
   SunDim,
   Target,
   Thermometer,
+  TrafficCone,
   Trash,
   TriangleAlert,
   Volume2,
   VolumeOff,
-  Weight,
   Wind,
   Zap,
   ZoomIn,
@@ -112,10 +112,10 @@ export const ChooseItemsIcon = fromLucide(ListChecks);
 /** 項目を選ぶ間の、一覧に並べる項目（`UnlistedIcon`と対で、並べるかを形で見分ける）。 */
 export const ListedIcon = fromLucide(Eye);
 export const UnlistedIcon = fromLucide(EyeOff);
-/** ロスで道を塗る（「難所を色で見る」の入口）。 */
+/** 難所で道を塗る（「難所を色で見る」の入口）。 */
 export const BurdenPaintIcon = fromLucide(Paintbrush);
-/** ロス（所要時間に足す代償）の量。 */
-export const BurdenIcon = fromLucide(Weight);
+/** 難所（所要時間に足す代償）の量。 */
+export const BurdenIcon = fromLucide(TrafficCone);
 export const RouteSettingsIcon = fromLucide(SlidersHorizontal);
 export const ShieldIcon = fromLucide(Shield);
 export const TargetIcon = fromLucide(Target);

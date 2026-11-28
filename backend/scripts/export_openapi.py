@@ -629,7 +629,7 @@ def main() -> None:
             "standard_cost_factor": STANDARD_COST_FACTOR,
             "cost_strength_levels": [level._asdict() for level in COST_STRENGTH_LEVELS],
             "cost_multiplier_levels": [level._asdict() for level in COST_MULTIPLIER_LEVELS],
-            # ロスを数えないことの名前（費用の軸の無効の段と、全体のつまみの0の段）。
+            # 難所を数えないことの名前（費用の軸の無効の段と、全体のつまみの0の段）。
             "disabled_label": DISABLED_LABEL,
             "min_assumed_speed_kmh": MIN_ASSUMED_SPEED_KMH,
             "max_assumed_speed_kmh": MAX_ASSUMED_SPEED_KMH,
@@ -640,7 +640,7 @@ def main() -> None:
             "travel_model_wording": TRAVEL_MODEL_WORDING,
             "duration_estimate_wording": DURATION_ESTIMATE_WORDING,
             "candidate_order_wording": CANDIDATE_ORDER_WORDING,
-            # ロスが何を数えるかと、費用の式と、道の避け方の倍率が何に掛かるかの文（名詞句）。費用を述べる画面の文が差し込む。
+            # 難所が何を数えるかと、費用の式と、道の避け方の倍率が何に掛かるかの文（名詞句）。費用を述べる画面の文が差し込む。
             "penalty_wording": PENALTY_WORDING,
             "cost_wording": COST_WORDING,
             "avoidance_multiplier_wording": AVOIDANCE_MULTIPLIER_WORDING,

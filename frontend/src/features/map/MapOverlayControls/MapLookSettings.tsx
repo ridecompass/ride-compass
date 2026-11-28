@@ -8,7 +8,7 @@ import type { MapTheme } from "@/lib/mapTheme";
 import { BURDEN_PAINT_NAME, SPOT_GROUP_NAME } from "@/lib/screenNames";
 
 export interface MapLookSettingsProps {
-  /** 道に付く層（ロスで塗った道・スポット）をルート沿いだけに出すか。ルートの区間がまだ無い（`selectable`が偽の）間は地図全体に出す。 */
+  /** 道に付く層（難所で塗った道・スポット）をルート沿いだけに出すか。ルートの区間がまだ無い（`selectable`が偽の）間は地図全体に出す。 */
   range: { routeOnly: boolean; selectable: boolean; onChange: (routeOnly: boolean) => void };
   /** 地図の地の明るさ。 */
   mapTheme: { value: MapTheme; onChange: (theme: MapTheme) => void };
