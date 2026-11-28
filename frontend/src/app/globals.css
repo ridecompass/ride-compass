@@ -171,6 +171,10 @@
       "Meiryo", Arial, sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    /* 日本語の文を、句の切れ目で折る。auto-phrase は Chrome と Edge だけが対応し、対応しないブラウザ（iPhone の Safari 等）は
+       今までどおり字の間で折る（keep-all で受けると読点の所でしか折れず、かえって読みにくいため）。Safari でも句で折りたい文は
+       GuideText で描く。 */
+    word-break: auto-phrase;
   }
 
   * {
