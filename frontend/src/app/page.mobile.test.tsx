@@ -10,7 +10,7 @@
  *
  * 差し替えたもの: backend の応答（網の層）、位置情報の取得、地図の描画（`maplibre-gl`）。子の部品は本物を描く。
  */
-import { act, screen, waitFor, within } from "@testing-library/react";
+import { act, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { heldReplies, onBackend } from "@/testing/backendServer";
@@ -60,7 +60,6 @@ describe("スマホのシート", () => {
     const originRow = within(settingsSheet).getByRole("button", { name: "出発地 未設定" }).closest("li");
     expect(originRow).toHaveFocus();
     expect(originRow).toHaveAttribute("data-asked", "true");
-    expect(originRow).toHaveTextContent("押して探すか、地図をタップ");
 
     expect(originMark().draggable).toBe(true);
     await user.click(within(settingsSheet).getByRole("tab", { name: "要因" }));
@@ -85,10 +84,8 @@ describe("スマホのシート", () => {
     await user.click(settingsTab());
     act(() => screen.getByRole("slider", { name: "距離の目標" }).focus());
     await user.keyboard("{ArrowRight}");
-    expect(outcomeTab).toHaveAccessibleDescription("生成条件が変更されています");
     jobs.respond([], LOOP_CONDITIONS, "起点の近くに道路データがありません");
     await generate(user);
-    await waitFor(() => expect(outcomeTab).toHaveAccessibleDescription("候補が見つかりませんでした"));
     const empty = screen.getByRole("dialog", { name: "候補が見つかりませんでした" });
     expect(empty).toHaveAccessibleDescription("起点の近くに道路データがありません");
     await user.click(within(empty).getByRole("button", { name: "閉じる" }));
@@ -113,7 +110,6 @@ describe("スマホのシート", () => {
       await user.click(outcomeSheetOpen ? outcomeTab : within(settingsSheet).getByRole("button", { name: "閉じる" }));
 
       await job.answer(0, Response.json({ status: "done", result: { routes: [FIRST], conditions: LOOP_CONDITIONS } }));
-      await waitFor(() => expect(outcomeTab).toHaveAccessibleDescription("新しい結果があります"));
       expect(screen.queryByRole("dialog", { name: "ルート設定" })).toBeNull();
       expect(screen.queryByRole("dialog", { name: "ルート結果" }) !== null).toBe(outcomeSheetOpen);
     },

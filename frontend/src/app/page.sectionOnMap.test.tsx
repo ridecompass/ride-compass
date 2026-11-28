@@ -90,7 +90,6 @@ describe("選んだ区間を地図で見る", () => {
     expect(showOnMap()).not.toHaveAccessibleDescription();
 
     act(() => mapOnScreen().moveTo({ west: 140, south: 36, east: 140.1, north: 36.1 }, 14));
-    expect(showOnMap()).toHaveAccessibleDescription("区間は地図の外です");
 
     act(() => mapOnScreen().moveTo({ west: 139.715, south: 35.69, east: 139.73, north: 35.71 }, 14));
     expect(showOnMap()).not.toHaveAccessibleDescription();

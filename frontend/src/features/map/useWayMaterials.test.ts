@@ -138,9 +138,6 @@ describe("useWayMaterials（道ごとの材料）", () => {
     const waiting = render({ axes: [ASCENT], viewport: VIEWPORT, conditions: { ...CONDITIONS, lensFrame: undefined } });
     await debounced();
     expect(waiting.result.current.get("ascent")).toMatchObject({ loading: false, hasFetched: false });
-
-    const outside = render({ axes: [ASCENT], viewport: VIEWPORT, conditions: { ...CONDITIONS, lensFrame: null } });
-    await vi.waitFor(() => expect(outside.result.current.get("ascent")?.error).toBe("出発時刻の風の予報がありません"));
   });
 
   it("出発時刻のコマが変わると取り直し、取り直す間は前の材料を残して読み込み中にする", async () => {

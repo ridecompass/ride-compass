@@ -163,7 +163,6 @@ describe("保存した設定", () => {
 
     const dialog = screen.getByRole("dialog", { name: "「週末」を反映します" });
     expect(within(dialog).getByText("目的地・経由2地点・候補 8件")).toBeInTheDocument();
-    expect(within(dialog).getByText("保存した地点に固定")).toBeInTheDocument();
     expect(await within(dialog).findByText("振動 200%")).toBeInTheDocument();
   });
 

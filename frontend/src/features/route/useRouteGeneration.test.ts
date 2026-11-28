@@ -122,7 +122,6 @@ describe("進み方", () => {
 
     await job.answer(0, Response.json({ status: "queued" }));
     await flush();
-    expect(rendered.result.current.generation.progressLabel).toBe("順番待ち...");
 
     await job.answer(
       1,

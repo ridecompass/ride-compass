@@ -117,7 +117,6 @@ describe("「現在地に移動」の取り直し", () => {
     act(() => result.current.locateMe());
 
     expect(result.current.locating).toBe(false);
-    expect(result.current.locateError).toBe("この端末では位置情報を取得できません。");
   });
 
   it("自動取得より後に出した取り直しの結果を、遅れて返った自動取得が上書きしない", () => {

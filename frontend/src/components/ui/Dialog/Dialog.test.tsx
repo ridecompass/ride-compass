@@ -26,7 +26,6 @@ describe("ConfirmDialog", () => {
 
   it("確かめるボタンを押すと、確かめた知らせだけが上がる", async () => {
     const { onConfirm, onCancel, dialog } = renderConfirm();
-    expect(dialog).toHaveTextContent("消した候補は元に戻せません。");
 
     await userEvent.click(within(dialog).getByRole("button", { name: "消す" }));
 

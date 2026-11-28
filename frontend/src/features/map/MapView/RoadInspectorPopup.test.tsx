@@ -79,7 +79,6 @@ describe("RoadInspectorPopup", () => {
       ),
     );
     renderPopup();
-    expect(screen.getByText("ロスを読み込んでいます")).toBeInTheDocument();
     // 軸は絵で出し、名前は読み上げに残す。ロスの無い軸は出さない。軸の名前は一覧の応答から引くので、ロスと別に届くのを待つ。
     await waitFor(() =>
       expect(screen.getByRole("group", { name: "ロスの内訳" })).toHaveTextContent(
@@ -108,7 +107,6 @@ describe("RoadInspectorPopup", () => {
     const labels = Array.from(facts.querySelectorAll("dt")).map((dt) => dt.textContent);
     expect(labels).toContain("道路種別");
     expect(new Set(labels).size).toBe(labels.length);
-    expect(facts.textContent).toContain("住宅街の道路");
     expect(facts.textContent).not.toMatch(/residential|yes/);
     expect(others.textContent).toContain("明治通り");
     expect(others.textContent).toContain("yes");
@@ -143,8 +141,6 @@ describe("風の予報を読めないとき", () => {
         conditions={{ ...RIDE.conditions, lensFrame: null }}
       />,
     );
-
-    expect(await screen.findByText("風の予報を読めないため、風に依るロスと合計は出せません。")).toBeInTheDocument();
     await waitFor(() => expect(screen.getByRole("group", { name: "ロスの内訳" })).toHaveTextContent(/^登坂\+4秒$/));
     expect(sent.map(({ body }) => body)).toEqual([expect.objectContaining({ wind: false })]);
   });

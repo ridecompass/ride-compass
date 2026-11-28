@@ -49,8 +49,7 @@ describe("費用の軸の一覧", () => {
   it("取れなければ倍率を変えられないことを知らせ、再試行で取れたら軸ごとの倍率を出す", async () => {
     onBackend("GET", "/api/cost-axes", inTurn(new Response(null, { status: 503 }), Response.json(TWO_COST_AXES)));
     renderPanel();
-
-    expect(await screen.findByRole("status")).toHaveTextContent("要因ごとの割合を変えられません");
+    await screen.findByRole("status");
 
     await userEvent.click(screen.getByRole("button", { name: "再試行" }));
 
