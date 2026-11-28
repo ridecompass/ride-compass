@@ -4,6 +4,7 @@
 このバッチはそれを差し込んだSQL文を組むだけで、タグを読むために行を取り出さない。一方通行の規制は、歩行者用道路と同じ当て方
 （`batch/derive_traffic_regulations.py: EDGES_HIT_SQL`）で区間へ当て、当たった区間の長さが道の長さの割合（区間へ当てる割合と
 同じ較正値）以上の道にだけ効かせる。道に当たった規制のどれかが自転車も対象なら、自転車も対象とみなす（逆走させない側に倒す）。
+自転車を除く規制は、線の同じ所に別の道も並んで当たるなら効かせない（どの道の規制か決められないときも、逆走させない側に倒す）。
 
 **上下線分離の判定は、規制を効かせる前のタグの通行方向で行う**——規制の当て違いで、上下線の判定を変えない。
 
@@ -47,26 +48,46 @@ FROM src s LEFT JOIN best b ON b.id = s.id
 #: 引き当てる側が期待する形（`id`・`tags`）へ生データを写す。
 _SOURCE_WAYS = f"SELECT osm_way_id AS id, tags FROM {WAYS_SOURCE_SQL} w"
 
-#: 一方通行の規制（`_oneway_regulations`）の場所が当たる区間から、道ごとに、規制が自転車も対象か。当たった区間の長さが道の長さの
-#: `$1`の割合に届かない道は行を持たない（道の一部にだけ当たる規制で、道全体の向きを決めない）。`$2`は区間へ当てる向きの差の上限。
+#: 一方通行の規制（`_oneway_regulations`）の場所が当たる区間から、道ごとに、効かせる規制が自転車も対象か。自転車を除く規制は、
+#: 線の同じ所（道の区間を線へ写した範囲が重なる所）に別の道も当たるなら、どの道の規制か決められないので、その道へは効かせない
+#: （`shared`）。効かせる規制の区間の長さが道の長さの`$1`の割合に届かない道は行を持たない（道の一部にだけ当たる規制で、
+#: 道全体の向きを決めない）。`$2`は区間へ当てる向きの差の上限。
 _WAY_REGULATIONS = f"""
 CREATE TEMP TABLE _way_regulations ON COMMIT DROP AS
 WITH hit AS ({EDGES_HIT_SQL}),
+spans AS (
+  SELECT h.osm_way_id, h.regulation_id,
+         min(least(ST_LineLocatePoint(p.line, ST_StartPoint(e.geom)), ST_LineLocatePoint(p.line, ST_EndPoint(e.geom)))) AS lo,
+         max(greatest(ST_LineLocatePoint(p.line, ST_StartPoint(e.geom)), ST_LineLocatePoint(p.line, ST_EndPoint(e.geom)))) AS hi
+  FROM hit h
+  JOIN road_edges e USING (osm_way_id, segment_index)
+  JOIN _regulation_places p USING (regulation_id)
+  WHERE p.line IS NOT NULL
+  GROUP BY h.osm_way_id, h.regulation_id),
+shared AS (
+  SELECT DISTINCT a.osm_way_id, a.regulation_id
+  FROM spans a JOIN spans b
+    ON b.regulation_id = a.regulation_id AND b.osm_way_id <> a.osm_way_id AND b.lo < a.hi AND b.hi > a.lo),
+applied AS (
+  SELECT h.osm_way_id, h.segment_index, r.excepts_bicycles
+  FROM hit h
+  JOIN _oneway_regulations r USING (regulation_id)
+  WHERE NOT r.excepts_bicycles
+     OR NOT EXISTS (SELECT 1 FROM shared s WHERE s.osm_way_id = h.osm_way_id AND s.regulation_id = h.regulation_id)),
 covered AS (
   SELECT e.osm_way_id, sum(e.distance_m) AS length_m
   FROM road_edges e
-  WHERE (e.osm_way_id, e.segment_index) IN (SELECT osm_way_id, segment_index FROM hit)
+  WHERE (e.osm_way_id, e.segment_index) IN (SELECT osm_way_id, segment_index FROM applied)
   GROUP BY e.osm_way_id),
 way_length AS (
   SELECT osm_way_id, sum(distance_m) AS length_m FROM road_edges
   WHERE osm_way_id IN (SELECT osm_way_id FROM covered) GROUP BY osm_way_id)
-SELECT h.osm_way_id, bool_or(NOT r.excepts_bicycles) AS bicycle_regulated
-FROM hit h
-JOIN _oneway_regulations r USING (regulation_id)
+SELECT a.osm_way_id, bool_or(NOT a.excepts_bicycles) AS bicycle_regulated
+FROM applied a
 JOIN covered c USING (osm_way_id)
 JOIN way_length l USING (osm_way_id)
 WHERE c.length_m >= $1 * l.length_m
-GROUP BY h.osm_way_id
+GROUP BY a.osm_way_id
 """
 
 #: 道ごとの通行方向と、上下線の判定に要るものを1つの表へまとめ、索引を張る。相方探しは自分自身を何度も引くため、
