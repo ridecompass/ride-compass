@@ -29,7 +29,7 @@ function snapshot(handle: RecordingMap): unknown {
     sources: handle
       .sources()
       .sort()
-      .map((id) => ({ id, spec: handle.sourceSpec(id), content: handle.sourceContent(id) })),
+      .map((source) => ({ source, spec: handle.sourceSpec(source), content: handle.sourceContent(source) })),
   };
 }
 

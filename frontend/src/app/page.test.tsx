@@ -22,7 +22,7 @@ import { heldReplies, onBackend, serveClientConfig, serveCostAxisCatalog } from 
 import { AVOIDANCE_LEVELS, avoidanceRow, clientConfigResponse, roadClassCatalog } from "@/testing/clientConfig";
 import { ROAD_AVOIDANCE_ROLE, ROAD_LINE_SOURCE_ID } from "@/features/map/scene/groups/roadLines";
 import { sceneLayerId } from "@/features/map/scene/sceneBuilders";
-import { LENS_SOURCE_ID } from "@/features/map/scene/groups/axisLines";
+import { lensSourceId } from "@/features/map/scene/groups/axisLines";
 import { ROAD_SETTINGS_TAB_NAME } from "@/lib/screenNames";
 import {
   FIRST,
@@ -56,7 +56,9 @@ beforeEach(() => {
 
 /** 全部の道路をそのレンズで塗っているか。 */
 function paints(lensId: string): boolean {
-  return mapOnScreen().visibleLayerIds().includes(sceneLayerId(LENS_SOURCE_ID, lensId));
+  return mapOnScreen()
+    .visibleLayerIds()
+    .includes(sceneLayerId(lensSourceId(lensId), lensId));
 }
 
 describe("ルートを作る", () => {

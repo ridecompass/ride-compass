@@ -139,10 +139,11 @@ class LensService:
         lenses = lens_conditions(settings.cost_axes)
         # 塗っていない・知らない・無効にした軸のレンズは、総合の塗り方で選ぶ。
         painted_id = lens_id if lens_id in lenses and lens_id in tile.table.values else TOTAL_LENS_ID
-        along, against = tile.table.values[painted_id][0].tolist()
+        # 塗っている向きは、地図がタイルの材料で選ぶのと同じ丸めた値で選ぶ。
+        along, against, road_bearing = (round(float(value), LENS_MATERIAL_DECIMALS) for value in (
+            *tile.table.values[painted_id][0].tolist(), tile.table.features.bearing_deg[0]))
         painted = painted_direction(map_lens(lenses[painted_id], settings.tuning),
-                                    math.nan if bearing_deg is None else bearing_deg,
-                                    float(tile.table.features.bearing_deg[0]), along, against)
+                                    math.nan if bearing_deg is None else bearing_deg, road_bearing, along, against)
         return lens_inspection(tile.table.features, 0, painted, tile.facts)
 
     async def _tile(self, network: RoadNetwork, settings: ModelSettings, z: int, x: int, y: int, at: datetime | None, speed_kmh: float,
@@ -214,9 +215,9 @@ def _way_materials(tile: _TileLens, values: np.ndarray) -> dict[str, dict[str, f
     result: dict[str, dict[str, float]] = {}
     features = tile.table.features
     for key, (along, against), bearing in zip(features.keys, values.tolist(), features.bearing_deg.tolist()):
-        # NaN（辿れない向き・方位の無い道）は自分と等しくない。
+        # NaN（辿れない向き・方位の無い道）と無限大（長さの無い区間）は値の無い材料にする（タイルの値は有限の数だけ）。
         leaves = {name: round(value, LENS_MATERIAL_DECIMALS) for name, value in (
-            (LENS_ALONG_LEAF, along), (LENS_AGAINST_LEAF, against), (ROAD_BEARING_LEAF, bearing)) if value == value}
+            (LENS_ALONG_LEAF, along), (LENS_AGAINST_LEAF, against), (ROAD_BEARING_LEAF, bearing)) if math.isfinite(value)}
         if LENS_ALONG_LEAF in leaves or LENS_AGAINST_LEAF in leaves:
             result[key] = leaves
     return result

@@ -14,7 +14,7 @@ import { lensMapLayerId, type LayerDataStatusByLayer, type MapLayerDescriptor } 
 import { buildLayerDataSources } from "@/features/map/MapView/layerDataSources";
 import { useLayerDataStatus } from "@/features/map/MapView/useLayerDataStatus";
 import { ORIGIN_ZOOM } from "@/features/map/MapView/useMapMarkers";
-import { LENS_SOURCE_ID } from "@/features/map/scene/groups/axisLines";
+import { lensSourceId } from "@/features/map/scene/groups/axisLines";
 import { ROAD_LINE_SOURCE_ID } from "@/features/map/scene/groups/roadLines";
 import { refreshTimeFramesIfStale } from "@/features/map/useTimeFrames";
 import { debugLog } from "@/lib/debugLog";
@@ -115,7 +115,7 @@ export function useMapLifecycle(
       }
       if (sourceId) layerDataStatusRef.current.markSourceErrored(sourceId);
       // 路面タイルとレンズのタイルが古い印で断られたら、コマの一覧を読み直す（新しい印でタイルのURLが変わり、取り直す）。
-      if (sourceId === ROAD_LINE_SOURCE_ID || sourceId === LENS_SOURCE_ID)
+      if (sourceId === ROAD_LINE_SOURCE_ID || sourceId === lensSourceId(getLook().lens))
         refreshTimeFramesIfStale((e.error as { status?: number } | undefined)?.status);
     }
     function handleFirstIdle() {

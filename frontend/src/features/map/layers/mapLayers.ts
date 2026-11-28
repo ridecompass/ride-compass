@@ -86,6 +86,7 @@ type LayerDeclaration = Pick<ChipLayerDescriptor, "dataSource" | "category" | "d
  * 地図の組み立てが情報源を引くためのidと源泉の宣言だけを持つ。 */
 interface LensLayerDescriptor extends LayerDeclaration {
   id: MapLayerId;
+  lensId: string;
   lensLayer: true;
 }
 
@@ -159,6 +160,7 @@ export function buildMapLayers({
     // レンズは費用の軸の一覧から作る。チップには出ないが、地図の組み立てが情報源をここから引く（無いと描く時点で落ちる）。
     ...lenses.map((lens): LensLayerDescriptor => ({
       id: lensMapLayerId(lens.lensId),
+      lensId: lens.lensId,
       ...declaredLayer(mapDisplay.axisLayers.dedicated),
       lensLayer: true,
     })),

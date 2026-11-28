@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { branch, expectNoOwnFailures, externalErrors, fetchCatalog, openLive, reportExternal } from "./live";
-import { chooseLens, currentLensLabel, renderedRoads, roadSourceId, settleMap } from "./mapReads";
+import { chooseLens, currentLensLabel, lensSourceId, renderedRoads, settleMap } from "./mapReads";
 import { allLayersOn, longPressRoad } from "../e2e/fixtures";
 import { FEATURE_KEY_PROPERTY } from "@/features/map/scene/groups/roadLines";
 import materialCatalog from "@/types/generated/material-catalog.json";
@@ -19,7 +19,6 @@ test("S1 地図の描画（生成前）", async ({ page }) => {
   const statsBefore = await externalErrors();
 
   const watch = await openLive(page, { storedState: allLayersOn(catalog.config.road_classes.map_layers) });
-  const source = await roadSourceId(page);
 
   // C: 地図のエラー（取得の失敗も含む）が0件。
   expect.soft(watch.mapErrors, "[map:error]（取得の失敗を含む）").toEqual([]);
@@ -39,8 +38,9 @@ test("S1 地図の描画（生成前）", async ({ page }) => {
         const tilesBefore = watch.lensTiles.length;
         await chooseLens(page, lens.label);
         await settleMap(page);
-        const drawn = await renderedRoads(page, source);
-        expect.soft(drawn.length, `「${lens.label}」: 道が描かれていない`).toBeGreaterThan(0);
+        // レンズの線（レンズのタイルのソース）に描かれた道。
+        const drawn = await renderedRoads(page, await lensSourceId(page, lens.lensId));
+        expect.soft(drawn.length, `「${lens.label}」: レンズの線が描かれていない`).toBeGreaterThan(0);
         // レンズのタイルで道ごとの材料を受け取り、それが描かれている道を指すこと（レンズのタイルの道の鍵は路面の地物の鍵）。
         const received = watch.lensTiles.slice(tilesBefore).filter((entry) => entry.lensId === lens.lensId);
         const featureKeys = new Set(
