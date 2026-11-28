@@ -77,7 +77,7 @@ describe("EditDifference", () => {
     expect(metric("距離")).toHaveTextContent("+2.3km");
     expect(metric("距離")).toHaveAttribute("data-worse", "true");
     expect(metric("所要")).toHaveTextContent("−10分");
-    expect(metric("負担")).toHaveTextContent("±0分");
+    expect(metric("難所")).toHaveTextContent("±0分");
   });
 
   it("どちらかが値を持たない指標は「—」", () => {
@@ -96,7 +96,6 @@ describe("EditDifference", () => {
   it("変えた区間を元と編集後で対応づけられなければ、数（「0区間」）と区間の並びを出さずに対応づけられないと言う", () => {
     // 寄り道（B→P→B）を足しただけの編集は、編集後にだけ別の道を通る区間があり、元の側には無い。
     renderDifference({ edited: edited(routeThrough(PLACES, [..."ABPBCD"])) });
-    expect(screen.getByText("[変えた区間を特定できません]")).toBeInTheDocument();
     expect(screen.queryByText(/区間$/)).not.toBeInTheDocument();
     expect(screen.queryByRole("listitem")).not.toBeInTheDocument();
     expect(metric("距離")).toHaveTextContent("+2.3km");

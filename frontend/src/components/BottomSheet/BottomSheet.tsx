@@ -2,6 +2,7 @@
 
 import { useEffect, useEffectEvent, useId, useLayoutEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/Button/Button";
+import { useCramped } from "@/hooks/useCramped";
 import { useStoredState } from "@/hooks/useStoredState";
 import { mapOverlayEdge } from "@/lib/mapOverlayEdges";
 import { TAP_SLOP_PX } from "@/lib/tapSlop";
@@ -20,7 +21,7 @@ interface BottomSheetProps {
   chosenHeightVh: number | null;
   /** 帯の操作を終えたときだけ呼ばれる（ドラッグの途中の高さはシートの中だけで持つ）。 */
   onHeightChoose: (vh: number) => void;
-  /** 変わったら中身が別物になったとみなして高さを合わせ直す（タブの切り替え等）。 */
+  /** 変わったら中身が別物になったとみなして高さを合わせ直す（地点の行の数等。タブの切り替えでは合わせ直さず、帯を指の下から動かさない）。 */
   fitKey?: string;
   /** 中身へ合わせるときの高さの上限（vh）。超える分はシートの中で動かす。 */
   fitMaxVh?: number;
@@ -92,6 +93,8 @@ function OpenBottomSheet({
   fitMaxVh = MAX_SHEET_HEIGHT_VH,
 }: Omit<BottomSheetProps, "open">) {
   const titleId = useId();
+  // 見出しの行に並べる操作とタブが収まりきらない間は、詰めた形にする。
+  const crampedRef = useCramped<HTMLDivElement>();
   // 中身に合わせた高さ・ドラッグの途中の高さ。持ち主へ上げないので、動かす間に持ち主は描き直されない。
   const [workingHeightVh, setWorkingHeightVh] = useState<number | null>(null);
   const heightVh = workingHeightVh ?? chosenHeightVh ?? DEFAULT_SHEET_HEIGHT_VH;
@@ -234,13 +237,16 @@ function OpenBottomSheet({
         onTouchStart={(e) => e.stopPropagation()}
         onKeyDown={handleHandleKeyDown}
       />
-      <div className="flex flex-shrink-0 items-center justify-between gap-2 border-b border-[var(--color-border)] px-3">
+      <div
+        ref={crampedRef}
+        className="group/fit flex flex-shrink-0 items-center justify-between gap-2 border-b border-[var(--color-border)] px-3"
+      >
         {/* 見出しのすぐ右に置くものが収まらなければ、下の行へ折り返す（右の操作はその右に残る）。 */}
         <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2">
           <h2 id={titleId} tabIndex={-1} className="sr-only">
             {title}
           </h2>
-          {headerLead && <div className="flex min-w-0 items-center">{headerLead}</div>}
+          {headerLead && <div className="flex min-w-0 flex-1 items-center">{headerLead}</div>}
         </div>
         <div className="flex flex-shrink-0 items-center gap-2">
           {headerAction}

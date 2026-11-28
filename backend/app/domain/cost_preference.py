@@ -19,7 +19,7 @@ STANDARD_COST_FACTOR = 1.0
 
 
 class CostLevel(NamedTuple):
-    """利用者が選ぶつまみ・倍率の段（値と、画面が出す名前）。名前は負担を数える割合（「強め」のような言葉は量が伝わらない）。
+    """利用者が選ぶつまみ・倍率の段（値と、画面が出す名前）。名前は難所を数える割合（「強め」のような言葉は量が伝わらない）。
     道の区分の倍率（`multiplier_label`の「×0.5」）は道の重さそのものに掛ける数で働きが違うので、同じ書き方にしない。"""
 
     value: float
@@ -33,11 +33,11 @@ def multiplier_label(value: float) -> str:
     return "×∞" if math.isinf(value) else f"×{round(value, 1):g}"
 
 
-#: 負担を数えないことの、段と並べて出す名前（費用の軸の無効と、全体のつまみの0）。
+#: 難所を数えないことの、段と並べて出す名前（費用の軸の無効と、全体のつまみの0）。
 DISABLED_LABEL = "無効"
 
 
-#: 標準より大きい段の色の役割。負担を重く見て避けやすくするので、道路タブの「なるべく避ける」と同じ。
+#: 標準より大きい段の色の役割。難所を重く見て避けやすくするので、道路タブの「なるべく避ける」と同じ。
 _HIGHER_COLOR_ROLE = "road_avoidance_avoid"
 
 
@@ -54,9 +54,9 @@ def _levels(lower_color_role: str, *values: float) -> tuple[CostLevel, ...]:
 
 
 #: 全体のつまみの段。0は「無効」で、どの軸も数えない（全部の軸を無効にしたのと同じ。`CostPreference.counts`）。
-#: 小さい段は負担をまとめて軽く見るだけで、どの道を好むのでもないので、好む色にしない。
+#: 小さい段は難所をまとめて軽く見るだけで、どの道を好むのでもないので、好む色にしない。
 COST_STRENGTH_LEVELS = _levels("neutral", 0.0, 0.5, STANDARD_COST_FACTOR, 1.5, 2.0)
-#: 軸ごとの倍率の段（数えない軸は倍率でなく無効で表すので、0の段は無い）。小さい段はその負担を軽く見て通りやすく
+#: 軸ごとの倍率の段（数えない軸は倍率でなく無効で表すので、0の段は無い）。小さい段はその難所を軽く見て通りやすく
 #: するので、道路タブの「好む」と同じ色の役割。
 COST_MULTIPLIER_LEVELS = _levels("road_avoidance_prefer", 0.5, STANDARD_COST_FACTOR, 2.0)
 #: つまみ・倍率の上限と倍率の下限（要求は段の間の値も受け付け、段の外の値は断る）。

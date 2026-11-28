@@ -42,8 +42,9 @@ interface UseLocationResult {
 
 /** 位置の取得と保持。出発地と現在地を分けて持ち、取れた現在地は出発地がまだ分からないとき（と、出発地を現在地に戻すとき）
  * だけ出発地にする。マウント時の自動取得と取り直しは並走しうるので、最後に出した要求の結果だけを反映する。
- * `ridingAt`は走行モードが受けた現在地（走行モードの間だけ。ほかはnull）で、走っている間はこれを現在地にする。 */
-export function useLocation(ridingAt: Coordinates | null): UseLocationResult {
+ * `ridingAt`は走行モードが受けた現在地（走行モードの間だけ。ほかはnull）で、走っている間はこれを現在地にする。
+ * `autoLocate`が偽の間は、マウント時の自動取得をしない（真になったときに1回取りに行く）。 */
+export function useLocation(ridingAt: Coordinates | null, autoLocate: boolean): UseLocationResult {
   const [origin, setOrigin] = useState<Origin>({ point: DEFAULT_LOCATION, source: "default" });
   const [here, setHere] = useState<Coordinates | null>(null);
   const [locationReady, setLocationReady] = useState(false);
@@ -79,13 +80,14 @@ export function useLocation(ridingAt: Coordinates | null): UseLocationResult {
 
   // 自動取得の失敗は文を出さず、初期地点のまま`originLocated`が偽で残る（読み手はそれで仮の地点と分かる）。
   useEffect(() => {
+    if (!autoLocate) return;
     if (!navigator.geolocation) {
       // effectの中で同期にsetStateしない（react-hooks/set-state-in-effect）。
       Promise.resolve().then(() => setLocationReady(true));
       return;
     }
     requestPosition(false, () => {});
-  }, [requestPosition]);
+  }, [requestPosition, autoLocate]);
 
   // 利用者が押した取り直しには、失敗を知らせる。
   const locate = useCallback(

@@ -104,7 +104,7 @@ describe("describeConditions", () => {
     [
       "標準でないつまみと、無効の軸と標準でない軸の倍率だけを、軸の並びで（消えた軸は出さない）",
       { ...STANDARD_COST_PREFERENCE, strength: 0.5, multipliers: { ascent: 2, gone: 3 }, disabled_axes: ["vibration"] },
-      "全体 50%・登坂 200%・振動 無効",
+      "総合 50%・登坂 200%・振動 無効",
     ],
   ])("倍率: %s", (_, costPreference, expected) => {
     expect(describeConditions({ ...ENTRY, costPreference }, CATALOG, COST_CATALOG).costPreference).toBe(expected);

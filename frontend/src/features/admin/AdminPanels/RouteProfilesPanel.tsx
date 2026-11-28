@@ -26,7 +26,7 @@ export type RouteProfileSettings = Pick<RouteProfile, "cost_preference" | "road_
 interface RouteProfilesPanelProps {
   /** 足したひな形の設定（標準）。 */
   standard: RouteProfileSettings;
-  /** ひな形1つの設定を編集する部品（利用者の画面の「負担」「道路」タブと同じ並びで選ぶ）。 */
+  /** ひな形1つの設定を編集する部品（利用者の画面の「難所」「道路」タブと同じ並びで選ぶ）。 */
   renderSettingsEditor: (
     settings: RouteProfileSettings,
     onChange: (next: RouteProfileSettings) => void,
@@ -80,7 +80,7 @@ export default function RouteProfilesPanel({ standard, renderSettingsEditor }: R
           <h2 className={textVariants({ variant: "heading" })}>ひな形</h2>
           <InfoPopover triggerAriaLabel="ひな形の説明">
             <p>
-              名前を付けた負担と道路の設定です。公開にしたものが、利用者の画面の「負担」「道路」タブの頭に並び、選ぶとその設定へ
+              名前を付けた難所と道路の設定です。公開にしたものが、利用者の画面の「難所」「道路」タブの頭に並び、選ぶとその設定へ
               まとめて入れ替わります。書いていない種類と道路は標準です。
             </p>
           </InfoPopover>

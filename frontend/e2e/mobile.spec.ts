@@ -73,9 +73,9 @@ test("モバイル: 候補0件の理由の窓が、開いている「ルート�
   await expect(notice).toBeHidden();
 });
 
-// 観点1（収まる）: 「保存済み」タブの「設定」の一覧は、何も知らせていない間、上に空白を作らず「地点」の一覧と同じ高さから
+// 観点1（収まる）: 「保存」タブの「設定」の一覧は、何も知らせていない間、上に空白を作らず「地点」の一覧と同じ高さから
 // 始まる。知らせの行は読み上げのために置いたままなので、場所を取るかは実寸でしか見えない。
-test("モバイル: 「保存済み」の「設定」の一覧は、「地点」の一覧と同じ高さから始まる", async ({ page }) => {
+test("モバイル: 「保存」の「設定」の一覧は、「地点」の一覧と同じ高さから始まる", async ({ page }) => {
   await openMobileApp(page, {
     storedState: {
       "ridecompass:saved-places": JSON.stringify([
@@ -98,7 +98,7 @@ test("モバイル: 「保存済み」の「設定」の一覧は、「地点」
     },
   });
   const sheet = await openMobileSheet(page, "ルート設定");
-  await sheet.getByRole("tab", { name: "保存済み" }).click();
+  await sheet.getByRole("tab", { name: "保存" }).click();
 
   const firstRowTop = async (tab: string) => {
     await sheet.getByRole("tab", { name: tab, exact: true }).click();

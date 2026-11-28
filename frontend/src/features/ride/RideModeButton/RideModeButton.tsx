@@ -139,8 +139,8 @@ export default function RideModeButton({
               "relative",
               "data-[ride=following]:bg-[var(--color-accent)] data-[ride=following]:text-white",
               "data-[ride=waiting]:animate-pulse data-[ride=waiting]:bg-[var(--color-accent)] data-[ride=waiting]:text-white motion-reduce:animate-none",
-              "data-[ride=paused]:text-[var(--color-accent)] data-[ride=paused]:shadow-[0_0_0_2px_var(--color-accent)]",
-              "data-[ride=resting]:text-[var(--color-accent)] data-[ride=resting]:shadow-[0_0_0_2px_var(--color-accent)]",
+              "data-[ride=paused]:text-[var(--color-accent-text)] data-[ride=paused]:shadow-[0_0_0_2px_var(--color-accent)]",
+              "data-[ride=resting]:text-[var(--color-accent-text)] data-[ride=resting]:shadow-[0_0_0_2px_var(--color-accent)]",
             )}
           >
             <RideModeIcon />

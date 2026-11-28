@@ -9,7 +9,6 @@
 import { act, fireEvent, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { LENS_LINK_DESCRIPTION } from "@/lib/lensLink";
 import { serveCostAxisCatalog } from "@/testing/backendServer";
 import { ALONG_FORMULA, BEARING_FORMULA, TWO_COST_AXES } from "@/testing/costAxes";
 import { renderHome, serveHome } from "@/testing/homePage";
@@ -22,20 +21,21 @@ beforeEach(() => {
 });
 
 describe("右上の方位磁針と拡大・縮小", () => {
+  // 走る向きを渡すのは走行中だけなので、ルートの前は式の木が走行方位を読んでも、地図を回して塗りは変わらない。
   it.each([
-    ["走行方位の節を持つ", BEARING_FORMULA, LENS_LINK_DESCRIPTION],
-    ["走行方位の節を持たない", ALONG_FORMULA, null],
-  ])("塗っているレンズの式の木が%sなら、右上の方位磁針の連動の印は %s", async (_, formula, description) => {
+    ["走行方位の節を持つ", BEARING_FORMULA],
+    ["走行方位の節を持たない", ALONG_FORMULA],
+  ])("走っていない間は、塗っているレンズの式の木が%sでも、右上の方位磁針に連動の印を付けない", async (_, formula) => {
     const ascent = TWO_COST_AXES.axes[0];
     serveCostAxisCatalog({
       ...TWO_COST_AXES,
       axes: [{ ...ascent, map_lens: { ...ascent.map_lens, formula } }, ...TWO_COST_AXES.axes.slice(1)],
     });
     const { user } = renderHome();
-    await user.click(screen.getByRole("button", { name: /^負担で塗る: / }));
+    await user.click(screen.getByRole("button", { name: /^難所を色で見る/ }));
     await user.click(await screen.findByRole("radio", { name: /登坂/ }));
 
-    expect(screen.getByRole("button", { name: "地図の向き" }).getAttribute("aria-description")).toBe(description);
+    expect(screen.getByRole("button", { name: "地図の向き" }).getAttribute("aria-description")).toBeNull();
   });
 
   it("右上の方位磁針は地図の北を指し、押すと開くダイヤルの輪をなぞる・矢印のキーで地図が回り、真ん中の針で北が上に戻る。ダイヤルの文は方位と度だけ。＋・－で拡大・縮小し、長押しで1本指の拡大・縮小の案内が出る", async () => {

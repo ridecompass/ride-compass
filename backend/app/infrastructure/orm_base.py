@@ -21,6 +21,7 @@ class Base(DeclarativeBase):
 
 #: 表を宣言するモジュールの全部（`Base.metadata`の中身は同じ実行でほかに誰がimportしたかで変わるので、`declared_metadata`が全部をimportする）。
 TABLE_MODULES = (
+    "app.infrastructure.account_models",
     "app.infrastructure.cost_axis_models",
     "app.infrastructure.derived_data_meta",
     "app.infrastructure.derived_models",

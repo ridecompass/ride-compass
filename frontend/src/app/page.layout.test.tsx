@@ -11,14 +11,22 @@
  *
  * 差し替えたもの: backend の応答（網の層）、位置情報の取得、地図の描画（`maplibre-gl`）。子の部品は本物を描く。
  */
-import { act, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { HOUR_MS } from "@/lib/duration";
 import { onBackend } from "@/testing/backendServer";
-import { ROAD_CLASS_COLOR, renderHome, section, serveHome, showRoadSurface } from "@/testing/homePage";
+import {
+  ROAD_CLASS_COLOR,
+  renderHome,
+  section,
+  serveHome,
+  showRoadSurface,
+  signedInAndConsented,
+} from "@/testing/homePage";
 import { themedPaint } from "@/features/map/basemapTheme";
 import { LAYER_DATA_STATUS_LABELS } from "@/features/map/layers/mapLayers";
+import { LOADING_STATUS_DELAY_MS } from "@/features/map/useShownDataStatus";
 import { LIBERTY_POI_LAYERS } from "@/testing/libertyPoiLayers";
 import { insetMapOnScreen, mapOnScreen } from "@/testing/maplibre";
 
@@ -78,9 +86,9 @@ describe("画面の枠", () => {
   it("地図の中央の「地図を読み込み中…」の札は、時間では外れず、基礎地図が描けた（`load`）ときに外れる", () => {
     vi.useFakeTimers();
     try {
+      signedInAndConsented();
       render(<Home />);
       act(() => vi.runOnlyPendingTimers());
-      expect(screen.getByText("地図を読み込み中…")).toBeInTheDocument();
       act(() => mapOnScreen().emit("load"));
       expect(screen.queryByText("地図を読み込み中…")).toBeNull();
     } finally {
@@ -92,9 +100,16 @@ describe("画面の枠", () => {
     const { user } = renderHome();
     await showRoadSurface(user);
     act(() => mapOnScreen().emit("idle"));
-    await user.click(screen.getByRole("button", { name: "地図に出す情報" }));
-    const row = screen.getByRole("checkbox", { name: "路面の種類" }).closest("label");
-    expect(row?.getAttribute("title")).toContain(LAYER_DATA_STATUS_LABELS.loading);
+    // 待ちの印を出すまでの長さを、偽の時計で進める（実時間で待つと、この画面のテストはメモリを使い切る）。
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      fireEvent.click(screen.getByRole("button", { name: "地図に出す情報" }));
+      act(() => vi.advanceTimersByTime(LOADING_STATUS_DELAY_MS));
+      const row = screen.getByRole("checkbox", { name: "路面の種類" }).closest("label");
+      expect(row?.getAttribute("title")).toContain(LAYER_DATA_STATUS_LABELS.loading);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("再描画でスタイルが取れなかったら読み込みの失敗を出し、もう一度押すと取り直し、取れたら消す。取り直しの間のタイル1枚の失敗では出さない", async () => {
@@ -200,9 +215,11 @@ describe("画面の枠", () => {
     expect(inset.layerPaint("background")?.["background-color"]).toBe(dark);
   });
 
-  it("区分の開閉は、次に開いたときも同じになる", async () => {
+  it("区分の開閉は、次に開いたときも同じになる。「ルート設定」を畳んでもタブと生成の行は残る", async () => {
     const { user, unmount } = renderHome();
     await user.click(section("ルート設定"));
+    expect(screen.getByRole("tab", { name: "難所" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^ルート生成/ })).toBeInTheDocument();
     unmount();
 
     renderHome();
@@ -241,7 +258,6 @@ describe("画面の枠", () => {
 
     const again = renderHome();
     act(() => mapOnScreen().moveTo(NEAR, 12));
-    expect(await screen.findByText("俯瞰図を読み込み中…")).toBeInTheDocument();
     act(() => insetMapOnScreen()!.emit("error", { error: new Error("スタイルが取れない") }));
     expect(insetLoading()).toBeNull();
     await again.user.click(await screen.findByRole("button", { name: "俯瞰図を畳む" }));

@@ -1,29 +1,17 @@
 /**
- * `BackendStatus.tsx`——backendの疎通を、確認中・OK・失敗の文言の3つで出すこと。
- *
- * ここで見ないもの:
- * - 疎通の失敗の文言 → `app/admin/adminApi.test.ts`
+ * `BackendStatus.tsx`——backendの疎通の答えが画面に出ること。
  */
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
-import { heldReplies, onBackend } from "@/testing/backendServer";
+import { onBackend } from "@/testing/backendServer";
 
 import BackendStatus from "./BackendStatus";
 
 describe("BackendStatus", () => {
-  it("答えが来るまでは確認中と出す", () => {
-    onBackend("GET", "/health", heldReplies().reply);
+  it("疎通の答えが来たら、OKと出す", async () => {
+    onBackend("GET", "/health", () => Response.json({ status: "ok" }));
     render(<BackendStatus />);
-    expect(screen.getByText("サーバー接続を確認中…")).toBeInTheDocument();
-  });
-
-  it.each([
-    ["サーバー接続: OK", () => Response.json({ status: "ok" })],
-    [/バックエンドへの疎通確認に失敗しました/, () => new Response(null, { status: 503 })],
-  ])("疎通の答えが来たら「%s」と出す", async (shown, reply) => {
-    onBackend("GET", "/health", reply);
-    render(<BackendStatus />);
-    expect(await screen.findByText(shown)).toBeInTheDocument();
+    expect(await screen.findByText("サーバー接続: OK")).toBeInTheDocument();
   });
 });

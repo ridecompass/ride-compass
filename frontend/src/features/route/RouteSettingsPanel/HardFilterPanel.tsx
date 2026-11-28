@@ -54,25 +54,28 @@ export default function HardFilterPanel({
     .filter(({ rows }) => rows.length > 0);
   return (
     <div className="flex flex-col">
-      {roadTabMap !== undefined && (
-        <label
-          className="flex items-center gap-1.5 pb-1 text-[length:var(--font-size-sm)]"
-          data-usage="このタブを出している間、選んだ段の色で地図の道を塗り、下の地図を灰色に薄めます。選んだものはこの端末に保存します。"
-        >
-          <Checkbox checked={roadTabMap.on} onCheckedChange={roadTabMap.onChange} aria-label="地図で見る" />
-          地図で見る
-        </label>
-      )}
-      {/* 地図の色が段のどれかを、段の向きの名前と、行に出る段の名前（倍率）で読ませる。 */}
-      <MarkLegend role="group" aria-label="段の凡例" className="pb-1">
-        {levels.filter(isPainted).map(({ key, name, label, color }) => (
-          <MarkLegendItem key={key}>
-            <Dot tone="none" style={{ backgroundColor: color }} />
-            {name}
-            <span className="tabular-nums">{label}</span>
-          </MarkLegendItem>
-        ))}
-      </MarkLegend>
+      {/* 「地図で見る」と段の凡例を1行に並べ、収まらない幅でだけ凡例を折り返す。 */}
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 pb-1">
+        {roadTabMap !== undefined && (
+          <label
+            className="flex items-center gap-1.5 text-[length:var(--font-size-sm)]"
+            data-usage="このタブを出している間、選んだ段の色で地図の道を塗り、下の地図を灰色に薄めます。選んだものはこの端末に保存します。"
+          >
+            <Checkbox checked={roadTabMap.on} onCheckedChange={roadTabMap.onChange} aria-label="地図で見る" />
+            地図で見る
+          </label>
+        )}
+        {/* 地図の色が段のどれかを、行と見出しに出る段の名前（倍率）だけで見せる。段の向きの名前は読み上げにだけ渡す。 */}
+        <MarkLegend role="group" aria-label="段の凡例">
+          {levels.filter(isPainted).map(({ key, name, label, color }) => (
+            <MarkLegendItem key={key}>
+              <Dot tone="none" style={{ backgroundColor: color }} />
+              <span className="sr-only">{name}</span>
+              <span className="tabular-nums">{label}</span>
+            </MarkLegendItem>
+          ))}
+        </MarkLegend>
+      </div>
       {roadTabMap !== undefined && roadTabMap.notice !== null && (
         <p className={cn(textVariants({ variant: "note" }), "pb-1")} role="status">
           {roadTabMap.notice}

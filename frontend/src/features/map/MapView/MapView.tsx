@@ -34,6 +34,8 @@ import { useRideFollow, type RideFollow } from "@/features/map/MapView/useRideFo
 import { useSectionFocus } from "@/features/map/MapView/useSectionFocus";
 import { useStreetViewAim } from "@/features/map/MapView/useStreetViewAim";
 import { type TurnMarkPoint, useTurnMark } from "@/features/map/MapView/useTurnMark";
+import { useDebugEnabled } from "@/hooks/useDebugLog";
+import { observeMapFrameTimes } from "@/lib/mapFrameLog";
 import { routeSide } from "@/lib/mapDisplay/sidePoints";
 import { segmentPath } from "@/lib/routeDistance";
 import type { StreetViewAim } from "@/lib/streetViewUrl";
@@ -101,7 +103,7 @@ interface MapViewProps {
   travelledKm: number | null;
   /** 走行中に次に曲がる所の地点と向き。印を出す。無ければnull。 */
   turnPoint: TurnMarkPoint | null;
-  /** いまの「負担で塗る」の周りの道の塗りが地図の向きで決まる（方位磁針のボタンに印を付ける）。 */
+  /** いまの「難所を色で見る」の周りの道の塗りが走行中の進む向きで決まる（方位磁針のボタンに印を付ける）。 */
   compassLinked: boolean;
   /** Street View を開く地点と向きの矢印。出さなければnull。 */
   streetViewAim: StreetViewAim | null;
@@ -240,6 +242,12 @@ export default function MapView({
   );
 
   // 地図を作るeffectより後に呼ぶ（印のeffectは地図ができてから走る）。
+  // デバッグモードの間は、地図の長いコマで時間を使った段をデバッグログへ出す（地図は上の`useMapLifecycle`が先に作る）。
+  const debugEnabled = useDebugEnabled();
+  useEffect(() => {
+    const map = mapRef.current;
+    return debugEnabled && map ? observeMapFrameTimes(map) : undefined;
+  }, [debugEnabled]);
   const markerContents = useMapMarkers(mapRef, {
     location,
     locationSource,

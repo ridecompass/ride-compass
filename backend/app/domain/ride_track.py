@@ -3,11 +3,14 @@
 端末は欄の名前を毎点くり返さない詰めた形で送る。点の値は端末が出したままで、止まり・外れ等の解釈は足さない。
 """
 
-from typing import Annotated, Literal
+from collections.abc import Sequence
+from typing import Annotated, Any, Literal
 from uuid import UUID
 
-from pydantic import AwareDatetime, Field, JsonValue
+import numpy as np
+from pydantic import AwareDatetime, Field, JsonValue, WithJsonSchema
 
+from app.domain.geo import haversine_distance_km_pairs
 from app.domain.strict_model import StrictModel
 
 #: 1点: 走り始めからのミリ秒・緯度と経度の100万倍・標高の10倍（m）・位置の誤差の10倍（m）・速さの100倍（m/s）・進む向き（度）・
@@ -36,3 +39,48 @@ class RideUpload(StrictModel):
     conditions: dict[str, JsonValue]
     #: アプリがそのとき見せた予報（受けたまま）。
     forecasts: list[JsonValue]
+
+
+# GeoJSONのMultiLineString。走りを休むごとに線を分け、点は RFC 7946 の位置の[経度, 緯度]。
+MultiLineStringGeometry = Annotated[
+    dict[str, Any],
+    WithJsonSchema(
+        {
+            "type": "object",
+            "properties": {
+                "type": {"const": "MultiLineString", "type": "string"},
+                "coordinates": {
+                    "type": "array",
+                    "items": {"type": "array", "items": {"type": "array", "items": {"type": "number"}}},
+                },
+            },
+            "required": ["type", "coordinates"],
+        }
+    ),
+]
+
+
+class RideSummary(StrictModel):
+    """自分の走りの一覧の1件。"""
+
+    id: UUID
+    started_at: AwareDatetime
+    #: 走った線の長さ。休んで途切れた間はつながない。
+    distance_m: int
+    #: 走り始めから最後の点まで（休んだ時間も含む）。
+    duration_s: int
+
+
+class RideDetail(RideSummary):
+    track: MultiLineStringGeometry
+
+
+def track_distance_m(lines: Sequence[Sequence[tuple[float, float]]]) -> float:
+    """線（点は緯度, 経度）ごとの、隣り合う点の間の球面距離の和（m）。線と線の間はつながない。"""
+    total_km = 0.0
+    for line in lines:
+        if len(line) < 2:
+            continue
+        lat, lon = np.asarray(line, dtype=float).T
+        total_km += float(haversine_distance_km_pairs(lat[:-1], lon[:-1], lat[1:], lon[1:]).sum())
+    return total_km * 1000

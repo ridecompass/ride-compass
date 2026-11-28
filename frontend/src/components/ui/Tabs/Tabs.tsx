@@ -3,6 +3,7 @@
 import * as RadixTabs from "@radix-ui/react-tabs";
 import { cva, type VariantProps } from "class-variance-authority";
 import { createContext, forwardRef, useContext } from "react";
+import { FIT_SCROLL_ATTRIBUTE } from "@/hooks/useCramped";
 import { cn } from "@/lib/cn";
 
 // タブ。選択状態・矢印キーでの移動・パネルの出し分けはRadix Tabsが持つ。Root・Contentは
@@ -22,6 +23,11 @@ const listVariants = cva("flex", {
        * 薄めた幅と同じで、送り切ると最後のカードが薄まらずに見える。 */
       cards:
         "gap-1.5 overflow-x-auto pr-6 [mask-image:linear-gradient(to_right,black_calc(100%_-_1.5rem),transparent)] [scrollbar-width:none]",
+      /** 見出しの行に並べる、幅を取らないタブ。薄い地の帯の上に並べ、選んだタブだけを札として浮かせる（下線だけでは、詰めた
+       * 間隔のタブが1続きの語に読める）。置いた行が収まりきらない間（`hooks/useCramped.ts: useCramped`）は文字を一回り小さくし、
+       * それでも収まらなければ帯の中だけを横へ流す（隣の操作に重ねない）。 */
+      segmented:
+        "min-w-0 gap-0.5 overflow-x-auto rounded-md bg-[var(--color-surface-hover)] p-0.5 [scrollbar-width:none]",
       /** 図の上の角に重ねる小さな切り替え（道のりのグラフ）。下の図が透けすぎないよう、地を少しだけ透かす。 */
       overlay:
         "overflow-hidden rounded-full border border-[var(--color-border)] bg-[color-mix(in_srgb,var(--background)_85%,transparent)]",
@@ -31,7 +37,7 @@ const listVariants = cva("flex", {
 });
 
 const triggerVariants = cva(
-  "flex cursor-pointer items-center whitespace-nowrap border-0 bg-transparent font-bold text-[length:var(--font-size-sm)] text-[var(--color-muted)] transition-colors data-[state=active]:text-[var(--color-accent-strong)] disabled:cursor-not-allowed disabled:text-[var(--color-border)]",
+  "flex cursor-pointer items-center whitespace-nowrap border-0 bg-transparent font-bold text-[length:var(--font-size-sm)] text-[var(--color-muted)] transition-colors data-[state=active]:text-[var(--color-accent-text)] disabled:cursor-not-allowed disabled:text-[var(--color-border)]",
   {
     variants: {
       variant: {
@@ -40,6 +46,8 @@ const triggerVariants = cva(
         // 選んだカードは枠の代わりに内側の線と地の色で示す（枠の太さを変えると、選ぶたびに中身が動く）。
         cards:
           "w-[5.25rem] flex-none flex-col items-stretch overflow-hidden rounded-sm border border-[var(--color-border)] px-1.5 pt-1 text-left tabular-nums data-[state=active]:border-transparent data-[state=active]:bg-[var(--color-accent-bg)] data-[state=active]:shadow-[inset_0_0_0_2px_var(--color-accent-strong)]",
+        segmented:
+          "flex-none rounded-sm px-1.5 py-1 data-[state=active]:bg-[var(--color-accent-bg)] data-[state=active]:shadow-[0_1px_2px_rgba(0,0,0,0.18)] group-data-[cramped=true]/fit:px-0.5 group-data-[cramped=true]/fit:text-[length:var(--font-size-xs)]",
         // 1つを選ぶ切り替え（`ToggleGroup`の`segmented`）と同じく、選んだ方を地の色で示す。
         overlay:
           "min-h-6 flex-none px-2 py-0.5 font-normal text-[length:var(--font-size-xs)] text-[var(--foreground)] data-[state=active]:bg-[var(--color-accent)] data-[state=active]:text-white",
@@ -62,7 +70,12 @@ export const TabsList = forwardRef<HTMLDivElement, TabsListProps>(function TabsL
   const v = variant ?? "underline";
   return (
     <VariantContext.Provider value={v}>
-      <RadixTabs.List ref={ref} className={cn(listVariants({ variant: v }), className)} {...props} />
+      <RadixTabs.List
+        ref={ref}
+        className={cn(listVariants({ variant: v }), className)}
+        {...(v === "segmented" ? { [FIT_SCROLL_ATTRIBUTE]: "" } : {})}
+        {...props}
+      />
     </VariantContext.Provider>
   );
 });

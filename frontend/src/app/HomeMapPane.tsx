@@ -19,9 +19,11 @@ import type { useMapView } from "@/features/map/view/useMapView";
 import RideBottom from "@/features/ride/RideBottom/RideBottom";
 import RideDarkScreen, { RideDarkScreenButton } from "@/features/ride/RideDarkScreen/RideDarkScreen";
 import RideLockButton from "@/features/ride/RideLockButton/RideLockButton";
+import RideKeepCard from "@/features/ride/RideKeepCard/RideKeepCard";
 import RideModeButton from "@/features/ride/RideModeButton/RideModeButton";
 import RideVoiceButton from "@/features/ride/RideVoiceButton/RideVoiceButton";
 import TurnCard from "@/features/ride/TurnCard/TurnCard";
+import type { RideKeep } from "@/features/ride/useRideKeep";
 import type { useRideMode } from "@/features/ride/useRideMode";
 import RouteProfile from "@/features/route/RouteProfile/RouteProfile";
 import { useChosenProfileLayers, type ProfileLayerSelection } from "@/features/route/RouteProfile/useProfileLayers";
@@ -30,6 +32,7 @@ import type { GenerationConditionsState } from "@/features/route/useGenerationCo
 import type { useRoutePlanner } from "@/features/route/useRoutePlanner";
 import { useCostAxisCatalog } from "@/hooks/useCostAxisCatalog";
 import type { useLocation } from "@/hooks/useLocation";
+import { FIT_NATURAL_ATTRIBUTE, useCramped } from "@/hooks/useCramped";
 import { cn } from "@/lib/cn";
 import { mapOverlayEdge } from "@/lib/mapOverlayEdges";
 import type { StreetViewAim } from "@/lib/streetViewUrl";
@@ -59,6 +62,7 @@ interface HomeMapPaneProps {
   usageGuideActive: boolean;
   onUsageGuideEnd: () => void;
   firstVisitIntro: ReturnType<typeof useFirstVisitIntro>;
+  rideKeep: RideKeep;
 }
 
 /** 地図と、地図の上に重ねる操作。 */
@@ -81,6 +85,7 @@ export default function HomeMapPane({
   usageGuideActive,
   onUsageGuideEnd,
   firstVisitIntro,
+  rideKeep,
 }: HomeMapPaneProps) {
   const costCatalog = useCostAxisCatalog();
   const { results, splice } = route;
@@ -92,6 +97,8 @@ export default function HomeMapPane({
   if (!navigating && dark) setDark(false);
   // Street View を開く地点と向きの矢印。走り出したらしまう（右の列の出すボタンは、走っていない間だけ出す）。
   const [streetViewAim, setStreetViewAim] = useState<StreetViewAim | null>(null);
+  // 「難所を色で見る」が「表示」の横に収まらない間は、下の段へ下げる。
+  const lensRowRef = useCramped<HTMLDivElement>();
   if (navigating && streetViewAim !== null) setStreetViewAim(null);
   const selected = results.selectedCandidate;
   const selection = results.selectedRouteSegment;
@@ -113,7 +120,7 @@ export default function HomeMapPane({
     ) : null;
 
   return (
-    <div ref={paneRef} className="app-map-pane @container/map relative min-h-0 flex-1">
+    <div ref={paneRef} className="app-map-pane relative min-h-0 flex-1">
       <MapView
         routes={route.mapRoutes}
         {...splice.map}
@@ -166,17 +173,20 @@ export default function HomeMapPane({
         )}
         {navigating && <div ref={setRideNoticeHost} className="empty:hidden" />}
       </div>
-      {/* 上端の段の中央に「負担で塗る」を置く。走行中も、ルートの線と道の色が何かを示すため同じ大きさで出す。
+      {/* 上端の段の中央に「難所を色で見る」を置く。走行中も、ルートの線と道の色が何かを示すため同じ大きさで出す。
           左右の余白は、右の縦の列を両側で避ける幅（中央に置くため。左上の「表示」は列と同じ幅なので、これで避けられる）。
-          「表示」の横に収まらないほど地図が狭い間は、「表示」の下の段へ下げ、余白は変えずに箱を左へずらして左端を「表示」の左端にそろえる（余白のクラスを上書きしない）。 */}
+          「表示」の横に収まらない間（`hooks/useCramped.ts: useCramped`）は、「表示」の下の段へ下げ、余白は変えずに箱を左へずらして左端を「表示」の左端にそろえる（余白のクラスを上書きしない）。 */}
       <div
         {...mapOverlayEdge("top")}
-        className={cn(
-          "pointer-events-none absolute inset-x-0 top-3 z-[var(--z-map-control)] flex justify-center px-[calc(var(--map-ctrl-margin)_+_var(--map-ctrl-column-width)_+_var(--space-2))]",
-          "@max-[22rem]/map:top-12 @max-[22rem]/map:left-[calc(0.75rem_-_var(--map-ctrl-margin)_-_var(--map-ctrl-column-width)_-_var(--space-2))]",
-        )}
+        ref={lensRowRef}
+        className="group/fit pointer-events-none absolute inset-x-0 top-3 z-[var(--z-map-control)] flex justify-center px-[calc(var(--map-ctrl-margin)_+_var(--map-ctrl-column-width)_+_var(--space-2))]"
       >
-        <LensControl {...mapView.lensControl} />
+        <div
+          className="flex min-w-0 justify-center group-data-[cramped=true]/fit:mt-9 group-data-[cramped=true]/fit:mr-auto group-data-[cramped=true]/fit:-ml-[calc(var(--map-ctrl-margin)_+_var(--map-ctrl-column-width)_+_var(--space-2)_-_0.75rem)]"
+          {...{ [FIT_NATURAL_ATTRIBUTE]: "" }}
+        >
+          <LensControl {...mapView.lensControl} />
+        </div>
       </div>
       {/* 俯瞰図は左下に置く。スマホでは下のタブの上へ上げる。走行中は、下の道のりのグラフ等の上へ積む。 */}
       {!navigating && overview !== null && (
@@ -190,13 +200,17 @@ export default function HomeMapPane({
           {overview}
         </div>
       )}
-      {!navigating && (
-        <FirstVisitIntro
-          shown={firstVisitIntro.shown}
-          onClose={firstVisitIntro.close}
-          originLocateFailed={place.locationFailure !== null}
-        />
-      )}
+      {/* 案内を終えた走りを送った結果のカードは、初回の案内と同じ所に出し、出している間は初回の案内を出さない。 */}
+      {!navigating &&
+        (rideKeep.step !== "hidden" ? (
+          <RideKeepCard rideKeep={rideKeep} />
+        ) : (
+          <FirstVisitIntro
+            shown={firstVisitIntro.shown}
+            onClose={firstVisitIntro.close}
+            originLocateFailed={place.locationFailure !== null}
+          />
+        ))}
 
       {usageGuideActive ? <UsageGuide onEnd={onUsageGuideEnd} /> : <UsageTooltip />}
 

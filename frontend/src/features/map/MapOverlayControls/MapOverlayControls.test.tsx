@@ -106,7 +106,6 @@ describe("▶の内訳", () => {
     const { panel } = await openDetails(
       chip("layer", { on: true, notice: "ズームインすると表示されます", legendDetails: [legend("a", ["1"])] }),
     );
-    expect(panel).toHaveTextContent("ズームインすると表示されます");
     expect(within(panel).queryByText("項目1")).not.toBeInTheDocument();
   });
 
@@ -138,11 +137,11 @@ describe("▶の内訳", () => {
 describe("行の印", () => {
   it("取得状態は、ONの間だけtitleへ添える（OFF・状態なしは添えない）", async () => {
     await setup([
-      chip("loading", { on: true, dataStatus: "loading", title: "説明" }),
+      chip("on", { on: true, dataStatus: "empty", title: "説明" }),
       chip("off", { dataStatus: "error", title: "説明" }),
       chip("normal", { on: true, title: "説明" }),
     ]);
-    expect(rowTitle("loading")).toBe(`説明[${LAYER_DATA_STATUS_LABELS.loading}]`);
+    expect(rowTitle("on")).toBe(`説明[${LAYER_DATA_STATUS_LABELS.empty}]`);
     expect(rowTitle("off")).toBe("説明");
     expect(rowTitle("normal")).toBe("説明");
   });

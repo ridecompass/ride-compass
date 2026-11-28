@@ -13,7 +13,6 @@ import type { BasemapPoiKinds } from "@/features/map/layers/mapStyleOps";
 import type {
   MapScene,
   MapSceneFeatureStates,
-  MapSceneGlobalState,
   MapSceneImage,
   MapSceneLayer,
   MapSceneSource,
@@ -66,8 +65,6 @@ export type SceneGroup<State> = {
     readonly layers: readonly SceneLayerEntry[];
     /** 同じ id を複数のグループが名乗ってもよい——束ねる側が1つへ畳む。 */
     readonly images?: readonly MapSceneImage[];
-    /** 同じ名前を複数のグループが置くなら、同じ事実の同じ値でなければならない——束ねる側は後のグループの値を使う。 */
-    readonly globalState?: MapSceneGlobalState;
   };
 };
 
@@ -87,17 +84,15 @@ export function composeScene<State>(groups: readonly SceneGroup<State>[], state:
   const sources = new Map<string, MapSceneSource>();
   const layers: MapSceneLayer[] = [];
   const images = new Map<string, MapSceneImage>();
-  const globalState: Record<string, number> = {};
 
   for (const group of groups) {
     const built = group.build(state);
     for (const entry of built.sources) mergeSource(sources, entry);
     for (const entry of built.layers) layers.push(toSceneLayer(entry));
     for (const image of built.images ?? []) if (!images.has(image.id)) images.set(image.id, image);
-    Object.assign(globalState, built.globalState);
   }
 
-  return { sources: [...sources.values()], layers, images: [...images.values()], globalState };
+  return { sources: [...sources.values()], layers, images: [...images.values()] };
 }
 
 function toSceneLayer(entry: SceneLayerEntry): MapSceneLayer {

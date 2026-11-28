@@ -11,9 +11,6 @@
    * 値はデスクトップの配置が始まる幅で、これより狭ければスマホ幅（640pxまで）。Tailwindの`max-mobile:`も
    * 同じ「これより狭い」で判定するので、メディアクエリも`width <`で書く（`max-width`は境目を含んで割れる）。 */
   --breakpoint-mobile: 641px;
-  /* パネルの主役の操作が添える文字を隠す、狭いスマホの幅（`max-narrow:`。値の根拠は
-   * docs/modules/frontend/frontend-design-system.md「5-1. パネルの操作ボタンの形」）。 */
-  --breakpoint-narrow: 360px;
 
   --radius-sm: 6px;
   --radius-md: 10px;
@@ -49,6 +46,10 @@
   /* 情報のまとまりを示すカード背景 */
   --color-surface-2: #f3f4f2;
   --color-accent-strong: #1d4ed8;
+  /* 文字・アイコンに使う青と赤。地に塗る--color-accent・--color-dangerと分けるのは、ダークでは地は白い文字のために濃いまま、
+   * 文字・アイコンは暗い面の上で読めるよう明るい側へ振るため。 */
+  --color-accent-text: #1d4ed8;
+  --color-danger-text: #dc2626;
 
   /* 「表示」の一覧で、群（道路・環境・スポット）の見出しを見分ける色。ONのチェックの青（--color-accent）と
    * 別の意味で使うので、それと被らない色相にする。 */
@@ -112,7 +113,7 @@
     --color-surface: #2a2a2d;
     --color-surface-2: #1c1c1f;
     --color-accent-bg: #16233d;
-    --color-muted: #a1a1a6;
+    --color-muted: #a6a6ab;
     --color-muted-strong: #c7c7cc;
     /* ライトの#b45309は暗いサーフェス（--color-surface）上で、0.65rem級の小さい文字に要る
      * WCAG AAの4.5:1に届かないので、明るい側へ振る。 */
@@ -125,7 +126,9 @@
     --color-border: #3a3a3d;
     --color-border-strong: #505054;
     --color-border-muted: #38383b;
-    --color-neutral: #8e8e93;
+    --color-neutral: #98989d;
+    --color-accent-text: #60a5fa;
+    --color-danger-text: #f87171;
     --color-group-road: #2dd4bf;
     --color-group-environment: #fbbf24;
     --color-group-spot: #f472b6;
@@ -146,6 +149,12 @@
     --font-size-sm: 0.75rem;
     --font-size-md: 0.8rem;
   }
+}
+
+/* 端末の覚え（lib/consentMark.ts）で同意済みと分かっている間は、自分の状態の読み込み中の最初の画面を隠す（開き直しのちらつきを
+   防ぐ）。最初の画面は Tailwind の`flex`で並べるので、どのレイヤーより強いレイヤーの外に置く。 */
+html[data-consented] [data-account-gate="loading"] {
+  display: none;
 }
 
 /* レイヤー指定の無いCSSは、詳細度に関係なくどのレイヤーのCSSより強い（CSS Cascade Layersの仕様）。
@@ -174,6 +183,10 @@
       "Meiryo", Arial, sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    /* 日本語の文を、句の切れ目で折る。auto-phrase は Chrome と Edge だけが対応し、対応しないブラウザ（iPhone の Safari 等）は
+       今までどおり字の間で折る（keep-all で受けると読点の所でしか折れず、かえって読みにくいため）。Safari でも句で折りたい文は
+       GuideText で描く。 */
+    word-break: auto-phrase;
   }
 
   * {
@@ -247,6 +260,12 @@
 .app-sidebar.is-collapsed {
   width: 2.75rem;
   padding: 0.5rem 0.25rem;
+}
+
+/* Radixの浮きパネルは中身を位置取りの包みで囲み、包みは中身と同じ箱を持つ。中身に付けた`pointer-events-none`は
+   包みの箱に効かず、包みが下の部品への押し操作を受け止めるので、中身が素通しなら包みも素通しにする。 */
+[data-radix-popper-content-wrapper]:has(> .pointer-events-none) {
+  pointer-events: none;
 }
 
 /* 地図のポップアップの見た目。maplibre-gl.cssの既定は背景が白固定で文字色を持たないので、ダーク

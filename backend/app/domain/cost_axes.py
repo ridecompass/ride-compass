@@ -111,7 +111,7 @@ if set(EFFORT_ITEM_RULES) != set(get_args(EffortItem)) or set(EFFORT_AXES.values
 _NonNegative = Annotated[float, Field(ge=0.0, allow_inf_nan=False)]
 
 #: 地図のレンズの量（道の1kmあたりの代償の秒）を、利用者に言う名前と単位。
-LENS_QUANTITY_LABEL = "1kmあたりの負担"
+LENS_QUANTITY_LABEL = "1kmあたりの難所"
 LENS_UNIT = "秒/km"
 
 

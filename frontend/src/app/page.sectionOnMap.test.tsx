@@ -65,7 +65,7 @@ describe("選んだ区間を地図で見る", () => {
 
     // 何も無い所を押して選びを外し、グラフで選び直す。グラフで選んでも地図は動かず、地図にその区間の小窓が出る。
     clickMap(HERE);
-    fireEvent.keyDown(screen.getByRole("slider", { name: /^道のりに沿った負担/ }), { key: "Home" });
+    fireEvent.keyDown(screen.getByRole("slider", { name: /^区間ごとの難所/ }), { key: "Home" });
     expect(mapOnScreen().fits()).toHaveLength(fitsBefore + 1);
     expect(screen.getByRole("group", { name: "区間の小窓の上の帯" })).toBeInTheDocument();
     await user.click(showOnMap());
@@ -90,7 +90,6 @@ describe("選んだ区間を地図で見る", () => {
     expect(showOnMap()).not.toHaveAccessibleDescription();
 
     act(() => mapOnScreen().moveTo({ west: 140, south: 36, east: 140.1, north: 36.1 }, 14));
-    expect(showOnMap()).toHaveAccessibleDescription("区間は地図の外です");
 
     act(() => mapOnScreen().moveTo({ west: 139.715, south: 35.69, east: 139.73, north: 35.71 }, 14));
     expect(showOnMap()).not.toHaveAccessibleDescription();

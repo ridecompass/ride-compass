@@ -54,7 +54,7 @@ function DescriptionRows({ rows }: { rows: [term: string, detail: React.ReactNod
   );
 }
 
-// 「保存済み」タブの、いまの設定を保存するアイコン。押すと窓で、残るもの（条件・出発地の扱い・重みの割合・除外）だけを
+// 「保存」タブの、いまの設定を保存するアイコン。押すと窓で、残るもの（条件・出発地の扱い・重みの割合・除外）だけを
 // 並べてから名前を付けて保存する（残らないものや重みを変えたかは書かない）。
 export function SaveConditionsButton({
   saved,
@@ -88,7 +88,7 @@ export function SaveConditionsButton({
         aria-label="いまの設定を保存"
         aria-haspopup="dialog"
         aria-expanded={saving}
-        usage={`いまの設定[条件・出発地・負担・${ROAD_SETTINGS_TAB_NAME}]を開いて確かめ、名前を付けてこの端末に保存します。\n・保存した設定は、「保存済み」タブの「設定」から呼び出せます。`}
+        usage={`いまの設定[基本・出発地・難所・${ROAD_SETTINGS_TAB_NAME}]を開いて確かめ、名前を付けてこの端末に保存します。\n・保存した設定は、「保存」タブの「設定」から呼び出せます。`}
         onClick={() => setSaving(true)}
       >
         <SaveConditionsIcon size={18} />
@@ -98,7 +98,7 @@ export function SaveConditionsButton({
           <div className="flex flex-col gap-2">
             <DescriptionRows
               rows={[
-                ["条件", currentDescription.route],
+                ["基本", currentDescription.route],
                 [
                   "出発地",
                   <ToggleGroup
@@ -120,7 +120,7 @@ export function SaveConditionsButton({
                     </ToggleGroupItem>
                   </ToggleGroup>,
                 ],
-                ["負担", currentDescription.costPreference],
+                ["難所", currentDescription.costPreference],
                 [ROAD_SETTINGS_TAB_NAME, currentDescription.exclusions],
               ]}
             />
@@ -157,7 +157,7 @@ export function SaveConditionsButton({
   );
 }
 
-// 「ルート設定」区分の「保存済み」タブの「設定」。保存した設定の一覧（呼び出す・消す）を置く（保存のボタンは中のタブの行の右）。
+// 「ルート設定」区分の「保存」タブの「設定」。保存した設定の一覧（呼び出す・消す）を置く（保存のボタンは中のタブの行の右）。
 // 一覧の行は名前とアイコンの操作だけで、呼び出すと窓で中身を見せ、「反映する」で各タブの値と地図のピンが入れ替わる。
 // 生成はいつもの「ルート生成」で行う（入れ替えたあとに値を確かめたり少し変えたりできる）。
 export default function SavedConditionsPanel({ saved, onRecall, onRemove }: SavedConditionsPanelProps) {
@@ -180,7 +180,7 @@ export default function SavedConditionsPanel({ saved, onRecall, onRemove }: Save
       <SavedList
         items={saved}
         noun="設定"
-        howToSave={`右上の「いまの設定を保存」で、いまの設定[条件・出発地・負担・${ROAD_SETTINGS_TAB_NAME}]に名前を付けて保存します。\n・保存した設定は、行の「呼び出す」を押すと各タブに戻せます。`}
+        howToSave={`右上の「いまの設定を保存」で、いまの設定[基本・出発地・難所・${ROAD_SETTINGS_TAB_NAME}]に名前を付けて保存します。\n・保存した設定は、行の「呼び出す」を押すと各タブに戻せます。`}
         renderMain={(entry) => <span className="min-w-0 flex-auto truncate font-semibold">{entry.name}</span>}
         renderActions={(entry) => (
           <Button
@@ -209,9 +209,9 @@ export default function SavedConditionsPanel({ saved, onRecall, onRemove }: Save
           <DialogContent title={`「${recalling.name}」を反映します`}>
             <DescriptionRows
               rows={[
-                ["条件", recallingDescription.route],
+                ["基本", recallingDescription.route],
                 ["出発地", originDescription(recalling.origin !== null)],
-                ["負担", recallingDescription.costPreference],
+                ["難所", recallingDescription.costPreference],
                 [ROAD_SETTINGS_TAB_NAME, recallingDescription.exclusions],
               ]}
             />

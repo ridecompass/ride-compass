@@ -6,6 +6,8 @@ import { samePosition } from "@/lib/geoDistance";
 import { useStoredState } from "@/hooks/useStoredState";
 import { STANDARD_COST_PREFERENCE } from "@/lib/costPreference";
 import { STANDARD_ROAD_AVOIDANCE } from "@/lib/roadAvoidance";
+import { useCostAxisCatalog } from "@/hooks/useCostAxisCatalog";
+import { costPreferenceForAxes } from "@/features/route/costPreference";
 import { type GenerationConditionsSnapshot } from "@/features/route/savedConditions";
 import type {
   Coordinates,
@@ -32,7 +34,7 @@ export function reorderedIndex(index: number, from: number, to: number): number 
   if (to <= index && index < from) return index + 1;
   return index;
 }
-// 「条件」タブの入力値。場所（目的地・経由地のピン）は持たない——行くたびに変わるうえ、
+// 「基本」タブの入力値。場所（目的地・経由地のピン）は持たない——行くたびに変わるうえ、
 // 古いピンが残っていると気づかないまま生成してしまう。
 const LOOP_STORAGE_KEY = "ridecompass:loop";
 const DISTANCE_TARGETED_STORAGE_KEY = "ridecompass:distance-targeted";
@@ -180,11 +182,17 @@ export function useGenerationConditions({ onOriginPlace }: GenerationConditionsI
     String(routeGenerateConfig.default_max_routes),
   );
 
-  // 代償の全体に掛けるつまみと、費用の軸ごとの倍率。選んだまま送る（標準のままでも、標準として送る）。
-  const [costPreference, setCostPreference] = useStoredState<CostPreference>(
+  // 代償の全体に掛けるつまみと、費用の軸ごとの倍率。選んだまま送る（標準のままでも、標準として送る）。返すのは、今の軸の一覧に
+  // 無い軸を捨てた値。
+  const [storedCostPreference, setCostPreference] = useStoredState<CostPreference>(
     COST_PREFERENCE_STORAGE_KEY,
-    "負担の好み",
+    "要因の割合",
     STANDARD_COST_PREFERENCE,
+  );
+  const costAxisCatalog = useCostAxisCatalog();
+  const costPreference = useMemo(
+    () => costPreferenceForAxes(storedCostPreference, costAxisCatalog),
+    [storedCostPreference, costAxisCatalog],
   );
   // 道の区分の行ごとに選んだ避け方。選んだ段だけを覚え、常に送る。
   const [roadAvoidance, setRoadAvoidance] = useStoredState<RoadAvoidanceOverride>(

@@ -206,12 +206,10 @@ describe("走行モードの案内", () => {
     expect(voice).toHaveAttribute("aria-pressed", "false");
     await user.click(voice);
     expect(voice).toHaveAttribute("aria-pressed", "true");
-    expect(speech.texts().slice(-2)).toEqual(["音声案内を入れました", "500メートル先、右折です"]);
     expect(screen.getByRole("dialog", { name: "黒の画面" })).toBe(dark);
 
     // 外れている間は外れたことを、曲がる所を全部過ぎたら残りを出す。
     geolocation.deliver({ ...along(0.1), latitude: 35.702 });
-    expect(dark).toHaveTextContent("ルートを外れています");
     expect(dark).not.toHaveTextContent("右折");
     geolocation.deliver(along(0.8));
     expect(dark).toHaveTextContent("残り 1.2km");

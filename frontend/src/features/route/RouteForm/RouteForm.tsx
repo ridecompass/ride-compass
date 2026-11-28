@@ -35,13 +35,13 @@ interface RouteFormProps extends Omit<PointListProps, "conditions"> {
     >;
   /** 保存した候補を、その役割の地点として置き、置いた地点を選ぶ（経由地は足す）。 */
   onPlaceFound: (role: PinRole, candidate: PlaceCandidate, waypointIndex: number | null) => void;
-  /** 「負担」タブの中身。 */
+  /** 「難所」タブの中身。 */
   weightsPanel: React.ReactNode;
   /** 「道路」タブの中身。 */
   exclusionsPanel: React.ReactNode;
-  /** 「保存済み」タブの「設定」の頭に置く、いまの設定を保存するボタン。 */
+  /** 「保存」タブの「設定」の頭に置く、いまの設定を保存するボタン。 */
   saveConditionsButton: React.ReactNode;
-  /** 「保存済み」タブの「設定」の中身（保存した設定の一覧）。 */
+  /** 「保存」タブの「設定」の中身（保存した設定の一覧）。 */
   savedConditionsPanel: React.ReactNode;
 }
 
@@ -57,7 +57,7 @@ const DISTANCE_FRAMES: RulerFrame[] = Array.from({ length: Math.floor(MAX_DISTAN
 
 // forceMount+data-stateでの表示切替。
 // 距離等は`features/route/useGenerationConditions.ts`の制御stateのため非表示中も値は失われないが、
-// 「条件」タブの地点の編集・場所の検索と、「保存済み」タブの名前の下書きはローカルstateで持つため、
+// 「基本」タブの地点の編集・場所の検索と、「保存」タブの名前の下書きはローカルstateで持つため、
 // タブ切替のたびにアンマウントすると失われる。
 function KeptTabContent({ value, children }: { value: string; children: React.ReactNode }) {
   return (

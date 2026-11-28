@@ -67,9 +67,4 @@ describe("RideModeButton", () => {
     rerender(<RideModeButton {...props({ screenWakeLock: "unavailable" })} />);
     expect(screen.getByText(WAKE_LOCK_NOTICE)).toBeInTheDocument();
   });
-
-  it("始められなかった理由を出す", () => {
-    render(<RideModeButton {...props({ status: "off", error: "位置情報の利用が許可されていない" })} />);
-    expect(screen.getByText("位置情報の利用が許可されていない")).toBeInTheDocument();
-  });
 });

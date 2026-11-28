@@ -14,8 +14,10 @@ from collections.abc import Awaitable, Callable, Mapping
 from types import MappingProxyType
 
 from app.domain import road_features, timed_regulations, traffic_regulation
-from app.domain.hard_filters import HARD_FILTERS
+from app.domain.hard_filters import HARD_FILTERS, hard_filter_column
 from app.domain.registry import TileKind
+from app.domain.road_classes import class_columns, conditions_match, layer_columns
+from app.domain.search_materials import ColumnsOrEmpty
 from app.domain.graph import edge_feature_key
 from app.domain.search_graph import range_positions
 from app.domain.road_network import RoadNetwork, edge_key, positions_in, rows_in_bbox
@@ -45,7 +47,7 @@ MVT_TILE_GENERATIONS: Mapping[TileKind, str] = MappingProxyType({
     "road_surface": shape_digest(ROAD_SURFACE_TILE_SHAPE, NETWORK_SHAPE, HARD_FILTERS, *(
         inspect.getsource(code) for code in (
             road_features, timed_regulations, traffic_regulation, positions_in, edge_key, range_positions, rows_in_bbox,
-            edge_feature_key,
+            edge_feature_key, class_columns, layer_columns, conditions_match, hard_filter_column, ColumnsOrEmpty,
             RoadNetwork.__dict__["edge_first_rows"].func, RoadNetwork.__dict__["edge_keys"].func))),
     **{layer.name: layer.shape for layer in POINT_TILE_LAYERS.values()},
 })

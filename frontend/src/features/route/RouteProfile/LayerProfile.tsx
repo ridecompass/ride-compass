@@ -126,7 +126,7 @@ export default function LayerProfile({
                 key={`${layer.id}-${index}`}
                 points={run.map((point) => `${scale.xOf(point.km)},${yOf(point.value, range)}`).join(" ")}
                 fill="none"
-                className="stroke-[var(--color-accent-strong)]"
+                className="stroke-[var(--color-accent-text)]"
                 strokeWidth={2}
                 vectorEffect="non-scaling-stroke"
               />

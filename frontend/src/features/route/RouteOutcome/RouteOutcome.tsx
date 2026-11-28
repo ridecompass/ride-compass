@@ -34,7 +34,7 @@ import type { RouteResults } from "@/features/route/useRouteResults";
 import type { SpliceSessionView } from "@/features/route/useSpliceSession";
 import type { RouteCandidate } from "@/types/route";
 
-const CANDIDATE_TAB_USAGE = `この候補を地図と内訳に出し、地図に全体を収めます。\n${CANDIDATE_MARKS_WORDING}\n・上の段: 距離\n・下の段: 所要時間と負担[重りの印]\n・下の帯: ${LENS_QUANTITY_LABEL}[地図と同じ色]`;
+const CANDIDATE_TAB_USAGE = `この候補を地図と内訳に出し、地図に全体を収めます。\n${CANDIDATE_MARKS_WORDING}\n・上の段: 距離\n・下の段: 所要時間と難所[コーンの印]\n・下の帯: ${LENS_QUANTITY_LABEL}[地図と同じ色]`;
 
 /** 名前の列で群を見分ける印と、その意味（指を置いたときの吹き出しと読み上げの名前）。生成した候補は印を持たない。 */
 const GROUP_MARKS: Partial<Record<RouteListGroup, { Icon: typeof FastestRouteIcon; meaning: string }>> = {
@@ -42,7 +42,7 @@ const GROUP_MARKS: Partial<Record<RouteListGroup, { Icon: typeof FastestRouteIco
   spliced: { Icon: RouteSpliceIcon, meaning: "合成ルート" },
 };
 
-/** カードの下の帯の色。候補を並べるのと同じ、ルート全体の1kmあたりの負担（曲がる所と、好む道・避ける道の増減を含む）を、総合のレンズの段で
+/** カードの下の帯の色。候補を並べるのと同じ、ルート全体の1kmあたりの難所（曲がる所と、好む道・避ける道の増減を含む）を、総合のレンズの段で
  * 示す。値が無ければ値なしの色。 */
 function penaltyColor(route: RouteCandidate, catalog: CostAxisCatalog, ground: MapTheme): string {
   if (catalog.lenses === null || route.penalty_seconds_per_km === null) return NO_DATA_LEGEND_BAND.color;
@@ -134,8 +134,8 @@ export default function RouteOutcome({ results, generation, splice, profileLayer
     );
   }
 
-  // 候補ごとのタブの1段で、タブの切り替えが候補の切り替えを兼ねる。中身は上から、候補の一覧（所要と負担はカードが出す）・
-  // 推定の注意・道のりのグラフ・元との違いの順で、狭い高さでも候補の切り替えと所要・負担が先に見える。
+  // 候補ごとのタブの1段で、タブの切り替えが候補の切り替えを兼ねる。中身は上から、候補の一覧（所要と難所はカードが出す）・
+  // 推定の注意・道のりのグラフ・元との違いの順で、狭い高さでも候補の切り替えと所要・難所が先に見える。
   // 道のりのグラフの横軸の右端。候補どうしで同じ物差しにし、面積（負荷）を見比べられるようにする。
   const longestDistanceKm = Math.max(0, ...routes.map((route) => route.distance_km));
   const selectedValue = selectedRouteId ?? routes[0].id;
@@ -165,7 +165,7 @@ export default function RouteOutcome({ results, generation, splice, profileLayer
           <div
             role="group"
             aria-label="カードの数字の見方"
-            className="flex w-[5.25rem] flex-none flex-col justify-start gap-0.5 rounded-sm border border-dashed border-[var(--color-border)] px-1.5 pt-1 text-[length:var(--font-size-xs)] text-[var(--color-muted-strong)]"
+            className="flex min-w-[5.25rem] flex-none flex-col whitespace-nowrap justify-start gap-0.5 rounded-sm border border-dashed border-[var(--color-border)] px-1.5 pt-1 text-[length:var(--font-size-xs)] text-[var(--color-muted-strong)]"
           >
             <span className="flex items-center justify-between gap-1">
               <CandidateFiguresInfo />
@@ -175,7 +175,7 @@ export default function RouteOutcome({ results, generation, splice, profileLayer
               <span>所要</span>
               <span className="inline-flex items-center gap-0.5">
                 <BurdenIcon size={11} />
-                負担
+                難所
               </span>
             </span>
           </div>
@@ -208,17 +208,17 @@ export default function RouteOutcome({ results, generation, splice, profileLayer
                       <span className="text-[length:var(--font-size-xs)] font-normal">km</span>
                     </span>
                   </span>{" "}
-                  <span className="flex items-baseline justify-between gap-1 font-normal text-[var(--color-muted-strong)]">
+                  <span className="flex items-center justify-between gap-1 font-normal text-[var(--color-muted-strong)]">
                     <span>
                       {route.estimated_duration_seconds === null
                         ? "—"
                         : formatDurationShort(route.estimated_duration_seconds)}
                     </span>{" "}
                     <span className="inline-flex items-center gap-0.5">
-                      <span aria-hidden="true" title="負担" className="inline-flex text-[var(--color-muted)]">
+                      <span aria-hidden="true" title="難所" className="inline-flex text-[var(--color-muted)]">
                         <BurdenIcon size={11} />
                       </span>
-                      <span className="sr-only">負担</span>
+                      <span className="sr-only">難所</span>
                       {formatPenaltyMinutes(route.penalty.total_seconds)}
                       <span className="sr-only">{MINUTE_UNIT}</span>
                     </span>

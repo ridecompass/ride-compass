@@ -9,9 +9,9 @@ import { RouteIcon } from "@/components/ui/icons/icons";
 import { RouteSettingsIcon } from "@/components/ui/icons/lucideIcons";
 import { Tabs } from "@/components/ui/Tabs/Tabs";
 import { ROAD_SETTINGS_TAB_NAME } from "@/lib/screenNames";
-import GenerateRouteActions from "@/features/route/GenerateRouteActions/GenerateRouteActions";
+import type GenerateRouteActions from "@/features/route/GenerateRouteActions/GenerateRouteActions";
 import type { SettingsTab } from "@/features/route/RouteForm/RouteForm";
-import SettingsTabsList from "@/features/route/RouteForm/SettingsTabsList";
+import SettingsHeaderRow from "@/features/route/RouteForm/SettingsHeaderRow";
 import RouteOutcome from "@/features/route/RouteOutcome/RouteOutcome";
 import RouteOutcomeHeaderActions from "@/features/route/RouteOutcome/RouteOutcomeHeaderActions";
 import type { ProfileLayerSelection } from "@/features/route/RouteProfile/useProfileLayers";
@@ -19,7 +19,7 @@ import { CONDITIONS_DIRTY_TEXT, type RouteOutcomeKind } from "@/features/route/u
 import type { useRoutePlanner } from "@/features/route/useRoutePlanner";
 import { cn } from "@/lib/cn";
 import { mapOverlayEdge } from "@/lib/mapOverlayEdges";
-import type { usePagePanels } from "./usePagePanels";
+import { PANEL_NEUTRAL_ATTRIBUTE, type usePagePanels } from "./usePagePanels";
 import type { MapTheme } from "@/lib/mapTheme";
 
 /** モバイルの下部タブ（シートと同じ並び）。 */
@@ -28,14 +28,14 @@ const MOBILE_TABS = [
     sheet: "routeSettings",
     label: "ルート設定",
     Icon: RouteSettingsIcon,
-    usage: `ルートを作る条件[距離・地点・負担・${ROAD_SETTINGS_TAB_NAME}・保存した地点と設定]と「ルート生成」を開きます。もう一度押すと閉じます。`,
+    usage: `ルートを作る条件[距離・地点・難所の要因・${ROAD_SETTINGS_TAB_NAME}・保存した地点と設定]と「ルート生成」を開きます。もう一度押すと閉じます。`,
   },
   {
     sheet: "routeOutcome",
     label: "ルート結果",
     Icon: RouteIcon,
     usage:
-      "作った候補の一覧と、その負担の内訳を開きます。\n・点: 新しい結果が出たか、条件を変えた\n・赤: 失敗した\n・中が空いた丸: 候補が無かった",
+      "作った候補の一覧と、その難所の内訳を開きます。\n・点: 新しい結果が出たか、条件を変えた\n・赤: 失敗した\n・中が空いた丸: 候補が無かった",
   },
 ] as const;
 
@@ -59,12 +59,12 @@ interface RoutePanelsProps {
   profileLayers: ProfileLayerSelection;
   /** 地図の地の明るさ（候補のカードの帯を地図と同じ色で塗る）。 */
   mapTheme: MapTheme;
-  /** 「ルート設定」のタブ。タブ列は見出し行、中身は本文に描くため、両方を囲むここで持つ。 */
+  /** 「ルート設定」のタブ。タブ列は見出しの下の行、中身は本文に描くため、両方を囲むここで持つ。 */
   settingsTab: SettingsTab;
   onSettingsTabChange: (tab: SettingsTab) => void;
   /** 「ルート設定」の中身。 */
   settingsBody: ReactNode;
-  /** 「条件」タブの中身の形（地点の行の数等）。変わったら、シートの高さを中身へ合わせ直す。 */
+  /** 「基本」タブの中身の形（地点の行の数等）。変わったら、シートの高さを中身へ合わせ直す（タブの切り替えでは合わせ直さない）。 */
   settingsShape: string;
   /** 「このルートで走る」を押した。無ければボタンを出さない（もう走っている間）。 */
   onRide?: (routeId: string) => void;
@@ -92,38 +92,38 @@ export function DesktopRoutePanels(props: RoutePanelsProps) {
   const { panels, isMobile, navigating, route, settingsTab, onSettingsTabChange, settingsBody } = props;
   if (isMobile || !panels.panelsShown) return null;
   const outcome = outcomeParts(props);
+  // 走行中に出したパネルは、帯の「ルート」で閉じる（畳むボタンを並べない）。開いている間は「ルート設定」の見出しの行の右端に
+  // 置き、区分の操作に数えない（押しても「ルート結果」で選んだ区間を外さない）。
+  const sidebarToggle = navigating ? undefined : (
+    <Button
+      variant={panels.sidebarCollapsed ? undefined : "ghost"}
+      size={panels.sidebarCollapsed ? "sm" : "close"}
+      onClick={panels.toggleSidebar}
+      aria-label={panels.sidebarCollapsed ? "パネルを開く" : "パネルを閉じる"}
+      className="self-start"
+      usage="左のパネルを畳んで、地図を広く見せます。もう一度押すと開きます。"
+      {...{ [PANEL_NEUTRAL_ATTRIBUTE]: "" }}
+    >
+      {panels.sidebarCollapsed ? "☰" : "✕"}
+    </Button>
+  );
   return (
     <aside className={`app-sidebar${!panels.desktopPanels ? " is-collapsed" : ""}`}>
-      {/* 走行中に出したパネルは、帯の「ルート」で閉じる（畳むボタンを並べない）。 */}
-      {!navigating && (
-        <Button
-          size="sm"
-          onClick={panels.toggleSidebar}
-          aria-label={panels.sidebarCollapsed ? "パネルを開く" : "パネルを閉じる"}
-          className="self-start"
-          usage="左のパネルを畳んで、地図を広く見せます。もう一度押すと開きます。"
-        >
-          {panels.sidebarCollapsed ? "☰" : "✕"}
-        </Button>
-      )}
+      {!panels.desktopPanels && sidebarToggle}
 
       {panels.desktopPanels && (
         <>
-          {/* タブ列（見出し行）とタブの中身（本文）の両方を囲む。 */}
+          {/* タブ列とタブの中身の両方を囲む。 */}
           <div {...panels.touchPanel("routeSettings")}>
             <Tabs value={settingsTab} onValueChange={(value) => onSettingsTabChange(value as SettingsTab)}>
               <SectionDisclosure
                 title="ルート設定"
                 active={panels.activePanel === "routeSettings"}
-                trailing={
-                  <div className="flex min-w-0 flex-auto items-center justify-between gap-2">
-                    <SettingsTabsList />
-                    <GenerateRouteActions generation={route.generation} routeCount={props.routeCount} labeled={false} />
-                  </div>
-                }
+                trailing={sidebarToggle}
+                subheader={<SettingsHeaderRow generation={route.generation} routeCount={props.routeCount} />}
                 open={panels.generateOpen}
                 onOpenChange={panels.setGenerateOpen}
-                usage="押すと開いたり畳んだりします。ルートを作る条件をここで決め、右の「ルート生成」で作ります。"
+                usage="押すと開いたり畳んだりします。ルートを作る条件をここで決め、下の「生成」で作ります。"
               >
                 {settingsBody}
               </SectionDisclosure>
@@ -141,7 +141,7 @@ export function DesktopRoutePanels(props: RoutePanelsProps) {
               }
               open={panels.outcomeOpen}
               onOpenChange={panels.setOutcomeOpen}
-              usage="押すと開いたり畳んだりします。作った候補と、その負担の内訳がここに並びます。"
+              usage="押すと開いたり畳んだりします。作った候補と、その難所の内訳がここに並びます。"
             >
               {outcome.body}
             </SectionDisclosure>
@@ -180,7 +180,7 @@ export function MobileRoutePanels(props: RoutePanelsProps) {
             key={sheet}
             variant="ghost"
             size="bare"
-            className="relative min-h-11 flex-1 touch-none flex-col gap-0.5 rounded-none border-0 text-[var(--foreground)] aria-expanded:bg-[var(--color-accent-bg)] aria-expanded:font-bold aria-expanded:text-[var(--color-accent-strong)]"
+            className="relative min-h-11 flex-1 touch-none flex-col gap-0.5 rounded-none border-0 text-[var(--foreground)] aria-expanded:bg-[var(--color-accent-bg)] aria-expanded:font-bold aria-expanded:text-[var(--color-accent-text)]"
             aria-expanded={panels.mobileSheet === sheet}
             aria-description={sheet === "routeOutcome" ? outcomeTabSignal?.label : undefined}
             usage={usage}
@@ -203,9 +203,9 @@ export function MobileRoutePanels(props: RoutePanelsProps) {
           {...panels.sharedSheetProps}
           open={panels.mobileSheet === "routeSettings"}
           title="ルート設定"
-          headerLead={<SettingsTabsList />}
-          headerAction={<GenerateRouteActions generation={route.generation} routeCount={props.routeCount} labeled />}
-          fitKey={`${settingsTab}:${settingsShape}`}
+          headerLead={<SettingsHeaderRow generation={route.generation} routeCount={props.routeCount} />}
+          headerAction={null}
+          fitKey={settingsShape}
           fitMaxVh={SETTINGS_SHEET_MAX_FIT_VH}
         >
           {settingsBody}

@@ -36,9 +36,9 @@ describe("Street View の矢印", () => {
     return marks.length === 0 ? null : marks[0];
   };
   const openLink = () => within(bar()!).getByRole("link", { name: "ストリートビューを開く" });
-  /** 描画面の上の位置`[x, y]`（px）へ、要素をつまんで動かす。 */
-  const drag = (element: Element, [x, y]: [number, number]) => {
-    fireEvent.pointerDown(element, { pointerId: 1, clientX: 0, clientY: 0 });
+  /** 要素を描画面の上の位置`from`（px）でつまみ、`[x, y]`へ動かす。 */
+  const drag = (element: Element, from: [number, number], [x, y]: [number, number]) => {
+    fireEvent.pointerDown(element, { pointerId: 1, clientX: from[0], clientY: from[1] });
     fireEvent.pointerMove(element, { pointerId: 1, clientX: x, clientY: y });
     fireEvent.pointerUp(element, { pointerId: 1 });
   };
@@ -59,13 +59,18 @@ describe("Street View の矢印", () => {
     expect(aimMark()).toMatchObject({ coordinates: { latitude: 35.7, longitude: 139.7 }, screenRotationDeg: 90 });
     expect(openLink()).toHaveAttribute("target", "_blank");
 
-    // 点を描画面の右上の4分の1の所へ動かし、つまみを点の真下へ回す。
+    // 点を、真ん中から右下へ10px外れた所でつまんで動かし、点を描画面の右上の4分の1の所へ置く（点は掴んだ所からの隔たりを保つ）。
+    // つまみは点の真下へ回す。
     const [width, height] = [window.innerWidth, window.innerHeight];
-    drag(screen.getByLabelText("ストリートビューを開く地点"), [width * 0.75, height * 0.25]);
-    drag(handle(), [width * 0.75, height * 0.25 + 100]);
-    // 換算の行き来で最下位の桁がずれるので、向きは小数6桁で比べる。
+    drag(
+      screen.getByLabelText("ストリートビューを開く地点"),
+      [width / 2 + 10, height / 2 + 10],
+      [width * 0.75 + 10, height * 0.25 + 10],
+    );
+    drag(handle(), [0, 0], [width * 0.75, height * 0.25 + 100]);
+    // 換算の行き来で最下位の桁がずれるので、地点と向きは小数6桁で比べる。
     expect(aimMark()).toMatchObject({
-      coordinates: { latitude: 35.705, longitude: 139.705 },
+      coordinates: { latitude: expect.closeTo(35.705, 6), longitude: expect.closeTo(139.705, 6) },
       screenRotationDeg: expect.closeTo(180, 6),
     });
     const mapsUrl = "https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=35.705000%2C139.705000&heading=180";

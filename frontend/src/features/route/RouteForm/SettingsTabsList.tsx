@@ -10,32 +10,29 @@ import type { SettingsTab } from "./RouteForm";
 const settingsTabs = (axisNames: string): readonly { value: SettingsTab; label: string; usage: string }[] => [
   {
     value: "generate",
-    label: "条件",
+    label: "基本",
     usage: "ルートの形・距離の目標と、通る地点を決めます。",
   },
   {
     value: "weights",
-    label: "負担",
-    usage: `負担${axisNames}を、全体と種類ごとに、どれだけの割合で数えるかを決めます。`,
+    label: "難所",
+    usage: `難所を、総合と要因${axisNames}ごとに、どれだけの割合で数えるかを決めます。`,
   },
   {
     value: "exclusions",
     label: ROAD_SETTINGS_TAB_NAME,
     usage: `道路の種類ごとに、区間の${routeGenerateConfig.avoidance_multiplier_wording}を選びます。`,
   },
-  { value: "saved", label: "保存済み", usage: "保存した地点と、名前を付けて保存した設定を並べ、呼び出します。" },
+  { value: "saved", label: "保存", usage: "保存した地点と、名前を付けて保存した設定を並べ、呼び出します。" },
 ];
 
-/**
- * 「ルート設定」のタブ列。見出し行に置く（本文の縦を空ける）。タブの間と左右の余白を詰めているのは、スマホの幅で見出しの題・
- * タブ・操作（条件の変更の印も）を1行に切らずに収めるため。
- */
+/** 「ルート設定」のタブ列。候補数・生成と同じ1行に置く（本文の縦を空ける）。 */
 export default function SettingsTabsList() {
   const tabs = settingsTabs(costAxisNamesNote(useCostAxisCatalog()));
   return (
-    <TabsList className="gap-0 overflow-visible border-b-0" aria-label="ルート設定">
+    <TabsList variant="segmented" aria-label="ルート設定">
       {tabs.map(({ value, label, usage }) => (
-        <TabsTrigger key={value} className="px-1.5" value={value} usage={usage}>
+        <TabsTrigger key={value} value={value} usage={usage}>
           {label}
         </TabsTrigger>
       ))}

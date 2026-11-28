@@ -136,7 +136,7 @@ ORDER BY ids.ord
 # --- グラフの読み出し ---------------------------------------------------------
 #
 # 区間は向きを持たない1行で、**有向の枝は道路網全体の配列を作るとき**
-# （`infrastructure/road_network_store.py`）に作る。道の通行方向（`way_directions.direction`）が逆向きの枝を
+# （`infrastructure/road_network_assembly.py`）に作る。道の通行方向（`way_directions.direction`）が逆向きの枝を
 # 作ってよいかを決める。
 
 #: 取込範囲全体の区間（向きを持たない1行）と形。どの道も通行方向の行を持つ（通行方向の段が道ごとに1行を書く）ので、
@@ -173,7 +173,7 @@ JOIN LATERAL {nodes_lookup_sql("rn.osm_node_id")} n ON true
 ORDER BY rn.osm_node_id
 """)
 
-#: 取込範囲全体の道路網（`infrastructure/road_network_store.py`）を作る読み出し。置き場の
+#: 取込範囲全体の道路網（`infrastructure/road_network_assembly.py`）を作る読み出し。置き場の
 #: 形の署名はここから導く——材料の式を変えると、作り直すべき置き場が別名になる。較正値は文に値で入れず引数で渡す：
 #: 較正値は派生の世代に結ばれ（作り直すと世代が進む）、署名に値を入れると、値を変えてから作り直すまで読み手の
 #: 開ける置き場が無くなる。

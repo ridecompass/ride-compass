@@ -87,6 +87,12 @@ class RegulationSlot:
         return cls(bool(bicycle), *(None if v == _NONE else v for v in rest))
 
 
+def excepts_bicycles(slots: Sequence[RegulationSlot]) -> bool:
+    """条件の組`slots`の規制が、いつでも普通自転車を対象にしないか。組を持たない規制は全部の車両に効くので、除かない。
+    組の一部だけが自転車も対象なら、その組の時刻に限らず除かないとみなす（時刻で変わる値を持てない読み手のため、規制が効く側に倒す）。"""
+    return bool(slots) and not any(slot.applies_to_bicycles for slot in slots)
+
+
 #: 組の欄の並び（道路網の配列の`regulation_slot_values`の列）。
 SLOT_FIELDS: tuple[str, ...] = tuple(field.name for field in fields(RegulationSlot))
 

@@ -128,7 +128,7 @@ async def region_lens(
     """ルートを出す前の地図がレンズ`lens_id`（総合`total`か費用の軸のid。`domain/lens_values.py`）で道を塗る、指定タイルの
     フィーチャーごとの道ごとの材料: 道の向きに辿った・逆向きに辿った1kmあたりの代償の秒（辿れない向きは載せない）と、
     道の向き。どちらの向きを塗るかは、`/api/cost-axes`のレンズの`map_lens.formula`が走行方位で選ぶ。値は出発の時刻を含むレンズの
-    コマの印`frame`（`/api/region/time-frames`の`lens`。省略すると今。風。今の一覧に無い印は409）と想定速度`speed_kmh`（省略すると画面の既定の速度。どちらもレンズの`map_lens.material_conditions`に無ければ値を変えない）と利用者の値（つまみ`strength`と、軸id→倍率のJSONの`multipliers`と、無効の軸idのJSONの
+    コマの印`frame`（`/api/region/time-frames`の`lens`。省略すると今。風。風に依るレンズで今の一覧に無い印は409）と想定速度`speed_kmh`（省略すると画面の既定の速度。どちらもレンズの`map_lens.material_conditions`に無ければ値を変えない）と利用者の値（つまみ`strength`と、軸id→倍率のJSONの`multipliers`と、無効の軸idのJSONの
     `disabled_axes`。ルート生成と同じ値）で決まり、探索と同じ部品で求める。前に出た風の予報を引いたなら、その素性も返す。
 
     鍵は路面タイル（`/api/region/road-surface-tiles`）の同じz/x/yのフィーチャーの鍵。知らないレンズと、無効にした軸のレンズは404。
@@ -139,7 +139,7 @@ async def region_lens(
         body = await service.way_materials(lens_id, z, x, y, frame, speed_kmh, preference.cost_preference,
                                           preference.settings)
     if body is None:
-        raise HTTPException(status_code=404, detail="この負担の種類の値はありません。")
+        raise HTTPException(status_code=404, detail="この要因の値はありません。")
     return Response(body, media_type="application/json")
 
 
@@ -152,9 +152,10 @@ class RoadInspectorRequest(CostPreferenceRequest):
     x: TileIndex
     y: TileIndex
     # レンズの値は向き・時刻（風）・速さで決まる。地図のレンズの要求と同じ値を送る（時刻はレンズのコマの印。省くと今）。
-    # **1本の道は往復2方向で値が違う**ので、両方の向きを返し、地図がいまの走行方位で塗っている向きを示す。
-    bearing_deg: BearingDeg
-    # 地図が道を塗っているレンズ。地図と同じ木で、窓が出す向きを選ぶ（走行方位で選ばないレンズは向きで決まらない道を持たない）。
+    # **1本の道は往復2方向で値が違う**ので、両方の向きを返し、地図がいまの走行方位で塗っている向きを示す。走行方位を省くと
+    # （ルートの前の地図）、どちら向きに走るか決まらないので、きつい向きを示す。
+    bearing_deg: BearingDeg | None = None
+    # 地図が道を塗っているレンズ。地図と同じ木で、窓が出す向きを選ぶ。
     # 塗っていなければ省く（総合の塗り方で選ぶ）。
     lens_id: str | None = None
     frame: TimeFrameKey | None = None

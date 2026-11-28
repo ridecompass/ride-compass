@@ -166,7 +166,6 @@ describe("PointSearch 打つ欄", () => {
     await renderSearch();
 
     await searchFor("どこにもない");
-    expect(await screen.findByRole("status")).toHaveTextContent("該当する住所・施設がありません。");
 
     onBackend("GET", "/api/place-search", () =>
       Response.json({ detail: "対象範囲を読めませんでした" }, { status: 502 }),

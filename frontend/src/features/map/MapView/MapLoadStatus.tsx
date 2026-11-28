@@ -25,7 +25,7 @@ export function MapLoadingBadge({
           compact ? "p-1.5" : "px-3 py-1.5",
         )}
       >
-        <Spinner size={compact ? 16 : 20} className="text-[var(--color-accent)]" />
+        <Spinner size={compact ? 16 : 20} className="text-[var(--color-accent-text)]" />
         <span className={compact ? "sr-only" : textVariants({ variant: "hint" })}>{label}</span>
       </div>
     </div>

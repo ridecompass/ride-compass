@@ -7,6 +7,7 @@
 from fastapi import APIRouter
 
 from app.api.routers import (
+    account,
     client_config,
     db_status,
     debug_admin,
@@ -46,3 +47,4 @@ api_router.include_router(debug_admin.router)
 api_router.include_router(derived_database.router)
 api_router.include_router(db_status.router)
 api_router.include_router(ride_tracks.router)
+api_router.include_router(account.router)

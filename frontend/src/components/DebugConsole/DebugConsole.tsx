@@ -111,7 +111,7 @@ export default function DebugConsole({ open, onClose }: DebugConsoleProps) {
               data-level={entry.level}
             >
               <span className="text-[var(--color-muted)]">{entry.time}</span>{" "}
-              <span className="text-[var(--color-accent)]">[{entry.category}]</span> <span>{entry.message}</span>
+              <span className="text-[var(--color-accent-text)]">[{entry.category}]</span> <span>{entry.message}</span>
               {detail !== null && <span className="text-[var(--color-muted)]"> {detail}</span>}
             </LogLine>
           );

@@ -1,9 +1,9 @@
 /**
- * `app/admin/page.tsx` の「ひな形」タブ——届いたひな形を並べ、足す・名前と説明と公開を直す・利用者の画面と同じ「負担」「道路」の
+ * `app/admin/page.tsx` の「ひな形」タブ——届いたひな形を並べ、足す・名前と説明と公開を直す・利用者の画面と同じ「難所」「道路」の
  * 部品で設定を選ぶ・消すを手元で行い、「DBへ保存」で全体を1回で送ること。断られたら理由を出し、直した全体を残すこと。
  *
  * ここで見ないもの:
- * - 「負担」「道路」の部品が段をどう描き、選んだ段をどう上げるか → `RouteSettingsPanel.test.tsx`・`HardFilterPanel.test.tsx`
+ * - 「難所」「道路」の部品が段をどう描き、選んだ段をどう上げるか → `RouteSettingsPanel.test.tsx`・`HardFilterPanel.test.tsx`
  * - 公開したひな形が利用者の画面に並び、選ぶと入れ替わること → `app/page.test.tsx`
  */
 import { render, screen, waitFor, within } from "@testing-library/react";
@@ -38,7 +38,7 @@ async function openWith(profiles: RouteProfile[]) {
 }
 
 describe("AdminPage ひな形", () => {
-  it("足したひな形の名前・公開・負担と道路の設定を直して保存すると、全体を1回で送り、未保存が消える", async () => {
+  it("足したひな形の名前・公開・難所と道路の設定を直して保存すると、全体を1回で送り、未保存が消える", async () => {
     serveCostAxisCatalog();
     serveClientConfig(
       clientConfigResponse({

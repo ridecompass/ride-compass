@@ -19,7 +19,7 @@ import {
 } from "@/testing/mapSceneDeclarations";
 import type { RecordingMap } from "@/testing/mapTrace/recordingMap";
 
-import { EMPTY_MAP_SCENE, type MapScene, type MapSceneFeatureStateValue } from "./mapScene";
+import type { MapScene, MapSceneFeatureStateValue } from "./mapScene";
 import { tilesContent } from "./sceneBuilders";
 
 /** 地物の状態。本物の `getFeatureState` と同じく、置かれていなければ空として読む。 */
@@ -106,30 +106,5 @@ describe("applyMapScene", () => {
 
     expect(roadStateOf(handle, "w1")).toEqual({});
     expect(roadStateOf(handle, "w2")).toEqual({});
-  });
-
-  it("地図全体の状態だけが変わったら、変わった名前だけを置き直し、外した名前は値の無いことにし、他には触らない", () => {
-    const { map, handle } = recordingMap();
-    const before = { ...statesScene({ windValue: { w1: 1 } }), globalState: { bearing: 90, speed: 20 } };
-    applied(map, before);
-    const callsBefore = handle.trace.length;
-
-    applied(map, { ...before, globalState: { bearing: 135.5 } }, before);
-
-    expect(handle.trace.slice(callsBefore)).toEqual([
-      { call: "setGlobalStateProperty", args: ["bearing", 135.5] },
-      { call: "setGlobalStateProperty", args: ["speed", null] },
-    ]);
-  });
-
-  it("スタイルを差し替えたあと作り直すと、地図全体の状態も置き直される", () => {
-    const { map, handle } = recordingMap();
-    const shown = { ...statesScene({}), globalState: { bearing: 90 } };
-    applied(map, shown);
-
-    handle.dropEverything();
-    applied(map, shown, EMPTY_MAP_SCENE);
-
-    expect(handle.globalState()).toEqual({ bearing: 90 });
   });
 });

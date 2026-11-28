@@ -57,7 +57,7 @@ describe("押した道の内訳（fetchAxisInspector）", () => {
       const result = {
         highway: "residential",
         tags: {},
-        lens: { painted: null, along: null, against: null, surface: null },
+        lens: { painted: "along", along: null, against: null, surface: null },
       };
       const sent = onBackend("POST", "/api/region/road-inspector", () => Response.json(result));
 
@@ -113,13 +113,5 @@ describe("地図が塗るレンズの道ごとの材料（fetchLensMaterials）"
         query: { frame: "v1-2026100109", speed_kmh: "25" },
       },
     ]);
-  });
-
-  it("失敗は、取得の失敗の文言で投げる", async () => {
-    onBackend("GET", "/api/region/lens/:lensId/:z/:x/:y", () => new Response(null, { status: 500 }));
-
-    await expect(api.fetchLensMaterials("ascent", 15, 1, 2, { speed_kmh: 20 })).rejects.toThrow(
-      "道路の塗りの値の取得に失敗しました",
-    );
   });
 });

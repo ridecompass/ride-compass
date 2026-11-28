@@ -40,7 +40,8 @@ export const ROAD_TILE_MAX_ZOOM = regionTileConfig.road_tile_max_zoom;
  * これを送らないと**1本の道が往復2方向で違う値を持つ**軸を算出できない。時刻は、出発の時刻を含むレンズのコマの印
  * （`useTimeFrames`。一覧がまだ届いていなければundefined、その時刻のコマが無ければnull）。 */
 export interface RideConditions {
-  bearingDeg: number;
+  /** 走行中の進む向き。走っていなければnull（ルートの前はどちら向きに走るか決まらない）。 */
+  bearingDeg: number | null;
   lensFrame: string | null | undefined;
   speedKmh: number;
   /** 地図が道を塗っているレンズ（塗っていなければnull）。道の窓は、このレンズの塗り方で向きを出す。 */
@@ -90,10 +91,10 @@ export async function fetchRoadInspection(
     z: conditions.z,
     x: conditions.x,
     y: conditions.y,
-    bearing_deg: conditions.bearingDeg,
+    ...(conditions.bearingDeg !== null ? { bearing_deg: conditions.bearingDeg } : {}),
     ...(conditions.paintedLensId !== null ? { lens_id: conditions.paintedLensId } : {}),
     ...(conditions.lensFrame ? { frame: conditions.lensFrame } : {}),
-    // 出発時刻の風のコマが無ければ（予報の範囲の外・予報を読めない）、今の風で求めずに風に依らない負担だけを取る。
+    // 出発時刻の風のコマが無ければ（予報の範囲の外・予報を読めない）、今の風で求めずに風に依らない難所だけを取る。
     wind: conditions.lensFrame !== null,
     speed_kmh: conditions.speedKmh,
   };

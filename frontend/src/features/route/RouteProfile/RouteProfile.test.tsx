@@ -1,12 +1,12 @@
 /**
- * `features/route/RouteProfile/RouteProfile.tsx`——道のりのグラフの「表示」「負担で塗る」のタブ（名前は地図の2つの入口と同じ `lib/screenNames.ts`）と、
+ * `features/route/RouteProfile/RouteProfile.tsx`——道のりのグラフの「表示」「難所を色で見る」のタブ（名前は地図の2つの入口と同じ `lib/screenNames.ts`）と、
  * 地点を選んでいる間の「区間を地図で見る」。
  *
  * 差し替えたもの: グラフの実寸（`getBoundingClientRect`。テスト環境は実寸を返さない）。道の区分の層は画面の設定の応答としてテストが組む
  * （本番の層は管理DBが持つ）。
  *
  * ここで見ないもの: 「表示」の図の折れ線・帯・現在地の印・値の目盛りと、出す情報の一覧 → `RouteProfile.layers.test.tsx`。
- * 負担の塗り → `DifficultyProfile.test.tsx`。なぞって地点を選ぶ操作 → `ProfileChart.test.tsx`。地点・選んだ区間の値と行の計算 → `profileLayers.test.ts`。
+ * 難所の塗り → `DifficultyProfile.test.tsx`。なぞって地点を選ぶ操作 → `ProfileChart.test.tsx`。地点・選んだ区間の値と行の計算 → `profileLayers.test.ts`。
  */
 import { BURDEN_PAINT_NAME, FACT_DISPLAY_NAME } from "@/lib/screenNames";
 import { fireEvent, render, screen, within } from "@testing-library/react";
@@ -31,7 +31,7 @@ beforeEach(serveProfileCatalog);
 
 describe("RouteProfile", () => {
   it.each([{ riding: false }, { riding: true }])(
-    "結果も走行中（$riding）も、はじめは「負担で塗る」で、負担の大きい2つを積む。右上の「グラフに積む負担」の一覧は軸ごとに事実と負担の分を並べ、チェックで積む軸を足し・外して端末に覚え、避ける道で上乗せした分は行に出さない",
+    "結果も走行中（$riding）も、はじめは「難所を色で見る」で、難所の大きい2つを積む。右上の「グラフに積む要因」の一覧は軸ごとに事実と難所の分を並べ、チェックで積む軸を足し・外して端末に覚え、避ける道で上乗せした分は行に出さない",
     async ({ riding }) => {
       window.localStorage.clear();
       const catalog = {
@@ -68,13 +68,13 @@ describe("RouteProfile", () => {
         });
       const { unmount } = render(element());
       expect(screen.getByRole("tab", { name: BURDEN_PAINT_NAME })).toHaveAttribute("aria-selected", "true");
-      const openList = () => userEvent.click(screen.getByRole("button", { name: "グラフに積む負担" }));
+      const openList = () => userEvent.click(screen.getByRole("button", { name: "グラフに積む要因" }));
       const rows = () =>
         within(screen.getByRole("dialog"))
           .getAllByRole("listitem")
           .map((row) => [row.textContent, within(row).queryByRole("checkbox")?.getAttribute("aria-checked") ?? null]);
       const fills = () =>
-        [...screen.getByRole("img", { name: "道のりに沿った負担" }).querySelectorAll("path[fill]")].map((path) =>
+        [...screen.getByRole("img", { name: "区間ごとの難所" }).querySelectorAll("path[fill]")].map((path) =>
           path.getAttribute("fill"),
         );
 
@@ -119,7 +119,7 @@ describe("RouteProfile", () => {
       [...screen.getByRole("img", { name }).querySelectorAll("[data-waypoint]")].map((line) => line.getAttribute("x1"));
 
     expect(marks()).toEqual(expected);
-    expect(lines("道のりに沿った負担")).toEqual(["250", "750"]);
+    expect(lines("区間ごとの難所")).toEqual(["250", "750"]);
     await openLayers();
     expect(marks()).toEqual(expected);
     expect(lines("道のりに沿った情報")).toEqual(["250", "750"]);
@@ -139,12 +139,12 @@ describe("RouteProfile", () => {
       }
       await openLayers();
       expect(screen.getByRole("img", { name: "道のりに沿った情報" })).toBeInTheDocument();
-      expect(screen.queryByRole("img", { name: "道のりに沿った負担" })).toBeNull();
+      expect(screen.queryByRole("img", { name: "区間ごとの難所" })).toBeNull();
       for (const text of [screen.getByText("2.0km"), screen.getByText("標高 最高 32m・最低 12m")])
         expect(text.closest(".text-base") !== null).toBe(large);
 
       await userEvent.click(screen.getByRole("tab", { name: BURDEN_PAINT_NAME }));
-      expect(screen.getByRole("img", { name: "道のりに沿った負担" })).toBeInTheDocument();
+      expect(screen.getByRole("img", { name: "区間ごとの難所" })).toBeInTheDocument();
     },
   );
 

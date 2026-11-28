@@ -5,7 +5,7 @@ import type { ClientConfigResponse } from "@/types/route";
 /** 運営が配るひな形1つ（画面の設定の`route_profiles`）。名指す軸と行は、いつも今ある費用の軸と道の段の行だけ。 */
 export type RouteProfileChoice = ClientConfigResponse["route_profiles"][number];
 
-/** ひな形が入れ替える設定（負担のつまみ・軸ごとの倍率と無効・道の段の行ごとの段）。 */
+/** ひな形が入れ替える設定（総合のつまみ・軸ごとの倍率と無効・道の段の行ごとの段）。 */
 export type ProfileSettings = Pick<RouteProfileChoice, "cost_preference" | "road_avoidance">;
 
 /** 標準（つまみも倍率も標準で、無効の軸は無く、どの行も既定の段）。 */

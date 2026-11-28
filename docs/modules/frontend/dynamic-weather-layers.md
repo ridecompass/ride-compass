@@ -17,7 +17,7 @@
 | ファイル | 責務 |
 |---|---|
 | `features/map/layers/dynamicWeather.ts` | 共通契約（型・共有タイムライン・状態管理の型・純粋関数）と、災害のチップに載る要素（`features/map/layers/dynamicWeather.ts: DISASTER_ELEMENTS`。地図の凡例と表示専用の凡例が読む） |
-| `lib/previousRun.ts` | 予報の値が前に出た予報のものか（backendが返す最新の予報の終わり`latest_run_end`から先か）の判定と、それを見せている所に添える、その時刻から先が前の予報の値だという但し書きの文。地図の天気・今日の値・道ごとの負担の塗り・ルート結果が同じ文を使う |
+| `lib/previousRun.ts` | 予報の値が前に出た予報のものか（backendが返す最新の予報の終わり`latest_run_end`から先か）の判定と、それを見せている所に添える、その時刻から先が前の予報の値だという但し書きの文。地図の天気・今日の値・道ごとの難所の塗り・ルート結果が同じ文を使う |
 | `lib/time.ts` | 画面に出す時刻の扱い（日本時間の暦と時刻・書式・日時の入力欄との変換）と、時刻の並びから最も近いコマを引く関数。気象レイヤーと出発時刻は同じ表記・同じ引き方を使う |
 | `features/map/layers/weatherSources.ts` | 源泉の宣言（`mapDisplay.ts: mapDisplay.weatherElements`）を名前付きソースへ束ね、段を1本の時系列へつなぎ、源泉が要素ごとに宣言する規則で選んだ時刻に描くコマを選ぶ |
 | `features/map/layers/jmaDelivery.ts` | 気象庁の配信の時刻一覧の取得と読み方・コマのタイルと地物（GeoJSON）のURL（源泉のパスのテンプレートをコマで埋める）（配信の遅れを持つ要素は、まだ配信されていないコマを前の`features/map/layers/jmaDelivery.ts: basetime`へずらして読む）・地物の取得・タイルのURLの読み戻し |

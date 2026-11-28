@@ -65,7 +65,7 @@ export function scene(
   layers: readonly MapSceneLayer[],
   sources: readonly MapSceneSource[] = [roadsSource(), LANDCOVER_SOURCE],
 ): MapScene {
-  return { sources, layers, images: [], globalState: {} };
+  return { sources, layers, images: [] };
 }
 
 export function applied(map: MapSceneTarget, next: MapScene, previous = EMPTY_MAP_SCENE): void {

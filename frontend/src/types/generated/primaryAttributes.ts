@@ -154,7 +154,7 @@ export const primaryAttributes = [
             "values": [
               "traffic_signals"
             ],
-            "description": "信号機。信号付きの横断歩道もここに入る[OSM の highway=traffic_signals・crossing]。",
+            "description": "信号機。信号付きの横断歩道もここに入る。",
             "glyph": "signal",
             "color": "#885270"
           },
@@ -164,7 +164,7 @@ export const primaryAttributes = [
             "values": [
               "crossing"
             ],
-            "description": "信号の無い横断歩道[OSM の highway=crossing]。",
+            "description": "信号の無い横断歩道。",
             "glyph": "crosswalk",
             "color": "#8d5449"
           },
@@ -174,7 +174,7 @@ export const primaryAttributes = [
             "values": [
               "stop"
             ],
-            "description": "一時停止の標識がある所[OSM の highway=stop]。",
+            "description": "一時停止の標識がある所。",
             "glyph": "stop_sign",
             "color": "#736134"
           },
@@ -184,7 +184,7 @@ export const primaryAttributes = [
             "values": [
               "give_way"
             ],
-            "description": "相手に道を譲る[徐行する]標識がある所[OSM の highway=give_way]。",
+            "description": "相手に道を譲る[徐行する]標識がある所。",
             "glyph": "yield",
             "color": "#496c44"
           },
@@ -195,7 +195,7 @@ export const primaryAttributes = [
               "level_crossing",
               "railway_crossing"
             ],
-            "description": "線路[路面電車を含む]を渡る所。車道の踏切も歩道・自転車道の踏切も入る[OSM の railway タグ]。",
+            "description": "線路[路面電車を含む]を渡る所。車道の踏切も歩道・自転車道の踏切も入る。",
             "glyph": "railway",
             "color": "#016f6b"
           },
@@ -205,7 +205,7 @@ export const primaryAttributes = [
             "values": [
               "barrier"
             ],
-            "description": "車止めの柱・ゲート・柵など、道をふさいで止まるか押して通る所[OSM の barrier タグ]。",
+            "description": "車止めの柱・ゲート・柵など、道をふさいで止まるか押して通る所。",
             "glyph": "barrier",
             "color": "#0c6b8b"
           },
@@ -215,7 +215,7 @@ export const primaryAttributes = [
             "values": [
               "traffic_calming"
             ],
-            "description": "車の速度を落とさせる段差[ハンプ]や道幅の絞り込み[OSM の traffic_calming タグ]。",
+            "description": "車の速度を落とさせる段差[ハンプ]や道幅の絞り込み。",
             "glyph": "hump",
             "color": "#5e5f8d"
           }
@@ -254,7 +254,7 @@ export const primaryAttributes = [
             "values": [
               true
             ],
-            "description": "当事者に自転車が含まれる事故[警察庁の交通事故統計の当事者種別]。",
+            "description": "当事者に自転車が含まれる事故。",
             "glyph": "bicycle_crash",
             "color": "#5791ba"
           },
@@ -282,7 +282,7 @@ export const primaryAttributes = [
             "values": [
               true
             ],
-            "description": "死者が1人以上記録された事故[事故後24時間以内の死者。警察庁の交通事故統計の死者数]。",
+            "description": "死者が1人以上記録された事故[事故後24時間以内の死者]。",
             "radius_px": 6
           },
           {
@@ -347,7 +347,7 @@ export const primaryAttributes = [
             "values": [
               "convenience"
             ],
-            "description": "コンビニのチェーンの店[Overture Maps の地点のコンビニの分類のうち、チェーンの名前に当たるもの]。",
+            "description": "コンビニのチェーンの店。",
             "glyph": "bag",
             "color": "#7d89ba"
           },
@@ -357,7 +357,7 @@ export const primaryAttributes = [
             "values": [
               "vending_drinks"
             ],
-            "description": "飲み物か食べ物を売ると書かれた自動販売機[OSM の amenity=vending_machine と vending タグ]。",
+            "description": "飲み物か食べ物を売ると書かれた自動販売機。",
             "glyph": "bottle",
             "color": "#b47a99"
           },
@@ -377,7 +377,7 @@ export const primaryAttributes = [
             "values": [
               "toilets"
             ],
-            "description": "公衆トイレなど、地図のデータにトイレとして載っている所[OSM の amenity=toilets]。",
+            "description": "公衆トイレなど、地図のデータにトイレとして載っている所。",
             "glyph": "toilet",
             "color": "#908e5c"
           },
@@ -387,7 +387,7 @@ export const primaryAttributes = [
             "values": [
               "drinking_water"
             ],
-            "description": "水飲み場など、飲み水をくめる所[OSM の amenity=drinking_water]。",
+            "description": "水飲み場など、飲み水をくめる所。",
             "glyph": "drop",
             "color": "#57987e"
           },
@@ -397,7 +397,7 @@ export const primaryAttributes = [
             "values": [
               "bicycle_parking"
             ],
-            "description": "自転車を止められる所[OSM の amenity=bicycle_parking]。",
+            "description": "自転車を止められる所。",
             "glyph": "parking",
             "color": "#3b97ad"
           }
@@ -428,7 +428,7 @@ export const primaryAttributes = [
             "values": [
               "eat_drink"
             ],
-            "description": "飲食店・カフェ・酒場[Overture Maps の地点の飲食の分類]。",
+            "description": "飲食店・カフェ・酒場。",
             "glyph": "cup",
             "color": "#9f7439"
           },
@@ -438,7 +438,7 @@ export const primaryAttributes = [
             "values": [
               "bath"
             ],
-            "description": "銭湯・温泉・サウナ[Overture Maps の地点の分類]。",
+            "description": "銭湯・温泉・サウナ。",
             "glyph": "steam",
             "color": "#59884a"
           },
@@ -448,7 +448,7 @@ export const primaryAttributes = [
             "values": [
               "bicycle"
             ],
-            "description": "自転車の店・修理・貸し自転車[Overture Maps の地点の分類]。",
+            "description": "自転車の店・修理・貸し自転車。",
             "glyph": "wrench",
             "color": "#018b89"
           },
@@ -458,7 +458,7 @@ export const primaryAttributes = [
             "values": [
               "scenic"
             ],
-            "description": "公園・庭園・湖・滝・山・浜・城・展望台・博物館の類[Overture Maps の地点の分類]。",
+            "description": "公園・庭園・湖・滝・山・浜・城・展望台・博物館の類。",
             "glyph": "mountain",
             "color": "#0984ba"
           },
@@ -468,7 +468,7 @@ export const primaryAttributes = [
             "values": [
               "lodging"
             ],
-            "description": "ホテル・旅館・民宿・キャンプ場の類[Overture Maps の地点の分類]。",
+            "description": "ホテル・旅館・民宿・キャンプ場の類。",
             "glyph": "bed",
             "color": "#956cad"
           },
@@ -478,7 +478,7 @@ export const primaryAttributes = [
             "values": [
               "temple_shrine"
             ],
-            "description": "国の指定・登録の文化財の建造物を持つ寺社[文化遺産オンライン]。",
+            "description": "国の指定・登録の文化財の建造物を持つ寺社。",
             "glyph": "gate",
             "color": "#bd606c"
           }

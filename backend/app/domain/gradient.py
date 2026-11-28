@@ -22,10 +22,9 @@ from app.domain.way_value_formula import (
 # 方位次第で緩く見える。風（wind.py: wind_components）は風向が進行方向と独立に決まるため
 # 角度差が実際に抗力を変えるが、勾配では道路の向きが進行方向そのもののため同じ扱いはできない。
 #
-# 直角に近い範囲は符号が決まらない（どちら向きにも辿れる）。そこは値を持たないものとして
-# 扱う——0%として配ると、その道は地図の凡例で「平坦」の段へ入り、
-# 実際には急な坂である道が平坦な道と同じ色で塗られる。言えるのは「この向きでの勾配は
-# 示せない」であって「平坦だ」ではない。
+# 走行方位が無い（ルートの前は、どの道もどちら向きに走るか決まらない）か、直角に近い範囲では符号が決まらない。そこは両向きの
+# うちきつい向きの値にする——0%や両向きの平均にすると、実際には急な坂である道が平坦・緩い道と同じ色で塗られる。
+# きつい向きなら「どちら向きに走ってもこれ以下」と読める。
 
 
 #: 地図へ配る勾配（%）を丸める小数の桁。
@@ -36,12 +35,9 @@ ROAD_BEARING_LEAF = "road_bearing_deg"
 
 
 def travel_direction_formula(forward: FormulaNode, backward: FormulaNode, perpendicular_band_deg: float) -> WayValueFormula:
-    """要求の走行方位で道を辿るとき、道の向き寄りなら`forward`、逆向き寄りなら`backward`になる値。道の向きが走行方位に
-    直角に近い道（直角からの幅`perpendicular_band_deg`は較正値`gradient.perpendicular_band_deg`）は、どちらとも決まらない
-    （`undetermined`）。向きを持たない道は`backward`になる。
-
-    示せるかの判定と値の算出を1つの木に持つ——別々の口にすると、判定を読まない呼び出し側が符号の決まらない値を
-    受け取れてしまう。
+    """走行方位（条件`bearing_deg`）で道を辿るとき、道の向き寄りなら`forward`、逆向き寄りなら`backward`になる値。走行方位が
+    無い（値の無い条件）・道が向きを持たない・道の向きが走行方位に直角に近い（直角からの幅`perpendicular_band_deg`は較正値
+    `gradient.perpendicular_band_deg`）道は、どちら向きに辿るか決まらないので、大きい方（辿れる向きが1つならその向き）になる。
     """
     diff = sub(feature(ROAD_BEARING_LEAF), condition("bearing_deg"))
     along_road = Binary(op="ge", left=Unary(op="cos", arg=mul(diff, const(math.pi / 180))), right=const(0.0))
@@ -51,10 +47,11 @@ def travel_direction_formula(forward: FormulaNode, backward: FormulaNode, perpen
     folded = case(Binary(op="lt", left=remainder, right=const(0.0)), add(remainder, const(180.0)), remainder)
     band_deg = const(perpendicular_band_deg)
     near_perpendicular = Binary(op="le", left=Unary(op="abs", arg=sub(folded, const(90.0))), right=band_deg)
-    has_bearing = Unary(op="not", arg=Unary(op="is_missing", arg=feature(ROAD_BEARING_LEAF)))
-    return WayValueFormula(
-        value=case(along_road, forward, backward),
-        undetermined=all_of([has_bearing, near_perpendicular]),
-    )
-
-
+    directed = all_of([Unary(op="not", arg=Unary(op="is_missing", arg=condition("bearing_deg"))),
+                       Unary(op="not", arg=Unary(op="is_missing", arg=feature(ROAD_BEARING_LEAF))),
+                       Unary(op="not", arg=near_perpendicular)])
+    # 辿れない向き（値が無い）は選ばない。
+    harder = case(Unary(op="is_missing", arg=forward), backward,
+                  case(Unary(op="is_missing", arg=backward), forward,
+                       case(Binary(op="ge", left=forward, right=backward), forward, backward)))
+    return WayValueFormula(value=case(directed, case(along_road, forward, backward), harder))

@@ -17,7 +17,7 @@ type RouteSettingsFormProps = Omit<
   "conditions" | "weightsPanel" | "exclusionsPanel" | "saveConditionsButton" | "savedConditionsPanel"
 > & {
   conditions: GenerationConditionsState;
-  /** 名前を付けて保存した生成の条件（保存も呼び出しも「保存済み」タブ）。 */
+  /** 名前を付けて保存した生成の条件（保存も呼び出しも「保存」タブ）。 */
   savedConditions: ReturnType<typeof useSavedConditions>;
   /** 「道路」タブの「地図で見る」と、塗れない理由。 */
   roadTabMap: RoadTabMap;

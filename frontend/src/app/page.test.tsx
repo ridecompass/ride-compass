@@ -64,7 +64,7 @@ describe("ルートを作る", () => {
     await user.click(section("ルート結果"));
     expect(section("ルート結果")).toHaveAttribute("aria-expanded", "false");
 
-    await user.click(screen.getByRole("button", { name: /^負担で塗る: / }));
+    await user.click(screen.getByRole("button", { name: /^難所を色で見る/ }));
     await user.click(await screen.findByRole("radio", { name: /登坂/ }));
     await user.keyboard("{Escape}");
     expect(paints("ascent")).toBe(true);
@@ -158,12 +158,12 @@ describe("ルートを作る", () => {
   it("保存した条件は地図で置いた出発地を持ち、呼び出すとその出発地から生成する", async () => {
     const PLACED: Coordinates = { latitude: 35.65, longitude: 139.75 };
     const { user } = renderHome();
-    // 保存も呼び出しも「保存済み」タブで行う（隠れたタブの中身も描いてあるので、ほかのタブにも保存のボタンがあれば、ボタンが2つに
+    // 保存も呼び出しも「保存」タブで行う（隠れたタブの中身も描いてあるので、ほかのタブにも保存のボタンがあれば、ボタンが2つに
     // 当たって落ちる）。
     const saveAs = async (name: string) => {
-      await user.click(screen.getByRole("tab", { name: "保存済み" }));
+      await user.click(screen.getByRole("tab", { name: "保存" }));
       const saveButton = screen.getByRole("button", { name: "いまの設定を保存" });
-      expect(screen.getByRole("tabpanel", { name: "保存済み" })).toContainElement(saveButton);
+      expect(screen.getByRole("tabpanel", { name: "保存" })).toContainElement(saveButton);
       await user.click(saveButton);
       const dialog = screen.getByRole("dialog", { name: "いまの設定を保存" });
       const nameInput = within(dialog).getByRole("textbox", { name: "保存する名前" });
@@ -172,7 +172,7 @@ describe("ルートを作る", () => {
       await user.click(within(dialog).getByRole("button", { name: "保存" }));
     };
     const recall = async (name: string) => {
-      await user.click(screen.getByRole("tab", { name: "保存済み" }));
+      await user.click(screen.getByRole("tab", { name: "保存" }));
       await user.click(screen.getByRole("tab", { name: "設定" }));
       await user.click(screen.getByRole("button", { name: `「${name}」を呼び出す` }));
       await user.click(
@@ -185,7 +185,7 @@ describe("ルートを作る", () => {
 
     clickMap(PLACED);
     await saveAs("置いた所");
-    await user.click(screen.getByRole("tab", { name: "条件" }));
+    await user.click(screen.getByRole("tab", { name: "基本" }));
     await user.click(screen.getByRole("button", { name: "出発地を現在地に戻す" }));
 
     jobs.respond([FIRST], LOOP_CONDITIONS);
@@ -193,12 +193,12 @@ describe("ルートを作る", () => {
     expect(origin(await generate(user))).toEqual(PLACED);
   });
 
-  it("「負担」タブで選んだ全体の割合と無効にした軸が、生成の要求に載る", async () => {
+  it("「難所」タブで選んだ総合の割合と無効にした軸が、生成の要求に載る", async () => {
     serveCostAxisCatalog();
     const { user } = renderHome();
-    await user.click(screen.getByRole("tab", { name: "負担" }));
+    await user.click(screen.getByRole("tab", { name: "難所" }));
     await user.click(
-      within(screen.getByRole("radiogroup", { name: "全体の割合" })).getByRole("radio", { name: "150%" }),
+      within(screen.getByRole("radiogroup", { name: "総合の割合" })).getByRole("radio", { name: "150%" }),
     );
     await user.click(
       within(await screen.findByRole("radiogroup", { name: "振動の割合" })).getByRole("radio", { name: "無効" }),
@@ -212,7 +212,7 @@ describe("ルートを作る", () => {
     });
   });
 
-  it("ひな形を押すと負担と道路の段がまとめてその設定になって生成の要求に載り、タブで変えると押した印が外れ、「標準」で両方とも標準に戻る", async () => {
+  it("ひな形を押すと難所と道路の段がまとめてその設定になって生成の要求に載り、タブで変えると押した印が外れ、「標準」で両方とも標準に戻る", async () => {
     serveCostAxisCatalog();
     serveClientConfig(
       clientConfigResponse({
@@ -234,7 +234,7 @@ describe("ルートを作る", () => {
       }),
     );
     const { user } = renderHome();
-    await user.click(screen.getByRole("tab", { name: "負担" }));
+    await user.click(screen.getByRole("tab", { name: "難所" }));
     const profiles = () => within(screen.getAllByRole("radiogroup", { name: "ひな形" })[0]);
     const pressed = () => profiles().getByRole("radio", { checked: true }).textContent;
 
@@ -249,7 +249,7 @@ describe("ルートを作る", () => {
     expect(pressed()).toBe("夜");
 
     await user.click(
-      within(screen.getByRole("radiogroup", { name: "全体の割合" })).getByRole("radio", { name: "200%" }),
+      within(screen.getByRole("radiogroup", { name: "総合の割合" })).getByRole("radio", { name: "200%" }),
     );
     expect(profiles().queryByRole("radio", { checked: true })).toBeNull();
 
@@ -260,36 +260,53 @@ describe("ルートを作る", () => {
     expect(reset.road_avoidance).toEqual({});
   });
 
-  it("負担を説明する文の軸の並びと、ルートの後に選ばずに塗る総合の名前は、費用の軸の一覧の名前で出る", async () => {
+  it("端末に残った、今の費用の軸の一覧に無い軸の倍率と無効は、生成の要求に載らない（載せると backend が断る）", async () => {
+    localStorage.setItem(
+      "ridecompass:cost-preference",
+      JSON.stringify({ strength: 1, multipliers: { ascent: 2, removed: 2 }, disabled_axes: ["gone", "vibration"] }),
+    );
+    const { user } = renderHome();
+    await user.click(screen.getByRole("tab", { name: "難所" }));
+    await screen.findByRole("radiogroup", { name: "振動の割合" });
+
+    jobs.respond([FIRST], LOOP_CONDITIONS);
+    expect((await generate(user)).cost_preference).toEqual({
+      strength: 1,
+      multipliers: { ascent: 2 },
+      disabled_axes: ["vibration"],
+    });
+  });
+
+  it("難所を説明する文の軸の並びと、ルートの後に選ばずに塗る総合の名前は、費用の軸の一覧の名前で出る", async () => {
     const catalog = costAxisCatalog(costAxisEntry("first", { label: "甲" }), costAxisEntry("second", { label: "乙" }));
     serveCostAxisCatalog({ ...catalog, total_lens: { ...catalog.total_lens, label: "全部" } });
     const { user } = renderHome();
 
     await waitFor(() =>
-      expect(screen.getByRole("tab", { name: "負担" })).toHaveAttribute(
+      expect(screen.getByRole("tab", { name: "難所" })).toHaveAttribute(
         "data-usage",
-        expect.stringContaining("負担[甲・乙]を"),
+        expect.stringContaining("要因[甲・乙]ごとに"),
       ),
     );
-    await user.click(screen.getByRole("tab", { name: "負担" }));
-    await user.click(screen.getByRole("button", { name: "全体の説明を表示" }));
-    expect(await screen.findByText(/負担\[甲・乙\]は、/)).toBeInTheDocument();
+    await user.click(screen.getByRole("tab", { name: "難所" }));
+    await user.click(screen.getByRole("button", { name: "総合の説明を表示" }));
+    expect(await screen.findByText(/難所\[甲・乙\]は、/)).toBeInTheDocument();
     await user.keyboard("{Escape}");
 
     jobs.respond([FIRST], LOOP_CONDITIONS);
     await generate(user);
-    expect(await screen.findByRole("button", { name: "負担で塗る: 全部（タップで変更）" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "難所を色で見る: 全部（タップで変更）" })).toBeInTheDocument();
   });
 
-  it("「負担」タブで無効にした軸は、「負担で塗る」の一覧に出ない", async () => {
+  it("「難所」タブで無効にした軸は、「難所を色で見る」の一覧に出ない", async () => {
     const { user } = renderHome();
-    await user.click(screen.getByRole("tab", { name: "負担" }));
+    await user.click(screen.getByRole("tab", { name: "難所" }));
     await user.click(
       within(await screen.findByRole("radiogroup", { name: "振動の割合" })).getByRole("radio", { name: "無効" }),
     );
     await user.click(screen.getByRole("button", { name: "パネルを閉じる" }));
-    await user.click(screen.getByRole("button", { name: /^負担で塗る: / }));
-    const options = await screen.findByRole("radiogroup", { name: "負担で塗る" });
+    await user.click(screen.getByRole("button", { name: /^難所を色で見る/ }));
+    const options = await screen.findByRole("radiogroup", { name: "難所を色で見る" });
     const names = within(options)
       .getAllByRole("radio")
       .map((row) => row.textContent ?? "")
@@ -322,7 +339,7 @@ describe("ルートを作る", () => {
     expect(painted()).toBe(false);
     await user.click(onMap());
     expect(painted()).toBe(true);
-    await user.click(screen.getByRole("tab", { name: "条件" }));
+    await user.click(screen.getByRole("tab", { name: "基本" }));
     expect(painted()).toBe(false);
   });
 });

@@ -6,6 +6,7 @@
 """
 
 import asyncio
+import math
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -43,14 +44,14 @@ from app.domain.wind import WeatherForecastSeries
 from app.infrastructure import road_network_store
 from app.infrastructure.cache_identity import canonical_json, dynamic_tile_key, model_settings_signature
 from app.infrastructure.debug_log import log_external_call, mark_failed
-from app.infrastructure.msm_client import MsmUnavailableError, forecast_version
+from app.infrastructure.msm_client import MsmUnavailableError
 from app.services.graph_service import network_burden_fills, network_classes
 from app.services.weather_service import WeatherService
 from app.services.time_frame_service import TimeFrameService
 
 _CATEGORY = "region:lens"
 
-#: 地図の応答の持ちの上限（バイト）。道路網の配列のためにとっておくメモリ（`services/graph_service.py: RESERVED_BYTES`）の
+#: 地図の応答の持ちの上限（バイト）。生成以外のために取り置くメモリ（`services/graph_service.py: RESERVED_BYTES`）の
 #: 内側に収める。
 RESPONSE_CACHE_BYTES = 256 * 1024**2
 
@@ -79,7 +80,8 @@ class LensService:
                             speed_kmh: float, preference: CostPreference, settings: ModelSettings) -> bytes | None:
         """レンズ`lens_id`の、タイルのフィーチャーの、レンズのコマの印`frame`（省略すると今）の風と想定速度`speed_kmh`と利用者の値
         `preference`（つまみと倍率。ルート生成と同じ値で塗る）での道ごとの材料（`LensMaterials`のJSON）。知らないレンズか、
-        利用者が無効にした軸のレンズ（表に無い）ならNone。風を読めない・時刻が予報の範囲の外・今の一覧に無い印なら投げる。
+        利用者が無効にした軸のレンズ（表に無い）ならNone。風に依るレンズで、風を読めない・時刻が予報の範囲の外・今の一覧に無い印なら
+        投げる（風に依らないレンズは`frame`を読まない）。
         較正値・区分・軸の定義は写し`settings`だけを読む。"""
         conditions = lens_conditions(settings.cost_axes).get(lens_id)
         if conditions is None:
@@ -89,7 +91,8 @@ class LensService:
         network = await asyncio.to_thread(road_network_store.current)
         with log_external_call(_CATEGORY, z=z, x=x, y=y) as fields:
             key = dynamic_tile_key("lens", road_network_store.directory_name(network.revision), model_settings_signature(settings),
-                                   lens_id, z, x, y, _response_inputs(conditions, at, speed_kmh, preference))
+                                   lens_id, z, x, y, _response_inputs(conditions, at, speed_kmh, preference,
+                                                                      self._weather_service.forecast_version()))
             cached = self._responses.get(key)
             fields["cache"] = "miss" if cached is None else "hit"
             if cached is not None:
@@ -103,13 +106,14 @@ class LensService:
             self._responses[key] = body
             return body
 
-    async def inspect(self, feature_key: str, z: int, x: int, y: int, bearing_deg: float, lens_id: str | None,
+    async def inspect(self, feature_key: str, z: int, x: int, y: int, bearing_deg: float | None, lens_id: str | None,
                       frame: str | None, wind: bool, speed_kmh: float, preference: CostPreference,
                       settings: ModelSettings) -> LensInspection | None:
         """押したフィーチャー（地図がタイル`z/x/y`で塗っている単位）の、レンズのコマの印`frame`（省略すると今）の、地図と同じ秒を
-        区間の長さぶん足したものと、その元の事実と、地図がレンズ`lens_id`を塗る向き（塗っていない・知らないレンズなら総合の
-        塗り方）。`wind`が偽か、風を読めない（予報が無い・時刻が予報の範囲の外）なら、風を読まずに求め、風で変わる軸と総合を
-        載せない。タイルにそのフィーチャーが無ければNone。"""
+        区間の長さぶん足したものと、その元の事実と、地図が走行方位`bearing_deg`（ルートの前の地図はNone）でレンズ`lens_id`を塗る向き
+        （塗っていない・知らないレンズなら総合の塗り方）。`wind`が偽か、風を読めない（予報が無い・時刻が予報の範囲の外）なら、
+        風を読まずに求め、風で変わる軸と総合を載せない。そのときは塗る向きも風を読まない値で選ぶので、地図が風を読んだ値で
+        きつい向きを選んでいれば、向きが入れ替わりうる。タイルにそのフィーチャーが無ければNone。"""
         network = await asyncio.to_thread(road_network_store.current)
         with log_external_call(_CATEGORY, z=z, x=x, y=y) as fields:
             if wind:
@@ -126,8 +130,12 @@ class LensService:
         if tile is None:
             return None
         lenses = lens_conditions(settings.cost_axes)
-        lens = map_lens(lenses.get(lens_id or TOTAL_LENS_ID, lenses[TOTAL_LENS_ID]), settings.tuning)
-        painted = painted_direction(lens, bearing_deg, tile.table.features, 0)
+        # 塗っていない・知らない・無効にした軸のレンズは、総合の塗り方で選ぶ。
+        painted_id = lens_id if lens_id in lenses and lens_id in tile.table.values else TOTAL_LENS_ID
+        along, against = tile.table.values[painted_id][0].tolist()
+        painted = painted_direction(map_lens(lenses[painted_id], settings.tuning),
+                                    math.nan if bearing_deg is None else bearing_deg,
+                                    float(tile.table.features.bearing_deg[0]), along, against)
         return lens_inspection(tile.table.features, 0, painted, tile.facts)
 
     async def _tile(self, network: RoadNetwork, settings: ModelSettings, z: int, x: int, y: int, at: datetime | None, speed_kmh: float,
@@ -207,10 +215,10 @@ def _way_materials(tile: _TileLens, values: np.ndarray) -> dict[str, dict[str, f
 
 
 def _response_inputs(conditions: Sequence[str], at: datetime | None, speed_kmh: float,
-                     preference: CostPreference) -> tuple[str, ...]:
+                     preference: CostPreference, forecast_version: str) -> tuple[str, ...]:
     """地図の応答の値を変える入力。走る条件はレンズが依るものだけを入れる。利用者の値は受けたものを全部入れる。
 
-    時刻は、引く予報の版と、時刻に最も近い予報の1時間のコマへ読み替える（同じコマの時刻は同じ風を引く。中間を後の時刻へ倒すのは
+    時刻は、引く予報の版`forecast_version`と、時刻に最も近い予報の1時間のコマへ読み替える（同じコマの時刻は同じ風を引く。中間を後の時刻へ倒すのは
     `domain/wind.py: WeatherForecastSeries.time_index`の決まり）。予報を読む範囲は今の正時から始まるので、その正時も入れる——
     入れないと、範囲の外へ出た時刻（断るべき要求）に前の正時の持ちを返す。"""
     inputs = [canonical_json(preference)]
@@ -220,5 +228,5 @@ def _response_inputs(conditions: Sequence[str], at: datetime | None, speed_kmh: 
         now = as_series_time(datetime.now(JST))
         slot = as_series_time(at or datetime.now(JST)) + timedelta(minutes=30)
         hour = timedelta(hours=1)
-        inputs.append(f"wind={forecast_version()}/{(now - datetime.min) // hour}/{(slot - datetime.min) // hour}")
+        inputs.append(f"wind={forecast_version}/{(now - datetime.min) // hour}/{(slot - datetime.min) // hour}")
     return tuple(inputs)

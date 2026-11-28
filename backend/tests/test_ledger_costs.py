@@ -83,7 +83,7 @@ def test_a_disabled_axis_is_not_built_and_a_disabled_stop_axis_does_not_count_th
 
 
 def test_with_the_strength_off_no_axis_is_built():
-    """負担の全体の割合を無効（0）にすると、全部の軸を無効にしたのと同じく、どの軸も組まない（内訳にも地図のレンズにも出ない）。"""
+    """難所の全体の割合を無効（0）にすると、全部の軸を無効にしたのと同じく、どの軸も組まない（内訳にも地図のレンズにも出ない）。"""
     parameters = ledger_parameters(CostPreference(strength=0.0), TUNED)
     weights = burden_weights(AXES, parameters, {VIBRATION: CategoricalColumn.encode(["gravel"])}, NO_FILLS)
     ledger = LedgerCosts(parameters, wheel_power_w(RIDER), kickoff_extra_j(RIDER, TUNED), weights, np.full(1, 1000.0))

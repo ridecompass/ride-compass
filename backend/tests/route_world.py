@@ -151,16 +151,18 @@ CALM = weather_forecast(datetime(2020, 1, 1), np.zeros(_CALM_HOURS))
 
 
 class Weather:
-    """天気の代役。時別の風の予報は`series`（省けば無風の`CALM`）を返す。"""
+    """天気の代役。時別の風の予報は`series`（省けば無風の`CALM`）を、予報の版は`version`を返す（書き換えると、同期が予報を
+    入れ替えたことになる）。"""
 
     def __init__(self, series: WeatherForecastSeries = CALM):
         self._series = series
+        self.version = "fake"
 
     async def get_weather_forecast_lattice(self, bbox):
         return self._series
 
     def forecast_version(self):
-        return "fake"
+        return self.version
 
     async def get_forecast_times(self, version):
         return list(self._series.times)

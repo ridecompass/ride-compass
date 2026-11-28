@@ -186,7 +186,7 @@ class MaterialSpec(StrictModel):
     # （設計原則 構造仕様8。別の辞書へ分けると、材料を増やしたとき片方が取り残される）。
     value_sql: str | None = None
     # 値式の値（区間の量）を、区間の長さ1kmあたりにして持つか。割り算は道路網の配列を作るときに材料を読んだ直後の1か所
-    # （`infrastructure/road_network_store.py: build`が`domain/road_network_build.py: per_km`で割る）だけが持ち、SQLへ写さない。
+    # （`infrastructure/road_network_assembly.py: build`が`domain/road_network_build.py: per_km`で割る）だけが持ち、SQLへ写さない。
     per_km: bool = False
     # 欠損率の測り方（`/admin`の材料タブ）。`CoverageExcluded`を含む3択で、**どれかを必ず
     # 持つ**——「どちらの一覧にも載っていない材料」を型として作れなくする。中身は
@@ -397,7 +397,8 @@ MATERIAL_CATALOG: dict[str, MaterialSpec] = {
     "oneway": MaterialSpec(
         material_id="oneway",
         label="一方通行",
-        description=f"OSMのタグから判定した一方通行の区間かどうか。{DIVIDED_ROAD_NOTE}の片側は一方通行に数えない。",
+        description=f"自転車が片方向にしか辿れない一方通行の区間かどうか。OSMのタグから判定し、JARTIC の一方通行の規制が道に当たれば、"
+                    f"自転車を除く規制かで決める。{DIVIDED_ROAD_NOTE}の片側は一方通行に数えない。",
         dtype="boolean",
         tile_property="oneway",
         primary_attribute=ATTR_ONEWAY,

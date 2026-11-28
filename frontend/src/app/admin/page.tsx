@@ -24,7 +24,7 @@ import { cardVariants } from "@/components/ui/Card/Card";
 
 const TAB_PANEL_CLASS = cn(cardVariants({ variant: "outline" }), "flex flex-col gap-3");
 
-/** ひな形1つの設定を、利用者の画面の「負担」「道路」タブと同じ部品で選ぶ（利用者が選んだときに見る並びのまま作る）。 */
+/** ひな形1つの設定を、利用者の画面の「難所」「道路」タブと同じ部品で選ぶ（利用者が選んだときに見る並びのまま作る）。 */
 function RouteProfileSettingsEditor({
   settings,
   onChange,
@@ -37,7 +37,7 @@ function RouteProfileSettingsEditor({
     <Tabs defaultValue="weights">
       <TabsList>
         <TabsTrigger usage={null} value="weights">
-          負担
+          難所
         </TabsTrigger>
         <TabsTrigger usage={null} value="exclusions">
           {ROAD_SETTINGS_TAB_NAME}

@@ -6,7 +6,10 @@ import userEvent from "@testing-library/user-event";
 import { expect, onTestFinished, vi } from "vitest";
 
 import Home from "@/app/page";
+import { ACCOUNT_KEY } from "@/hooks/useAccountStatus";
+import { getQueryClient } from "@/lib/queryClient";
 import { CLIENT_TUNING_IDS } from "@/lib/clientConfig";
+import { accountStatus } from "@/testing/accountStatus";
 import {
   onBackend,
   onSameOrigin,
@@ -241,8 +244,15 @@ export function clickSegment(segment: GeoJSON.Feature, at: Coordinates) {
   ]);
 }
 
+/** ログインして今の規約の版に同意した人として、地図の画面を開ける状態にする（自分の状態を読み終えた取得を置き、最初の画面を通さずに地図を描く）。
+ * 最初の画面は`app/page.account.test.tsx`が見る。 */
+export function signedInAndConsented() {
+  getQueryClient().setQueryData(ACCOUNT_KEY, accountStatus());
+}
+
 export function renderHome() {
   const user = userEvent.setup();
+  signedInAndConsented();
   const rendered = render(<Home />);
   act(() => mapOnScreen().emit("load"));
   return Object.assign(rendered, { user });

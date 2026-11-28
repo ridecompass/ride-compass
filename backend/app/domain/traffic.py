@@ -351,8 +351,9 @@ _ONEWAY_DIRECTIONS: dict[str, str] = {
 
 #: 引き当ての順。`oneway:bicycle`（自転車に限り一方通行規制の対象外、という例外タグ）を
 #: `oneway`より前へ、`junction`からの含意を最後へ置く。
+_BICYCLE_ONEWAY_KEY = "oneway:bicycle"
 _DIRECTION_GROUPS: tuple[tuple[str, dict[str, str]], ...] = (
-    ("oneway:bicycle", _ONEWAY_DIRECTIONS),
+    (_BICYCLE_ONEWAY_KEY, _ONEWAY_DIRECTIONS),
     ("oneway", _ONEWAY_DIRECTIONS),
     ("junction", {value: _DIRECTION_FORWARD for value in sorted(_ONEWAY_JUNCTION_VALUES)}),
 )
@@ -363,6 +364,10 @@ DIRECTION_RULES: tuple[tuple[str, str, str, int], ...] = tuple(
     for priority, (tag_key, values) in enumerate(_DIRECTION_GROUPS, start=1)
     for value, direction in values.items()
 )
+
+#: 車両の通行方向（自転車の例外のタグを読まない）。JARTIC の一方通行の規制が当たる道で、規制が自転車も対象なら自転車もこの向き。
+VEHICLE_DIRECTION_RULES: tuple[tuple[str, str, str, int], ...] = tuple(
+    rule for rule in DIRECTION_RULES if rule[0] != _BICYCLE_ONEWAY_KEY)
 
 #: `way_directions.direction`の語彙。表の検査制約もここから作る。
 DIRECTIONS: frozenset[str] = frozenset(
@@ -376,6 +381,14 @@ def _quote(value: str) -> str:
 def one_way_sql(direction: str) -> str:
     """通行方向の式`direction`の道が、片方向にだけ通れるかのSQL式。"""
     return f"{direction} <> {_quote(_DIRECTION_DEFAULT)}"
+
+
+def regulated_direction_sql(tagged: str, vehicle: str, bicycle_regulated: str) -> str:
+    """JARTIC の一方通行の規制を効かせた、自転車が辿れる向きのSQL式。`tagged`はタグの通行方向（`DIRECTION_RULES`）、
+    `vehicle`は車両の通行方向（`VEHICLE_DIRECTION_RULES`）、`bicycle_regulated`は道に当たった一方通行の規制が自転車も対象か
+    （当たらなければ NULL）。規制は車両が一方通行の道の自転車の扱いだけを決め、向きはタグのまま使い、両方向の道へ一方通行を足さない。"""
+    return (f"(CASE WHEN {bicycle_regulated} IS NULL OR NOT {one_way_sql(vehicle)} THEN {tagged}"
+            f" WHEN {bicycle_regulated} THEN {vehicle} ELSE {_quote(_DIRECTION_DEFAULT)} END)")
 
 
 def travel_allowed(direction: str) -> tuple[bool, bool]:
@@ -398,11 +411,6 @@ def stop_kind_sql(alias: str, signal_place: str) -> str:
     read = ", ".join(_quote(kind) for kind in _SIGNAL_READ_KINDS)
     return (f"(CASE WHEN {signal_place} IS NOT NULL AND {alias}.kind IN ({read})"
             f" THEN {_quote(SIGNAL_KIND)} ELSE {alias}.kind END)")
-
-
-def kinds_shown_as(kind: str) -> tuple[str, ...]:
-    """地図へ`kind`として出る取込時の種別（`stop_kind_sql`の信号の読み替えで`kind`になるものを含む）。"""
-    return _SIGNAL_READ_KINDS if kind == SIGNAL_KIND else (kind,)
 
 
 def kind_map_sql[K: str](kind_sql: str, mapping: Mapping[K, str], *, otherwise: str = "NULL") -> str:

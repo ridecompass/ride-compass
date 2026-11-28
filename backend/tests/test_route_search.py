@@ -350,7 +350,7 @@ def test_rank_treats_distances_within_the_calibrated_quantum_as_the_same():
 
 def test_alternative_routes_are_at_most_the_calibrated_stretch_of_the_cost_of_the_best():
     """目的地への代わりの道は、最良路（費用1000秒）の費用の較正値の倍まで（ちょうどを含む）を候補にする。伸び率を長さで測ると、
-    最良路と同じ長さでも費用のずっと高い道（避ける道・負担の重い道）が候補に残り、遠い道でも費用の近い道が落ちる。届かない
+    最良路と同じ長さでも費用のずっと高い道（避ける道・難所の大きい道）が候補に残り、遠い道でも費用の近い道が落ちる。届かない
     経由Nodeは候補にしない。"""
     highest = 1000.0 * TUNING["search.alternative_max_cost_stretch"]
 

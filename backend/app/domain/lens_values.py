@@ -36,7 +36,6 @@ from app.domain.strict_model import StrictModel
 from app.domain.tuning import Tuning
 from app.domain.route import AxisFact, elevation_gain
 from app.domain.way_value_formula import (
-    FALSE,
     RIDE_CONDITION_ORDER,
     Unary,
     WayValueConditionName,
@@ -78,19 +77,18 @@ def _wind_lens_ids(definitions: CostAxisDefinitions) -> set[str]:
 
 def map_lens(conditions: tuple[WayValueConditionName, ...], tuning: Tuning) -> MapLens:
     """値が変わる走る条件が`conditions`のレンズの塗り方。走行方位で変わるなら辿る向きを走行方位で選び（`lens_way_formula`）、
-    変わらないなら辿れる向きの値をそのまま塗る（どちらの向きも同じ値で、向きで決まらない道は無い。一方通行の道も、走れない向きへ
+    変わらないなら辿れる向きの値をそのまま塗る（どちらの向きも同じ値。一方通行の道も、走れない向きへ
     地図を向けたまま辿れる向きの値で塗る）。"""
     if "bearing_deg" in conditions:
         formula = lens_way_formula(tuning)
     else:
         along, against = feature(LENS_ALONG_LEAF), feature(LENS_AGAINST_LEAF)
-        formula = WayValueFormula(value=case(Unary(op="is_missing", arg=along), against, along), undetermined=FALSE)
+        formula = WayValueFormula(value=case(Unary(op="is_missing", arg=along), against, along))
     return MapLens(formula=formula, material_conditions=[name for name in conditions if name != "bearing_deg"])
 
 
 def lens_way_formula(tuning: Tuning) -> WayValueFormula:
-    """レンズの道の値の木: 走行方位で道を辿る向きを選び、その向きの値を塗る（勾配と同じ決まり。直角に近い道は向きで
-    決まらない）。"""
+    """レンズの道の値の木: 走行方位で道を辿る向きを選び、その向きの値を塗る（走行方位が無いか直角に近い道は、両向きのきつい方）。"""
     return travel_direction_formula(feature(LENS_ALONG_LEAF), feature(LENS_AGAINST_LEAF),
                                     tuning.value("gradient.perpendicular_band_deg"))
 
@@ -239,8 +237,8 @@ class LensDirection(StrictModel):
 class LensInspection(StrictModel):
     """押したフィーチャーの、両方の向きの秒と事実。"""
 
-    #: 地図がレンズを塗っている向き（`along`は道の向き。走行方位で選ぶレンズで、直角に近くて決まらなければNone）。
-    painted: Literal["along", "against"] | None
+    #: 地図がレンズを塗っている向き（`along`は道の向き）。
+    painted: Literal["along", "against"]
     #: 辿れない向き（一方通行の逆）はNone。
     along: LensDirection | None
     against: LensDirection | None
@@ -255,25 +253,22 @@ class RoadInspection(StrictModel):
     lens: LensInspection
 
 
-def painted_direction(lens: MapLens, bearing_deg: float, features: LensFeatures, index: int
-                      ) -> Literal["along", "against"] | None:
-    """走行方位`bearing_deg`で、地図がレンズ`lens`の木で`features`のフィーチャー`index`を塗る向き（直角に近くて決まらなければ
-    None）。木が辿れない向き（一方通行の逆）を選んだら、その向き。"""
-    of_feature = features.feature == index
-    leaves = {LENS_ALONG_LEAF: ALONG if np.any(of_feature & (features.direction == ALONG)) else np.nan,
-              LENS_AGAINST_LEAF: AGAINST if np.any(of_feature & (features.direction == AGAINST)) else np.nan,
-              ROAD_BEARING_LEAF: float(features.bearing_deg[index])}
-    conditions = {"bearing_deg": bearing_deg}
-    if evaluate_formula(lens.formula.undetermined, leaves, conditions, 1)[0]:
-        return None
-    value = float(evaluate_formula(lens.formula.value, leaves, conditions, 1)[0])
+def painted_direction(lens: MapLens, bearing_deg: float, road_bearing_deg: float, along: float, against: float
+                      ) -> Literal["along", "against"]:
+    """走行方位`bearing_deg`（無ければNaN）で、地図がレンズ`lens`の木で、道の向きが`road_bearing_deg`で道の向き・逆向きの値が`along`・`against`
+    （辿れない向きはNaN）のフィーチャーを塗る向き。木は値で向きを選びうる（直角に近い道・ルートの前はきつい向き）ので、地図と同じ
+    値を入れて、木の値がどちらの向きの値かで決める。両向きが同じ値なら、逆向きをわずかに大きくして木が選んだ向きを見分ける（塗る
+    色はどちらでも同じで、きつい向きを選ぶ道は逆向きになる）。木が辿れない向き（一方通行の逆）を選んだら、その向き。"""
+    against = float(np.nextafter(against, np.inf)) if against == along else against
+    leaves = {LENS_ALONG_LEAF: along, LENS_AGAINST_LEAF: against, ROAD_BEARING_LEAF: road_bearing_deg}
+    value = float(evaluate_formula(lens.formula.value, leaves, {"bearing_deg": bearing_deg}, 1)[0])
     if np.isnan(value):
-        # 値の無い向きを選んだ。フィーチャーはどちらかの向きに行を持つので、辿れない方が選んだ向き。
-        value = ALONG if np.isnan(leaves[LENS_ALONG_LEAF]) else AGAINST
-    return "along" if value == ALONG else "against"
+        # 値の無い向きを選んだ。フィーチャーはどちらかの向きに値を持つので、辿れない方が選んだ向き。
+        return "along" if np.isnan(along) else "against"
+    return "along" if value == along else "against"
 
 
-def lens_inspection(features: LensFeatures, index: int, painted: Literal["along", "against"] | None,
+def lens_inspection(features: LensFeatures, index: int, painted: Literal["along", "against"],
                     facts: LensFactInputs) -> LensInspection:
     """`features`のフィーチャー`index`の両方の向きの秒と、`facts`から引いた事実。風を読まずに求めたなら、風で変わる軸と総合を
     載せない（無風の値は風の日の値と違う）。"""

@@ -53,9 +53,9 @@ export interface CaptureContext {
    * backend は撮影用の資格情報を通さない）。選べなければ、選べるタブを並べて止まる。
    */
   openAdmin(options?: OpenAdminOptions): Promise<Locator>;
-  /** 「負担で塗る」で選べるレンズの名前（一覧の並び順）。一覧は閉じた状態で返す。 */
+  /** 「難所を色で見る」で選べるレンズの名前（一覧の並び順）。一覧は閉じた状態で返す。 */
   lenses(): Promise<string[]>;
-  /** 「負担で塗る」のレンズを名前で選び（null は選んでいない状態へ戻す）、読み終わりまで待つ。選べなければ、選べる名前を並べて止まる。 */
+  /** 「難所を色で見る」のレンズを名前で選び（null は選んでいない状態へ戻す）、読み終わりまで待つ。選べなければ、選べる名前を並べて止まる。 */
   chooseLens(label: string | null): Promise<void>;
   /**
    * 「表示」の一覧の行の名前で凡例の内訳を開き、その内訳を返す。一覧が閉じていれば開く。`row` を渡せば、その行の説明も開く。
@@ -113,8 +113,8 @@ const OVERLAY_LIST_NAME = "地図に出す情報";
 
 /** レンズの一覧の行の名前。選び損ねた直後にも呼ぶので、一覧が開いていても閉じていても読み、閉じて返す。 */
 async function lensLabels(page: Page): Promise<string[]> {
-  const group = page.getByRole("radiogroup", { name: "負担で塗る" });
-  if (!(await group.isVisible())) await page.getByRole("button", { name: /^負担で塗る: / }).click();
+  const group = page.getByRole("radiogroup", { name: "難所を色で見る" });
+  if (!(await group.isVisible())) await page.getByRole("button", { name: /^難所を色で見る/ }).click();
   // 行の文から、読み上げだけの文（.sr-only）と隠した絵を除き、chooseLens が当てる見えている名前だけにする。
   const labels = await group.getByRole("radio").evaluateAll((radios) =>
     radios.map((radio) => {
@@ -160,6 +160,7 @@ export function captureContext(
         throw new Error(`知らないレイヤー: ${unknown.join(" / ")}。選べるレイヤー: ${layerIds.join(" / ")}`);
       }
       if (mocked) await fixtures.installApiMocks(page);
+      else await fixtures.signInAsConsented(page);
       if (point || !mocked) {
         await page.context().grantPermissions(["geolocation"]);
         await page.context().setGeolocation(point ?? LIVE_POINT);

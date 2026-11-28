@@ -39,11 +39,17 @@ DB接続・Redis・HTTPクライアント・レート制限・ログ・デバッ
 | infrastructure | `debug_control.py` | `debug_control.py: debug_mode`のランタイム切替・直近ログの保持 |
 | infrastructure | `host_markers.py` | 本番VMのホストの定期の仕組み（`ops/`）が最後に通ってからの時間（`/health`が返す）。下の「本番DBのバックアップ」「元の取り直し」 |
 | infrastructure | `job_registry.py` | 汎用の非同期ジョブレジストリ（プロセス内メモリのみ） |
-| domain | `ride_track.py` | 端末が送る走り（`POST /api/rides`の本文）の型 |
-| infrastructure | `ride_gpx.py` | 走りを GPX 1.1 に直す処理。時刻・緯度経度・標高（走った地点の地形の標高。無い点は端末の高さ）は標準の欄、速さと進む向きは Garmin の`TrackPointExtension` v2、端末の高さ・位置と標高の誤差・出来事・画面とサーバーの版・端末の名前は自前の名前空間。休むごとに`trkseg`を分ける |
-| infrastructure | `ride_track_models.py` | 走りの記録の表`ride_tracks`（走り1回を1行。GPX と、推したルート（候補を受けたまま）、生成の条件と予報（`context`）を受けたまま）。同じ走りの id は先の行のまま書かない。走った地点ごとの地形の標高を、取り込んだ標高タイルから製品の優先の順に引く問い合わせ（`infrastructure/dem_elevation.py: fill_elevations`）も持つ。読むのは開発機の較正の道具だけ（`run_probe.py`） |
-| services | `ride_track_service.py` | 走り1回を書く取引。送り直し（同じ id の行がある）なら地形の標高を引かずに終え、無ければ標高を引いて GPX に直して書く。接続は1本を長く持つ工場のもの |
-| api | `ride_tracks.py` | 走りを受ける口`POST /api/rides`。受けたサーバーの版を添えて書く。gzip で縮めた本文は戻して読む（戻した大きさに上限） |
+| domain | `ride_track.py` | 端末が送る走り（`POST /api/rides`の本文）の型と、自分の走りの一覧・1件の応答の型。走った線の長さ（休んで途切れた線の間は数えない） |
+| domain | `account.py` | 規約の今の版（`domain/account.py: TERMS_VERSION`）・札の期限・自分の状態の応答の型 |
+| infrastructure | `ride_gpx.py` | 走りを GPX 1.1 に直す処理。時刻・緯度経度・標高（走った地点の地形の標高。無い点は端末の高さ）は標準の欄、速さと進む向きは Garmin の`TrackPointExtension` v2、端末の高さ・位置と標高の誤差・出来事・画面とサーバーの版・端末の名前は自前の名前空間。休むごとに`trkseg`を分ける。書いた GPX から線を読み戻す（`infrastructure/ride_gpx.py: read_ride_lines`。走りを受けたときの距離と、1件の口が使う） |
+| infrastructure | `ride_track_models.py` | 走りの記録の表`ride_tracks`（走り1回を1行。GPX と、推したルート（候補を受けたまま）、生成の条件と予報（`context`）を受けたまま）。同じ走りの id は先の行のまま書かない。走った地点ごとの地形の標高を、取り込んだ標高タイルから製品の優先の順に引く問い合わせ（`infrastructure/dem_elevation.py: fill_elevations`）も持つ。行は送った人（`accounts`）に結び、本人の分だけを読んで消す口を持つ。一覧に出す走り始めの時刻・距離・かかった時間は列に持ち（利用者のある行は表の制約で空にできない）、一覧は GPX を読まない。利用者の無い行はログインを入れる前の走りで、本人の口からは読まれない。開発機の較正の道具（`run_probe.py`）は全部を読む |
+| infrastructure | `account_models.py` | 利用者（ログインの方法とその方法での番号で1行）・ログインの札（乱数は持たず hash だけ）・同意（版ごとに1行、やめたら時刻を書いて残す）の表と読み書き |
+| infrastructure | `google_identity.py` | Google の ID トークンを公式のライブラリで確かめて`sub`を取り出す。クライアント ID が無ければログインを断り、証明書を取れない失敗はトークンの誤りと分けて送り出す |
+| services | `account_service.py` | ログイン（札を作る）・ログアウト・状態・同意・同意のやめ・自分の走りの一覧と1件と消す取引。一覧の距離とかかった時間は GPX から求める |
+| api | `account_auth.py` | 利用者の札（cookie）の書き方・消し方と、札から利用者を引く注入（札が無ければ401・同意が無ければ403） |
+| api | `routers/account.py` | 自分の口`/api/me`（ログイン・ログアウト・状態・同意）と`/api/me/rides` |
+| services | `ride_track_service.py` | 走り1回を書く取引。送り直し（同じ id の行がある）なら地形の標高を引かずに終え、無ければ標高を引いて GPX に直し、一覧に出す距離とかかった時間を1回だけ求めて書く。接続は1本を長く持つ工場のもの |
+| api | `ride_tracks.py` | 走りを受ける口`POST /api/rides`。ログインして今の版に同意した人の走りだけを受け、その人と受けたサーバーの版を添えて書く。gzip で縮めた本文は戻して読む（戻した大きさに上限） |
 | infrastructure | `tuning_overrides.py` | 較正値の値（宣言の全idの行をDBへ持つ。値の正本）の読み書き。プロセス内の値へは書かない |
 | services | `definitions_loading.py` | DBの定義（道の区分・軸定義・較正値）をプロセスへ読み込む1つの入口と、その順。起動時と、起動を通らない道具が呼ぶ |
 | services | `tuning_service.py` | 較正値の書き込みの取引境界（構造仕様7）と、プロセス内の値への反映（起動時の読み込みと、書いた直後） |
@@ -164,6 +170,7 @@ backendは**1プロセスでしか正しく動かない**。プロセス内に�
 |---|---|---|
 | `database_url` | localhost | PostGIS接続文字列。[ルート生成エンジン](routing-engine.md)・地図のタイル配信・管理APIのどれもこの接続を必須とし、DBなしで動く構成は無い |
 | `admin_basic_auth_username`/`password` | 空文字（常に拒否） | 管理API（`/api/admin/...`）の認可 |
+| `google_client_id` | 空文字（ログインを断る。起動は止めない） | Google でのログイン（`/api/me/google-login`）が確かめるトークンの宛先。秘密の値ではない |
 | `redis_url` | localhost | Redis接続文字列 |
 | `git_commit` | None（ローカル） | `/health`が返すデプロイ確認用コミットSHA |
 | 各種`*_rate_limit_per_minute`/`*_max_concurrent` | エンドポイントごとに個別 | per-IPレート制限・同時実行数上限 |
