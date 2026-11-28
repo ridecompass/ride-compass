@@ -9,7 +9,7 @@
  * ここで見ないもの:
  * - `detail`の中身を文言にする規則（入力検証の失敗の配列等） → `lib/apiError.test.ts`
  * - 呼び出し口ごとの叩く先（backendのオリジン・管理APIの同一オリジンの口）と文言の主語 → 呼び出す側
- *   （`app/admin/adminApi.test.ts`・`services/*Api.test.ts`等）
+ *   （`services/*Api.test.ts`等）
  * - デバッグモードがオフのとき記録しないこと → `lib/debugLog.test.ts`
  */
 import { HttpResponse } from "msw";
