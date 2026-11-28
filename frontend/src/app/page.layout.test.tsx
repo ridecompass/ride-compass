@@ -11,7 +11,7 @@
  *
  * 差し替えたもの: backend の応答（網の層）、位置情報の取得、地図の描画（`maplibre-gl`）。子の部品は本物を描く。
  */
-import { act, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { HOUR_MS } from "@/lib/duration";
@@ -19,6 +19,7 @@ import { onBackend } from "@/testing/backendServer";
 import { ROAD_CLASS_COLOR, renderHome, section, serveHome, showRoadSurface } from "@/testing/homePage";
 import { themedPaint } from "@/features/map/basemapTheme";
 import { LAYER_DATA_STATUS_LABELS } from "@/features/map/layers/mapLayers";
+import { LOADING_STATUS_DELAY_MS } from "@/features/map/useShownDataStatus";
 import { LIBERTY_POI_LAYERS } from "@/testing/libertyPoiLayers";
 import { insetMapOnScreen, mapOnScreen } from "@/testing/maplibre";
 
@@ -92,9 +93,16 @@ describe("画面の枠", () => {
     const { user } = renderHome();
     await showRoadSurface(user);
     act(() => mapOnScreen().emit("idle"));
-    await user.click(screen.getByRole("button", { name: "地図に出す情報" }));
-    const row = screen.getByRole("checkbox", { name: "路面の種類" }).closest("label");
-    expect(row?.getAttribute("title")).toContain(LAYER_DATA_STATUS_LABELS.loading);
+    // 待ちの印を出すまでの長さを、偽の時計で進める（実時間で待つと、この画面のテストはメモリを使い切る）。
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      fireEvent.click(screen.getByRole("button", { name: "地図に出す情報" }));
+      act(() => vi.advanceTimersByTime(LOADING_STATUS_DELAY_MS));
+      const row = screen.getByRole("checkbox", { name: "路面の種類" }).closest("label");
+      expect(row?.getAttribute("title")).toContain(LAYER_DATA_STATUS_LABELS.loading);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("再描画でスタイルが取れなかったら読み込みの失敗を出し、もう一度押すと取り直し、取れたら消す。取り直しの間のタイル1枚の失敗では出さない", async () => {
