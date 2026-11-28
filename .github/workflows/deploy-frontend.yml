@@ -101,6 +101,13 @@ jobs:
             sudo docker pull -q "$IMAGE:$COMMIT"
             # 新旧を同時に起こすと3000番を取り合うので、止めてから起こす（入れ替えの間の数秒は nginx が 502 を返す）。
             sudo docker rm -f ridecompass-frontend 2>/dev/null || true
+            # 管理画面（/admin）の Basic 認証の資格情報は backend と同じ値で、backend の環境のファイルから VM の中で写して渡す
+            # 毎回写すので、backend の資格情報を変えても次のデプロイで揃う。
+            FRONT_ENV=/home/ubuntu/ridecompass-frontend.env
+            grep -E '^ADMIN_BASIC_AUTH_(USERNAME|PASSWORD)=' /home/ubuntu/ridecompass-backend.env > "$FRONT_ENV.new"
+            [ "$(wc -l < "$FRONT_ENV.new")" = 2 ] || { echo "backend の環境のファイルに管理の資格情報が2行ない" >&2; exit 1; }
+            chmod 600 "$FRONT_ENV.new"
+            mv "$FRONT_ENV.new" "$FRONT_ENV"
             # 上限は、同じVMの backend と DB の資源を食わないため。
             # --log-driver=journald: ログをVMのjournalへ送り、入れ替えでコンテナを消したあとも読めるようにする（docs/architecture/tech-stack.md「本番のログ」）。
             sudo docker run -d \
@@ -109,6 +116,7 @@ jobs:
               --memory=512m --memory-swap=512m --cpus=0.5 \
               -p 127.0.0.1:3000:3000 \
               --log-driver=journald \
+              --env-file "$FRONT_ENV" \
               "$IMAGE:$COMMIT"
             # 入れ替えたコンテナが今のコミットとして/api/versionに応答するまで待つ。`docker run -d`は起動の成否を見ない。
             WAIT_SECONDS=60
