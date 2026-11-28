@@ -190,6 +190,8 @@ export async function openMapApp(page: Page, { storedState, routes }: OpenOption
   await seedStoredState(page, { ...INTRO_CLOSED, ...storedState });
   await page.addInitScript(installMapFinder);
   await page.goto("/");
+  // 地図の画面が出るまで待つ（自分の状態を読む間は最初の画面が出ていて、「地図を読み込み中…」がまだ無く下の待ちが素通りする）。
+  await expect(page.getByRole("button", { name: "メニュー" })).toBeVisible({ timeout: 30_000 });
   await expect(page.getByText("地図を読み込み中…")).toBeHidden({ timeout: 15_000 });
 }
 

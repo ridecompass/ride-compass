@@ -121,6 +121,7 @@ test("宣言された地図レイヤーを全部ONにしても、スタイル検
     "ridecompass:route-style-mode": "ascent",
   });
   await page.goto("/");
+  await expect(page.getByRole("button", { name: "メニュー" })).toBeVisible({ timeout: 30_000 });
   await expect(page.getByText("地図を読み込み中…")).toBeHidden({ timeout: 15_000 });
   // 一部のレイヤーはカタログが届いてから作られる。落ち着くのを待つ。
   await page.waitForTimeout(3000);
@@ -140,6 +141,7 @@ test("ルートを収めるとき、地図の上の操作部品が覆う所へ�
   await installApiMocks(page);
   await seedStoredState(page, { "ridecompass:debug-enabled": "1" });
   await page.goto("/");
+  await expect(page.getByRole("button", { name: "メニュー" })).toBeVisible({ timeout: 30_000 });
   await expect(page.getByText("地図を読み込み中…")).toBeHidden({ timeout: 15_000 });
   await runGeneration(page);
   await expect.poll(() => fit.padding, { timeout: 10_000 }).toBeDefined();
