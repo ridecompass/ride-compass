@@ -36,14 +36,18 @@ test("S1 地図の描画（生成前）", async ({ page }) => {
       `レンズ「${lens.label}」`,
       async () => {
         const errorsBefore = watch.mapErrors.length;
-        const materialsBefore = watch.wayMaterials.length;
+        const tilesBefore = watch.lensTiles.length;
         await chooseLens(page, lens.label);
         await settleMap(page);
         const drawn = await renderedRoads(page, source);
         expect.soft(drawn.length, `「${lens.label}」: 道が描かれていない`).toBeGreaterThan(0);
-        // 道ごとの材料を受け取り、それが描かれている道を指すこと（材料の鍵は路面の地物の鍵）。
-        const received = watch.wayMaterials.slice(materialsBefore).filter((entry) => entry.lensId === lens.lensId);
-        const featureKeys = new Set(received.flatMap((entry) => Object.keys(entry.materials)));
+        // レンズのタイルで道ごとの材料を受け取り、それが描かれている道を指すこと（レンズのタイルの道の鍵は路面の地物の鍵）。
+        const received = watch.lensTiles.slice(tilesBefore).filter((entry) => entry.lensId === lens.lensId);
+        const featureKeys = new Set(
+          received.flatMap((entry) =>
+            entry.ways.filter((way) => Object.keys(way).length > 1).map((way) => String(way[FEATURE_KEY_PROPERTY])),
+          ),
+        );
         expect.soft(featureKeys.size, `「${lens.label}」: 道ごとの材料を1件も受け取っていない`).toBeGreaterThan(0);
         const drawnWithMaterials = drawn.filter((road) => featureKeys.has(String(road[FEATURE_KEY_PROPERTY]))).length;
         expect

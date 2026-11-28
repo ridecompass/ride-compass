@@ -158,7 +158,7 @@ OCIとiptablesの5432番の行を直す。** 規則は`oci network security-list
 
 **frontendのオリジンからbackendへ届くのは、`frontend/next.config.ts`のrewritesにあるタイル類と、管理画面の
 転送（`/admin/api/…`→backendの`/api/admin/…`、Basic認証をサーバー側で付ける）だけ。** それ以外のAPI
-（例: `/api/cost-axes`・`/api/region/lens/…`・`/health`）をfrontendのオリジンへ投げると、
+（例: `/api/cost-axes`・`/api/region/road-inspector`・`/health`）をfrontendのオリジンへ投げると、
 Next.jsのHTMLの404が返る（backendの404はJSON）。本番のAPIを手で叩くとき・道具から引くときは、backendの
 宛先へ直接投げる。frontend自身の口（`/api/version`）はfrontendのオリジンにだけある。開発機で画面を本番のデータで開くときだけ、APIも`/prod/…`で本番のbackendへ転送する（[setup.md](setup.md)「開発機の画面を本番のデータで開く」）。
 

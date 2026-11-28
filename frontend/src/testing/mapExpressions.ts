@@ -5,26 +5,17 @@ import { createExpression, featureFilter, type FilterSpecification } from "@mapl
 const GLOBALS = { zoom: 14 } as never;
 
 /** 式を評価器に読ませたもの。式として読めなければ、評価器の指摘を並べて投げる。 */
-function compile(expression: unknown, globalState: Record<string, unknown>) {
-  const compiled = createExpression(expression, "paint", null, globalState);
+function compile(expression: unknown) {
+  const compiled = createExpression(expression, "paint", null);
   if (compiled.result !== "success") {
     throw new Error(compiled.value.map((error) => `${error.key}: ${error.message}`).join("; "));
   }
   return compiled.value;
 }
 
-/** 式を、地物のプロパティ（と feature-state・地図全体の global-state）へ当てた値。 */
-export function evaluateExpression(
-  expression: unknown,
-  properties: Record<string, unknown>,
-  state: Record<string, unknown> = {},
-  globalState: Record<string, unknown> = {},
-): unknown {
-  return compile(expression, globalState).evaluateWithoutErrorHandling(
-    GLOBALS,
-    { type: 2, properties } as never,
-    state,
-  );
+/** 式を、地物のプロパティへ当てた値。 */
+export function evaluateExpression(expression: unknown, properties: Record<string, unknown>): unknown {
+  return compile(expression).evaluateWithoutErrorHandling(GLOBALS, { type: 2, properties } as never);
 }
 
 /** 式を、地図の倍率`zoom`で地物のプロパティへ当てた値。 */
@@ -33,7 +24,7 @@ export function evaluateExpressionAtZoom(
   properties: Record<string, unknown>,
   zoom: number,
 ): unknown {
-  return compile(expression, {}).evaluateWithoutErrorHandling({ zoom } as never, { type: 2, properties } as never);
+  return compile(expression).evaluateWithoutErrorHandling({ zoom } as never, { type: 2, properties } as never);
 }
 
 /** 絞り（凡例の行の述語・レイヤーの`filter`）が、そのプロパティの地物に当てはまるか。`geometry`は地物の形

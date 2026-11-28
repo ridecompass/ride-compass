@@ -45,7 +45,7 @@ from app.infrastructure.source_models import (
     nodes_lookup_sql,
     ways_lookup_sql,
 )
-from app.infrastructure.vector_tile import ROAD_SURFACE_LAYER_NAME, TILE_EXTENT
+from app.infrastructure.vector_tile import TILE_EXTENT
 
 logger = logging.getLogger("ridecompass.road_graph_repository")
 
@@ -378,13 +378,14 @@ class RoadGraphRepository:
         rows = await self._session.execute(WAY_NAMES_SQL, {"ids": list(osm_way_ids)})
         return {row.osm_way_id: (row.name, row.ref) for row in rows}
 
-    async def get_road_surface_tile_mvt(
-        self, z: int, x: int, y: int, bbox: BoundingBox, feature_keys: Sequence[str], shapes: Sequence[bytes],
-        layer_values: Mapping[str, Mapping[str, str]],
+    async def get_road_feature_tile_mvt(
+        self, layer_name: str, z: int, x: int, y: int, bbox: BoundingBox, feature_keys: Sequence[str], shapes: Sequence[bytes],
+        layer_values: Mapping[str, Mapping[str, str | float]],
     ) -> bytes | None:
-        """路面レイヤーのMVTタイル1枚。フィーチャーは鍵`feature_keys`と、同じ並びの線の形`shapes`（経度・緯度の WKB）。
-        `layer_values`はフィーチャーの鍵→地図の線の層のid→値（値の無い道は載せない）。契約は`get_tile_mvt`と同じ。"""
-        return await self._tile_mvt(ROAD_SURFACE_TILE_MVT_SQL, ROAD_SURFACE_LAYER_NAME, z, x, y, bbox, {
+        """道のフィーチャーのMVTタイル1枚（レイヤー名`layer_name`。路面タイルとレンズのタイル）。フィーチャーは鍵`feature_keys`と、
+        同じ並びの線の形`shapes`（経度・緯度の WKB）。`layer_values`はフィーチャーの鍵→プロパティの名前→値（値の無い道は載せない）。
+        契約は`get_tile_mvt`と同じ。"""
+        return await self._tile_mvt(ROAD_SURFACE_TILE_MVT_SQL, layer_name, z, x, y, bbox, {
             "keys": list(feature_keys), "shapes": list(shapes),
             "layer_values": json.dumps(layer_values, ensure_ascii=False)})
 

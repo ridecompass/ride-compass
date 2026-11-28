@@ -30,7 +30,7 @@ export function landcoverTileUrl(): string {
   return `${tileBaseUrl()}${LANDCOVER_TILE_PATH}?v=${LANDCOVER_TILE_VERSION}`;
 }
 
-// 道のタイルを要求するズーム範囲。正はbackendで、生成物で受け取る。点のタイルと道ごとの値（レンズ・押した所の道）は
+// 道のタイルを要求するズーム範囲。正はbackendで、生成物で受け取る。点のタイルとレンズのタイルと押した所の道は
 // `ROAD_TILE_MIN_ZOOM`から、路面タイル（道の線）だけは道ごとの鍵を持たずに`ROAD_SURFACE_TILE_MIN_ZOOM`から。
 export const ROAD_SURFACE_TILE_MIN_ZOOM = regionTileConfig.road_surface_tile_min_zoom;
 export const ROAD_TILE_MIN_ZOOM = regionTileConfig.road_tile_min_zoom;
@@ -118,25 +118,16 @@ export async function fetchTimeFrames(): Promise<TimeFrames> {
   });
 }
 
-/** 費用の軸のレンズの道ごとの材料の要求の条件（`/api/cost-axes`のレンズごとの`map_lens.material_conditions`）。 */
-export type LensMaterialsQuery = paths["/api/region/lens/{lens_id}/{z}/{x}/{y}"]["get"]["parameters"]["query"];
+/** 費用の軸のレンズのタイルの要求の条件（`/api/cost-axes`のレンズごとの`map_lens.material_conditions`と利用者の値）。 */
+export type LensTileQuery = NonNullable<
+  paths["/api/region/lens-tiles/{lens_id}/{z}/{x}/{y}.pbf"]["get"]["parameters"]["query"]
+>;
 
-/** 路面タイルと同じz/x/yの中の道ごとの、レンズ`lensId`（総合か費用の軸）の材料（道の向き・逆向きに辿った1kmあたりの
- * 代償の秒と道の向き。値の無い材料は鍵ごと無い）と、その値が前に出た予報の風を引いた素性。 */
-export async function fetchLensMaterials(
-  lensId: string,
-  z: number,
-  x: number,
-  y: number,
-  query: LensMaterialsQuery,
-): Promise<components["schemas"]["LensMaterials"]> {
-  const params = { path: { lens_id: lensId, z, x, y }, query };
-  return requestApi((init) => backendApi.GET("/api/region/lens/{lens_id}/{z}/{x}/{y}", { params, ...init }), {
-    category: `api:${lensId}-lens`,
-    messages: {
-      failure: "道路の塗りの値の取得に失敗しました",
-      parseFailure: "道路の塗りの値の解析に失敗しました",
-    },
-    successMeta: (data) => ({ wayCount: Object.keys(data.materials).length }),
-  });
+/** レンズ`lensId`（総合か費用の軸）のタイルのURL。路面タイルと同じz/x/yと同じ道の形に、道ごとの材料（道の向き・逆向きに辿った
+ * 1kmあたりの代償の秒と道の向き。値の無い道は材料を持たない）を載せる。条件`query`ごとに別のURLで、条件が変わったときだけタイルを
+ * 引き直す。 */
+export function lensTileUrl(lensId: string, query: LensTileQuery): string {
+  const params = new URLSearchParams(Object.entries(query).map(([name, value]) => [name, String(value)])).toString();
+  const path = apiPath("/api/region/lens-tiles/{lens_id}/{z}/{x}/{y}.pbf", { lens_id: lensId });
+  return `${tileBaseUrl()}${path}${params ? `?${params}` : ""}`;
 }

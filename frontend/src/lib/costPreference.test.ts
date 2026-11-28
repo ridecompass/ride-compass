@@ -4,7 +4,7 @@
  * 値が決まるので、ほかの軸の倍率と無効を載せない（変えても見えているタイルを取り直さない）。総合は全部の倍率と無効の軸を載せる。
  * 標準は載せない。
  *
- * ここで見ないもの: 要求の鍵に載せて取ること → `features/map/useWayMaterials.test.ts`。backend が読む形 → `backend/tests/test_region_lens.py`
+ * ここで見ないもの: タイルのURLに載せること → `features/map/lensTiles.test.ts`。backend が読む形 → `backend/tests/test_region_lens.py`
  */
 import { describe, expect, it } from "vitest";
 

@@ -37,7 +37,7 @@ from app.api.routers.debug_admin import LogLevelName
 from app.api.routers.derived_database import DERIVED_DATABASE_PATH
 from app.infrastructure.source_models import SOURCE_RUN_STATUS_LABELS
 from app.infrastructure.point_tile_layers import POINT_TILE_LAYERS
-from app.infrastructure.vector_tile import ROAD_FEATURE_PROPERTIES, ROAD_SURFACE_LAYER_NAME
+from app.infrastructure.vector_tile import LENS_LAYER_NAME, ROAD_FEATURE_PROPERTIES, ROAD_SURFACE_LAYER_NAME
 from app.main import app
 from app.domain.address_area import ADDRESS_AREA_LEVELS
 from app.domain.geo import COMPASS_LABELS, EARTH_RADIUS_KM
@@ -323,6 +323,9 @@ def main() -> None:
             # 路面タイルのレイヤー名と、道のフィーチャーの列の名前（路面タイルは`feature_key`だけを持ち、ほかの列は押した所に
             # 近い道の口が返す）。
             "road_surface": {"layer_name": ROAD_SURFACE_LAYER_NAME, "properties": ROAD_FEATURE_PROPERTIES},
+            # 地図のレンズのタイル（`/api/region/lens-tiles`）のレイヤー名。道の形と`feature_key`は路面タイルと同じで、材料の名前は
+            # 式の木の`feature`の節の名前。
+            "lens": {"layer_name": LENS_LAYER_NAME},
             # 点のレイヤーの名前→source-layer名。画面はタイルのURLをこの名前で組み、source-layerを写さない。
             "point_layers": {layer.name: layer.source_layer for layer in POINT_TILE_LAYERS.values()},
             # 道のタイルを要求するズーム範囲。frontendのMapLibreソース設定

@@ -2,7 +2,7 @@
 /**
  * `applyMapScene.ts`——宣言したレイヤーが段の順で地図に載り、当て直した後も宣言どおりになること。
  *
- * ここで見ないもの: ソースの差し替え・作り直しと、feature-state・地図全体の状態の置き直し → `applyMapScene.sources.test.ts`
+ * ここで見ないもの: ソースの差し替え・作り直し → `applyMapScene.sources.test.ts`
  */
 import type { FilterSpecification } from "maplibre-gl";
 import { describe, expect, it } from "vitest";

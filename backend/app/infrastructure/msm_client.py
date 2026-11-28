@@ -31,6 +31,7 @@ from app.domain.time_zone import JST, as_series_time
 from app.config import settings
 from app.domain.msm import MsmGrid, MsmGridPoints, MsmThinnedPoints
 from app.domain.weather_elements import MSM_FORECAST_HOURS
+from app.domain.wind import ForecastTimes
 from app.infrastructure.data_paths import DATA_DIR
 from app.infrastructure.debug_log import log_external_call
 from app.infrastructure.http_client import UpstreamNotFound, fetch_upstream
@@ -498,15 +499,15 @@ async def read_grid_points(latitudes: np.ndarray, longitudes: np.ndarray) -> Msm
     return MsmGridPointWeatherSeries(times=times, points=points, latest_run_end=latest_run_end, **values)
 
 
-async def forecast_times() -> list[datetime]:
-    """今の正時から読める予報の時刻（系列の時刻の形）。読む時刻の並びは格子のどの点でも同じなので、格子の真ん中の1点で決める。
-    読めなければ`MsmUnavailableError`。"""
-    _, times, _, _ = await _read(
+async def forecast_times() -> ForecastTimes:
+    """今の正時から読める予報の時刻（系列の時刻の形）と最新のrunの予報の終わり。読む時刻の並びは格子のどの点でも同じなので、
+    格子の真ん中の1点で決める。読めなければ`MsmUnavailableError`。"""
+    _, times, _, latest_run_end = await _read(
         lambda grid: grid.nearest_points(grid.latitude_of(np.array([grid.n_lat // 2])),
                                          grid.longitude_of(np.array([grid.n_lon // 2]))),
         MsmGridPoints.values, _WIND_VARIABLES,
     )
-    return times
+    return ForecastTimes(times=times, latest_run_end=latest_run_end)
 
 
 async def read_grid_block(south: float, west: float, north: float, east: float) -> MsmGridPointSeries:

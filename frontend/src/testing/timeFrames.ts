@@ -5,5 +5,7 @@ import type { TimeFrames } from "@/features/map/regionApi";
 /** 路面タイルもレンズも、テストの時刻を覆う1つのコマ（出発の時刻を進めても印が変わらない）。 */
 export const WIDE_TIME_FRAMES: TimeFrames = {
   road_surface: [{ start: "2000-01-01T00:00:00+09:00", end: "2100-01-01T00:00:00+09:00", key: "road" }],
-  lens: [{ start: "2000-01-01T00:00:00+09:00", end: "2100-01-01T00:00:00+09:00", key: "lens" }],
+  lens: [
+    { start: "2000-01-01T00:00:00+09:00", end: "2100-01-01T00:00:00+09:00", key: "lens", wind_previous_run_from: null },
+  ],
 };

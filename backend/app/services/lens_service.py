@@ -2,16 +2,18 @@
 
 タイルに入るフィーチャーは路面タイルと同じ選び方で取込範囲全体の道の網（`infrastructure/road_network_store.py: current`）から選び
 （`domain/road_features.py: map_features_in`）、その値を探索と同じ部品で求める（`domain/lens_values.py`）。
-地図の応答はJSONのバイト列のままプロセスの中で持ち、鍵には値を変える入力だけを入れる（`_response_inputs`）。
+地図へは、路面タイルと同じ道の形に道ごとの材料を載せたタイル（MVT）で配り、そのバイト列のままプロセスの中で持つ。鍵には値を変える
+入力だけを入れる（`_response_inputs`）。
 """
 
 import asyncio
 import math
-from collections.abc import Mapping, Sequence
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
 import numpy as np
+import shapely
 from cachetools import LRUCache
 
 from app.domain.cost_preference import CostPreference
@@ -25,7 +27,6 @@ from app.domain.lens_values import (
     LENS_ALONG_LEAF,
     LensFeatures,
     LensInspection,
-    LensMaterials,
     LensTable,
     lens_conditions,
     lens_inspection,
@@ -36,7 +37,7 @@ from app.domain.lens_values import (
 )
 from app.domain.lens_total import TOTAL_LENS_ID
 from app.domain.region import BoundingBox, tile_bounds_lonlat
-from app.domain.road_features import map_features_in
+from app.domain.road_features import feature_lines, map_features_in
 from app.domain.road_network import MaterialFills, RoadNetwork, material_arrays_of, slice_rows
 from app.domain.attributes import EdgeMaterialColumns
 from app.domain.time_zone import JST, as_series_time
@@ -51,23 +52,31 @@ from app.services.time_frame_service import TimeFrameService
 
 _CATEGORY = "region:lens"
 
+#: タイルへ焼く材料の小数の桁。いちばん細かい段の幅（数秒/km）に対して色が変わらない桁にとどめ、タイルを小さくする。
+LENS_MATERIAL_DECIMALS = 1
+
+#: タイルのズーム・x・yと、道の鍵と、同じ並びの道の形（経度・緯度のWKB）と、鍵→材料の名前→値から、地図のレンズのタイル（MVT）を組む。
+LensTileEncoder = Callable[[int, int, int, Sequence[str], Sequence[bytes], Mapping[str, Mapping[str, float]]], Awaitable[bytes]]
+
 #: 地図の応答の持ちの上限（バイト）。生成以外のために取り置くメモリ（`services/graph_service.py: RESERVED_BYTES`）の
 #: 内側に収める。
 RESPONSE_CACHE_BYTES = 256 * 1024**2
 
 
 def new_response_cache() -> LRUCache[str, bytes]:
-    """地図の応答（JSONのバイト列）の持ち。バイト数で上限を持ち、使われていないものから押し出す。"""
+    """地図の応答（タイルのバイト列）の持ち。バイト数で上限を持ち、使われていないものから押し出す。"""
     return LRUCache(maxsize=RESPONSE_CACHE_BYTES, getsizeof=len)
 
 
 @dataclass(frozen=True)
 class _TileLens:
-    """タイル1枚のレンズの値と、道の窓が引く事実の入力と、引いた風の素性（`LensMaterials.wind_previous_run_from`）。"""
+    """タイル1枚のレンズの値と、道の窓が引く事実の入力と、タイルへ焼く道の鍵と同じ並びの形（経度・緯度のWKB。フィーチャーを
+    絞ったときは空）。"""
 
     table: LensTable
     facts: LensFactInputs
-    wind_previous_run_from: datetime | None
+    keys: Sequence[str]
+    shapes: Sequence[bytes]
 
 
 class LensService:
@@ -76,13 +85,12 @@ class LensService:
         self._responses = responses
         self._time_frames = time_frames
 
-    async def way_materials(self, lens_id: str, z: int, x: int, y: int, frame: str | None,
-                            speed_kmh: float, preference: CostPreference, settings: ModelSettings) -> bytes | None:
-        """レンズ`lens_id`の、タイルのフィーチャーの、レンズのコマの印`frame`（省略すると今）の風と想定速度`speed_kmh`と利用者の値
-        `preference`（つまみと倍率。ルート生成と同じ値で塗る）での道ごとの材料（`LensMaterials`のJSON）。知らないレンズか、
-        利用者が無効にした軸のレンズ（表に無い）ならNone。風に依るレンズで、風を読めない・時刻が予報の範囲の外・今の一覧に無い印なら
-        投げる（風に依らないレンズは`frame`を読まない）。
-        較正値・区分・軸の定義は写し`settings`だけを読む。"""
+    async def lens_tile(self, lens_id: str, z: int, x: int, y: int, frame: str | None, speed_kmh: float,
+                        preference: CostPreference, settings: ModelSettings, encode: LensTileEncoder) -> bytes | None:
+        """レンズ`lens_id`の、レンズのコマの印`frame`（省略すると今）の風と想定速度`speed_kmh`と利用者の値`preference`（つまみと倍率。
+        ルート生成と同じ値で塗る）での地図のタイル: 路面タイルと同じ道の形に、道ごとの材料（`_way_materials`）を載せたもの（`encode`が
+        組む）。知らないレンズか、利用者が無効にした軸のレンズ（表に無い）ならNone。風に依るレンズで、風を読めない・時刻が予報の範囲の外・
+        今の一覧に無い印なら投げる（風に依らないレンズは`frame`を読まない）。較正値・区分・軸の定義は写し`settings`だけを読む。"""
         conditions = lens_conditions(settings.cost_axes).get(lens_id)
         if conditions is None:
             return None
@@ -101,8 +109,7 @@ class LensService:
             assert tile is not None  # フィーチャーを絞らなければ、空のタイルも空の表で返る
             if lens_id not in tile.table.values:
                 return None
-            body = LensMaterials(materials=_way_materials(tile, tile.table.values[lens_id]),
-                                 wind_previous_run_from=tile.wind_previous_run_from).model_dump_json().encode()
+            body = await encode(z, x, y, tile.keys, tile.shapes, _way_materials(tile, tile.table.values[lens_id]))
             self._responses[key] = body
             return body
 
@@ -146,11 +153,12 @@ class LensService:
         prepared = await asyncio.to_thread(_prepare, network, z, tile_bounds_lonlat(z, x, y), settings, only)
         if prepared is None:
             return None
-        features, materials, fills, burden_fills, elevation_gain_m = prepared
+        features, materials, fills, burden_fills, elevation_gain_m, keys, shapes = prepared
         fields["features"] = len(features)
         weather = await self._weather(z, x, y, at, materials.mid_lat, materials.mid_lon) if wind else None
-        return await asyncio.to_thread(_tile_lens, features, materials, settings, fills, burden_fills, speed_kmh,
-                                       preference, weather, elevation_gain_m)
+        table, facts = await asyncio.to_thread(_tile_lens, features, materials, settings, fills, burden_fills, speed_kmh,
+                                               preference, weather, elevation_gain_m)
+        return _TileLens(table, facts, keys, shapes)
 
     async def _weather(self, z: int, x: int, y: int, at: datetime | None, mid_lat: np.ndarray, mid_lon: np.ndarray,
 ) -> tuple[WeatherForecastSeries, datetime] | None:
@@ -171,9 +179,10 @@ class LensService:
 
 
 def _prepare(network: RoadNetwork, z: int, bounds: BoundingBox, settings: ModelSettings, only: str | None
-             ) -> tuple[LensFeatures, EdgeMaterialColumns, MaterialFills, Mapping[str, float], np.ndarray] | None:
+             ) -> tuple[LensFeatures, EdgeMaterialColumns, MaterialFills, Mapping[str, float], np.ndarray,
+                        Sequence[str], list[bytes]] | None:
     """ズーム`z`・範囲`bounds`のタイルのフィーチャー（`map_features_in`）の、風に依らない入力（フィーチャーと行・材料・欠けを
-    埋める材料の平均と道のストレスの重さの平均・行の向きの登り）。道路網ごとの初回に取込範囲全体の区分の列と平均を求めるのを
+    埋める材料の平均と道のストレスの重さの平均・行の向きの登り）と、タイルへ焼く道の鍵と形（`only`で絞ったときは空）。道路網ごとの初回に取込範囲全体の区分の列と平均を求めるのを
     含むので、イベントループの外で呼ぶ。"""
     tile = map_features_in(network, z, bounds.min_longitude, bounds.min_latitude, bounds.max_longitude, bounds.max_latitude)
     in_tile = lens_features(network, tile.keys, tile.way_ids, tile.segment_indexes)
@@ -181,34 +190,33 @@ def _prepare(network: RoadNetwork, z: int, bounds: BoundingBox, settings: ModelS
     if features is None:
         return None
     materials = material_arrays_of(slice_rows(network, network_classes(network, settings.road_classes), features.rows), settings.tuning)
+    keys, shapes = (tile.keys, shapely.to_wkb(feature_lines(network, tile)).tolist()) if only is None else ((), [])
     return (features, materials, MaterialFills(numeric_means=network.numeric_means),
             network_burden_fills(network, settings),
-            network.elevation_gain_m[features.rows])
+            network.elevation_gain_m[features.rows], keys, shapes)
 
 
 def _tile_lens(features: LensFeatures, materials: EdgeMaterialColumns, settings: ModelSettings, fills: MaterialFills,
                burden_fills: Mapping[str, float], speed_kmh: float, preference: CostPreference,
-               weather: tuple[WeatherForecastSeries, datetime] | None, elevation_gain_m: np.ndarray) -> _TileLens:
-    components = previous_run_from = None
+               weather: tuple[WeatherForecastSeries, datetime] | None, elevation_gain_m: np.ndarray
+               ) -> tuple[LensTable, LensFactInputs]:
+    components = None
     if weather is not None:
         series, target = weather
         components = WeatherContext.of(series, materials).components(series.time_index(target, 0.0))
-        previous_run_from = series.previous_run_from(target, 0.0)
-    return _TileLens(*lens_table(features, materials.columns, materials.distance_m, materials.elevation_spans, settings,
-                                 ledger_parameters(preference, settings.tuning), speed_kmh, fills, burden_fills, components,
-                                 elevation_gain_m),
-                     previous_run_from)
+    return lens_table(features, materials.columns, materials.distance_m, materials.elevation_spans, settings,
+                      ledger_parameters(preference, settings.tuning), speed_kmh, fills, burden_fills, components, elevation_gain_m)
 
 
 def _way_materials(tile: _TileLens, values: np.ndarray) -> dict[str, dict[str, float]]:
-    """レンズの値`values`の、フィーチャーごとの道の向き・逆向きに辿った値と道の向き（値の無い材料は載せない）。タイルの
-    フィーチャーは値が無くても空の材料で載せる（届いたタイルの値の無い道と、まだ届いていない道を、受け取る側が見分けられる）。"""
+    """レンズの値`values`の、フィーチャーごとの道の向き・逆向きに辿った値と道の向き（`LENS_MATERIAL_DECIMALS`の桁。値の無い材料は
+    載せない）。どちらの向きにも値の無いフィーチャーは載せない——タイルは道の形でどのフィーチャーも持つので、材料の無い道が値の無い道になる。"""
+    result: dict[str, dict[str, float]] = {}
     features = tile.table.features
-    result: dict[str, dict[str, float]] = {key: {} for key in features.keys}
     for key, (along, against), bearing in zip(features.keys, values.tolist(), features.bearing_deg.tolist()):
         # NaN（辿れない向き・方位の無い道）は自分と等しくない。
-        leaves = {name: value for name, value in ((LENS_ALONG_LEAF, along), (LENS_AGAINST_LEAF, against),
-                                                  (ROAD_BEARING_LEAF, bearing)) if value == value}
+        leaves = {name: round(value, LENS_MATERIAL_DECIMALS) for name, value in (
+            (LENS_ALONG_LEAF, along), (LENS_AGAINST_LEAF, against), (ROAD_BEARING_LEAF, bearing)) if value == value}
         if LENS_ALONG_LEAF in leaves or LENS_AGAINST_LEAF in leaves:
             result[key] = leaves
     return result

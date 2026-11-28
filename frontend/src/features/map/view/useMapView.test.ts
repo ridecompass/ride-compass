@@ -1,20 +1,21 @@
 /**
  * 地図の見え方のフックが、レンズ・レイヤーの表示・凡例で隠した行の状態を持ち、そこから地図への値と操作部品への値を
- * 導くことを見る（docs/modules/frontend/map-axis-coloring.md・static-map-layers.md）。画面の設定・費用の軸の一覧・レンズの
- * 材料・気象の配信元への要求は網の層で応え、取得のフックも間引きも本物を通す。
+ * 導くことを見る（docs/modules/frontend/map-axis-coloring.md・static-map-layers.md）。画面の設定・費用の軸の一覧・時刻の
+ * コマ・気象の配信元への要求は網の層で応え、取得のフックも間引きも本物を通す。
  *
  * ここで見ないもの: レンズから導く凡例・選択肢・条件の文の中身（`lens.test.ts`）、チップの組み立て（`overlayChips.test.ts`）、
  * 隠した行の保存先の読み書き（`legendFilters.test.ts`）、気象の描画内容と取得状態（`useDynamicWeatherLayers.test.ts`）、
  * チップへ出すデータの取得の状態と案内（`useMapView.layerStatus.test.ts`）。
  */
 import { act, waitFor } from "@testing-library/react";
-import { HttpResponse } from "msw";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { LEGEND_NO_DATA_KEY } from "@/lib/mapDisplay/mapColorLegend";
 import { UNSELECTED_LENS_ID } from "@/lib/mapDisplay/routeStyleModes";
 import { MAP_FETCH_DEBOUNCE_MS } from "@/hooks/useDebouncedValue";
 import { onBackend } from "@/testing/backendServer";
+import { WIDE_TIME_FRAMES } from "@/testing/timeFrames";
+import { lensMapLayerId } from "@/features/map/layers/mapLayers";
 import { chip, renderMapView, serve, VIEWPORT } from "@/testing/mapViewHook";
 import { BEARING_FORMULA, costAxisCatalog, costAxisEntry } from "@/testing/costAxes";
 
@@ -44,37 +45,41 @@ describe("useMapView", () => {
     expect(result.current.look.surroundingsShown).toBe(true);
   });
 
-  it("塗っているレンズだけ表示範囲の材料を取り、塗りに効く走る条件と、取れなかったことをレンズに出す", async () => {
+  it("塗っているレンズだけタイルを読み、塗りに効く走る条件と、タイルを取れなかったことをレンズに出す", async () => {
     serve();
-    onBackend("GET", "/api/region/lens/ascent/:z/:x/:y", () => new HttpResponse(null, { status: 500 }));
     const { result } = renderMapView();
     await waitFor(() => expect(result.current.lensControl.axisOptions).toHaveLength(LENS_COUNT));
 
     act(() => result.current.lensControl.onLensChange("ascent"));
-    act(() => result.current.look.onViewportChange(VIEWPORT));
+    await waitFor(() => expect(result.current.look.lensTileUrl).toContain("/api/region/lens-tiles/ascent/"));
+    act(() => result.current.look.onLayerDataStatusChange({ [lensMapLayerId("ascent")]: "error" }));
 
     expect(result.current.lensConditions).toEqual(["at", "speed_kmh"]);
-    // 表示範囲は間引いてから取るので、そのレンズの結果が出て取り終えるまで待つ。
-    await waitFor(() => expect(result.current.lensControl.dataStatus).toBe("error"), { timeout: 3000 });
+    expect(result.current.lensControl.dataStatus).toBe("error");
   });
 
   it.each([
     [null, null],
     ["2026-10-07T12:00", "10/7 12:00から先の風は、前の予報の値です。"],
-  ])("材料の応答が前に出た風の予報の素性%sを返せば、凡例にその但し書きを添える", async (previousRunFrom, notice) => {
-    serve();
-    onBackend("GET", "/api/region/lens/ascent/:z/:x/:y", () =>
-      Response.json({ materials: {}, wind_previous_run_from: previousRunFrom }),
-    );
-    const { result } = renderMapView();
-    await waitFor(() => expect(result.current.lensControl.axisOptions).toHaveLength(LENS_COUNT));
+  ])(
+    "出発時刻のレンズのコマが前に出た風の予報の素性%sを持てば、凡例にその但し書きを添える",
+    async (previousRunFrom, notice) => {
+      serve();
+      onBackend("GET", "/api/region/time-frames", () =>
+        Response.json({
+          ...WIDE_TIME_FRAMES,
+          lens: WIDE_TIME_FRAMES.lens.map((frame) => ({ ...frame, wind_previous_run_from: previousRunFrom })),
+        }),
+      );
+      const { result } = renderMapView();
+      await waitFor(() => expect(result.current.lensControl.axisOptions).toHaveLength(LENS_COUNT));
 
-    act(() => result.current.lensControl.onLensChange("ascent"));
-    act(() => result.current.look.onViewportChange(VIEWPORT));
-    await waitFor(() => expect(result.current.lensControl.dataStatus).toBe("empty"), { timeout: 3000 });
-    if (notice === null) expect(result.current.lensControl.caveat).toBeNull();
-    else expect(result.current.lensControl.caveat).toContain(notice);
-  });
+      act(() => result.current.lensControl.onLensChange("ascent"));
+      await waitFor(() => expect(result.current.look.lensTileUrl).toBeTypeOf("string"));
+      if (notice === null) expect(result.current.lensControl.caveat).toBeNull();
+      else expect(result.current.lensControl.caveat).toContain(notice);
+    },
+  );
 
   it("レンズは総合と費用の軸の順に並び、選んだレンズの1kmあたりのロスの秒を想定速度つきで取り、凡例の下に段の境目の目安を出す", async () => {
     serve(
@@ -86,9 +91,6 @@ describe("useMapView", () => {
         }),
       ),
     );
-    const sent = onBackend("GET", "/api/region/lens/ascent/:z/:x/:y", () =>
-      Response.json({ materials: { "1-0": { lens_along: 5, road_bearing_deg: 0 } }, wind_previous_run_from: null }),
-    );
     const { result } = renderMapView();
     await waitFor(() =>
       expect(result.current.lensControl.axisOptions.map((option) => option.id)).toEqual(["total", "ascent"]),
@@ -97,10 +99,8 @@ describe("useMapView", () => {
     act(() => result.current.lensControl.onLensChange("ascent"));
     act(() => result.current.look.onViewportChange(VIEWPORT));
 
-    await waitFor(() => expect(result.current.look.wayMaterials.get("ascent")?.materials.get("1-0")).toBeDefined(), {
-      timeout: 3000,
-    });
-    expect(sent[0].query.speed_kmh).toBe("20");
+    await waitFor(() => expect(result.current.look.lensTileUrl).toBeTypeOf("string"));
+    expect(new URL(result.current.look.lensTileUrl!).searchParams.get("speed_kmh")).toBe("20");
   });
 
   it("選んでいた軸を無効にすると、選んでいない状態で塗り、無効を戻すとまたその軸で塗る", async () => {
@@ -146,26 +146,21 @@ describe("useMapView", () => {
         costAxisEntry("ascent", { map_lens: { formula: BEARING_FORMULA, material_conditions: ["at", "speed_kmh"] } }),
       ),
     );
-    const sent = onBackend("GET", "/api/region/lens/ascent/:z/:x/:y", () =>
-      Response.json({ materials: { way_1: { lens_along: 12 } }, wind_previous_run_from: null }),
-    );
     const { result, rerender } = renderMapView();
     // 総合と登坂。
     await waitFor(() => expect(result.current.lensControl.axisOptions).toHaveLength(2));
     act(() => result.current.lensControl.onLensChange("ascent"));
 
     act(() => result.current.look.onViewportChange({ ...VIEWPORT, bearing: 30 }));
-    await waitFor(() => expect(result.current.look.wayMaterials.get("ascent")?.materials.size).toBe(1), {
-      timeout: 3000,
-    });
+    await waitFor(() => expect(result.current.look.lensTileUrl).toBeTypeOf("string"));
     expect(result.current.look.wayConditions).toEqual({ speed_kmh: 20 });
-    const fetched = sent.length;
+    const fetched = result.current.look.lensTileUrl;
 
     act(() => result.current.look.onViewportChange({ ...VIEWPORT, bearing: -42.5 }));
     expect(result.current.look.wayConditions).toEqual({ speed_kmh: 20 });
-    // 間引きの待ちを越えてから、要求が増えていないことを見る。
+    // 間引きの待ちを越えてから、タイルのURLが変わっていない（取り直さない）ことを見る。
     await new Promise((resolve) => setTimeout(resolve, MAP_FETCH_DEBOUNCE_MS + 100));
-    expect(sent).toHaveLength(fetched);
+    expect(result.current.look.lensTileUrl).toBe(fetched);
 
     expect(result.current.lensConditions).not.toContain("bearing_deg");
     rerender({ riding: { bearingDeg: 183, speedKmh: 15 } });

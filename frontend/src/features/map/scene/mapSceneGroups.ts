@@ -10,14 +10,7 @@ import type { FilterSpecification, LayerSpecification } from "maplibre-gl";
 
 import type { BasemapPoiKinds } from "@/features/map/layers/mapStyleOps";
 
-import type {
-  MapScene,
-  MapSceneFeatureStates,
-  MapSceneImage,
-  MapSceneLayer,
-  MapSceneSource,
-  MapSceneTier,
-} from "./mapScene";
+import type { MapScene, MapSceneImage, MapSceneLayer, MapSceneSource, MapSceneTier } from "./mapScene";
 import { geojsonContent, sceneLayerId, type SceneSourceId, tilesContent } from "./sceneBuilders";
 
 /** レイヤー1枚ぶんの宣言。id は役割から決まる。
@@ -49,13 +42,10 @@ export type SceneLayerEntry = {
 export type SceneSourceEntry = {
   readonly id: SceneSourceId;
   readonly spec: MapSceneSource["spec"];
-  readonly sourceLayer?: string;
   /** 実行時に入れ替わるタイルのURL。 */
   readonly tiles?: readonly string[];
   /** 実行時に入れ替わる GeoJSON。 */
   readonly data?: unknown;
-  /** feature-state。同じソースへ複数のグループが載せたものは、束ねる側が1つへ畳む。 */
-  readonly featureStates?: MapSceneFeatureStates;
 };
 
 /** 地図に載るもののひとまとまり。状態から、ソースとレイヤーの並びと、記号のレイヤーが名指す絵を返す。 */
@@ -76,9 +66,8 @@ export function declareGroup<State>(build: SceneGroup<State>["build"]): SceneGro
  * グループの並びを scene へ畳む。
  *
  * **重なりは段（tier）だけが決める**ので、グループをどの順で並べても結果は変わらない
- * （同じ段の中だけは、宣言の順を保つ）。同じソースを複数のグループが名乗ったときは
- * 1本へ畳み、feature-state は合わせる——ソースは地図に1本しか作れないため。絵も id ごとに
- * 先に名乗った1つへ畳む。
+ * （同じ段の中だけは、宣言の順を保つ）。ソースと絵は、id ごとに先に名乗った1つへ畳む——地図には同じ id の
+ * ものを1つしか作れないため。
  */
 export function composeScene<State>(groups: readonly SceneGroup<State>[], state: State): MapScene {
   const sources = new Map<string, MapSceneSource>();
@@ -123,21 +112,6 @@ function mergeSource(into: Map<string, MapSceneSource>, entry: SceneSourceEntry)
       : entry.data !== undefined
         ? geojsonContent(entry.data)
         : undefined;
-  const existing = into.get(entry.id);
-  if (existing === undefined) {
-    into.set(entry.id, {
-      id: entry.id,
-      spec: entry.spec,
-      ...(entry.sourceLayer === undefined ? {} : { sourceLayer: entry.sourceLayer }),
-      ...(content === undefined ? {} : { content }),
-      ...(entry.featureStates === undefined ? {} : { featureStates: entry.featureStates }),
-    });
-    return;
-  }
-  // 同じソースを2つのグループが名乗った。地図には1本しか作れないので、feature-state だけを
-  // 合わせる——宣言（タイルの配信先・source-layer）は先に名乗った側を使う。
-  if (entry.featureStates === undefined) return;
-  const merged = new Map(existing.featureStates ?? []);
-  for (const [key, values] of entry.featureStates) merged.set(key, values);
-  into.set(entry.id, { ...existing, featureStates: merged });
+  if (into.has(entry.id)) return;
+  into.set(entry.id, { id: entry.id, spec: entry.spec, ...(content === undefined ? {} : { content }) });
 }

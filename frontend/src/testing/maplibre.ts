@@ -76,8 +76,6 @@ export interface MapOnScreen {
   moveTo(bounds: ViewBounds, zoom: number): void;
   /** 地図の手ぶりの操作（`dragPan` 等）のうち、止めているものの名前。 */
   stoppedGestures(): string[];
-  /** 地物の状態（`setFeatureState` で載せたもの）。 */
-  featureState(sourceId: string, featureId: string): Record<string, unknown> | undefined;
   /** レイヤーの今の塗りの宣言。無いレイヤーは undefined。 */
   layerPaint(layerId: string): Record<string, unknown> | undefined;
 }
@@ -123,7 +121,6 @@ function onScreen(map: StandInMap): MapOnScreen {
     },
     moveTo: (bounds, zoom) => map.moveTo(bounds, zoom),
     stoppedGestures: () => map.stoppedGestures(),
-    featureState: (sourceId, featureId) => map.content.featureState(sourceId, featureId),
     layerPaint: (layerId) => map.content.layer(layerId)?.paint,
   };
 }

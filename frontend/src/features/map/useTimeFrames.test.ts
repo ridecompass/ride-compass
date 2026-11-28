@@ -3,7 +3,7 @@
  * 画面は一覧から選ぶだけ。
  *
  * ここで見ないもの:
- * - 印を要求へ載せること → `regionApi.test.ts`・`useWayMaterials.test.ts`
+ * - 印を要求へ載せること → `regionApi.test.ts`・`lensTiles.test.ts`
  */
 import { renderHook, waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
@@ -38,7 +38,9 @@ describe("useTimeFrames", () => {
 
     const { result } = renderHook(() => useTimeFrames(new Date("2026-11-24T10:45:00+09:00")));
 
-    await waitFor(() => expect(result.current).toEqual({ roadSurface: "road", lens: "b" }));
+    await waitFor(() =>
+      expect(result.current).toEqual({ roadSurface: "road", lens: "b", lensWindPreviousRunFrom: null }),
+    );
   });
 });
 

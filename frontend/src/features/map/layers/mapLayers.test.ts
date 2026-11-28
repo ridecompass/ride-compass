@@ -107,13 +107,12 @@ describe("出せない理由の案内", () => {
 });
 
 describe("deriveFetchLayerStatus（自前で取るレイヤーの取得状態）", () => {
-  it("失敗 > 読み込み中 > 一部だけ取った > 取り終えて値なし の順に1つ決め、まだ取りに行っていない間と値がある間は何も出さない", () => {
+  it("失敗 > 読み込み中 > 取り終えて値なし の順に1つ決め、まだ取りに行っていない間と値がある間は何も出さない", () => {
     expect(deriveFetchLayerStatus(true, "失敗", false, true)).toBe("error");
     expect(deriveFetchLayerStatus(true, null, false, false)).toBe("loading");
     expect(deriveFetchLayerStatus(false, null, false, true)).toBe("empty");
     expect(deriveFetchLayerStatus(false, null, false, false)).toBeUndefined();
     expect(deriveFetchLayerStatus(false, null, true, true)).toBeUndefined();
-    expect(deriveFetchLayerStatus(false, null, false, true, true)).toBe("partial");
   });
 });
 

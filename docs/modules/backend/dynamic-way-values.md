@@ -12,8 +12,8 @@
 | レイヤー | ファイル |
 |---|---|
 | domain | `way_value_formula.py`（中立の式の木の型と、numpyでの評価）・`gradient.py`（道を辿る向きを走行方位で選ぶ木と、勾配の桁）・`lens_values.py`（タイルのフィーチャーと辿る向きで網の行を束ね、1kmあたりの代償の秒にする・地図の式の木・押した道の区間の秒と事実）・`lens_equivalents.py`（色の物差しの緑の端〜赤の端を、事実の値で刻んだ段にする）・`lens_total.py`（総合のレンズのidと、軸ごとの値から総合を出す決まり。ルートの線も読む）・`feature_materials.py`（地図のフィーチャーごとの材料の型と、押した道の小窓へタイルの名前で出す材料）・`time_frames.py`（時刻で変わる値のコマの型と、範囲と、印からコマを引くこと）・`road_features.py`（地図のフィーチャーを道路網の配列から選ぶこと（範囲・押した所の近く）と形と、配列の行と道の向きに走った材料と、地図の線の層の値） |
-| services | `lens_service.py`（タイル1枚のレンズの値と、押した道のレンズの値と事実）・`region_service.py: RoadInspectorService`（道の窓）・`time_frame_service.py`（時刻で変わる値（路面タイル・レンズ）のコマの一覧と、要求の印を判定の時刻へ戻すこと） |
-| api | `region.py`（`GET /api/region/lens/{lens_id}/...`・`POST /api/region/road-inspector`）・`dependencies.py`（`dependencies.py: get_lens_service`・`dependencies.py: get_road_inspector_service`） |
+| services | `lens_service.py`（タイル1枚のレンズの値と、押した道のレンズの値と事実）・`region_service.py: RegionService.encode_lens_tile`（レンズのタイルを路面タイルと同じ焼き方で組む）・`region_service.py: RoadInspectorService`（道の窓）・`time_frame_service.py`（時刻で変わる値（路面タイル・レンズ）のコマの一覧と、要求の印を判定の時刻へ戻すこと） |
+| api | `region.py`（`GET /api/region/lens-tiles/{lens_id}/...`・`POST /api/region/road-inspector`）・`dependencies.py`（`dependencies.py: get_lens_service`・`dependencies.py: get_road_inspector_service`） |
 
 
 ## 地図へ配る式の木（`domain/way_value_formula.py`）
@@ -41,11 +41,11 @@ SQLと式の木の材料では作れない体力（走行の模型）を、backe
 - **探索と同じ所から読む**: 値は、取込範囲全体の道の網（`infrastructure/road_network_store.py: current`）の有向の区間について、
   探索と同じ部品——走行の模型の入力（`domain/leg_costs.py: travel_inputs`）・道のストレスの1kmあたりの重さ（`domain/leg_costs.py: burden_weights`）・
   軸ごとの代償の秒（`domain/ledger_costs.py: LedgerCosts.penalty_by_axis`）・欠けを埋める取込範囲全体の平均——で求め、
-  フィーチャーと辿る向き（道の向き・逆向き）ごとに足して長さで割る。値を求めるのにDBは読まない。避け方の倍率は道の値ではなく、曲がる所の漕ぎ出しは
+  フィーチャーと辿る向き（道の向き・逆向き）ごとに足して長さで割る。値を求めるのにDBは読まない（タイルに組むのは路面タイルと同じSQL。下記「API」）。避け方の倍率は道の値ではなく、曲がる所の漕ぎ出しは
   来た道と曲がる向き（通る道筋）で決まるので入れない。
 - **フィーチャー**: 路面タイルと同じ選び方で網からタイルのフィーチャーを選び（`domain/road_features.py: map_features_in`。区間で
   塗るズームは区間、引いたズームは道）、その鍵で網の区間の行を束ねる（`domain/lens_values.py: lens_features`）。道1本で塗るズームでは、
-  タイルの外の区間も含めた道の全区間で1つの値にする（どのタイルから見ても同じ値）。値の無いフィーチャーも空の材料で載る。
+  タイルの外の区間も含めた道の全区間で1つの値にする（どのタイルから見ても同じ値）。
 - **向き**: 地図の向きでどちらを塗るかは式の木（`domain/lens_values.py: lens_way_formula`）が選ぶ。地図を回しても取り直さない。
   一方通行の逆向きは値を載せない。
 - **条件**: レンズごとに、値が変わる走る条件だけを配る（`domain/lens_values.py: lens_conditions`。体力の軸は費目の式が読む入力で決め、
@@ -56,12 +56,14 @@ SQLと式の木の材料では作れない体力（走行の模型）を、backe
   レンズのコマ（`services/time_frame_service.py`）は風の予報の正時の前後30分ずつで、印は予報の版と正時から作る（同じコマの
   要求は同じ風を引き、持ちを分け合う）。予報が入れ替わる前の印と終わったコマの印は断る（口は409）。風を読めない・予報の範囲の外の
   時刻は、地図のレンズでは無風で求めずに失敗する（`MsmUnavailableError`。口は503）。道の窓は下の「道の窓」の値の箇条のとおり失敗しない。
+  そのコマの風が前に出た予報のもの（最新のrunの終わりから先）かは、コマの一覧がコマごとに配る（`domain/wind.py: wind_frames`。
+  どのタイルも同じ予報から引くので、タイルごとに配らない）。
 - **段**（`domain/lens_equivalents.py: lens_bands`）: 軸の定義は、色の物差し（緑の端と一番濃い赤の端を軸の事実の値で。
   `domain/cost_axes.py: LensScale`）を持つ。端の値は較正で、本番の定義が持つ。`GET /api/cost-axes`は、緑から赤までを事実の値で較正値の数に刻んだ所に
   境目を置いた段（境目は標準の人・標準の利用者の値・無風の1kmの道の秒、名前は数で言える事実の値の範囲だけで、区分の軸と総合には付けない。地図は色で大小を見せ、色の理由を文で言わない）を配る。事実の値の道を同じ費用の式へ
   通して秒を求める——別の換算の式を持たない。物差しを書く前の定義は、定義の段のまま配る。レンズの量の名前と単位
   （`domain/cost_axes.py: LENS_QUANTITY_LABEL`・`domain/cost_axes.py: LENS_UNIT`）は、生成物`route-generate-config.json`で画面へ配る。
-- **応答はプロセスの中で持つ**（`services/lens_service.py: new_response_cache`）: 応答のJSONのバイト列を、バイト数の上限つき
+- **応答はプロセスの中で持つ**（`services/lens_service.py: new_response_cache`）: 応答のタイルのバイト列を、バイト数の上限つき
   （`services/lens_service.py: RESPONSE_CACHE_BYTES`。生成以外のために取り置くメモリ（`services/graph_service.py: RESERVED_BYTES`）の内側）で持ち、使われていないものから
   押し出す。鍵は`infrastructure/cache_identity.py: dynamic_tile_key`が組み、応答が読んだ道路網の置き場の名前（`road_network_store.py: directory_name`）・
   較正値と費用の軸・道の区分の定義の署名（`cache_identity.py: model_settings_signature`。管理APIで差し替えると変わる）・レンズ・タイル・
@@ -70,8 +72,9 @@ SQLと式の木の材料では作れない体力（走行の模型）を、backe
   形（コードの版）は鍵に入れない——持ちはデプロイで空になる。欠けを埋める道のストレスの重さの平均は全区間を数えるので、道の網・
   区分の列・道のストレスの軸の費目の組ごとにプロセスに1つ持つ（`services/graph_service.py: network_burden_fills`）。段の目安は
   利用者の値（つまみと倍率）で変わるので、要求ごとに求める。
-- **タイルのどのフィーチャーも名指す**: 値の無いフィーチャー（網に行の無いもの・どちらの向きにも値の無いもの）も空の材料で載せ、
-  届いたタイルの値の無い道と、まだ届いていない道を受け取る側が見分けられるようにする。
+- **タイルは路面タイルと同じ道をどれも持つ**: 材料の無いフィーチャー（網に行の無いもの・どちらの向きにも値の無いもの）は道の鍵だけを
+  持つ道として載り、地図はそれを値の無い道として描く。材料は`services/lens_service.py: LENS_MATERIAL_DECIMALS`の桁に丸める——
+  いちばん細かい段の幅（数秒/km）に対して色が変わらない桁にとどめ、タイルを小さくする。
 
 ## 道の窓（`services/region_service.py: RoadInspectorService`）
 
@@ -96,14 +99,14 @@ SQLと式の木の材料では作れない体力（走行の模型）を、backe
 
 | エンドポイント | 返すもの |
 |---|---|
-| `GET /api/region/lens/{lens_id}/{z}/{x}/{y}?speed_kmh=&at=&strength=&multipliers=` | フィーチャーの鍵→道の向き・逆向きの1kmあたりの代償の秒と道の向き（`materials`）と、引いた風が前に出た予報のものなら前のrunに替わる時刻（`wind_previous_run_from`）。知らないレンズは404 |
+| `GET /api/region/lens-tiles/{lens_id}/{z}/{x}/{y}.pbf?speed_kmh=&frame=&strength=&multipliers=&disabled_axes=` | 路面タイルと同じz/x/yと同じ道の形に、道ごとの道の向き・逆向きの1kmあたりの代償の秒と道の向きをプロパティで載せたMVT（レイヤー名は生成物`region-tile-config.json`の`lens.layer_name`）。知らないレンズは404 |
 | `POST /api/region/road-inspector` | 上の「道の窓」 |
 
-- 鍵はタイルが焼いた`feature_key`と同じもので、ズームによって区間・wayのどちらかになる。値の無い材料は載せない。
-- 静的な路面タイル（`/api/region/road-surface-tiles`、MVT）とは別経路——フロントは同じz/x/yに対して両方を取得し、
-  MapLibreの`setFeatureState`で合成する（[map-axis-coloring.md](../frontend/map-axis-coloring.md)参照）。
+- 道の形と鍵（`feature_key`。ズームによって区間・wayのどちらか）は、路面タイルと同じSQL（`infrastructure/road_tile_sql.py:
+  ROAD_SURFACE_TILE_MVT_SQL`）で焼く——路面タイルの線にぴったり重なる。値の無い材料は載せない。フロントは路面タイルとは別の
+  ソースとして読み、地図の式で道の値を求める（[map-axis-coloring.md](../frontend/map-axis-coloring.md)「レンズの線」）。
 - 路面・点のタイルと同じレート制限・座標検証を共有し、レンズの値は同時実行の上限のsemaphore
-  （`api/routers/_tile_http.py: region_tile_semaphore`、`config.py: road_tile_max_concurrent`）も共有する（レンズもタイルのフィーチャーの鍵をDBから読み、
+  （`api/routers/_tile_http.py: region_tile_semaphore`、`config.py: road_tile_max_concurrent`）も共有する（レンズのタイルも組むのにDBを使い、
   タイルごとの計算はルート生成と共有のスレッドの置き場を使うので、同じ上限で待たせる）。道の窓は押すたびの
   単発の要求なので専用の上限を持つ。
 

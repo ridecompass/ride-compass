@@ -20,13 +20,6 @@ type MapLayerReading = {
 
 export type MapReading = {
   readonly layers: readonly MapLayerReading[];
-  /** 名指しした地物の状態（消えていれば空）。ベクタのソースは `sourceLayer` で読む。 */
-  readonly featureStates: readonly {
-    readonly source: string;
-    readonly sourceLayer?: string;
-    readonly id: number;
-    readonly state: Record<string, unknown>;
-  }[];
   /** 名指ししたソースへ最後に流し込んだ GeoJSON。 */
   readonly sourceData: readonly { readonly source: string; readonly data: unknown }[];
 };
@@ -67,7 +60,6 @@ export const MAP_CONTRACT: readonly MapContractCase[] = [
         { id: "a", visibility: "visible", paint: {}, filter: undefined },
         { id: "d", visibility: "visible", paint: {}, filter: undefined },
       ],
-      featureStates: [],
       sourceData: [],
     },
   },
@@ -87,7 +79,6 @@ export const MAP_CONTRACT: readonly MapContractCase[] = [
         { id: "hidden", visibility: "visible", paint: { "circle-radius": 4 }, filter: ["==", ["get", "kind"], "a"] },
         { id: "shown", visibility: "none", paint: {}, filter: undefined },
       ],
-      featureStates: [],
       sourceData: [],
     },
   },
@@ -104,60 +95,6 @@ export const MAP_CONTRACT: readonly MapContractCase[] = [
     ],
     expected: {
       layers: [{ id: "a", visibility: "visible", paint: { "circle-radius": undefined }, filter: undefined }],
-      featureStates: [],
-      sourceData: [],
-    },
-  },
-  {
-    name: "地物の状態は鍵ごとに重ね、鍵を名指しして消すとその鍵だけが消える",
-    steps: [
-      { call: "addSource", args: ["points", { type: "geojson", data: { ...EMPTY, features: [point(1), point(2)] } }] },
-      { call: "setFeatureState", args: [{ source: "points", id: 1 }, { hover: true }] },
-      { call: "setFeatureState", args: [{ source: "points", id: 1 }, { selected: true }] },
-      { call: "setFeatureState", args: [{ source: "points", id: 2 }, { hover: true }] },
-      { call: "removeFeatureState", args: [{ source: "points", id: 1 }, "hover"] },
-    ],
-    expected: {
-      layers: [],
-      featureStates: [
-        { source: "points", id: 1, state: { selected: true } },
-        { source: "points", id: 2, state: { hover: true } },
-      ],
-      sourceData: [],
-    },
-  },
-  {
-    name: "地物を名指しせずに消すと、そのソースの地物の状態だけが全部消える",
-    steps: [
-      { call: "addSource", args: ["points", { type: "geojson", data: { ...EMPTY, features: [point(1)] } }] },
-      { call: "addSource", args: ["others", { type: "geojson", data: { ...EMPTY, features: [point(1)] } }] },
-      { call: "setFeatureState", args: [{ source: "points", id: 1 }, { hover: true }] },
-      { call: "setFeatureState", args: [{ source: "others", id: 1 }, { hover: true }] },
-      { call: "removeFeatureState", args: [{ source: "points" }] },
-    ],
-    expected: {
-      layers: [],
-      featureStates: [
-        { source: "points", id: 1, state: {} },
-        { source: "others", id: 1, state: { hover: true } },
-      ],
-      sourceData: [],
-    },
-  },
-  {
-    name: "ベクタのソースの地物の状態は、source-layer を名指ししたときだけ置き・消せる",
-    steps: [
-      { call: "addSource", args: ["tiles", { type: "vector", tiles: ["https://tiles.test/{z}/{x}/{y}.pbf"] }] },
-      { call: "setFeatureState", args: [{ source: "tiles", sourceLayer: "road", id: 1 }, { hover: true }] },
-      { call: "setFeatureState", args: [{ source: "tiles", id: 2 }, { hover: true }] },
-      { call: "removeFeatureState", args: [{ source: "tiles", id: 1 }, "hover"] },
-    ],
-    expected: {
-      layers: [],
-      featureStates: [
-        { source: "tiles", sourceLayer: "road", id: 1, state: { hover: true } },
-        { source: "tiles", sourceLayer: "road", id: 2, state: {} },
-      ],
       sourceData: [],
     },
   },
@@ -170,7 +107,6 @@ export const MAP_CONTRACT: readonly MapContractCase[] = [
     ],
     expected: {
       layers: [],
-      featureStates: [],
       sourceData: [{ source: "points", data: { ...EMPTY, features: [point(2)] } }],
     },
   },

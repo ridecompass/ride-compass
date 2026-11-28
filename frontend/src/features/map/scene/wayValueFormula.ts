@@ -25,6 +25,9 @@ type NodeOf<Op extends FormulaOp> = FormulaNode extends infer Node
   : never;
 type ConditionName = NodeOf<"condition">["name"];
 
+/** 式の木が読む走る条件の値。名前は木の `condition` の名前で、値の無い条件は鍵ごと無い。 */
+export type WayConditions = Readonly<Record<string, number>>;
+
 /** 値の無いこと。MapLibre の式に NaN の字句は無いので、0/0 で作る。 */
 const NAN = ["/", 0, 0];
 
@@ -36,6 +39,8 @@ type Converted =
 /** 置き換えの途中の状態。`let` の名前は木の中で重ならないよう番号で振る。 */
 class Conversion {
   private count = 0;
+
+  constructor(readonly conditions: WayConditions) {}
 
   /** 同じ値を何度も読む式は、`let` で束ねる（組んだ式の木は読む回数の冪で増えない。評価と運ぶ大きさは減らない）。 */
   bind(value: unknown, body: (ref: unknown) => unknown): unknown {
@@ -60,7 +65,7 @@ class Conversion {
 }
 
 /** 値（数の式）が無いときに真になる式。NaN だけが `>=` を偽にするので、値を1回だけ読む（無限大は値に数える）。 */
-function missingExpression(value: unknown): unknown {
+export function missingExpression(value: unknown): unknown {
   return ["!", [">=", ["abs", value], 0]];
 }
 
@@ -143,8 +148,8 @@ function midpointRound(x: unknown, product: unknown, decimals: number, c: Conver
 const CONVERTERS: { readonly [Op in FormulaOp]: (node: NodeOf<Op>, conversion: Conversion) => Converted } = {
   const: (node) => numberOf(node.value),
   missing: () => numberOf(NAN),
-  feature: (node) => numberOf(["number", ["feature-state", node.name], NAN]),
-  condition: (node) => numberOf(["number", ["global-state", node.name], NAN]),
+  feature: (node) => numberOf(["number", ["get", node.name], NAN]),
+  condition: (node, c) => numberOf(c.conditions[node.name] ?? NAN),
   neg: unary("-"),
   abs: unary("abs"),
   sin: unary("sin"),
@@ -168,9 +173,10 @@ const CONVERTERS: { readonly [Op in FormulaOp]: (node: NodeOf<Op>, conversion: C
   round,
 };
 
-/** 木を、地図の道1本について評価する数の式（値の無い道は NaN）へ置き換える。 */
-export function wayValueExpression(formula: WayValueFormula): unknown {
-  return new Conversion().number(formula.value);
+/** 木を、地図の道1本について、道の材料（地物のプロパティ）から評価する数の式（値の無い道は NaN）へ置き換える。走る条件は
+ * `conditions` の値を式へ埋め込む（条件が変わると式が変わる）。 */
+export function wayValueExpression(formula: WayValueFormula, conditions: WayConditions): unknown {
+  return new Conversion(conditions).number(formula.value);
 }
 
 /** 木が読む走る条件の名前（重ねずに、木で先に出た順）。条件の値が変わると、道の値も変わる。 */

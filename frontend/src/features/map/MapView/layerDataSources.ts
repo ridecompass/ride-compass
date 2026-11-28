@@ -3,6 +3,7 @@ import { ROAD_TILE_SOURCE_LAYER } from "@/features/map/scene/sceneInputs";
 import { POINT_TILE_SOURCES } from "@/features/map/scene/groups/points";
 import { AREA_SOURCE_ID } from "@/features/map/scene/groups/areaRasters";
 import { ROAD_LINE_SOURCE_ID } from "@/features/map/scene/groups/roadLines";
+import { LENS_SOURCE_ID, LENS_SOURCE_LAYER } from "@/features/map/scene/groups/axisLines";
 import type { LayerDataSourceEntry } from "@/features/map/MapView/useLayerDataStatus";
 
 // 自前のJSで取りに行く情報源。
@@ -20,6 +21,7 @@ const TILE_SOURCE_BY_DATA_SOURCE: Record<
   { sourceId: string; sourceLayer?: string }
 > = {
   road_surface: { sourceId: ROAD_LINE_SOURCE_ID, sourceLayer: ROAD_TILE_SOURCE_LAYER },
+  lens: { sourceId: LENS_SOURCE_ID, sourceLayer: LENS_SOURCE_LAYER },
   ...POINT_TILE_SOURCES,
   gsiRelief: { sourceId: AREA_SOURCE_ID.elevation },
   landcoverRaster: { sourceId: AREA_SOURCE_ID.landcover },

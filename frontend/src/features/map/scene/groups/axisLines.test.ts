@@ -2,15 +2,15 @@
 import { describe, expect, it } from "vitest";
 
 import { mapDisplay } from "@/types/generated/mapDisplay";
-import palette from "@/types/generated/palette.json";
+import { NO_DATA_LEGEND_BAND } from "@/lib/mapDisplay/mapColorLegend";
 
-import { evaluateExpression as evaluate } from "@/testing/mapExpressions";
+import { evaluateExpression as evaluate, matchesFilter } from "@/testing/mapExpressions";
 
 import { axisLineGroup, type AxisLineState } from "./axisLines";
 
-// 式をMapLibreと同じ評価器（`testing/mapExpressions.ts: evaluateExpression`）で、地図へ載せる feature-state を
-// 入れて実際に評価し、1本の道がどの色・どの濃さになるかを見る。式の形を見ると、同じ意味の別の書き方で
-// 落ちる。式の木の節ごとの置き換えが backend と同じ値になることは `scene/wayValueFormula.test.ts` が見る。
+// 式と絞り込みをMapLibreと同じ評価器（`testing/mapExpressions.ts`）で、タイルの道の材料（地物のプロパティ）へ当てて、1本の道が
+// どちらの線に入り、どの色・どの線種で描かれるかを見る。式の形を見ると、同じ意味の別の書き方で落ちる。式の木の節ごとの置き換えが
+// backend と同じ値になることは `scene/wayValueFormula.test.ts` が見る。
 
 /** 低い段から並べた3段（`valueScale.ts: valueBands`の並び）。 */
 const THREE_BANDS = [
@@ -20,7 +20,7 @@ const THREE_BANDS = [
 ];
 
 /** 試しの式の木: 値は材料 `base` に走る向き（度）を足したもの。 */
-const FORMULA: AxisLine["formula"] = {
+const FORMULA: NonNullable<AxisLineState["painted"]>["formula"] = {
   value: {
     op: "add",
     left: { op: "feature", name: "base" },
@@ -28,72 +28,35 @@ const FORMULA: AxisLine["formula"] = {
   },
 };
 
-const MATERIALS: AxisLine["materials"] = new Map<string, Record<string, number>>([
-  ["along", { base: 15 }],
-  ["onBoundary", { base: 20 }],
-  // 届いたタイルにあるが、値の無い道。
-  ["noValue", {}],
-]);
-
-type AxisLine = AxisLineState["axes"][number];
-
-/** レンズ1つだけを出している線の宣言。 */
-function groupFor(
-  { materials = MATERIALS }: Partial<AxisLine> = {},
-  conditions: AxisLineState["conditions"] = { bearing_deg: 0 },
-) {
-  return axisLineGroup.build({
-    sourceLayer: "road",
-    axes: [
-      {
-        axisId: "ax",
-        visible: true,
-        bands: THREE_BANDS,
-        formula: FORMULA,
-        materials,
-      },
-    ],
+/** 材料`materials`の道が、走る条件`conditions`で入る線と、その色・線種。 */
+function lookOf(materials: Record<string, number>, conditions: AxisLineState["conditions"] = { bearing_deg: 0 }) {
+  const { layers } = axisLineGroup.build({
+    painted: { axisId: "ax", bands: THREE_BANDS, formula: FORMULA, tileUrl: "https://tiles.test/{z}/{x}/{y}.pbf" },
     conditions,
   });
-}
-
-/** 材料を地図へ載せたとき、その道が受け取るfeature-state。 */
-function featureStateOf(group: ReturnType<typeof groupFor>, featureId: string): Record<string, unknown> {
-  return Object.fromEntries(
-    [...(group.sources[0].featureStates ?? [])].flatMap(([key, byFeature]) =>
-      byFeature.has(featureId) ? [[key, byFeature.get(featureId)]] : [],
-    ),
-  );
-}
-
-/** その道の実線の色と、破線の線の濃さ。 */
-function lookOf(featureId: string, line: Partial<AxisLine> = {}, conditions?: AxisLineState["conditions"]) {
-  const group = groupFor(line, conditions);
-  const state = featureStateOf(group, featureId);
-  const [solid, dashed] = group.layers;
-  return {
-    color: evaluate(solid.paint["line-color"], {}, state),
-    dashOpacity: evaluate(dashed.paint["line-opacity"], {}, state),
-  };
+  const lines = layers.filter((layer) => matchesFilter(layer.filter, materials));
+  expect(lines).toHaveLength(1);
+  const [line] = lines;
+  return { color: evaluate(line.paint["line-color"], materials), dash: line.paint["line-dasharray"] ?? null };
 }
 
 describe("段の色", () => {
-  it("値のある道は段の色で塗る", () => {
-    expect(lookOf("along").color).toBe("#f59e0b");
+  it("値のある道は段の色の実線で塗る", () => {
+    expect(lookOf({ base: 15 })).toEqual({ color: "#f59e0b", dash: null });
   });
 
   it("走る向きを変えると、その向きで求めた値の段の色になる", () => {
-    expect(lookOf("along", {}, { bearing_deg: 10 }).color).toBe("#dc2626");
+    expect(lookOf({ base: 15 }, { bearing_deg: 10 }).color).toBe("#dc2626");
   });
 });
 
-describe("値の無い道", () => {
-  it("届いたタイルにあれば、段の色では塗らず、薄い破線で描く", () => {
-    expect(lookOf("noValue")).toEqual({ color: palette.semantic.hidden, dashOpacity: mapDisplay.road.unknownOpacity });
-    expect(lookOf("along").dashOpacity).toBe(0);
+it("値の無い道は、段の色で塗らず「データなし」の破線で描く", () => {
+  expect(lookOf({})).toEqual({
+    color: NO_DATA_LEGEND_BAND.color,
+    dash: ["literal", [...mapDisplay.noDataDash]],
   });
+});
 
-  it("まだ届いていない道は取得中の色で塗り、破線にしない", () => {
-    expect(lookOf("notYetFetched")).toEqual({ color: palette.semantic.loading, dashOpacity: 0 });
-  });
+it("塗っていない間は、ソースも線も載せない", () => {
+  expect(axisLineGroup.build({ painted: null, conditions: {} })).toEqual({ sources: [], layers: [] });
 });

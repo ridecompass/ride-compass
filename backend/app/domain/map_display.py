@@ -86,12 +86,15 @@ _TILE_KINDS: tuple[str, ...] = tuple(
 
 #: 道の線の層（管理DBの区分を描く）の絵の出所。
 _ROAD_LAYER_DATA_SOURCE = "road_surface"
+#: 費用の軸のレンズのレイヤーの絵の出所（`/api/region/lens-tiles`。路面タイルと同じ道の形に道ごとの材料を載せたタイル）。
+_LENS_DATA_SOURCE = "lens"
 
 #: レイヤーの絵がどこから来るか。取得状態（読み込み中・空・失敗）の判定はここから導く。
 #: 最小ズームは配信の性質なので情報源の側で持つ——レイヤーごとに書くと、同じタイルを
 #: 読むレイヤーの1つだけ書き忘れても型が通り、その行だけ案内が出ない。
 MAP_LAYER_DATA_SOURCES: tuple[MapLayerDataSource, ...] = (
     MapLayerDataSource(_ROAD_LAYER_DATA_SOURCE, ROAD_SURFACE_TILE_MIN_ZOOM),
+    MapLayerDataSource(_LENS_DATA_SOURCE, ROAD_TILE_MIN_ZOOM),
     *(MapLayerDataSource(kind, ROAD_TILE_MIN_ZOOM) for kind in _TILE_KINDS),
     MapLayerDataSource("gsiRelief"),
     MapLayerDataSource("landcoverRaster", LANDCOVER_TILE_MIN_ZOOM),
@@ -514,11 +517,11 @@ def segment_series_layer(series: SegmentSeries) -> str:
     return layer_ids[0]
 
 
-#: 実行時に決まるレイヤーに共通の宣言。`dedicated`は費用の軸のレンズのレイヤーで、路面タイルの道へ道ごとに配る
+#: 実行時に決まるレイヤーに共通の宣言。`dedicated`は費用の軸のレンズのレイヤーで、レンズのタイルの道ごとの材料から
 #: 1kmあたりの代償の秒の色を塗る（値は時刻の風で変わりうる）。`road`は道の線の層で、種別は層ごとに画面の設定の`road_classes`が配る。
 AXIS_LAYER_SPECS: dict[str, MapLayerSpec] = {
-    # レンズは道ごとの値を路面タイルの道ごとの鍵で置くので、鍵を持つ縮尺から描く。
-    "dedicated": MapLayerSpec(_ROAD_LAYER_DATA_SOURCE, None, data_nature="dynamic", draw_min_zoom=ROAD_TILE_MIN_ZOOM),
+    # レンズのタイルは道ごとの鍵を持つ縮尺から配る。
+    "dedicated": MapLayerSpec(_LENS_DATA_SOURCE, None, data_nature="dynamic", draw_min_zoom=ROAD_TILE_MIN_ZOOM),
     "road": MapLayerSpec(_ROAD_LAYER_DATA_SOURCE, None),
 }
 

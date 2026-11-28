@@ -8,6 +8,9 @@
       "ref": "ref"
     }
   },
+  "lens": {
+    "layer_name": "lens"
+  },
   "point_layers": {
     "poi": "stop_poi",
     "accident": "accidents",

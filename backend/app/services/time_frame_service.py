@@ -14,7 +14,7 @@ from app.domain.strict_model import StrictModel
 from app.domain.time_frames import TimeFrame, frame_range, frame_start
 from app.domain.time_zone import JST
 from app.domain.timed_regulations import regulation_frames
-from app.domain.wind import wind_frames
+from app.domain.wind import LensTimeFrame, wind_frames
 from app.infrastructure import road_network_store
 from app.infrastructure.debug_log import log_external_call, mark_failed
 from app.infrastructure.msm_client import MsmUnavailableError
@@ -35,8 +35,8 @@ def new_frame_cache() -> LRUCache[tuple[str, str, datetime], list[TimeFrame]]:
 class TimeFrames(StrictModel):
     #: 路面タイル（`/api/region/road-surface-tiles`の`frame`）のコマ。時刻で変わる交通規制の効き方で変わる。道路網が読めなければ空。
     road_surface: list[TimeFrame]
-    #: 風に依るレンズと道の窓（`/api/region/lens`・`/api/region/road-inspector`の`frame`）のコマ。予報が読めなければ空。
-    lens: list[TimeFrame]
+    #: 風に依るレンズと道の窓（`/api/region/lens-tiles`・`/api/region/road-inspector`の`frame`）のコマ。予報が読めなければ空。
+    lens: list[LensTimeFrame]
 
 
 class TimeFrameService:
@@ -90,7 +90,7 @@ class TimeFrameService:
             cache_key = ("lens", version, start)
             if (frames := self._cache.get(cache_key)) is not None:
                 return frames
-            if (times := await self._weather_service.get_forecast_times(version)) is not None:
-                frames = self._cache[cache_key] = wind_frames(times, version, start, end)
+            if (forecast := await self._weather_service.get_forecast_times(version)) is not None:
+                frames = self._cache[cache_key] = wind_frames(forecast, version, start, end)
                 return frames
         raise MsmUnavailableError("MSMの予報が入れ替わり続け、版と時刻の並びをそろえて読めません")

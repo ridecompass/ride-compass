@@ -24,7 +24,6 @@ export function roadsSource(overrides: Partial<MapSceneSource> = {}): MapSceneSo
     id: "roads",
     spec: { type: "vector" },
     content: tilesContent(ROAD_TILES),
-    sourceLayer: "road",
     ...overrides,
   };
 }

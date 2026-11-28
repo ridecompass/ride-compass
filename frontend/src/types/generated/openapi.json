@@ -902,9 +902,9 @@
         }
       }
     },
-    "/api/region/lens/{lens_id}/{z}/{x}/{y}": {
+    "/api/region/lens-tiles/{lens_id}/{z}/{x}/{y}.pbf": {
       "get": {
-        "operationId": "region_lens_api_region_lens__lens_id___z___x___y__get",
+        "operationId": "region_lens_tile_api_region_lens_tiles__lens_id___z___x___y__pbf_get",
         "parameters": [
           {
             "name": "lens_id",
@@ -1025,9 +1025,7 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/LensMaterials"
-                }
+                "schema": {}
               }
             }
           },
@@ -4307,38 +4305,6 @@
         ],
         "title": "LensInspection"
       },
-      "LensMaterials": {
-        "properties": {
-          "materials": {
-            "additionalProperties": {
-              "additionalProperties": {
-                "type": "number"
-              },
-              "type": "object"
-            },
-            "type": "object",
-            "title": "Materials"
-          },
-          "wind_previous_run_from": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Wind Previous Run From"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "materials",
-          "wind_previous_run_from"
-        ],
-        "title": "LensMaterials"
-      },
       "LensScale": {
         "properties": {
           "green": {
@@ -4371,6 +4337,44 @@
           "red"
         ],
         "title": "LensScale"
+      },
+      "LensTimeFrame": {
+        "properties": {
+          "start": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Start"
+          },
+          "end": {
+            "type": "string",
+            "format": "date-time",
+            "title": "End"
+          },
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "wind_previous_run_from": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Wind Previous Run From"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "start",
+          "end",
+          "key",
+          "wind_previous_run_from"
+        ],
+        "title": "LensTimeFrame"
       },
       "LinearBurden": {
         "properties": {
@@ -6764,7 +6768,7 @@
           },
           "lens": {
             "items": {
-              "$ref": "#/components/schemas/TimeFrame"
+              "$ref": "#/components/schemas/LensTimeFrame"
             },
             "type": "array",
             "title": "Lens"

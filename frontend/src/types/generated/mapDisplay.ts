@@ -63,6 +63,10 @@ export const mapDisplay = {
       "minZoom": 10
     },
     {
+      "key": "lens",
+      "minZoom": 12
+    },
+    {
       "key": "poi",
       "minZoom": 12
     },
@@ -250,7 +254,7 @@ export const mapDisplay = {
   ],
   "axisLayers": {
     "dedicated": {
-      "dataSource": "road_surface",
+      "dataSource": "lens",
       "category": null,
       "dataNature": "dynamic",
       "drawMinZoom": 12

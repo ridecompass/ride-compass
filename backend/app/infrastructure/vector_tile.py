@@ -8,6 +8,8 @@ TILE_EXTENT = 4096
 # PostGIS側の`ST_AsMVTGeom`がタイルの境の外に残す幅（`TILE_EXTENT`と同じタイル座標の単位）。
 TILE_BUFFER = 256
 ROAD_SURFACE_LAYER_NAME = "road_surface"
+#: 地図のレンズのタイル（`services/lens_service.py: LensService.lens_tile`）のレイヤー名。
+LENS_LAYER_NAME = "lens"
 
 # 道のフィーチャーが材料の外に持つ列（役割→列名）。押した所に近い道の口は全部を、路面タイルは`feature_key`だけを持つ。
 # 材料の列の名前は材料の`tile_property`が持つ。画面は生成物`region-tile-config.json`の`road_surface.properties`から引き、列名を持たない。

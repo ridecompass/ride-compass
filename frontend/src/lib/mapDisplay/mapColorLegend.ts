@@ -1,5 +1,5 @@
-// 地図の色分けの凡例の段（ラベル・色・安定キーだけ）と、段の範囲の書き方。レンズの材料はfeature-stateで入り、
-// MapLibreのfilterはfeature-stateを読めないため、段の表示ON/OFFは色の式の側で透明にする——そのため述語を持たない。
+// 地図の色分けの凡例の段（ラベル・色・安定キーだけ）と、段の範囲の書き方。段は述語を持たない（どの道が段に入るかは、
+// 塗る側の式が決める）。
 
 import { mapDisplay } from "@/types/generated/mapDisplay";
 import palette from "@/types/generated/palette.json";

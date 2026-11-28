@@ -8,6 +8,7 @@ from numba import njit
 
 from app.domain.geo import haversine_distance_km, haversine_distance_km_array
 from app.domain.msm import MsmBlock
+from app.domain.msm_grid import ForecastTime
 from app.domain.route import Coordinates
 from app.domain.time_frames import TimeFrame, frames_from
 from app.domain.time_zone import JST
@@ -79,6 +80,20 @@ def wind_components(wind_speed_ms, wind_direction_deg, travel_bearing_deg) -> tu
 
 
 
+def previous_run_from(read_time: datetime, latest_run_end: datetime) -> datetime | None:
+    """予報の時刻`read_time`（系列の時刻の形）の風を引くとき、それが最新のrunの終わり`latest_run_end`から先の（前に出たrunの）
+    ものなら、その終わりの時刻。そうでなければNone。"""
+    return latest_run_end if read_time >= latest_run_end else None
+
+
+@dataclass(frozen=True)
+class ForecastTimes:
+    """今の正時から読める予報の時刻（系列の時刻の形、1時間刻み）と、最新のrunの予報の終わり（`WeatherForecastSeries.latest_run_end`）。"""
+
+    times: list[datetime]
+    latest_run_end: datetime
+
+
 @dataclass(frozen=True)
 class WeatherForecastSeries:
     """MSMの格子点ごとの時別風向・風速・気温の予報系列（1時間刻み、`times`はタイムゾーン無しのローカル時刻[JST]）。探索前に
@@ -134,7 +149,7 @@ class WeatherForecastSeries:
         """`start`から`hours`時間後までに引く風に、最新のrunの終わりから先の（前に出たrunの）時刻があれば、その終わりの時刻
         （この時刻から先の風が前に出たrunのもの）。無ければNone。引く時刻は経過とともに後ろへ進むので、終わりの時刻に引く
         時刻で見る（範囲の外で端へ寄せたなら、寄せた先の時刻）。"""
-        return self.latest_run_end if self.times[self.time_index(start, hours)] >= self.latest_run_end else None
+        return previous_run_from(self.times[self.time_index(start, hours)], self.latest_run_end)
 
     def covers(self, at: datetime) -> bool:
         """`at`に最も近い時刻が系列の範囲の中にあるか（端の値で延ばさずに引けるか）。"""
@@ -180,12 +195,21 @@ def reached_or_estimated_hours(reached_hours: np.ndarray, estimated_hours: np.nd
     return np.where(np.isfinite(reached_hours), reached_hours, estimated_hours)
 
 
-def wind_frames(times: list[datetime], version: str, start: datetime, end: datetime) -> list[TimeFrame]:
-    """予報の時刻`times`（系列の時刻の形、1時間刻み）の、`start`〜`end`の風のコマ。時刻はそれに最も近い予報のコマの風を引くので
+class LensTimeFrame(TimeFrame):
+    """風に依るレンズと道の窓のコマ。"""
+
+    #: このコマの風が最新のrunの終わりから先の（前に出たrunの）ものなら、その終わりの時刻。そうでなければNone。
+    wind_previous_run_from: ForecastTime | None
+
+
+def wind_frames(forecast: ForecastTimes, version: str, start: datetime, end: datetime) -> list[LensTimeFrame]:
+    """予報の時刻`forecast`の、`start`〜`end`の風のコマ。時刻はそれに最も近い予報のコマの風を引くので
     （`WeatherForecastSeries.time_index`。ちょうど中間は後のコマ）、正時の前後30分を1つのコマにし、印は予報の版`version`と正時から作る。
     予報の時刻の外（端へ寄せる時刻）はコマを持たない。"""
     half = timedelta(minutes=30)
-    hours = [moment for hour in times if start - half <= (moment := hour.replace(tzinfo=JST)) < end + half]
-    instants = [max(hour - half, start) for hour in hours]
-    frames = frames_from(instants, [f"{version}-{hour:%Y%m%d%H}" for hour in hours], min(hours[-1] + half, end)) if hours else []
-    return [frame for frame in frames if frame.start < end]
+    hours = [(moment, hour) for hour in forecast.times if start - half <= (moment := hour.replace(tzinfo=JST)) < end + half]
+    keys = [f"{version}-{moment:%Y%m%d%H}" for moment, _ in hours]
+    previous = {key: previous_run_from(hour, forecast.latest_run_end) for key, (_, hour) in zip(keys, hours, strict=True)}
+    instants = [max(moment - half, start) for moment, _ in hours]
+    frames = frames_from(instants, keys, min(hours[-1][0] + half, end)) if hours else []
+    return [LensTimeFrame(**frame.model_dump(), wind_previous_run_from=previous[frame.key]) for frame in frames if frame.start < end]

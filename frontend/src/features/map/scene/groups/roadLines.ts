@@ -36,9 +36,8 @@ export const ROAD_AVOIDANCE_ROLE = "roadAvoidance";
 export const ROAD_LINE_SOURCE_ID = sceneSourceId("road-tiles");
 const ROAD_INSPECTED_SOURCE_ID = sceneSourceId("road-inspected");
 
-/** `feature_key`は地物へ安定したidを与えるための昇格先（**この列でなければ道ごとの値（レンズ）の feature-state が効かない**
- * ——タイルの地物はズームによって道1本にも区間にもなり、この列だけがその単位に追従する。道ごとの鍵を持たない引いたズームの
- * 地物には無い）。列名はタイルを焼くbackendが配る。 */
+/** 道ごとの鍵の列（ズームによって道1本か区間。道ごとの鍵を持たない引いたズームの地物には無い）。押した道の層の値は、同じ鍵の
+ * タイルの地物から読む。列名はタイルを焼くbackendが配る。 */
 export const FEATURE_KEY_PROPERTY = regionTileConfig.road_surface.properties.feature_key;
 
 export type RoadLineState = {
@@ -171,9 +170,7 @@ export const roadLineGroup = declareGroup<RoadLineState>((state) => {
         type: "vector",
         minzoom: tiles.minZoom,
         maxzoom: tiles.maxZoom,
-        promoteId: { [tiles.sourceLayer]: FEATURE_KEY_PROPERTY },
       },
-      sourceLayer: tiles.sourceLayer,
       tiles: tiles.urls,
     },
   ];

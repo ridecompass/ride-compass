@@ -1,12 +1,10 @@
-import type { FeatureIdentifier, FilterSpecification, LayerSpecification, SourceSpecification } from "maplibre-gl";
+import type { FilterSpecification, LayerSpecification, SourceSpecification } from "maplibre-gl";
 
 import {
   basemapAnchorOf,
   orderedSceneLayers,
   type BasemapAnchor,
   type MapScene,
-  type MapSceneFeatureStateValue,
-  type MapSceneFeatureStates,
   type MapSceneImageOptions,
   type MapSceneLayer,
   type MapSceneSource,
@@ -22,8 +20,6 @@ export type MapSceneTarget = {
   setFilter(layerId: string, filter?: FilterSpecification | null): unknown;
   setPaintProperty(layerId: string, name: string, value: unknown): unknown;
   setLayoutProperty(layerId: string, name: string, value: unknown): unknown;
-  setFeatureState(target: FeatureIdentifier, state: Record<string, MapSceneFeatureStateValue>): unknown;
-  removeFeatureState(target: FeatureIdentifier, key?: string): unknown;
   hasImage(id: string): boolean;
   addImage(id: string, image: ImageData, options: MapSceneImageOptions): unknown;
 };
@@ -43,8 +39,6 @@ type ApplyMapSceneOptions = {
    */
   readonly basemapAnchors: Readonly<Record<BasemapAnchor, string | undefined>>;
 };
-
-const NO_FEATURE_STATES: MapSceneFeatureStates = new Map();
 
 /**
  * scene を地図へ当てる唯一の関数。前回との差分だけを触り、scene が名指ししていない
@@ -109,12 +103,6 @@ export function applyMapScene(map: MapSceneTarget, options: ApplyMapSceneOptions
     map.addLayer(layerSpecFor(layer), anchorFor(layer, ordered.slice(index + 1), present, basemapAnchors));
     present.add(id);
   });
-
-  for (const source of scene.sources) {
-    // 作り直したソースは feature-state ごと消えているため、前回は無かったものとして当て直す。
-    const applied = recreated.has(source.id) ? undefined : previousSources.get(source.id)?.featureStates;
-    applyFeatureStates(map, source, applied, source.featureStates);
-  }
 }
 
 /**
@@ -161,51 +149,6 @@ function updateLayer(map: MapSceneTarget, layer: MapSceneLayer, before: MapScene
   }
   if (!isSameValue(before.filter, layer.filter)) {
     map.setFilter(id, layer.filter ?? null);
-  }
-}
-
-/**
- * ソース単位の一括クリアは、そのソースの feature-state が1つも残らないときだけ使う
- * ——`removeFeatureState` は source/sourceLayer 単位で全キーをまとめて消すため、
- * まだ値を持っている別のキーまで巻き添えにする。
- */
-function applyFeatureStates(
-  map: MapSceneTarget,
-  source: MapSceneSource,
-  before: MapSceneFeatureStates | undefined,
-  after: MapSceneFeatureStates | undefined,
-): void {
-  const previousStates = before ?? NO_FEATURE_STATES;
-  const nextStates = after ?? NO_FEATURE_STATES;
-  const sourceTarget: FeatureIdentifier = { source: source.id, sourceLayer: source.sourceLayer };
-
-  if (nextStates.size === 0) {
-    if (previousStates.size > 0) map.removeFeatureState(sourceTarget);
-    return;
-  }
-
-  for (const [key, previousValues] of previousStates) {
-    const nextValues = nextStates.get(key);
-    if (nextValues === previousValues) continue;
-    for (const featureId of previousValues.keys()) {
-      if (nextValues?.has(featureId) === true) continue;
-      map.removeFeatureState({ ...sourceTarget, id: featureId }, key);
-    }
-  }
-
-  const pending = new Map<string, Record<string, MapSceneFeatureStateValue>>();
-  for (const [key, nextValues] of nextStates) {
-    const previousValues = previousStates.get(key);
-    if (previousValues === nextValues) continue;
-    for (const [featureId, value] of nextValues) {
-      if (isSameValue(previousValues?.get(featureId), value)) continue;
-      const state = pending.get(featureId) ?? {};
-      state[key] = value;
-      pending.set(featureId, state);
-    }
-  }
-  for (const [featureId, state] of pending) {
-    map.setFeatureState({ ...sourceTarget, id: featureId }, state);
   }
 }
 

@@ -31,7 +31,7 @@ export function sceneState(overrides: SceneStateOverrides = {}): SceneState {
       surroundingsShown: true,
       roadAvoidance: { levels: [], rows: [] },
       roadAvoidanceShown: false,
-      wayMaterials: new Map(),
+      lensTileUrl: undefined,
       wayConditions: {},
       roadSurfaceFrame: undefined,
       hiddenLegendKeys: {},
