@@ -7,7 +7,7 @@ import { MAIN_MAP_CANVAS } from "./liveMap";
 
 /**
  * Tailwindの余白ユーティリティ（`p-2`・`px-[0.9rem]`・`-mt-1`等）。変種付き（`sm:`・`hover:`）は、今の画面で
- * その条件が成り立つかを判定しないので対象外。変種なしの側（`px-2 max-narrow:px-1.5`の`px-2`）は、変種付きの値が
+ * その条件が成り立つかを判定しないので対象外。変種なしの側（`px-2 group-data-[cramped=true]/fit:px-1.5`の`px-2`）は、変種付きの値が
  * その辺に効いている（計算後の値が変種付きの値と同じ）辺だけを見ない。
  */
 const SPACING_UTILITY = /^(-?)([pm])([xytrblse]?)-(\d+(?:\.\d+)?|\[[^\]]+\])$/;

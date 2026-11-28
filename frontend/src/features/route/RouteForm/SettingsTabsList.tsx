@@ -26,16 +26,13 @@ const settingsTabs = (axisNames: string): readonly { value: SettingsTab; label: 
   { value: "saved", label: "保存済み", usage: "保存した地点と、名前を付けて保存した設定を並べ、呼び出します。" },
 ];
 
-/**
- * 「ルート設定」のタブ列。見出し行に置く（本文の縦を空ける）。タブの間と左右の余白を詰めているのは、スマホの幅で見出しの題・
- * タブ・操作（条件の変更の印も）を1行に切らずに収めるため。
- */
+/** 「ルート設定」のタブ列。候補数・生成と同じ1行に置く（本文の縦を空ける）。 */
 export default function SettingsTabsList() {
   const tabs = settingsTabs(costAxisNamesNote(useCostAxisCatalog()));
   return (
-    <TabsList className="gap-0 overflow-visible border-b-0" aria-label="ルート設定">
+    <TabsList variant="segmented" aria-label="ルート設定">
       {tabs.map(({ value, label, usage }) => (
-        <TabsTrigger key={value} className="px-0.5" value={value} usage={usage}>
+        <TabsTrigger key={value} value={value} usage={usage}>
           {label}
         </TabsTrigger>
       ))}

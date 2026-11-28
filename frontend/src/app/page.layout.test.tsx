@@ -216,9 +216,11 @@ describe("画面の枠", () => {
     expect(inset.layerPaint("background")?.["background-color"]).toBe(dark);
   });
 
-  it("区分の開閉は、次に開いたときも同じになる", async () => {
+  it("区分の開閉は、次に開いたときも同じになる。「ルート設定」を畳んでもタブと生成の行は残る", async () => {
     const { user, unmount } = renderHome();
     await user.click(section("ルート設定"));
+    expect(screen.getByRole("tab", { name: "走りにくさ" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^ルート生成/ })).toBeInTheDocument();
     unmount();
 
     renderHome();

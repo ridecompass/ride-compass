@@ -185,7 +185,7 @@ export default function RouteSplicePanel({
             <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
               <p className={textVariants({ variant: "hint" })}>この組み合わせは「{sameRouteName}」と同じ道です</p>
               <Button
-                size="sm"
+                size="xs"
                 onClick={onApply}
                 aria-busy={applying}
                 usage="編集を閉じて、この組み合わせと同じ道の候補を選びます。"
