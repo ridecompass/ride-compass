@@ -8,8 +8,16 @@ description: "本番の元を取り直す・派生データを作り直す・本
 - 対象: 全部の元（`backend/app/batch/source_profile.yaml`）を上流から最新で取り直し、全部取り込み直し、派生を全部作り直す。本番VMの
   systemdのtimer（`backend/ops/ridecompass-source-refresh.timer`）が週1回起こし、`backend/ops/source_refresh.sh`が別のコンテナで
   取得 → 取込 → 作り直しを順に打つ。仕組みは[横断基盤](../../../docs/modules/backend/cross-cutting-infrastructure.md)「元の取り直し」。
-  元ごとに手で取得・取込を打つ手順は持たない。
-- 急ぐとき（元を足した・配布物を次の回より前に入れたい・前の回が落ちた）は、同じserviceを手で起こす。本番へ書くので、
+- 変えた元・段だけを本番へ効かせるとき（元の取込の宣言や段のコードを変えた等）は、全部を流さず、変えた元だけを取り込み直し、
+  下の「派生データの作り直し」の表で選んだ段だけを作り直す。同じ形の別のコンテナ（下の「派生データの作り直し」のコマンドの`/app/raster`も
+  マウントしたもの）の中で順に打つ。配布物が置き場にあれば取得（`fetch_cli --source <元>`）は飛ばしてよい:
+
+  ```
+  sh -c 'set -e; python -m app.batch.ingest_cli --source <元>; python -m app.batch.derive_cli --stages <段>...'
+  ```
+
+  `/health`の`source_refresh_age_hours`は全部の取り直しの印で、この打ち方では進まない。
+- 全部を急ぐとき（元を足した・配布物を次の回より前に入れたい・前の回が落ちた）は、同じserviceを手で起こす。本番へ書くので、
   開発機の対話のセッションが打つ（[dev-session/SKILL.md](../dev-session/SKILL.md)「本番へ書く」）:
 
   ```
@@ -57,13 +65,7 @@ description: "本番の元を取り直す・派生データを作り直す・本
 
   | 変えたもの | 選ぶ段 |
   |---|---|
-  | 道（`osm_way`）を取り直した | `topology addresses`（`topology`を選ぶと道路の段が全部流れる） |
-  | ノード（`osm_node`）を取り直した | `nodes` |
-  | 事故（`accident`）を取り直した | `counts` |
-  | 標高（`dem`）を取り直した | `elevation` |
-  | 土地被覆（`lulc`）を取り直した | `landcover` |
-  | 住所（`abr`・`isj_block`）を取り直した | `addresses` |
-  | 地点・寺社・小地域（`overture_place`・`bunka_heritage`・`estat_small_area`）を取り直した | `places` |
+  | 元を取り直した | その元を読む段（`app/batch/derive_cli.py: STAGES`の`sources`にその元を持つ段）。どの段も読まない元は、取り込むだけで作り直さない |
   | 段のコード（`app/batch/derive_<段>.py`と、それが使う式）を変えた | その段 |
   | 段が読む較正値を変えた | その較正値を宣言した段（`app/batch/derive_cli.py: STAGES`の`tuning`） |
   | 派生の表に列を足した・消した | その表を書く段（`STAGES`の`tables`） |
