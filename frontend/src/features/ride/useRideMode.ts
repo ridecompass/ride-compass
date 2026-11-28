@@ -90,9 +90,9 @@ const PERMISSION_DENIED = 1;
 /**
  * 走行モード: 休んでいる間を除いて現在地を受け取り続け、地図に追わせる。`plausibleMaxKmh`は走りとしてありえる速さの上限（時速km）で、受けた位置から
  * 出した速さがこれを超えたら、出どころを添えた警告をデバッグログに出す（デバッグログを警告で絞れば、外れた速さの行だけが残る）。
- * 分からなければ警告を出さない。
+ * 分からなければ警告を出さない。`onEnd`は案内を終えて記録を止めたあとに呼ぶ。
  */
-export function useRideMode(plausibleMaxKmh: number | undefined): UseRideModeResult {
+export function useRideMode(plausibleMaxKmh: number | undefined, onEnd?: () => void): UseRideModeResult {
   const [status, setStatus] = useState<RideStatus>("off");
   const [error, setError] = useState<string | null>(null);
   const [fix, setFix] = useState<Fix | null>(null);
@@ -105,11 +105,13 @@ export function useRideMode(plausibleMaxKmh: number | undefined): UseRideModeRes
   // 受けたどの位置からも読み続ける進む向きと、最後に走行の値へ流した位置（`shouldPublish`）。
   const travelReading = useRef<TravelBearing | null>(null);
   const published = useRef<Fix | null>(null);
-  // 位置を受ける口は始めたときに1度だけ渡すので、上限は描くたびに移して最新を読む。
+  // 位置を受ける口は始めたときに1度だけ渡すので、上限と終えたときの知らせは描くたびに移して最新を読む。
   const plausibleMax = useRef(plausibleMaxKmh);
+  const ended = useRef(onEnd);
   useEffect(() => {
     plausibleMax.current = plausibleMaxKmh;
-  }, [plausibleMaxKmh]);
+    ended.current = onEnd;
+  }, [plausibleMaxKmh, onEnd]);
   useEffect(() => {
     recordRideStatus(status, Date.now());
   }, [status]);
@@ -141,6 +143,7 @@ export function useRideMode(plausibleMaxKmh: number | undefined): UseRideModeRes
   const stop = useCallback(() => {
     leave("off");
     stopRideRecording(Date.now());
+    ended.current?.();
     setHeadingUp(false);
     setZoomBase(null);
     setLocked(false);

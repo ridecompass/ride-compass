@@ -17,6 +17,7 @@ import { useLocation } from "@/hooks/useLocation";
 import { useRideConditions } from "@/features/conditions/useRideConditions";
 import { useProfileLayers } from "@/features/route/RouteProfile/useProfileLayers";
 import { rideClock } from "@/features/ride/rideRemaining";
+import { useRideKeep } from "@/features/ride/useRideKeep";
 import { useRideMode } from "@/features/ride/useRideMode";
 import { useRideWayConditions } from "@/features/ride/useRideWayConditions";
 import { useMapView } from "@/features/map/view/useMapView";
@@ -32,7 +33,9 @@ export default function Home() {
   countRideMetric("pageRenders");
   const clientConfig = useClientConfig();
   // 走行モード（現在地を追い続けて地図を動かす）。走りとしてありえる速さの上限は、走行モデルの下りの最高速度。
-  const riding = useRideMode(clientTuningValue(clientConfig, CLIENT_TUNING_IDS.maxDescentKmh));
+  // 案内を終えた走りは、残すかを聞いてから送る。
+  const rideKeep = useRideKeep();
+  const riding = useRideMode(clientTuningValue(clientConfig, CLIENT_TUNING_IDS.maxDescentKmh), rideKeep.offer);
   // 走行モードの間は、地図と予定ルートのプロファイルに集中する配置にする（地図の上の操作を出さず、パネルは帯の「ルート」で開く）。
   const navigating = riding.status !== "off";
   const ridePosition = riding.map?.position ?? null;
@@ -246,6 +249,7 @@ export default function Home() {
             usageGuideActive={usageGuideActive}
             onUsageGuideEnd={() => setUsageGuideActive(false)}
             firstVisitIntro={firstVisitIntro}
+            rideKeep={rideKeep}
           />
         </div>
       </div>

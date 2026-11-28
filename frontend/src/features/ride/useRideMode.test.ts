@@ -38,6 +38,8 @@ afterEach(() => {
   // 走行モードのまま残った部品を、位置の口を外す前に片付ける（片付けで受け取りをやめる）。
   cleanup();
   removeGeolocation();
+  // 走りの記録は、送るまで端末に溜まる。テストをまたいで溜まると、上限に当たって古い走りを捨てた警告が出る。
+  localStorage.clear();
 });
 
 describe("useRideMode", () => {

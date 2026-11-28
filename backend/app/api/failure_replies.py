@@ -10,6 +10,7 @@ import json
 
 import httpx
 from fastapi import FastAPI, Request, status
+from google.auth.exceptions import TransportError as GoogleTransportError
 from fastapi.responses import JSONResponse
 
 from app.domain.time_frames import StaleTimeFrameError
@@ -20,8 +21,8 @@ from app.infrastructure.jma_amedas_store import AmedasUnavailableError
 from app.infrastructure.msm_client import MsmUnavailableError
 from app.infrastructure.simple_api_client import UnexpectedShapeError
 
-#: 上流が返した本文がJSONでないとき（`httpx.Response.json`）も、上流の障害として数える。
-UPSTREAM_ERRORS: tuple[type[Exception], ...] = (httpx.HTTPError, json.JSONDecodeError, UnexpectedShapeError)
+#: 上流が返した本文がJSONでないとき（`httpx.Response.json`）も、上流の障害として数える。Google の証明書を取れないとき（ログインの確かめ）も上流の障害。
+UPSTREAM_ERRORS: tuple[type[Exception], ...] = (httpx.HTTPError, json.JSONDecodeError, UnexpectedShapeError, GoogleTransportError)
 
 
 def failure_reply(exc: BaseException) -> tuple[int, str] | None:

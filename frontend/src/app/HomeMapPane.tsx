@@ -19,9 +19,11 @@ import type { useMapView } from "@/features/map/view/useMapView";
 import RideBottom from "@/features/ride/RideBottom/RideBottom";
 import RideDarkScreen, { RideDarkScreenButton } from "@/features/ride/RideDarkScreen/RideDarkScreen";
 import RideLockButton from "@/features/ride/RideLockButton/RideLockButton";
+import RideKeepCard from "@/features/ride/RideKeepCard/RideKeepCard";
 import RideModeButton from "@/features/ride/RideModeButton/RideModeButton";
 import RideVoiceButton from "@/features/ride/RideVoiceButton/RideVoiceButton";
 import TurnCard from "@/features/ride/TurnCard/TurnCard";
+import type { RideKeep } from "@/features/ride/useRideKeep";
 import type { useRideMode } from "@/features/ride/useRideMode";
 import RouteProfile from "@/features/route/RouteProfile/RouteProfile";
 import { useChosenProfileLayers, type ProfileLayerSelection } from "@/features/route/RouteProfile/useProfileLayers";
@@ -59,6 +61,7 @@ interface HomeMapPaneProps {
   usageGuideActive: boolean;
   onUsageGuideEnd: () => void;
   firstVisitIntro: ReturnType<typeof useFirstVisitIntro>;
+  rideKeep: RideKeep;
 }
 
 /** 地図と、地図の上に重ねる操作。 */
@@ -81,6 +84,7 @@ export default function HomeMapPane({
   usageGuideActive,
   onUsageGuideEnd,
   firstVisitIntro,
+  rideKeep,
 }: HomeMapPaneProps) {
   const costCatalog = useCostAxisCatalog();
   const { results, splice } = route;
@@ -190,13 +194,17 @@ export default function HomeMapPane({
           {overview}
         </div>
       )}
-      {!navigating && (
-        <FirstVisitIntro
-          shown={firstVisitIntro.shown}
-          onClose={firstVisitIntro.close}
-          originLocateFailed={place.locationFailure !== null}
-        />
-      )}
+      {/* 案内を終えた走りを残すかのカードは、初回の案内と同じ所に出し、出している間は初回の案内を出さない。 */}
+      {!navigating &&
+        (rideKeep.step.kind !== "hidden" ? (
+          <RideKeepCard rideKeep={rideKeep} />
+        ) : (
+          <FirstVisitIntro
+            shown={firstVisitIntro.shown}
+            onClose={firstVisitIntro.close}
+            originLocateFailed={place.locationFailure !== null}
+          />
+        ))}
 
       {usageGuideActive ? <UsageGuide onEnd={onUsageGuideEnd} /> : <UsageTooltip />}
 

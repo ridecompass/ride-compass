@@ -146,6 +146,8 @@ ROUTE_POLICIES: Final[tuple[tuple[str, CachePolicy], ...]] = (
     ("/api/region/roads-at", NO_STORE),
     # 走りを本文で送るPOSTで、応答を使い回させない。
     ("/api/rides", NO_STORE),
+    # ログインした本人の状態と走り（cookie で人ごとに違う応答を、中間キャッシュへ残さない）
+    ("/api/me", NO_STORE),
     # 管理・状態確認（認可必須の情報を中間キャッシュへ残さない）
     (ADMIN_PATH_PREFIX, NO_STORE),
     ("/api/debug/", NO_STORE),

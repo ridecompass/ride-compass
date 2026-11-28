@@ -1,4 +1,4 @@
-"""走りの記録を受ける口（`POST /api/rides`）。
+"""走りの記録を受ける口（`POST /api/rides`）。ログインして今の規約の版に同意した人の走りだけを受け、その人の走りとして書く。
 
 本文は gzip で縮めて受けられる（`Content-Encoding: gzip`。本番の nginx の要求の大きさの上限、既定の 1MB に長い走りも収めるため）。
 縮めた本文は、FastAPI の文書の例（Custom Request and APIRoute class の`GzipRequest`）と同じ形で、本文を読むときに戻す。例の
@@ -7,10 +7,12 @@
 
 import zlib
 from collections.abc import Callable
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.routing import APIRoute
 
+from app.api.account_auth import consenting_account
 from app.api.dependencies import get_ride_track_service
 from app.domain.ride_track import RideUpload
 from app.services.ride_track_service import RideTrackService
@@ -47,6 +49,8 @@ router = APIRouter(prefix="/api/rides", tags=["rides"], route_class=_GzipRoute)
 
 
 @router.post("", status_code=status.HTTP_204_NO_CONTENT)
-async def receive_ride(upload: RideUpload, rides: RideTrackService = Depends(get_ride_track_service)) -> None:
-    """走り1回を書く。同じ走りが二度届いても先の行のまま、書けたものとして返す（端末はこれを見て手元の記録を消す）。"""
-    await rides.store(upload)
+async def receive_ride(upload: RideUpload, account_id: UUID = Depends(consenting_account),
+                       rides: RideTrackService = Depends(get_ride_track_service)) -> None:
+    """走り1回を書く。同じ走りが二度届いても先の行のまま、書けたものとして返す（端末はこれを見て手元の記録を消す）。
+    ログインしていなければ401、同意していなければ403。"""
+    await rides.store(upload, account_id=account_id)
