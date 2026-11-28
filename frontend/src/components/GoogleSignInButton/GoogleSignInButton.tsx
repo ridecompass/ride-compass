@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 
 import { cn } from "@/lib/cn";
 import { textVariants } from "@/components/ui/Text/Text";
@@ -10,7 +10,13 @@ interface GoogleAccountsId {
   initialize(config: { client_id: string; callback: (response: { credential: string }) => void }): void;
   renderButton(
     parent: HTMLElement,
-    options: { type: "standard"; theme: "outline"; size: "large"; text: "signin_with"; locale: string },
+    options: {
+      type: "standard";
+      theme: "outline" | "filled_black";
+      size: "large";
+      text: "signin_with";
+      locale: string;
+    },
   ): void;
 }
 
@@ -22,6 +28,17 @@ declare global {
 
 // `next/script`を使わず自前で読むのは、既に読んである（`window.google`がある）ときに読み直さず、ボタンを描く所でだけ読むため。
 const GIS_SCRIPT_URL = "https://accounts.google.com/gsi/client?hl=ja";
+const DARK = "(prefers-color-scheme: dark)";
+
+function subscribeDark(onChange: () => void): () => void {
+  const query = window.matchMedia(DARK);
+  query.addEventListener("change", onChange);
+  return () => query.removeEventListener("change", onChange);
+}
+
+function prefersDark(): boolean {
+  return window.matchMedia(DARK).matches;
+}
 
 let loading: Promise<GoogleAccountsId> | null = null;
 // `initialize`は1回だけ呼ぶ（2回目からは最後の設定だけが残る）ので、IDトークンは今描いているボタンの受け口へ回す。
@@ -51,10 +68,11 @@ interface GoogleSignInButtonProps {
   onCredential: (credential: string) => void;
 }
 
-/** Google の公式のログインのボタン。 */
+/** Google の公式のログインのボタン。端末がダークなら公式の暗いボタンにする。 */
 export default function GoogleSignInButton({ clientId, onCredential }: GoogleSignInButtonProps) {
   const parent = useRef<HTMLDivElement>(null);
   const [failure, setFailure] = useState<string | null>(null);
+  const dark = useSyncExternalStore(subscribeDark, prefersDark, () => false);
 
   useEffect(() => {
     receiver = onCredential;
@@ -72,9 +90,11 @@ export default function GoogleSignInButton({ clientId, onCredential }: GoogleSig
           id.initialize({ client_id: clientId, callback: ({ credential }) => receiver?.(credential) });
           initializedFor = clientId;
         }
+        // 明暗が変わって描き直すときは、前のボタンを除いてから描く。
+        parent.current.replaceChildren();
         id.renderButton(parent.current, {
           type: "standard",
-          theme: "outline",
+          theme: dark ? "filled_black" : "outline",
           size: "large",
           text: "signin_with",
           locale: "ja",
@@ -85,13 +105,15 @@ export default function GoogleSignInButton({ clientId, onCredential }: GoogleSig
     return () => {
       alive = false;
     };
-  }, [clientId]);
+  }, [clientId, dark]);
 
   return failure !== null ? (
     <p role="alert" className={cn(textVariants({ variant: "error" }), "m-0")}>
       {failure}
     </p>
   ) : (
-    <div ref={parent} className="min-h-10" />
+    // ボタンは Google の枠（iframe）の中に描かれ、枠の中は明るい色の方式で描かれる。ページのダークと食い違うと、ブラウザが枠に
+    // 白い下地を付けるので、枠の色の方式を明るいにそろえる（ダークでは暗いボタンを選ぶ）。
+    <div ref={parent} className="min-h-10 [color-scheme:light]" />
   );
 }

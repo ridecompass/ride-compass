@@ -13,17 +13,17 @@ export const buttonVariants = cva(
         primary:
           "border-[var(--color-accent)] bg-[var(--color-accent)] font-semibold text-white hover:enabled:border-[var(--color-accent-strong)] hover:enabled:bg-[var(--color-accent-strong)]",
         secondary:
-          "border-[var(--color-border-strong)] bg-[var(--color-surface)] text-[var(--foreground)] hover:enabled:border-[var(--color-accent)] data-[state=open]:border-[var(--color-accent)] data-[state=open]:text-[var(--color-accent)]",
+          "border-[var(--color-border-strong)] bg-[var(--color-surface)] text-[var(--foreground)] hover:enabled:border-[var(--color-accent)] data-[state=open]:border-[var(--color-accent)] data-[state=open]:text-[var(--color-accent-text)]",
         /** 枠の無い控えめな操作（閉じる・消す・戻る）。 */
         ghost:
           "border-transparent bg-transparent text-[var(--color-muted)] hover:enabled:text-[var(--foreground)] hover:enabled:bg-[var(--color-surface-hover)]",
         danger:
-          "border-[var(--color-danger)] bg-[var(--color-surface)] text-[var(--color-danger)] hover:enabled:bg-[var(--color-danger-muted)]",
+          "border-[var(--color-danger)] bg-[var(--color-surface)] text-[var(--color-danger-text)] hover:enabled:bg-[var(--color-danger-muted)]",
         warning:
           "border-[var(--color-warning-strong)] bg-transparent text-[var(--color-warning-strong)] hover:enabled:bg-[var(--color-warning-soft)]",
         /** 値を1段ずつ動かす（−／＋、◀／▶）。隣の主役の入力より目立たせないよう枠線だけにする。 */
         stepper:
-          "border-[var(--color-border)] bg-transparent font-semibold text-[var(--color-accent)] hover:enabled:border-[var(--color-accent)] disabled:text-[var(--color-muted)]",
+          "border-[var(--color-border)] bg-transparent font-semibold text-[var(--color-accent-text)] hover:enabled:border-[var(--color-accent)] disabled:text-[var(--color-muted)]",
         /** 地図の上に浮かせる操作。親が`pointer-events: none`で地図の操作を通すため自分だけ戻す。
          * `touch-action: none`は、2本指のピンチの片方がボタンに乗ったときにブラウザがページの
          * ジェスチャーとして扱い、地図のピンチが効かなくなるのを止める。タップの既定ハイライトは、端末によって
@@ -36,7 +36,7 @@ export const buttonVariants = cva(
         /** メニューの1行（押すと1回動く。切り替えの行は`Toggle`の`menu`）。 */
         menu: "justify-start gap-2 border-0 bg-transparent text-left text-[var(--foreground)] hover:enabled:bg-[var(--color-surface-2)]",
         /** 見出し脇の(i)。開いている間はアクセント色。 */
-        info: "border-0 bg-transparent text-[var(--color-muted)] aria-expanded:text-[var(--color-accent-strong)]",
+        info: "border-0 bg-transparent text-[var(--color-muted)] aria-expanded:text-[var(--color-accent-text)]",
       },
       size: {
         xs: "rounded-sm px-1.5 py-0.5 text-[length:var(--font-size-xs)]",

@@ -1,8 +1,8 @@
 /**
- * `RouteForm/RouteForm.tsx`——「ルート設定」区分の各タブの中身。「条件」タブ（ルートの形・距離の目標・地点の一覧）を
- * 描き、「走りにくさ」「道路」タブと「保存済み」タブの「設定」には受け取った中身を置き、「保存済み」タブの「地点」には保存した地点を並べる。
+ * `RouteForm/RouteForm.tsx`——「ルート設定」区分の各タブの中身。「基本」タブ（ルートの形・距離の目標・地点の一覧）を
+ * 描き、「難所」「道路」タブと「保存」タブの「設定」には受け取った中身を置き、「保存」タブの「地点」には保存した地点を並べる。
  *
- * ここで見ないもの: タブの列と選んだタブ、どのタブの中身が見えるか（スタイルで隠す）、呼び出した地点を選んで「条件」タブへ移ること
+ * ここで見ないもの: タブの列と選んだタブ、どのタブの中身が見えるか（スタイルで隠す）、呼び出した地点を選んで「基本」タブへ移ること
  * → `app/page.tsx`。
  * 書いた定数や受け取った値をそのまま渡すもの（今の値と km の表記・候補の距離の幅、(i)の奥の文）。
  * 呼び出した地点をどの役割で上げるか・周回の間に目的地にできないこと → `SavedPlacesPanel/SavedPlacesPanel.test.tsx`。
@@ -107,7 +107,7 @@ describe("RouteForm 文字の大きさ", () => {
 });
 
 describe("RouteForm 保存した地点を呼び出す", () => {
-  /** 「保存済み」タブの「地点」で、保存した地点の「呼び出す」のメニューを開いて返す。 */
+  /** 「保存」タブの「地点」で、保存した地点の「呼び出す」のメニューを開いて返す。 */
   async function openRecallMenu() {
     await userEvent.click(screen.getByRole("button", { name: `「${FACILITY.name}」を呼び出す` }));
     return screen.getByRole("dialog", { name: `「${FACILITY.name}」をどこに置くか` });
@@ -128,7 +128,7 @@ describe("RouteForm タブの中身", () => {
     return <input aria-label={name} value={text} onChange={(e) => setText(e.target.value)} />;
   }
 
-  it("「走りにくさ」「道路」と「保存済み」の「設定」に受け取った中身を置き、タブを切り替えても外さない", async () => {
+  it("「難所」「道路」と「保存」の「設定」に受け取った中身を置き、タブを切り替えても外さない", async () => {
     const { showTab } = renderForm(
       {
         weightsPanel: <Draft name="走りにくさの中身" />,

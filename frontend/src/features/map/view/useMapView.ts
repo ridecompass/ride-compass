@@ -286,7 +286,7 @@ export function useMapView({
           painted !== totalLens?.axisId &&
           (costPreference.strength !== STANDARD_COST_FACTOR ||
             (costPreference.multipliers[painted] ?? STANDARD_COST_FACTOR) !== STANDARD_COST_FACTOR)
-            ? "凡例の事実は標準の走りにくさの割合での値です。いまは「走りにくさ」タブで割合を変えているので、色はその割合で塗っています。"
+            ? "凡例の事実は標準の走りにくさの割合での値です。いまは「難所」タブで割合を変えているので、色はその割合で塗っています。"
             : null,
           windPreviousRunNotice(lensFetch?.windPreviousRunFrom),
         ]
@@ -298,7 +298,7 @@ export function useMapView({
           : "走りにくさの種類の一覧を読み込んでいます。"
         : totalCounted
           ? null
-          : `「走りにくさ」タブの全体か全部の種類が${DISABLED_LABEL}のため、塗れる走りにくさはありません。`,
+          : `「難所」タブの総合か全部の種類が${DISABLED_LABEL}のため、塗れる走りにくさはありません。`,
       dataStatus: lensFetch
         ? deriveFetchLayerStatus(
             lensFetch.loading,

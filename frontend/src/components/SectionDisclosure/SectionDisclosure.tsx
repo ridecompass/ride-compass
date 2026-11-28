@@ -24,7 +24,7 @@ export default function SectionDisclosure({ title, active, ...props }: SectionDi
       headerClassName="flex items-center justify-between gap-2"
       triggerClassName={cn(
         textVariants({ variant: "heading" }),
-        "group flex cursor-pointer items-center gap-1.5 group-data-[active=true]/panel:text-[var(--color-accent-strong)]",
+        "group flex cursor-pointer items-center gap-1.5 group-data-[active=true]/panel:text-[var(--color-accent-text)]",
       )}
       bodyClassName="flex flex-col gap-2"
       summary={

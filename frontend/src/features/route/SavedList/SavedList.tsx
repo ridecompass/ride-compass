@@ -25,7 +25,7 @@ interface SavedListProps<T extends { name: string }> {
   confirmRemove: boolean;
 }
 
-// 「保存済み」タブの一覧（地点・設定）。名前で見分け、行の右のごみ箱で消す——一覧の形と消すボタンを1か所に持ち、地点と設定で
+// 「保存」タブの一覧（地点・設定）。名前で見分け、行の右のごみ箱で消す——一覧の形と消すボタンを1か所に持ち、地点と設定で
 // 違って見えないようにする。
 export default function SavedList<T extends { name: string }>({
   items,

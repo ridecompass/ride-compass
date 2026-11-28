@@ -4,7 +4,7 @@
  * 見ること: ピンを押しても消えずルート設定ではその地点を選ぶこと、閉じている間は地点の名前のあるピンだけが小窓を開き押せる見た目を
  * 持つこと、名前のある点を押して置いた地点が地図に立ち、行にその名前が出ること、地点の行を押して開く小窓で探した候補をその役割で
  * 地図に立てること、小窓を開いている間のブラウザの「戻る」で小窓だけを閉じること、周回の間は置いた目的地を地図にも行にも出さず
- * 地図を押しても目的地にしないで、外すと戻すこと、保存した地点を小窓から選び直せ、「保存済み」の「地点」から呼び出すと条件タブへ
+ * 地図を押しても目的地にしないで、外すと戻すこと、保存した地点を小窓から選び直せ、「保存」の「地点」から呼び出すと条件タブへ
  * 移って置くこと。
  *
  * ここで見ないもの: 地図を押したときの意味をどのパネルが決めるか・区間を押したときは`app/page.map.test.tsx`が見る。小窓を開いたまま
@@ -202,7 +202,7 @@ describe("地図に置く地点", () => {
     expect(screen.getByRole("button", { name: "目的地 地図で選んだ地点" })).toBeInTheDocument();
   });
 
-  it("候補の☆で保存した地点は、目的地を消したあとも小窓から選び直せ、「保存済み」の「地点」から呼び出すと条件タブへ移って置く", async () => {
+  it("候補の☆で保存した地点は、目的地を消したあとも小窓から選び直せ、「保存」の「地点」から呼び出すと条件タブへ移って置く", async () => {
     onBackend("GET", "/api/place-search", () => Response.json({ candidates: [SENSOJI] }));
     const { user } = renderHome();
     await user.click(screen.getByRole("radio", { name: "目的地" }));
@@ -219,13 +219,13 @@ describe("地図に置く地点", () => {
 
     expect(marksAt(SENSOJI)).toHaveLength(1);
     expect(screen.getByRole("button", { name: "目的地 浅草寺" })).toBeInTheDocument();
-    await user.click(screen.getByRole("tab", { name: "保存済み" }));
+    await user.click(screen.getByRole("tab", { name: "保存" }));
     await user.click(screen.getByRole("tab", { name: "地点" }));
     await user.click(screen.getByRole("button", { name: "「浅草寺」を呼び出す" }));
     const menu = screen.getByRole("dialog", { name: "「浅草寺」をどこに置くか" });
     await user.click(within(menu).getByRole("button", { name: "経由地に足す" }));
 
-    expect(screen.getByRole("tab", { name: "条件" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tab", { name: "基本" })).toHaveAttribute("aria-selected", "true");
     expect(screen.getByRole("button", { name: "経由地1 浅草寺" })).toBeInTheDocument();
     expect(marksAt(SENSOJI)).toHaveLength(2);
   });

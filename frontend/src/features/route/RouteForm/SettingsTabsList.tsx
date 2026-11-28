@@ -10,20 +10,20 @@ import type { SettingsTab } from "./RouteForm";
 const settingsTabs = (axisNames: string): readonly { value: SettingsTab; label: string; usage: string }[] => [
   {
     value: "generate",
-    label: "条件",
+    label: "基本",
     usage: "ルートの形・距離の目標と、通る地点を決めます。",
   },
   {
     value: "weights",
-    label: "走りにくさ",
-    usage: `走りにくさ${axisNames}を、全体と種類ごとに、どれだけの割合で数えるかを決めます。`,
+    label: "難所",
+    usage: `走りにくさ${axisNames}を、総合と種類ごとに、どれだけの割合で数えるかを決めます。`,
   },
   {
     value: "exclusions",
     label: ROAD_SETTINGS_TAB_NAME,
     usage: `道路の種類ごとに、区間の${routeGenerateConfig.avoidance_multiplier_wording}を選びます。`,
   },
-  { value: "saved", label: "保存済み", usage: "保存した地点と、名前を付けて保存した設定を並べ、呼び出します。" },
+  { value: "saved", label: "保存", usage: "保存した地点と、名前を付けて保存した設定を並べ、呼び出します。" },
 ];
 
 /** 「ルート設定」のタブ列。候補数・生成と同じ1行に置く（本文の縦を空ける）。 */

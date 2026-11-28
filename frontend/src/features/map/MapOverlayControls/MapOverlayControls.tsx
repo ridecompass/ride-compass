@@ -149,7 +149,7 @@ export default function MapOverlayControls({
               <Button
                 variant="ghost"
                 size="xs"
-                className="self-start text-[var(--color-accent)]"
+                className="self-start text-[var(--color-accent-text)]"
                 onClick={() => setChoosingGroup(group)}
                 usage="この群の一覧に並べる項目を選びます。"
               >

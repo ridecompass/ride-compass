@@ -18,7 +18,6 @@ import {
   costAxisNamesNote,
   retryCostAxisCatalogFetch,
   useCostAxisCatalog,
-  type CostAxis,
 } from "@/hooks/useCostAxisCatalog";
 import type { CostPreference } from "@/types/route";
 import { Button } from "@/components/ui/Button/Button";
@@ -32,8 +31,8 @@ import routeGenerateConfig from "@/types/generated/route-generate-config.json";
 
 // 部品にせず関数で描く。部品の本体で`axisIconFor`の戻りを描くとreact-hooks/static-componentsが誤検知し、
 // パネルの本体の中で部品を定義すると、描き直しのたびにアイコンが作り直される。
-function renderAxisIcon(axis: CostAxis) {
-  const Icon = axisIconFor(axis.iconId);
+function renderIcon(iconId: string) {
+  const Icon = axisIconFor(iconId);
   return <Icon size={14} />;
 }
 
@@ -56,7 +55,7 @@ interface RouteSettingsPanelProps {
   onCostPreferenceChange: (next: CostPreference) => void;
 }
 
-/** 「ルート設定」の「走りにくさ」タブ。一番上の「全体」で走りにくさの全部を数える割合を選び、その下で費用の軸ごとに、割合の段か無効（数えない）を選ぶ。 */
+/** 「ルート設定」の「難所」タブ。一番上の「総合」で走りにくさの全部を数える割合を選び、その下で費用の軸ごとに、割合の段か無効（数えない）を選ぶ。 */
 export default function RouteSettingsPanel({ costPreference, onCostPreferenceChange }: RouteSettingsPanelProps) {
   const catalog = useCostAxisCatalog();
   const catalogFailure = costAxisCatalogFetchFailure(catalog);
@@ -90,8 +89,14 @@ export default function RouteSettingsPanel({ costPreference, onCostPreferenceCha
       )}
       <div className="flex items-center gap-2 border-b border-[var(--color-border-muted)] pb-1.5">
         <span className="flex min-w-0 flex-1 items-center gap-1">
-          <span className="truncate font-semibold">全体</span>
-          <InfoPopover triggerAriaLabel="全体の説明">
+          {/* 地図のレンズの総合と同じ絵（一覧が届くまでは出さない）。 */}
+          {catalog.lenses !== null && (
+            <span aria-hidden="true" className="inline-flex">
+              {renderIcon(catalog.lenses.totalLens.iconId)}
+            </span>
+          )}
+          <span className="truncate font-semibold">総合</span>
+          <InfoPopover triggerAriaLabel="総合の説明">
             <GuideText
               text={[
                 "走りにくさの全部を、どれだけの割合で数えるかを決めます。",
@@ -105,7 +110,7 @@ export default function RouteSettingsPanel({ costPreference, onCostPreferenceCha
           </InfoPopover>
         </span>
         <LevelScale
-          aria-label="全体の割合"
+          aria-label="総合の割合"
           usage="走りにくさの全部を、どれだけの割合で数えるかを選びます。"
           levels={STRENGTH_SCALE}
           value={String(costPreference.strength)}
@@ -114,7 +119,7 @@ export default function RouteSettingsPanel({ costPreference, onCostPreferenceCha
       </div>
       {!countsCosts(costPreference) && catalog.axes.length > 0 && (
         <p className={textVariants({ variant: "hint" })} role="status">
-          {`全体が${DISABLED_LABEL}のため、種類ごとの割合は使いません。`}
+          {`総合が${DISABLED_LABEL}のため、種類ごとの割合は使いません。`}
         </p>
       )}
       <ul className={cn("flex flex-col gap-1.5", !countsCosts(costPreference) && "opacity-50")}>
@@ -125,7 +130,7 @@ export default function RouteSettingsPanel({ costPreference, onCostPreferenceCha
               {/* 無効の軸は、絵と名前を薄くして数えていないことを見せる（選ぶつまみは薄めない）。 */}
               <span className={cn("flex min-w-0 flex-1 items-center gap-1", setting === AXIS_OFF && "opacity-50")}>
                 <span aria-hidden="true" className="inline-flex">
-                  {renderAxisIcon(axis)}
+                  {renderIcon(axis.iconId)}
                 </span>
                 <span className="truncate">{axis.label}</span>
                 <InfoPopover triggerAriaLabel={`${axis.label}の説明`}>
@@ -151,7 +156,7 @@ export default function RouteSettingsPanel({ costPreference, onCostPreferenceCha
       </ul>
       {catalog.axes.length > 0 && (
         <Button
-          usage={`走りにくさの種類ごとの割合と無効を、すべて標準[${STANDARD_LABEL}]に戻します。全体の割合は変えません。`}
+          usage={`走りにくさの種類ごとの割合と無効を、すべて標準[${STANDARD_LABEL}]に戻します。総合の割合は変えません。`}
           variant="secondary"
           size="xs"
           className="self-end"
