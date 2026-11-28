@@ -233,7 +233,8 @@ importすると、その変更だけが本番へ届かなくなる**（エラー
 導いてこれを検査する。
 
 **frontendのデプロイも、masterのCIが通ったコミットを出す。** `ci.yml`の`deploy-frontend`が、
-`deploy-backend`と同じ条件で`deploy-frontend.yml`を呼ぶ。像は同じCIの実行の`frontend-image`が`frontend/Dockerfile`で本番と同じ引数で
+`deploy-backend`と同じ条件で、`deploy-backend`が終わってから（結果は問わない）`deploy-frontend.yml`を呼ぶ——最後の確かめが管理画面から
+backendの口を叩くので、同じコミットで足した口はbackendが先に出ていなければ404になる。像は同じCIの実行の`frontend-image`が`frontend/Dockerfile`で本番と同じ引数で
 作り、e2eと全状態の走査がその中のアプリを試し、GitHubのコンテナの置き場（`ghcr.io/<リポジトリの持ち主>/ride-compass-frontend:<コミット>`）へ
 置いたもの——**本番に出る中身は、CIが試した中身と同じ**。呼ばれた側は作り直さず、VMにその像を置き場から取らせて入れ替える。
 
@@ -249,11 +250,11 @@ importすると、その変更だけが本番へ届かなくなる**（エラー
 - 待たずに出す手段は`deploy-frontend.yml`の手動起動（`workflow_dispatch`）で、選んだrefの先端から像を作り、判定なしで出す。
 
 **タイルプロパティを削除する変更はデプロイ順序に制約がある。** backendとfrontendは別
-サービスとして独立にデプロイされ、反映タイミングは同期しない。プロパティの**追加**は
+サービスとして入れ替わり、同じコミットではbackendが先に出る（上の`deploy-frontend`の待ち）。プロパティの**追加**は
 常に後方互換（旧フロントは知らないプロパティを無視する）だが、**削除**を含む世代を
 backendが先に配信すると、そのプロパティの有無を見ている旧フロントの凡例フィルタが
-全地物に一致し、対象レイヤーが一時的に「不明」表示になる。frontendを先に（または
-同時に）デプロイする。
+全地物に一致し、対象レイヤーが一時的に「不明」表示になる。frontendの変更を先のコミットで
+出してから、backendの削除を出す。
 
 ## 本番でルートを作る確かめ
 

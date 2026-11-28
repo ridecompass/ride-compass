@@ -575,8 +575,10 @@ jobs:
     if: "!cancelled() && github.event_name == 'push' && needs.ci-ok.result == 'success' && fromJSON(needs.changes.outputs.run)['deploy-backend']"
     uses: ./.github/workflows/deploy-backend.yml
     secrets: inherit
+  # deploy-frontend は deploy-backend の終わりを待つ。frontend の最後の確かめは管理画面から backend の口を叩くので、同じコミットで
+  # 足した口は backend が先に出ていないと 404 になる。deploy-backend の結果は問わない（飛ばされても落ちても frontend は出す）。
   deploy-frontend:
-    needs: [changes, ci-ok]
+    needs: [changes, ci-ok, deploy-backend]
     if: "!cancelled() && github.event_name == 'push' && needs.ci-ok.result == 'success' && fromJSON(needs.changes.outputs.run)['deploy-frontend']"
     # 呼ばれた側は手動の起動のときに像を置くので、書く権限を宣言している。呼ばれた側が宣言する権限は、ここで渡した
     # 権限を超えると実行が断られる。
