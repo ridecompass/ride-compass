@@ -57,7 +57,7 @@ describe("押した道の内訳（fetchAxisInspector）", () => {
       const result = {
         highway: "residential",
         tags: {},
-        lens: { painted: null, along: null, against: null, surface: null },
+        lens: { painted: "along", along: null, against: null, surface: null },
       };
       const sent = onBackend("POST", "/api/region/road-inspector", () => Response.json(result));
 

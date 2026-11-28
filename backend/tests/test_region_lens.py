@@ -342,14 +342,18 @@ async def test_the_inspector_without_the_wind_gives_the_seconds_that_do_not_depe
     assert windless.along.facts == {axis_id: fact for axis_id, fact in windy.along.facts.items() if axis_id != "headwind"}
 
 
-@pytest.mark.parametrize(("lens_id", "painted"), [(None, None), ("stopping", "along")], ids=["総合", "停止"])
+@pytest.mark.parametrize(("elevation", "bearing_deg", "lens_id", "painted"), [
+    ((70.0, 10.0), None, None, "against"), ((70.0, 10.0), 0.0, None, "along"), ((70.0, 10.0), 90.0, None, "against"),
+    ((70.0, 10.0), 0.0, "stopping", "along"), ((10.0, 10.0), 180.0, None, "against")],
+    ids=["ルートの前", "北へ走る", "東へ走る", "停止", "平らな道を南へ走る"])
 async def test_the_inspector_tells_the_direction_the_map_paints_with_the_painted_lens(
-        lens_id, painted, cost_axes, road_network_root):
-    """道の窓の向きは、地図が塗っているレンズの木で選ぶ。走行方位で選ぶレンズ（総合）は東へ走る地図で南北の道を向きで決めず、
-    選ばないレンズ（停止）は道の向きで塗る（「地図の向きに直角に近い道」は、塗っている色と合わない注記になる）。"""
-    serve_road_network(road_network_root, road_network(WAYS, COORDINATES))
+        elevation, bearing_deg, lens_id, painted, cost_axes, road_network_root):
+    """道の窓の向きは、地図が塗っているレンズの木で選ぶ。南から北へ向いて下る道を、走行方位で選ぶレンズ（総合）は、走行方位が
+    無ければ（ルートの前）と直角（東へ走る）ならきつい向き（登る逆向き）で、北へ走るなら道の向きで塗る。選ばないレンズ（停止）は
+    道の向きで塗る。両向きが同じ値の平らな道も、南へ走れば逆向き（値で向きを見分けない）。"""
+    serve_road_network(road_network_root, road_network(WAYS, COORDINATES, elevation_of={CLIMBING_WAY: elevation}))
 
-    inspection = await _lens_service(Weather()).inspect(str(CLIMBING_WAY), Z, X, Y, 90.0, lens_id, None, True,
+    inspection = await _lens_service(Weather()).inspect(str(CLIMBING_WAY), Z, X, Y, bearing_deg, lens_id, None, True,
                                                         ASSUMED_SPEED_KMH, CostPreference(), current_model_settings())
 
     assert inspection is not None and inspection.painted == painted

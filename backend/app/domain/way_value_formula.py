@@ -127,13 +127,11 @@ for _model in (Unary, Binary, Case, Interpolate, Round):
 
 
 class WayValueFormula(StrictModel):
-    """道ごとに地図が塗る値の木。`undetermined`が真の道は、その条件では値が決まらない（地図は「向きで決まらない」）。
-    `undetermined`が偽で`value`がNaNの道は、値が無い（地図は「データなし」）。"""
+    """道ごとに地図が塗る値の木。`value`がNaNの道は、値が無い（地図は「データなし」）。"""
 
     model_config = ConfigDict(frozen=True)
 
     value: FormulaNode
-    undetermined: FormulaNode
 
 
 TRUE = Constant(value=1.0)

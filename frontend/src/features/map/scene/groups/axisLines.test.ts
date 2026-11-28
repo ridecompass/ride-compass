@@ -20,18 +20,16 @@ const THREE_BANDS = [
   { key: "high", label: "高", lowerBound: 20, color: "#dc2626" },
 ];
 
-/** 試しの式の木: 値は材料 `base` に走る向き（度）を足したもの、材料 `flag` が正の道は向きで決まらない。 */
+/** 試しの式の木: 値は材料 `base` に走る向き（度）を足したもの。 */
 const FORMULA: AxisLine["formula"] = {
   value: {
     op: "add",
     left: { op: "feature", name: "base" },
     right: { op: "condition", name: "bearing_deg" },
   },
-  undetermined: { op: "gt", left: { op: "feature", name: "flag" }, right: { op: "const", value: 0 } },
 };
 
 const MATERIALS: AxisLine["materials"] = new Map<string, Record<string, number>>([
-  ["perpendicular", { base: 15, flag: 1 }],
   ["along", { base: 15 }],
   ["onBoundary", { base: 20 }],
   // 届いたタイルにあるが、値の無い道。
@@ -107,11 +105,5 @@ describe("値の無い道", () => {
     // 薄くすると「まだ来ていない」と「対象外」が見分けられない。
     expect(lookOf("notYetFetched")).toEqual({ color: palette.semantic.loading, dashOpacity: 0 });
     expect(groupFor().layers[0].paint["line-opacity"]).toBe(mapDisplay.road.knownOpacity);
-  });
-});
-
-describe("走行方位で値が決まらない道（式の木の `undetermined` が真）", () => {
-  it("「データなし」ではなく「向きで決まらない」の色で、実線で塗る", () => {
-    expect(lookOf("perpendicular")).toEqual({ color: palette.semantic.undetermined, dashOpacity: 0 });
   });
 });

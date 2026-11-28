@@ -336,7 +336,7 @@ backendも日本時間で扱う。`domain/time_zone.py`）。暦と時刻の取�
 時刻依存）が、「向き」は1つの値（走る向き）を風・勾配の両方が使う:
 
 ```
-走る向き（地図の上の向きを[0, 360)の段に丸めた値。走行中は実際に走る向き。`features/map/view/useMapView.ts: wayConditions`）。出発時刻は`features/conditions/useDepartureTime.ts: at`、想定速度は`useRideConditions.ts: speedKmh`（いずれも地図右上の条件アイコン列`features/conditions/RideConditionBar/RideConditionBar.tsx`で操作し、生成リクエストの`start_time`/`assumed_speed_kmh`と地図の式の条件`speed_kmh`へ同じ値が乗る）
+走る向き（走行中の実際に走る向きを[0, 360)の段に丸めた値。走っていなければ無い。`features/map/view/useMapView.ts: wayConditions`）。出発時刻は`features/conditions/useDepartureTime.ts: at`、想定速度は`useRideConditions.ts: speedKmh`（いずれも地図右上の条件アイコン列`features/conditions/RideConditionBar/RideConditionBar.tsx`で操作し、生成リクエストの`start_time`/`assumed_speed_kmh`と地図の式の条件`speed_kmh`へ同じ値が乗る）
   │
   ├─→ 風:   [時刻]出発時刻（useDepartureTime由来）
   │           └─→ レンズの線: 塗っているレンズの式が風の材料を読む間だけ（下記の共通経路）
@@ -357,10 +357,10 @@ backendも日本時間で扱う。`domain/time_zone.py`）。暦と時刻の取�
 周囲の道路も薄く塗り続ける（`features/map/view/useMapView.ts`。点の層も同じ切り替えに従う）。ルート線側の色分けは`routeStyleModes.ts`由来のモード
 選択が担う。
 
-**地図の向き**: 地図の上の向きが、向きで値の変わる走りにくさ（風・勾配）で周りの道を塗るときと、道の走りにくさを見るときの走る向きになる。
-走る向きは地図の上の向きを[0, 360)の段に丸めた値で、向きを材料の要求へ載せないレンズは道ごとの材料を取り直さず、地図が式で
-値を求め直す。載せるレンズは段が変わったときだけ取り直す（[地図: レンズ・ルート色分け](map-axis-coloring.md)「レンズの線」）。走行中は地図の向きではなく、実際に走る向き（下の「走行モード」の
-`useRideWayConditions.ts`）で塗る。
+**地図の向き**: 向きで値の変わる走りにくさ（風・勾配）で周りの道を塗るときと、道の走りにくさを見るときは、地図の向きに依らない。
+ルートの前はどちら向きに走るか決まらないので、どの道も両向きのうちきつい向きで塗る。走行中だけ、実際に走る向き（下の「走行モード」の
+`useRideWayConditions.ts`）を[0, 360)の段に丸めて走る向きにし、向きを材料の要求へ載せないので、地図が式で値を求め直す
+（[地図: レンズ・ルート色分け](map-axis-coloring.md)「レンズの線」）。
 地図右上の方位磁針（`MapNavigationControl`）は針が地図の北を指し、押すと地図を回すダイヤルを開く。ダイヤルの輪は地図と一緒に回り、
 なぞると地図が回り、真ん中の針を押すと北が上に戻る。ダイヤルの中には方位の呼び名と度だけを出し、説明の文は(i)の奥に置く。
 拡大・縮小の長押しの説明は、1本指の拡大・縮小（地図を1回たたいてから触れたまま上下に滑らせる）を添える。

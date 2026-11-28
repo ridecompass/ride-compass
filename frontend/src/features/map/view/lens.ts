@@ -3,16 +3,11 @@
  * 全道路の塗りもルート線の色分けも同じ`lens`から導き、レンズの種類ごとの分岐は持たない。
  */
 import type { MapLens } from "@/lib/mapDisplay/mapLens";
-import {
-  NO_DATA_LEGEND_BAND,
-  UNDETERMINED_LEGEND_BAND,
-  type MapColorLegendBand,
-} from "@/lib/mapDisplay/mapColorLegend";
+import { NO_DATA_LEGEND_BAND, type MapColorLegendBand } from "@/lib/mapDisplay/mapColorLegend";
 import { valueBands } from "@/lib/mapDisplay/valueScale";
 import type { LegendEntry } from "@/lib/mapDisplay/legendFilter";
 import type { LensId } from "@/lib/mapDisplay/routeStyleModes";
 import type { MapCatalog } from "@/features/map/mapCatalog";
-import { isConstantFalse } from "@/features/map/scene/wayValueFormula";
 
 /** レンズの凡例。地図がいま塗っているものの凡例だけを出す——塗っていない間に出すと、
  * 地図のどこにも無い色見本の表になる。ルート確定後はルート線のモードの凡例。 */
@@ -28,10 +23,8 @@ export function lensLegend(
 
 /** 地図上の色分け凡例。地図の線と同じ配色・しきい値から段階ラベル付きの凡例を組み立てる。
  * 末尾の「データなし」は値を受け取れなかった道路の受け皿で、ルート確定後のルート線の凡例（`routeStyleModes.ts`）と
- * 段階の並び・キーを揃える。「向きで決まらない」は、道の値の式が向きで決まらない道を持ちうるレンズだけが持つ
- * （ルートの線は実際に走る向きで決まるので持たない）。 */
+ * 段階の並び・キーを揃える。 */
 function mapLensLegend(lens: MapLens): MapColorLegendBand[] {
   const bands = valueBands(lens.display).map(({ key, label, color }) => ({ key, label, color }));
-  const undetermined = isConstantFalse(lens.formula.undetermined) ? [] : [UNDETERMINED_LEGEND_BAND];
-  return [...bands, ...undetermined, NO_DATA_LEGEND_BAND];
+  return [...bands, NO_DATA_LEGEND_BAND];
 }

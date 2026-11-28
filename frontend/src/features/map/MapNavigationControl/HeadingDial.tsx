@@ -8,7 +8,7 @@ import { CompassNeedleIcon } from "@/components/ui/icons/icons";
 import { normalizeDeg } from "@/lib/cardinalLabel";
 import { BURDEN_PAINT_NAME } from "@/lib/screenNames";
 
-import { HEADING_LABELS, WAY_BEARING_STEP_DEG } from "../mapHeading";
+import { HEADING_LABELS } from "../mapHeading";
 
 const DIAL_SIZE_PX = 176;
 const KEY_STEP_DEG = 5;
@@ -90,7 +90,7 @@ export default function HeadingDial({ bearing, heading, onBearingChange, onReset
       <div className="flex items-center justify-between">
         <InfoPopover triggerAriaLabel="地図の向きの使い方">
           <GuideText
-            text={`輪をなぞると地図が回ります。真ん中の針を押すと、北が上に戻ります。\n・「${BURDEN_PAINT_NAME}」で周りの道を塗るときと道の小窓では、地図の上の向きを${WAY_BEARING_STEP_DEG}°刻みに丸めて、走る向きとみなします。\n・ルートの走りにくさは、実際に走る向きで決まります。`}
+            text={`輪をなぞると地図が回ります。真ん中の針を押すと、北が上に戻ります。\n・「${BURDEN_PAINT_NAME}」で周りの道を塗るときと道の小窓は、地図の向きに依りません。坂や風のように向きで変わる走りにくさは、両向きのきつい方で示します[走行中は進む向き]。\n・ルートの走りにくさは、実際に走る向きで決まります。`}
           />
         </InfoPopover>
         <span className="tabular-nums">

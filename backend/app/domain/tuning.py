@@ -508,9 +508,9 @@ TUNING_PARAMETERS: tuple[TuningParameter, ...] = (
     # 地図に効くのは、画面が一覧を取り直した（読み込み直した）とき。
     TuningParameter(
         "gradient.perpendicular_band_deg",
-        "勾配を示さない直角からの幅", "度", TuningEffect.IMMEDIATE,
-        "走る向きに対して直角からこの角度以内の道は、どちら向きに辿るか決まらないため、その向きでの勾配を示さない"
-        "（地図では勾配の段で塗らない）。広げるほど勾配を示さない道が増える。",
+        "きつい向きで塗る直角からの幅", "度", TuningEffect.IMMEDIATE,
+        "走る向きに対して直角からこの角度以内の道は、どちら向きに辿るか決まらないため、地図では両向きのうちきつい向きの値で"
+        "塗る。広げるほどきつい向きで塗る道が増える。",
     ),
     TuningParameter(
         LENS_SCALE_STEPS_ID, "色の物差しを刻む数", "段", TuningEffect.IMMEDIATE,

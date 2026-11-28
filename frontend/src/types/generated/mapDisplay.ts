@@ -29,10 +29,6 @@ export const mapDisplay = {
     "noData": {
       "label": "データなし",
       "description": "元にする地図のデータに値が無く、どの行にも分けられない道。道が無いのではなく、値が分からない。"
-    },
-    "undetermined": {
-      "label": "向きで決まらない",
-      "description": "地図の上の向き[走行中は進む向き]とほぼ直角に交わるため、値を決められない道[勾配なら登りか下りか]。\n・地図を回して向きが変わると色が付く。"
     }
   },
   "layerCategories": [

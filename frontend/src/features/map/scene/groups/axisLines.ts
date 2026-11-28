@@ -19,8 +19,8 @@ import type {
 import { declareGroup, type SceneLayerEntry, type SceneSourceEntry } from "@/features/map/scene/mapSceneGroups";
 import { featureStatesByName } from "@/features/map/scene/sceneBuilders";
 import { LENS_LAYER_MIN_ZOOM } from "@/features/map/layers/mapLayers";
-import { missingExpression, wayValueExpressions, type WayValueFormula } from "@/features/map/scene/wayValueFormula";
-import { NO_DATA_LEGEND_BAND, UNDETERMINED_LEGEND_BAND } from "@/lib/mapDisplay/mapColorLegend";
+import { missingExpression, wayValueExpression, type WayValueFormula } from "@/features/map/scene/wayValueFormula";
+import { NO_DATA_LEGEND_BAND } from "@/lib/mapDisplay/mapColorLegend";
 import { bandStep, type ValueBand } from "@/lib/mapDisplay/valueScale";
 
 import { ROAD_LINE_SOURCE_ID } from "./roadLines";
@@ -75,41 +75,27 @@ function fetchedStates(materials: WayMaterials): ReadonlyMap<string, boolean> {
 /** 走る条件は地図全体で1つなので、木の条件の名前をそのまま global-state の名前にする。 */
 const conditionStateKey = (name: string): string => name;
 
-/** 軸の木を置き換えた式。`value` が NaN の道は値が無い。 */
-function expressionsOf(axis: AxisLine) {
-  return wayValueExpressions(axis.formula, {
-    featureStateKey: (name) => materialStateKey(axis.axisId, name),
-    globalStateKey: conditionStateKey,
-  });
-}
-
 /** 道の材料がもう届いたか。 */
 function fetchedExpression(axis: AxisLine): unknown {
   return ["boolean", ["feature-state", fetchedStateKey(axis.axisId)], false];
 }
 
-/** 道の値を `let` で束ね、向きで決まらない道・値の無い道・それ以外の順に場合分けする。値の無い道を先に分けるので、
- * それ以外の枝（段の選び方）は値のある道だけを受ける。 */
-function byWayValue(
-  axis: AxisLine,
-  cases: (value: unknown) => { undetermined: unknown; missing: unknown; otherwise: unknown },
-): unknown {
-  const { value, undetermined } = expressionsOf(axis);
+/** 道の値を `let` で束ね、値の無い道とそれ以外に場合分けする。値の無い道を先に分けるので、それ以外の枝（段の選び方）は
+ * 値のある道だけを受ける。 */
+function byWayValue(axis: AxisLine, cases: (value: unknown) => { missing: unknown; otherwise: unknown }): unknown {
   const ref = ["var", "wayValue"];
   const branches = cases(ref);
-  return [
-    "let",
-    "wayValue",
-    value,
-    ["case", undetermined, branches.undetermined, missingExpression(ref), branches.missing, branches.otherwise],
-  ];
+  const value = wayValueExpression(axis.formula, {
+    featureStateKey: (name) => materialStateKey(axis.axisId, name),
+    globalStateKey: conditionStateKey,
+  });
+  return ["let", "wayValue", value, ["case", missingExpression(ref), branches.missing, branches.otherwise]];
 }
 
 /** 段ごとの色。値が無い道と、まだ来ていない道は別の色にする。 */
 function colorExpression(axis: AxisLine): unknown {
   // 値の無い道は破線の線が描くので、実線の側は透明にする（重ねると破線が実線に埋もれる）。
   return byWayValue(axis, (value) => ({
-    undetermined: UNDETERMINED_LEGEND_BAND.color,
     missing: ["case", fetchedExpression(axis), palette.semantic.hidden, palette.semantic.loading],
     otherwise: bandStep(axis.bands, value, (band) => band.color),
   }));
@@ -118,7 +104,6 @@ function colorExpression(axis: AxisLine): unknown {
 /** 値の無い道のうち、材料が届いた道だけを見せる濃さ（まだ来ていない道は取得中の色の実線が描く）。 */
 function noDataOpacityExpression(axis: AxisLine): unknown {
   return byWayValue(axis, () => ({
-    undetermined: 0,
     missing: ["case", fetchedExpression(axis), mapDisplay.road.unknownOpacity, 0],
     otherwise: 0,
   }));
