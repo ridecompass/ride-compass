@@ -1,34 +1,46 @@
 "use client";
 
 import { useMutation } from "@tanstack/react-query";
+import Image from "next/image";
 import Link from "next/link";
 import type { ReactNode } from "react";
 
 import GoogleSignInButton from "@/components/GoogleSignInButton/GoogleSignInButton";
 import { Button } from "@/components/ui/Button/Button";
 import { cardVariants } from "@/components/ui/Card/Card";
+import { GuideText } from "@/components/ui/GuideText/GuideText";
 import { textVariants } from "@/components/ui/Text/Text";
-import { ACCOUNT_KEY, useAccountStatus, useGoogleSignIn } from "@/hooks/useAccountStatus";
+import { ACCOUNT_KEY, useAccountStatus } from "@/hooks/useAccountStatus";
 import { ApiHttpError } from "@/lib/apiClient";
 import { errorMessage } from "@/lib/apiError";
 import { cn } from "@/lib/cn";
 import { getQueryClient } from "@/lib/queryClient";
 import { endedRideIds, removeRideTrack } from "@/lib/rideTrackStore";
 import { APP_NAME } from "@/lib/screenNames";
-import { consentToTerms, type AccountStatus } from "@/services/accountApi";
+import { consentToTerms, signInWithGoogle, type AccountStatus } from "@/services/accountApi";
 
 /**
- * Google でログインして今の規約の版に同意するまで、`children`（地図の画面）の代わりに最初の画面を出す。断って使う選択肢は置かない。
+ * Google でログインして今の規約の版に同意するまで、地図の画面の上に最初の画面を重ね、後ろの地図は触れなくする。最初の画面の
+ * 「Google でログイン」は、規約への同意も兼ねる（押す前に、同意になることと集めるもの・使い道を同じ画面に書く）。ログインせずに使う
+ * ボタンや、同意せずに使うボタンは置かない。同意のカードは、ログインしたあとに規約の版が上がった人にだけ出す。
+ * `children` には済んだか（`open`）を渡す。
  */
-export default function AccountGate({ children }: { children: ReactNode }) {
+export default function AccountGate({ children }: { children: (open: boolean) => ReactNode }) {
   const account = useAccountStatus();
   const status = account.data;
-  if (status?.signed_in && status.consented) return children;
+  const open = Boolean(status?.signed_in && status.consented);
 
   return (
-    <main className="flex min-h-dvh items-center justify-center overflow-y-auto p-4">
-      {status?.signed_in ? <ConsentCard status={status} /> : <Welcome status={status} account={account} />}
-    </main>
+    <>
+      <div inert={!open} aria-hidden={!open || undefined} className="contents">
+        {children(open)}
+      </div>
+      {!open && (
+        <div className="fixed inset-0 z-[var(--z-floating-panel)] flex items-center justify-center overflow-y-auto bg-black/40 p-4">
+          {status?.signed_in ? <ConsentCard status={status} /> : <Welcome status={status} account={account} />}
+        </div>
+      )}
+    </>
   );
 }
 
@@ -42,26 +54,56 @@ function Welcome({
   status: AccountStatus | undefined;
   account: ReturnType<typeof useAccountStatus>;
 }) {
-  const signIn = useGoogleSignIn();
+  const client = getQueryClient();
+  // ログインは同意を兼ねる。ログインした応答の版に、その場で同意を残す（済んでいれば残さない）。
+  const signIn = useMutation(
+    {
+      mutationFn: async (credential: string) => {
+        const signedIn = await signInWithGoogle(credential);
+        if (signedIn.consented) return signedIn;
+        await consentToTerms(signedIn.terms_version);
+        return { ...signedIn, consented: true };
+      },
+      onSuccess: (next: AccountStatus) => {
+        clearRidesBeforeConsent();
+        client.setQueryData(ACCOUNT_KEY, next);
+      },
+      // ログインだけ済んで同意を残せなかったら、読み直して同意のカードで聞き直す。
+      onError: () => void client.invalidateQueries({ queryKey: ACCOUNT_KEY }),
+    },
+    client,
+  );
   return (
     <section aria-labelledby="welcome-title" className={CARD_CLASS}>
-      <h1 id="welcome-title" className={cn(textVariants({ variant: "title" }), "m-0")}>
+      <h1 id="welcome-title" className={cn(textVariants({ variant: "title" }), "m-0 flex items-center gap-2")}>
+        <Image src="/icon.svg" alt="" width={36} height={36} unoptimized />
         {APP_NAME}
       </h1>
       <p className={cn(textVariants({ variant: "body" }), "m-0")}>
-        ロードバイクで走りやすい周回ルートを作り、走行モードで案内するアプリです。
+        <GuideText text="ロードバイクで走りやすいルートを作るアプリです。" />
       </p>
       <ul className={cn(textVariants({ variant: "body" }), "m-0 flex list-disc flex-col gap-1 pl-5")}>
-        <li>出発地と距離を決めると、坂・路面・車の多さ等を見て走りやすい道を選んだルートを作ります。</li>
-        <li>走行モードで、次に曲がる所と残りの道のり・天気を案内します。</li>
-        <li>
-          アプリを使うと、走行モードで走った走りを送り、あなたの走行ログに残します。走行ログでは自分の走りを見返し、消せます。
-        </li>
+        {[
+          "出発地へ戻る周回も、目的地へ向かうルートも作れます。",
+          "坂・路面・車の多さを見て、走りやすい道を選びます。",
+          "走行モードでは、次に曲がる所・残りの道のり・天気を案内します。",
+          "走行モードで走った記録は送られ、あなたの走行ログに残ります。走行ログでは、自分の走りを見返したり消したりできます。",
+        ].map((point) => (
+          <li key={point}>
+            <GuideText text={point} />
+          </li>
+        ))}
       </ul>
-      <p className={cn(textVariants({ variant: "body" }), "m-0")}>
-        使うには、Google でログインして
+      <p className={cn(textVariants({ variant: "body" }), "m-0 break-keep wrap-anywhere")}>
+        {/* 折り返すのは句の間だけにする（ほかの文は GuideText が同じことをする）。 */}
+        Google でログインすると、
+        <wbr />
         <LegalLinks />
-        に同意してください。
+        に
+        <wbr />
+        同意したことに
+        <wbr />
+        なります。
       </p>
       {account.error ? (
         <>
@@ -104,8 +146,7 @@ function ConsentCard({ status }: { status: AccountStatus }) {
     {
       mutationFn: () => consentToTerms(status.terms_version),
       onSuccess: () => {
-        // 同意する前に記録して端末に置いたままの走りは、同意の外なので送らずに消す。
-        for (const id of endedRideIds()) removeRideTrack(id);
+        clearRidesBeforeConsent();
         client.setQueryData(ACCOUNT_KEY, { ...status, consented: true });
       },
       // 見せている間に規約の版が上がった（409）。今の版を読み直して見せ直す。
@@ -152,6 +193,11 @@ function ConsentCard({ status }: { status: AccountStatus }) {
       )}
     </section>
   );
+}
+
+// 同意する前に記録して端末に置いたままの走りは、同意の外なので送らずに消す。
+function clearRidesBeforeConsent() {
+  for (const id of endedRideIds()) removeRideTrack(id);
 }
 
 function LegalLinks() {

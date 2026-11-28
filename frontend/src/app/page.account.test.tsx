@@ -1,7 +1,8 @@
 /**
- * `app/page.tsx`——トップページを開いたとき、Google でログインして今の規約の版に同意するまで、地図の画面の代わりに最初の画面（アプリの説明・
- * Google でログイン・規約へのリンク）を出し、断って使う選択肢を置かないこと。ログインのあと同意していなければ同意を聞き、同意すると地図の画面へ
- * 進み、同意する前に端末に置いたままの走りを送らずに消すこと。
+ * `app/page.tsx`——トップページを開いたとき、Google でログインして今の規約の版に同意するまで、地図の画面の上に最初の画面（アプリの説明・
+ * Google でログイン・規約へのリンク）を重ね、後ろの地図を触れなくし、現在地を取りに行かないこと。ログインせずに使うボタンや同意せずに使う
+ * ボタンを置かないこと。Google でのログインが同意を兼ね、ログインすると同意を残して地図の画面を使えるようにし、同意する前に端末に置いた
+ * ままの走りを送らずに消すこと。ログインしたあとに規約の版が上がった人には、同意のカードで聞き直すこと。
  *
  * ここで見ないもの: 地図の画面の中身（ほかの`app/page.*.test.tsx`が、ログインして同意した人として開いて見る）。
  *
@@ -42,7 +43,7 @@ function renderHome() {
 }
 
 describe("最初の画面", () => {
-  it("ログインしていなければ、地図の前にアプリの説明・Google でログイン・規約へのリンクを出し、ログインと同意を済ませると地図の画面へ進む。同意する前に端末に置いた走りは送らずに消す", async () => {
+  it("ログインしていなければ、地図の上にアプリの説明・Google でログイン・規約へのリンクを重ね、ログインすると同意も残して地図の画面を使える。済むまで現在地を取りに行かず、同意する前に端末に置いた走りは送らずに消す", async () => {
     let status = accountStatus({ signed_in: false, consented: false });
     onBackend("GET", "/api/me", () => Response.json(status));
     const login = onBackend("POST", "/api/me/google-login", () => {
@@ -54,29 +55,27 @@ describe("最初の画面", () => {
     startRideTrack(Date.now());
     stopRideTrack(Date.now());
     const signIn = installGoogleSignIn();
+    const locate = vi.spyOn(navigator.geolocation, "getCurrentPosition");
     const user = renderHome();
 
     expect(screen.getByRole("heading", { level: 1, name: "RideCompass" })).toBeInTheDocument();
-    expect(
-      screen.getByText(/アプリを使うと、走行モードで走った走りを送り、あなたの走行ログに残します/),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/走行モードで走った記録は送られ、あなたの走行ログに残ります/)).toBeInTheDocument();
+    expect(screen.getByText(/Google でログインすると、/)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "利用規約" })).toHaveAttribute("href", "/terms");
     expect(screen.getByRole("link", { name: "プライバシーポリシー" })).toHaveAttribute("href", "/privacy");
-    // 押せるのは Google のログインのボタンだけで、断って使う選択肢は無い。
+    // 押せるのは Google のログインのボタンだけで、ログインせずに使うボタンは無い（後ろの地図の操作も触れない）。
     await waitFor(() =>
       expect(screen.getAllByRole("button").map((button) => button.textContent)).toEqual(["Google のボタン"]),
     );
     expect(rideModeButton()).not.toBeInTheDocument();
+    expect(locate).not.toHaveBeenCalled();
     await user.click(screen.getByRole("button", { name: "Google のボタン" }));
     expect(signIn.clientId).toBe(accountStatus().google_client_id);
 
-    expect(await screen.findByRole("heading", { name: "走りの記録への同意" })).toBeInTheDocument();
-    expect(login.map(({ body }) => body)).toEqual([{ credential: "id-token" }]);
-    expect(screen.getAllByRole("button").map((button) => button.textContent)).toEqual(["同意してはじめる"]);
-    expect(rideModeButton()).not.toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "同意してはじめる" }));
-
     expect(await screen.findByRole("button", { name: "走行モード" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "走りの記録への同意" })).not.toBeInTheDocument();
+    expect(login.map(({ body }) => body)).toEqual([{ credential: "id-token" }]);
+    expect(locate).toHaveBeenCalledTimes(1);
     expect(consent.map(({ body }) => body)).toEqual([{ terms_version: 3 }]);
     expect(pendingRideUploads()).toHaveLength(0);
     expect(sent).toHaveLength(0);

@@ -37,7 +37,7 @@ afterEach(() => {
 
 describe("マウント時の自動取得", () => {
   it("決着するまでは初期地点で、位置は分からないが印の項目も出さない", () => {
-    const { result } = renderHook(() => useLocation(null));
+    const { result } = renderHook(() => useLocation(null, true));
 
     expect(result.current.locationSource).toBe("default");
     expect(result.current.originLocated).toBe(false);
@@ -46,7 +46,7 @@ describe("マウント時の自動取得", () => {
   });
 
   it("取れたらそれが現在地で、出発地にもなり、位置が分かっている", () => {
-    const { result } = renderHook(() => useLocation(null));
+    const { result } = renderHook(() => useLocation(null, true));
 
     requests[0].succeed(HERE);
 
@@ -59,7 +59,7 @@ describe("マウント時の自動取得", () => {
   });
 
   it("失敗したら初期地点のまま、文は出さずに印の項目を出し、その再試行は取り直しになる", () => {
-    const { result } = renderHook(() => useLocation(null));
+    const { result } = renderHook(() => useLocation(null, true));
 
     requests[0].fail();
 
@@ -72,7 +72,7 @@ describe("マウント時の自動取得", () => {
   it("位置情報の無い端末では、印の項目を出す", async () => {
     removeGeolocation();
 
-    const { result } = renderHook(() => useLocation(null));
+    const { result } = renderHook(() => useLocation(null, true));
 
     await waitFor(() => expect(result.current.locationFailure).not.toBeNull());
   });
@@ -80,7 +80,7 @@ describe("マウント時の自動取得", () => {
 
 describe("「現在地に移動」の取り直し", () => {
   it("現在地だけを取り直して取れた位置を知らせ、分かっている出発地は動かさない", () => {
-    const { result } = renderHook(() => useLocation(null));
+    const { result } = renderHook(() => useLocation(null, true));
     requests[0].succeed(HERE);
     const onLocated = vi.fn();
 
@@ -96,7 +96,7 @@ describe("「現在地に移動」の取り直し", () => {
   });
 
   it("失敗したら取得中を下ろして文を出し、次に押すと文を消してから取り直す", () => {
-    const { result } = renderHook(() => useLocation(null));
+    const { result } = renderHook(() => useLocation(null, true));
     requests[0].succeed(HERE);
 
     act(() => result.current.locateMe());
@@ -112,7 +112,7 @@ describe("「現在地に移動」の取り直し", () => {
 
   it("位置情報の無い端末では、取得中にせず文を出す", () => {
     removeGeolocation();
-    const { result } = renderHook(() => useLocation(null));
+    const { result } = renderHook(() => useLocation(null, true));
 
     act(() => result.current.locateMe());
 
@@ -121,7 +121,7 @@ describe("「現在地に移動」の取り直し", () => {
   });
 
   it("自動取得より後に出した取り直しの結果を、遅れて返った自動取得が上書きしない", () => {
-    const { result } = renderHook(() => useLocation(null));
+    const { result } = renderHook(() => useLocation(null, true));
     act(() => result.current.locateMe());
 
     requests[1].succeed(HERE);
@@ -134,7 +134,7 @@ describe("「現在地に移動」の取り直し", () => {
 
 describe("出発地を現在地に戻す", () => {
   it("現在地を取り直し、手で決めた出発地もその位置へ戻す", () => {
-    const { result } = renderHook(() => useLocation(null));
+    const { result } = renderHook(() => useLocation(null, true));
     requests[0].succeed(HERE);
     act(() => result.current.setManualLocation(PICKED));
 
@@ -147,7 +147,7 @@ describe("出発地を現在地に戻す", () => {
   });
 
   it("走行モードの間は取り直さず、走行モードが受けた位置を現在地にして出発地もそこへ置く", () => {
-    const { result, rerender } = renderHook(({ ridingAt }) => useLocation(ridingAt), {
+    const { result, rerender } = renderHook(({ ridingAt }) => useLocation(ridingAt, true), {
       initialProps: { ridingAt: null as Coordinates | null },
     });
     requests[0].succeed(HERE);
@@ -162,7 +162,7 @@ describe("出発地を現在地に戻す", () => {
     expect(result.current.originAtHere).toBe(true);
   });
   it("走行モードを抜けたら、走行モードが最後に受けた位置を現在地のまま残す", () => {
-    const { result, rerender } = renderHook(({ ridingAt }) => useLocation(ridingAt), {
+    const { result, rerender } = renderHook(({ ridingAt }) => useLocation(ridingAt, true), {
       initialProps: { ridingAt: null as Coordinates | null },
     });
     requests[0].succeed(HERE);
@@ -175,7 +175,7 @@ describe("出発地を現在地に戻す", () => {
 
 describe("手で出発地を決める", () => {
   it("その地点になり、位置が分かっている。現在地は動かさない", () => {
-    const { result } = renderHook(() => useLocation(null));
+    const { result } = renderHook(() => useLocation(null, true));
     requests[0].succeed(HERE);
 
     act(() => result.current.setManualLocation(PICKED));
@@ -187,7 +187,7 @@ describe("手で出発地を決める", () => {
   });
 
   it("まだ返っていない取得は、後から返っても決めた出発地を上書きしない", () => {
-    const { result } = renderHook(() => useLocation(null));
+    const { result } = renderHook(() => useLocation(null, true));
     act(() => result.current.resetOriginToCurrent());
 
     act(() => result.current.setManualLocation(PICKED));
