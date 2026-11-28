@@ -35,7 +35,7 @@ interface RouteFormProps extends Omit<PointListProps, "conditions"> {
     >;
   /** 保存した候補を、その役割の地点として置き、置いた地点を選ぶ（経由地は足す）。 */
   onPlaceFound: (role: PinRole, candidate: PlaceCandidate, waypointIndex: number | null) => void;
-  /** 「負担」タブの中身。 */
+  /** 「走りにくさ」タブの中身。 */
   weightsPanel: React.ReactNode;
   /** 「道路」タブの中身。 */
   exclusionsPanel: React.ReactNode;

@@ -93,7 +93,7 @@ export async function fetchRoadInspection(
     bearing_deg: conditions.bearingDeg,
     ...(conditions.paintedLensId !== null ? { lens_id: conditions.paintedLensId } : {}),
     ...(conditions.lensFrame ? { frame: conditions.lensFrame } : {}),
-    // 出発時刻の風のコマが無ければ（予報の範囲の外・予報を読めない）、今の風で求めずに風に依らない負担だけを取る。
+    // 出発時刻の風のコマが無ければ（予報の範囲の外・予報を読めない）、今の風で求めずに風に依らない走りにくさだけを取る。
     wind: conditions.lensFrame !== null,
     speed_kmh: conditions.speedKmh,
   };

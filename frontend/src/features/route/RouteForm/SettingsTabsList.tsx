@@ -15,8 +15,8 @@ const settingsTabs = (axisNames: string): readonly { value: SettingsTab; label: 
   },
   {
     value: "weights",
-    label: "負担",
-    usage: `負担${axisNames}を、全体と種類ごとに、どれだけの割合で数えるかを決めます。`,
+    label: "走りにくさ",
+    usage: `走りにくさ${axisNames}を、全体と種類ごとに、どれだけの割合で数えるかを決めます。`,
   },
   {
     value: "exclusions",
@@ -35,7 +35,7 @@ export default function SettingsTabsList() {
   return (
     <TabsList className="gap-0 overflow-visible border-b-0" aria-label="ルート設定">
       {tabs.map(({ value, label, usage }) => (
-        <TabsTrigger key={value} className="px-1.5" value={value} usage={usage}>
+        <TabsTrigger key={value} className="px-0.5" value={value} usage={usage}>
           {label}
         </TabsTrigger>
       ))}

@@ -48,7 +48,11 @@ function AxisIcon({ iconId }: { iconId?: string }) {
 
 /** 選択肢の1行。チェックの代わりに1つだけ選ぶ印を出し、(i) は説明を行のすぐ下に開く。 */
 export function LensRow({ option }: { option: LensOption }) {
-  const hint = useRowDescription(option.label, option.description, "この負担の種類の説明を、行のすぐ下に開きます。");
+  const hint = useRowDescription(
+    option.label,
+    option.description,
+    "この走りにくさの種類の説明を、行のすぐ下に開きます。",
+  );
   return (
     <div className="flex w-full flex-col text-[length:var(--font-size-sm)]">
       <div className="flex items-center gap-1">

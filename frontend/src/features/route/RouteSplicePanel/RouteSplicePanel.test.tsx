@@ -2,7 +2,7 @@
  * `RouteSplicePanel/RouteSplicePanel.tsx`——区間の乗り換えの結果面。見出し行の操作、元と編集後の指標、軸別の差の棒、案内。
  *
  * 見るもの: 見出し（戻る・回数）と操作（1つ戻す・全部戻す・差分・作成）の出し方・押せる条件・上がる操作、区間を
- * 持たない候補の書き方、指標（距離・所要・負担）の元・編集後・差の書き方と、編集後と差に付ける良し悪しの印、負担が動いた軸の棒（出す境界・読み上げの並び・左右・長さ）と下に書く大きい軸、状態ごとの案内、
+ * 持たない候補の書き方、指標（距離・所要・走りにくさ）の元・編集後・差の書き方と、編集後と差に付ける良し悪しの印、走りにくさが動いた軸の棒（出す境界・読み上げの並び・左右・長さ）と下に書く大きい軸、状態ごとの案内、
  * 既にある候補と同じ道であることの知らせとその候補への切り替え、合成の失敗。
  *
  * ここで見ないもの: どの区間を乗り換えるか → `features/route/useSpliceSession.test.ts`、差分と作成の評価 →
@@ -34,7 +34,7 @@ const CATALOG = {
   failed: false,
 };
 
-/** 軸ごとの負担（秒）を持つ内訳。 */
+/** 軸ごとの走りにくさ（秒）を持つ内訳。 */
 const penalty = (axisSeconds: Record<string, number>, totalSeconds: number): RouteCandidate["penalty"] => ({
   axis_seconds: axisSeconds,
   preferred_seconds: 0,
@@ -43,7 +43,7 @@ const penalty = (axisSeconds: Record<string, number>, totalSeconds: number): Rou
   total_seconds: totalSeconds,
 });
 
-// 負担は道幅10分・交通5分・勾配3分の計18分。
+// 走りにくさは道幅10分・交通5分・勾配3分の計18分。
 const DISPLAYED = makeRouteCandidate({
   edge_ids: ["e1", "e2", "e3"],
   distance_km: 12.3,
@@ -151,11 +151,15 @@ describe("RouteSplicePanel 見出しと操作", () => {
 });
 
 describe("RouteSplicePanel 指標", () => {
-  it("差分を見る前は元の距離・所要・負担だけを出し、矢印と編集後と差は出さない", () => {
+  it("差分を見る前は元の距離・所要・走りにくさだけを出し、矢印と編集後と差は出さない", () => {
     renderPanel({ appliedCount: 1 });
 
-    expect(["距離", "所要", "負担"].map((label) => metric(label).base.textContent)).toEqual(["12.3km", "30分", "18分"]);
-    for (const label of ["距離", "所要", "負担"]) {
+    expect(["距離", "所要", "走りにくさ"].map((label) => metric(label).base.textContent)).toEqual([
+      "12.3km",
+      "30分",
+      "18分",
+    ]);
+    for (const label of ["距離", "所要", "走りにくさ"]) {
       const { arrow, after, delta } = metric(label);
       expect([arrow.textContent, after.textContent, delta.textContent]).toEqual(["", "", ""]);
     }
@@ -170,14 +174,14 @@ describe("RouteSplicePanel 指標", () => {
     });
     renderPanel({ appliedCount: 1, preview });
 
-    const rows = ["距離", "所要", "負担"].map((label) => {
+    const rows = ["距離", "所要", "走りにくさ"].map((label) => {
       const { arrow, after, delta } = metric(label);
       return [label, arrow.textContent, after.textContent, delta.textContent];
     });
     expect(rows).toEqual([
       ["距離", "→", "13.0km", "+0.7"],
       ["所要", "→", "25分", "−5"],
-      ["負担", "→", "18分", "±0"],
+      ["走りにくさ", "→", "18分", "±0"],
     ]);
     const { after, delta } = metric("距離");
     expect([verdict(after), verdict(delta)]).toEqual(["悪い", "悪い"]);
@@ -202,14 +206,14 @@ describe("RouteSplicePanel 指標", () => {
 });
 
 describe("RouteSplicePanel 軸別の差", () => {
-  /** 負担の差: 道幅−2分・交通+0.05分（0.1分未満）・勾配+3分・街灯+0.1分（ちょうど0.1分。元に無い軸は0から）。 */
+  /** 走りにくさの差: 道幅−2分・交通+0.05分（0.1分未満）・勾配+3分・街灯+0.1分（ちょうど0.1分。元に無い軸は0から）。 */
   const MOVED = makeRouteCandidate({
     edge_ids: ["e1", "e4", "e3"],
     distance_km: 12.3,
     penalty: penalty({ width: 480, traffic: 303, slope: 360, light: 6 }, 1149),
   });
 
-  it("負担が0.1分以上動いた軸を大きい順に棒の読み上げへ並べ、大きい2つを下に書く", () => {
+  it("走りにくさが0.1分以上動いた軸を大きい順に棒の読み上げへ並べ、大きい2つを下に書く", () => {
     renderPanel({ appliedCount: 1, preview: MOVED });
 
     expect(screen.getByRole("img", { name: "勾配 +3.0分、道幅 −2.0分、街灯 +0.1分" })).toBeInTheDocument();
@@ -246,7 +250,7 @@ describe("RouteSplicePanel 案内", () => {
     expect(screen.getByText(/乗り換えた結果が出ます/)).toHaveTextContent("差分を見るを押すと、乗り換えた結果が出ます");
   });
 
-  it("差分を見て負担が0.1分以上動いた軸が無ければ、棒も「差分を見る」を押す案内も出さず、どの軸もほぼ変わらないと出す", () => {
+  it("差分を見て走りにくさが0.1分以上動いた軸が無ければ、棒も「差分を見る」を押す案内も出さず、どの軸もほぼ変わらないと出す", () => {
     const unmoved = makeRouteCandidate({
       edge_ids: ["e1", "e4", "e3"],
       penalty: penalty({ width: 603, traffic: 300, slope: 180 }, 1083),
@@ -255,7 +259,7 @@ describe("RouteSplicePanel 案内", () => {
 
     expect(screen.queryByRole("img")).not.toBeInTheDocument();
     expect(screen.queryByText(/乗り換えた結果が出ます/)).not.toBeInTheDocument();
-    expect(screen.getByText("どの種類の負担も、元のルートとほぼ変わりません")).toBeInTheDocument();
+    expect(screen.getByText("どの種類の走りにくさも、元のルートとほぼ変わりません")).toBeInTheDocument();
   });
 
   it.each([
