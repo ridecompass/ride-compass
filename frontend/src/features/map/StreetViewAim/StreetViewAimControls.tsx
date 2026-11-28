@@ -44,7 +44,7 @@ export function StreetViewAimBar({ aim, onEnd }: { aim: StreetViewAim; onEnd: ()
         "pointer-events-auto flex w-[min(20rem,calc(100cqw-1.5rem-var(--map-ctrl-margin)-var(--map-ctrl-column-width)))] flex-col gap-2 rounded-lg p-3 text-[length:var(--font-size-sm)]",
       )}
     >
-      <p>青い点をつまんで地点を、輪の白い丸を回して向きを決めます。</p>
+      <p>青い点で場所、白い丸で向きを決めます。</p>
       <div className="flex justify-between gap-2">
         <Button variant="secondary" size="sm" usage="矢印をしまいます。" onClick={onEnd}>
           やめる
