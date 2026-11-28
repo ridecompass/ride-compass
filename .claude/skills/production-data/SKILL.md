@@ -10,7 +10,7 @@ description: "本番の元を取り直す・派生データを作り直す・本
   取得 → 取込 → 作り直しを順に打つ。仕組みは[横断基盤](../../../docs/modules/backend/cross-cutting-infrastructure.md)「元の取り直し」。
   元ごとに手で取得・取込を打つ手順は持たない。
 - 急ぐとき（元を足した・配布物を次の回より前に入れたい・前の回が落ちた）は、同じserviceを手で起こす。本番へ書くので、
-  開発機の対話のセッションがユーザーがチャットで言ったときだけ打つ（[dev-session/SKILL.md](../dev-session/SKILL.md)「本番へ書く」）:
+  開発機の対話のセッションが打つ（[dev-session/SKILL.md](../dev-session/SKILL.md)「本番へ書く」）:
 
   ```
   sudo systemctl start --no-block ridecompass-source-refresh.service
@@ -90,8 +90,8 @@ description: "本番の元を取り直す・派生データを作り直す・本
   開発DBだけ変えてタスクを完了扱いにしない——本番へ効かせるなら本番の管理APIへ入れる。環境間で内容を転送する仕組みは持たない。
   **リポジトリは定義の写しを持たない**ため、再ダンプの手順は無い。
 - 入れ方: 本番の`GET`が返す今の全体を取り、変える所だけを直した全体のJSONを作って、同じ口へ`PUT`する。担当は打たず、
-  開発機の対話のセッションがユーザーがチャットで言ったときだけ打つ（[dev-session/SKILL.md](../dev-session/SKILL.md)「本番へ書く」）。
-  今の全体と書く全体の差（項目ごとの「前 → 後」）をチャットで見せ、書くよう言われてから書く。宛先はリポジトリの
+  開発機の対話のセッションが打つ（[dev-session/SKILL.md](../dev-session/SKILL.md)「本番へ書く」）。
+  今の全体と書く全体の差（項目ごとの「前 → 後」）を issue に書いてから書く。宛先はリポジトリの
   `production-origins.json`から読み、認証情報は`backend/.env.oracle.local`の`ADMIN_BASIC_AUTH_USERNAME`・`ADMIN_BASIC_AUTH_PASSWORD`に置く。
   JSONはリポジトリの外（作業ツリーの外の手元の置き場）に置き、コミットしない——定義は較正の値を持ち、公開のリポジトリへ写さない
   （[data-sources.md](../../../docs/architecture/data-sources.md)「OSM から作った値と独自の層」）。記録はタスクの issue に書き、そこにも
