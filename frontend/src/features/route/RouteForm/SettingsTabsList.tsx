@@ -15,7 +15,7 @@ const settingsTabs = (axisNames: string): readonly { value: SettingsTab; label: 
   },
   {
     value: "weights",
-    label: "要因",
+    label: "難所",
     usage: `ロスを、総合と要因${axisNames}ごとに、どれだけの割合で数えるかを決めます。`,
   },
   {

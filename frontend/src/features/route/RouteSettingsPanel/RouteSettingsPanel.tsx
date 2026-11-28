@@ -55,7 +55,7 @@ interface RouteSettingsPanelProps {
   onCostPreferenceChange: (next: CostPreference) => void;
 }
 
-/** 「ルート設定」の「要因」タブ。一番上の「総合」でロスの全部を数える割合を選び、その下で費用の軸ごとに、割合の段か無効（数えない）を選ぶ。 */
+/** 「ルート設定」の「難所」タブ。一番上の「総合」でロスの全部を数える割合を選び、その下で費用の軸ごとに、割合の段か無効（数えない）を選ぶ。 */
 export default function RouteSettingsPanel({ costPreference, onCostPreferenceChange }: RouteSettingsPanelProps) {
   const catalog = useCostAxisCatalog();
   const catalogFailure = costAxisCatalogFetchFailure(catalog);

@@ -12,7 +12,7 @@
 | `features/route/RouteForm/RouteForm.tsx` | 「基本」タブの中身: 上から、周回か目的地かの2択（アイコンの下に文字を置く縦並びで、行の高さを変えずに幅を詰め、空いた幅をルーラーへ回す）と距離の目標（「距離を決める」の入り切り・ルーラー・値・(i)）の1行・地点の一覧（`RouteForm/PointList.tsx`）。「ルート設定」区分の各タブの中身を`Tabs.Content`として並べ（タブ列と選択状態は外、下記参照）、「保存」タブでは「地点」「設定」の切り替えの右に「いまの設定を保存」を置く |
 | `features/route/RouteSettingsPanel/LevelScale.tsx` | 段を1本の目盛りの上の点から選び、選んでいる段の名前を右に小さく出す行の選び手（道路タブの行と要因タブの行）。選んだ段は段の色の丸（色の無い段は目立たない色）、選んでいない段は目盛りの線（色の無い段は長い線）か、数えない段は「–」の印 |
 | `lib/costPreference.ts` | 利用者の費用の好み（つまみと倍率と無効の軸）そのものの決まり: 標準・軸を数えるか・軸の倍率の引き方・地図のレンズの要求へ載せる書き方（ルートと地図の両方が読む） |
-| `features/route/RouteForm/SettingsTabsList.tsx` | 「ルート設定」のタブ列（基本・要因・道路・保存）。道路のタブの名前は、地図の道路のまとまりの名前（`lib/screenNames.ts: ROAD_SETTINGS_TAB_NAME`）。候補数・「ルート生成」と1行に並べ（`features/route/RouteForm/SettingsHeaderRow.tsx: SettingsHeaderRow`）、選ぶ状態は囲む`Tabs.Root`から読む |
+| `features/route/RouteForm/SettingsTabsList.tsx` | 「ルート設定」のタブ列（基本・難所・道路・保存）。道路のタブの名前は、地図の道路のまとまりの名前（`lib/screenNames.ts: ROAD_SETTINGS_TAB_NAME`）。候補数・「ルート生成」と1行に並べ（`features/route/RouteForm/SettingsHeaderRow.tsx: SettingsHeaderRow`）、選ぶ状態は囲む`Tabs.Root`から読む |
 | `features/route/RouteForm/RouteSettingsForm.tsx` | `RouteForm`へ、ロス・道路・条件の保存・保存した条件の一覧の4つのタブの中身を、生成の条件と保存した条件から組んで渡す |
 | `features/route/GenerateRouteActions/GenerateRouteActions.tsx` | 「ルート設定」の見出し行の右端: 候補数の選び手（「8件▾」。押すと件数を並べた小窓を開き、選ぶと閉じる）・「ルート生成」のボタン（スマホのシートではアイコンに文字「生成」を添え、PC のパネルはアイコンだけ。[デザインシステム](frontend-design-system.md)「5-1. パネルの操作ボタンの形」）。候補を作ったあとに条件を変えると、「生成」の右上の角に印を重ね（行の幅を取らないので、どの幅でも見出しの行に収まる）、その意味をボタンの名前と長押しの説明に足す。印そのものは押せない |
 | `features/route/RouteForm/PointList.tsx` | 出発地 → 経由地 → 終点［周回の間は押せない「出発地へ戻る」、目的地なら目的地］を通る順に並べる縦の一覧と、見出しの右の「＋ 経由地」。行を押すとその地点を選び、その行に付く探す小窓（`PlaceSearch/PointSearch.tsx`）を開く。行の「地図で置く」は小窓を開かずにその地点を選び、☆は保存した地点といまの地点の保存だけの小窓を開く。行の✕で消し、つまみで並べ替える。名前は生成の条件と、置いた位置から引いた辺りから引く（下記「地点の指定」「住所・施設で探す」） |
@@ -25,7 +25,7 @@
 | `hooks/useCloseOnBack.ts` | 開いている間、履歴に印を付けた項目を URL を変えずに1つ積み、ブラウザの「戻る」で閉じる。「戻る」以外で閉じたら積んだ項目を戻す（下記「住所・施設で探す」） |
 | `components/PinMark/PointMark.tsx` | 地点の一覧・探す小窓・道のりのグラフの経由地の印に出す、地図のピンと同じ図形の丸（`components/PinMark/PinMark.tsx`の中身に背景色を付けたもの。ルートの機能と地図の機能の両方が描くので共有の層に置く） |
 | `features/route/RouteForm/useRouteFormSubmit.ts` | 上記の検証（`{error, check}`。`features/route/RouteForm/useRouteFormSubmit.ts: check`は通ったかを返す）。「ルート生成」ボタン自体は`RouteForm`の外（`GenerateRouteActions.tsx`。見出し行）にあるため分離している（下記参照） |
-| `features/route/RouteSettingsPanel/RouteSettingsPanel.tsx` | 「要因」タブの中身: 一番上の「総合」で総合のつまみの段を、その下で費用の軸ごとに倍率の段か無効を選ぶ（下記参照）。無効の軸も行として残す（無効から戻す所） |
+| `features/route/RouteSettingsPanel/RouteSettingsPanel.tsx` | 「難所」タブの中身: 一番上の「総合」で総合のつまみの段を、その下で費用の軸ごとに倍率の段か無効を選ぶ（下記参照）。無効の軸も行として残す（無効から戻す所） |
 | `features/route/costPreference.ts` | つまみと倍率の値の扱い: 段（値と名前）・説明の文・今の軸の一覧に無い軸を捨てる |
 | `hooks/useCostAxisCatalog.ts` | `GET /api/cost-axes`の取得。費用の軸（名前・説明・アイコン・地図のレンズ）を`hooks/useCostAxisCatalog.ts: useCostAxisCatalog`が返す（届くまで・失敗の間は軸0件。レンズの読み方は[地図: レンズ・ルート色分け](map-axis-coloring.md)）。軸ごとの色（`hooks/useCostAxisCatalog.ts: CostAxisCatalog.axisColors`）と、取れていないことの項目（`hooks/useCostAxisCatalog.ts: costAxisCatalogFetchFailure`。常設ヘッダーの印と要因タブの告知）もここが持つ |
 | `hooks/useSharedCatalog.ts` | 画面の総合が読む一覧（画面の設定・費用の軸の一覧）の取得の共通の形: 読み手の間で1つの取得を共有し、マウントのたびに取り直し、届いた応答を後の失敗で巻き戻さない（`hooks/useSharedCatalog.ts: useSharedCatalog`）。まだ届いていないときだけ取り直す再試行（`hooks/useSharedCatalog.ts: retrySharedCatalogFetch`） |
@@ -91,7 +91,7 @@
 ## RouteSettingsPanel.tsx（一般向けメイン設定面）
 
 費用の式（[評価モデル](../../architecture/evaluation-model.md)）の利用者の値は2つで、画面では代償の秒を「ロス」と呼ぶ。
-**総合のつまみ**（代償の総合に掛ける強さ。画面の名前は「総合」）と**軸ごとの倍率と無効**は、どちらも「要因」タブ（このパネル）に置き、
+**総合のつまみ**（代償の総合に掛ける強さ。画面の名前は「総合」）と**軸ごとの倍率と無効**は、どちらも「難所」タブ（このパネル）に置き、
 総合の行を軸の行より上に置く（総合の割合に、軸ごとの割合がさらに掛かる）。どちらも段で選ばせ、段の値と名前は生成物（`route-generate-config.json`の`cost_strength_levels`・
 `cost_multiplier_levels`、backendの`domain/cost_preference.py`が正本）から読む。段の名前はロスを数える割合（50%・100%…。
 言葉では量が伝わらない。道路タブの倍率「×0.5」は道の重さそのものに掛ける数で働きが違うので、同じ書き方にしない）で、標準は100%（総合の0は「無効」と呼び、所要時間だけで道を選ぶ）。軸を数えないことは倍率の値でなく「無効」という
