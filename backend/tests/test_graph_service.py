@@ -14,6 +14,7 @@ import pytest
 
 from app.domain.errors import SearchAreaTooLargeError, SearchMemoryBusyError
 from app.domain.region import BoundingBox
+from app.domain.road_classes import current_road_classes
 from app.infrastructure import container_memory
 from app.services.graph_service import BYTES_PER_EDGE, RESERVED_BYTES, GraphService, SearchMemory
 from tests.east_west_network import network
@@ -32,7 +33,7 @@ async def test_the_range_is_cut_along_the_bbox_itself(road_network):
     """切り出しはbboxそのもの——同じz12タイル（138.955〜139.043E）の中でも、bboxの外の道20は取らない。
     タイル集合は迂回率の鍵としてz12で返る。"""
     narrow = BoundingBox(min_latitude=34.99, min_longitude=138.99, max_latitude=35.01, max_longitude=139.005)
-    road, tile_set = await GraphService(SearchMemory(), road_network).get_search_slice(narrow)
+    road, tile_set = await GraphService(SearchMemory(), road_network).get_search_slice(narrow, current_road_classes())
 
     assert road.rows.tolist() == [0, 1]
     assert tile_set and all(zoom == 12 for zoom, _x, _y in tile_set)
@@ -51,7 +52,7 @@ async def test_a_range_too_large_for_the_memory_limit_is_refused(monkeypatch, tm
     _memory_limit(monkeypatch, tmp_path, str(RESERVED_BYTES))
 
     with pytest.raises(SearchAreaTooLargeError) as raised:
-        await GraphService(SearchMemory(), road_network).get_search_slice(BBOX)
+        await GraphService(SearchMemory(), road_network).get_search_slice(BBOX, current_road_classes())
 
     assert (raised.value.edges, raised.value.limit) == (3, 0)
 
@@ -63,20 +64,20 @@ async def test_generations_share_the_memory_by_the_size_of_their_ranges(monkeypa
     memory = SearchMemory()
     first, second = GraphService(memory, road_network), GraphService(memory, road_network)
 
-    road, _tiles = await first.get_search_slice(BBOX)
+    road, _tiles = await first.get_search_slice(BBOX, current_road_classes())
     with pytest.raises(SearchMemoryBusyError) as raised:
-        await second.get_search_slice(BBOX)
+        await second.get_search_slice(BBOX, current_road_classes())
     first.release_search_memory()
 
     assert road.edge_count == 3
     assert (raised.value.edges, raised.value.available) == (3, 2)
-    assert (await second.get_search_slice(BBOX))[0].edge_count == 3
+    assert (await second.get_search_slice(BBOX, current_road_classes()))[0].edge_count == 3
 
 
 @pytest.mark.parametrize("content", ["max\n", None], ids=["上限なし", "cgroupの外"])
 async def test_without_a_memory_limit_no_range_is_refused(monkeypatch, tmp_path, content, road_network):
     _memory_limit(monkeypatch, tmp_path, content)
 
-    road, _tiles = await GraphService(SearchMemory(), road_network).get_search_slice(BBOX)
+    road, _tiles = await GraphService(SearchMemory(), road_network).get_search_slice(BBOX, current_road_classes())
 
     assert road.edge_count == 3

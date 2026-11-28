@@ -254,7 +254,7 @@ def class_columns(
 
 
 def layer_columns(
-    definitions: RoadClassDefinitions, columns: Mapping[str, MaterialColumn], n: int
+    definitions: RoadClassDefinitions, columns: Mapping[str, MaterialColumn]
 ) -> dict[str, CategoricalColumn]:
     """公開した分け方の地図の線の層ごとの値（鍵は分け方）。地図の線とルートの区間の帯が読む。値は区分の鍵で、区分の外は値なし、
     区分の外で層の`no_data_fact_key`の事実も無い道は`NO_DATA_VALUE`。`columns`は事実と区分の列（`class_columns`）を持つ。"""

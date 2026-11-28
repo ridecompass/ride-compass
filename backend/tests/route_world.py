@@ -6,7 +6,7 @@
 """
 
 import itertools
-from datetime import datetime, timedelta
+from datetime import datetime
 import shutil
 from dataclasses import replace
 from pathlib import Path
@@ -15,18 +15,18 @@ import numpy as np
 
 from app.services.route_generation_setup import assemble_route_generation_setup
 from app.domain.geo import haversine_distance_km
-from app.domain.graph import edge_key, node_key, parse_edge_key
+from app.domain.graph import edge_id_of, node_key, parse_edge_id
 from app.domain.landcover import LANDCOVER_CLASSES
 from app.domain.traffic import stop_count_material_ids
 from app.domain.cost_preference import CostPreference
+from app.domain.model_settings import current_model_settings
 from app.domain.road_avoidance import AvoidanceLevel
 from app.domain.road_network import RoadNetwork
 from app.domain.route import Coordinates, EvaluatedRoute, PenaltyBreakdown, RouteFacts
 from app.domain.route_request import FixedPoints, RequestedConditions
-from app.domain.msm import MsmBlock, MsmGrid
 from app.domain.time_zone import JST
-from app.domain.cycling_speed import STANDARD_TEMPERATURE_C
-from app.domain.wind import WindForecastSeries
+from app.domain.wind import WeatherForecastSeries
+from tests.weather_forecast import weather_forecast
 from app.infrastructure import road_network_store
 from app.services.graph_service import GraphService, SearchMemory
 from tests.road_network_fixture import road_network as build_road_network
@@ -147,24 +147,16 @@ def road_network(
 
 #: 2020〜2035年の毎時の、どこでも無風・標準の気温の予報（格子点1つ。区間はどこでも、一番近い格子点のこの1つを引く）。
 _CALM_HOURS = int((datetime(2035, 1, 1) - datetime(2020, 1, 1)).total_seconds() // 3600)
-CALM = WindForecastSeries(
-    times=[datetime(2020, 1, 1) + timedelta(hours=hour) for hour in range(_CALM_HOURS)],
-    speed_ms=np.zeros((1, _CALM_HOURS)),
-    direction_deg=np.zeros((1, _CALM_HOURS)),
-    temperature_c=np.full((1, _CALM_HOURS), STANDARD_TEMPERATURE_C),
-    lattice=MsmBlock(grid=MsmGrid(lat_min=35.0, lon_min=139.0, d_lat=0.05, d_lon=0.0625, n_lat=1, n_lon=1),
-                     row0=0, col0=0, rows=1, cols=1),
-    latest_run_end=datetime(2035, 1, 1),
-)
+CALM = weather_forecast(datetime(2020, 1, 1), np.zeros(_CALM_HOURS))
 
 
 class Weather:
     """天気の代役。時別の風の予報は`series`（省けば無風の`CALM`）を返す。"""
 
-    def __init__(self, series: WindForecastSeries = CALM):
+    def __init__(self, series: WeatherForecastSeries = CALM):
         self._series = series
 
-    async def get_wind_forecast_lattice(self, bbox):
+    async def get_weather_forecast_lattice(self, bbox):
         return self._series
 
     def forecast_version(self):
@@ -188,7 +180,7 @@ def serve_road_network(root: Path, network: RoadNetwork | None) -> None:
 
 
 def generator_for(
-    root: Path, network: RoadNetwork, wind: WindForecastSeries = CALM,
+    root: Path, network: RoadNetwork, wind: WeatherForecastSeries = CALM,
     *, assumed_speed_kmh: float = 20.0, road_avoidance: dict[str, AvoidanceLevel] | None = None,
 ):
     """道路網を全体の配列として置き場へ置き、本物の`GraphService`とエンジンの上に戦略層（`RouteGenerator`）を組む。"""
@@ -197,6 +189,7 @@ def generator_for(
         GraphService(SearchMemory(), road_network_store.current()), Weather(wind),
         RequestedConditions(
             cost_preference=CostPreference(), road_avoidance=road_avoidance or {}, assumed_speed_kmh=assumed_speed_kmh,
+            settings=current_model_settings(),
         ),
     ).generator
 
@@ -216,7 +209,7 @@ def edges_of(candidate) -> list[tuple[int, int, bool]]:
     """候補の区間の`(道, 区間番号, 順方向)`を、通る順に。"""
     edges = []
     for edge_id in candidate.edge_ids:
-        edge = parse_edge_key(edge_id)
+        edge = parse_edge_id(edge_id)
         assert edge is not None, edge_id
         edges.append(edge)
     return edges
@@ -239,7 +232,7 @@ def lattice_ring_edges(side: int) -> list[str]:
     edges = []
     for start, end in zip(ring, ring[1:]):
         tail, head = lattice_node(*start), lattice_node(*end)
-        edges.append(edge_key(way_of[tail, head], 0, True) if (tail, head) in way_of else edge_key(way_of[head, tail], 0, False))
+        edges.append(edge_id_of(way_of[tail, head], 0, True) if (tail, head) in way_of else edge_id_of(way_of[head, tail], 0, False))
     return edges
 
 

@@ -46,7 +46,7 @@ class LandcoverClass:
     percent_field: str
     label: str
     #: 地図へ塗る色。配信元の公式配色をそのまま使わない——建物が鮮やかな赤で、この
-    #: アプリでは赤が「負担が重い」を表す色として既に使われているため、市街地が
+    #: アプリでは赤が「走りにくさが大きい」を表す色として既に使われているため、市街地が
     #: 常時その色で覆われると他の赤の意味が薄れる。色相は自然な連想（水=青・樹木=緑）を
     #: 保ちつつ、下の道路・地名が読める彩度に落とす。
     color: str
@@ -160,28 +160,6 @@ LANDCOVER_TILE_MAX_ZOOM = 14
 LandcoverTileZoom = Annotated[int, Field(ge=LANDCOVER_TILE_MIN_ZOOM, le=LANDCOVER_TILE_MAX_ZOOM)]
 
 
-def class_percentages_sql(counts: str, min_valid_pixels: float) -> str:
-    """クラスごとの画素数から割合(%)を出すSQL。
-
-    `counts`は`(osm_way_id, segment_index, cls, n)`を返す関係。有効画素数
-    （No Data・Cloudsを除いた合計）が`min_valid_pixels`（較正値`landcover.min_valid_pixels`）未満の区間は返らない——
-    帯がラスタの外へ大きくはみ出た・雲に覆われていた等、統計として信頼できないため。
-    """
-    invalid = ", ".join(str(v) for v in sorted(_LULC_INVALID_VALUES))
-    tally = ",\n           ".join(
-        f"sum(n) FILTER (WHERE cls = {value}) AS {landcover_key(name)}"
-        for name, value in PERCENT_CLASSES)
-    percents = ",\n       ".join(
-        f"100.0 * coalesce({landcover_key(name)}, 0) / valid_pixels AS {name}"
-        for name, _ in PERCENT_CLASSES)
-    return f"""
-WITH counted AS ({counts}),
-agg AS (
-    SELECT osm_way_id, segment_index,
-           sum(n) FILTER (WHERE cls NOT IN ({invalid}))::int AS valid_pixels,
-           {tally}
-    FROM counted GROUP BY osm_way_id, segment_index)
-SELECT osm_way_id, segment_index, valid_pixels,
-       {percents}
-FROM agg WHERE valid_pixels >= {float(min_valid_pixels)!r}
-"""
+def valid_pixel_sql(cls: str) -> str:
+    """画素値の式`cls`の画素が、割合の分母（有効画素数）に入るかのSQL式。"""
+    return f"{cls} NOT IN ({", ".join(str(v) for v in sorted(_LULC_INVALID_VALUES))})"

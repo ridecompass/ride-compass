@@ -12,8 +12,9 @@
 // 手元で起動する版には、本番と同じ組の環境変数（frontendEnv）を渡す。frontend のコードが読む環境変数がその組に無ければ、撮る前に止まる。
 // --backend は、ブラウザがそのパスの頭（例: /api/jma-tile/）で --api の backend へ取りに行くものだけを、作業ツリーの backend
 // （backend/scripts/serve_without_db.py。DB を読まずに起動する）が返す。backend が変える応答のうち DB を読まない経路（タイルの中継等）を
-// 後の画面へ出すときに使い、何度でも付けられる。DB を読む経路の応答（本番の backend にまだ無い経路も）は、脚本の patch で替える。
-// 脚本は default export の関数（capture/context.ts: CaptureScript）で、受け取った口（open・openAdmin・chooseLens・openLegend・clickMap・
+// 後の画面へ出すときに使い、何度でも付けられる。DB を読む経路の応答（本番の backend にまだ無い経路も）は、脚本の patch で替える
+// （モックの応答では patch を断るので、open の routes で替える）。
+// 脚本は default export の関数（capture/context.ts: CaptureScript）で、受け取った口（open・openAdmin・lenses・chooseLens・openLegend・clickMap・
 // clickVisible・clickFeature・longPressRoad・patch・shot 等）だけを使い、何も読み込まない。管理画面は openAdmin で開く（モックの応答のときだけ。撮影用の資格情報はここが渡す）。
 // 作業ツリーの外に置いてよい（.ts も読める）。省略すると開いて1枚撮る。例は capture/examples/。
 // 撮る前に、宛先（本番の frontend・本物の backend）が応答するまで待ち、Playwright の Chromium と、Linux なら起こすのに要る依存と

@@ -58,8 +58,8 @@ z0g は中点に一番近い MSM の格子点が同じ区間どうしの z0r の
 どの区間にも土地被覆が無い道路網は開けた平地（0.03m）とする。粗度長は較正値の頭打ち（WMO-No.8 が式5.3 で補正してよいとする粗度長の上限。標準の模型ではない仮の定義）で抑える。格子の側の粗度が
 全区間から決まるので、倍率は道路網が格子ごとに1回だけ求めて持ち（`domain/road_network.py: RoadNetwork.wind_height_factors`。
 同時に来た要求も1本に並べて求める）、探索と地図のレンズは切り出した区間の材料（`domain/attributes.py: EdgeMaterialColumns.wind_heights`）
-から同じ区間の同じ値を引く。ルートの事実と道の窓の向かい風は、走行モデルが使う乗り手の高さの値を、そうと分かる名前
-（`domain/cost_axes.py: EFFORT_ITEM_RULES`の向かい風の事実の名前）で出す（地図のレンズの段の名前は短く保つため、値と単位だけを出す）。地図に出す風（矢印）は予報の10mの値のまま。
+から同じ区間の同じ値を引く。乗り手の高さへ直した風は格子点に無い値なので、画面に数で出さず（ルートの事実と道の窓は向かい風の
+秒だけを出す。[外部データソース](../../architecture/data-sources.md)「今の扱い」）、所要時間・費用・道の色分けにだけ使う。地図に出す風（矢印）は予報の10mの格子点の値のまま。
 
 Edgeコストは「探索の材料の表（[費用・材料](evaluation-scoring.md)「探索の材料の表」）＋リクエスト時ベクトル計算」方式で
 算出する——探索が実際に訪れたEdgeに対してPythonのコスト計算コールバックを都度呼ぶのでは
@@ -130,7 +130,7 @@ Edgeコストは「探索の材料の表（[費用・材料](evaluation-scoring.
 依らない抵抗（`domain/cycling_speed.py: SegmentSpeedModel`）・停止の待ち・道のストレスの代償——はリクエストに1回だけ求めて
 使い回す。ビンの中身を決めるのは風の予報が引く時刻だけなので、同じ時刻のビン（`domain/leg_costs.py: BinTime`）はレグの向き・開始時刻が違っても1回だけ合成して使い回す。レグは表示の値を持たず、区間の表示（`domain/leg_costs.py: LegValues`）は、経路をたどって決めたビンの時刻（`LegCostArrays.bin_times`）で経路上の行だけを合成し直して読む（`domain/leg_costs.py: LegCostComposer.values_at_rows`）——全区間ぶんの表示の値をレグごとに持つと、区間数×レグ数ぶん膨らむ。区間ごとの通過時刻で合成したレグも、その時刻を区間ごとの配列で持つ同じ形（`BinTime`）で表す。レグのビンの配列は使い回すビンを指すことがあるので、探索はどのレグの配列も書き換えない。1ビンの中でも、
 予報の引き当て（風と気温）と乗り手の高さへの換算と風の分解（方位との差の三角関数）は、走行モデルと区間の表示（向かい風の成分）と地図のレンズが同じ値を読む
-（`domain/wind_context.py: WindContext`）。合成結果`LegCostArrays`は通過予定時刻で決まる配列（ビンごとのコスト・所要時間と各ビンの時刻）だけを持ち、
+（`domain/wind_context.py: WeatherContext`）。合成結果`LegCostArrays`は通過予定時刻で決まる配列（ビンごとのコスト・所要時間と各ビンの時刻）だけを持ち、
 時刻で変わらない列（区分の材料・道のストレスの重さ）は合成器（`domain/leg_costs.py: LegCostComposer`）が
 1つだけ持つ。レグは`RoadGraphContext.legs`に添字順で並ぶ:
 
@@ -144,12 +144,12 @@ Edgeコストは「探索の材料の表（[費用・材料](evaluation-scoring.
 
 `TracedLoop.leg_of_edge`が経路上の各Edgeのレグ添字を運び、`_build_segment_details`は
 そのレグのビンの時刻で合成し直した値を読む（探索と表示の一致、[設計原則](../../architecture/design-principles.md)10）。
-区間の代償の内訳（軸ごと・好む道で下げた秒・避ける道で上乗せした秒）と向かい風の成分は、経路上の行だけをそのビンの時刻で解き直して求め
+区間の代償の内訳（軸ごと・好む道で下げた秒・避ける道で上乗せした秒）は、経路上の行だけをそのビンの時刻で解き直して求め
 （`LegCostComposer.values_at_rows`。`road_graph_candidates.py: _build_segment_details`が経路上の行でまとめて読む）。
-候補の事実は、その区間の内訳と向かい風の成分と、時刻に依らない列から求める（`LegCostComposer.axis_facts`。作り方は道の窓と
+候補の事実は、その区間の内訳と、時刻に依らない列から求める（`LegCostComposer.axis_facts`。作り方は道の窓と
 同じ`domain/leg_costs.py: axis_facts`）。
 逆回り候補はレグ割当ても反転する（先に走る側が往路配列、`reverse_leg_assignment`）。レグ番号は走行順に振られるため、Edge列の反転と同時に番号自体も`max_leg - leg`へ振り直す。探索範囲を覆う格子点ごとの時別の風と気温の予報
-（`WeatherService.get_wind_forecast_lattice`。格子点はMSMの格子点そのもの（`domain/msm.py: MsmBlock`）で、
+（`WeatherService.get_weather_forecast_lattice`。格子点はMSMの格子点そのもの（`domain/msm.py: MsmBlock`）で、
 探索範囲に依らない。各Edgeは中点に最も近い格子点の値を変えずに引く——ルートを出す前の地図も同じ点を引く。
 中点が並びの外にあるEdgeは、端の格子点の値で計算する）で、利用者の値に依らず時刻で合成する。予報が読めなければ
 生成は失敗する（無風で探さない）。
@@ -528,7 +528,7 @@ idの文字列や要求の形から決め直さない。
 **費用**は区間の費用と同じく利用者ごとに変わりうるので構造に持たず、遷移ごとの配列として文脈（`RoadGraphContext.transition_cost`）
 が持ち、探索のカーネル・木の費用の上界・繋ぎ目へ値で渡す（探索の重みに漕ぎ出しの代償を足したもの。`domain/ledger_costs.py: LedgerCosts.transition_costs`）。到達の時刻と経路の所要時間は時間を足し、
 最速の経路（`select_fastest_route`）は費用に探索の重みを渡す（罰は所要時間を優先する経路でも越えてよいものではない）。候補の内訳は、
-罰の秒を罰の欄（`PenaltyBreakdown.turn_penalty_seconds`）に入れ、所要時間と内訳の和が費用に合う。罰は道の負担でないので、候補の
+罰の秒を罰の欄（`PenaltyBreakdown.turn_penalty_seconds`）に入れ、所要時間と内訳の和が費用に合う。罰は道の走りにくさでないので、候補の
 1kmあたりの代償の秒には入れない。方位差は、入る区間の交差点へ入る直前の向きと、出る区間の交差点を出てすぐの向きの差で測る
 （道路網の列`edge_end_bearing_deg`・`edge_start_bearing_deg`。区間の端から端の向きで測ると、交差点から離れた所のカーブが
 交差点の曲がりに混ざる）。**曲がりの減速と下の待ちの表の待ちは、分かれ道（3本以上の道が集まる点）
@@ -611,7 +611,7 @@ Nodeごとのコストは、そのNodeへ入る区間の最小を採る（木を
 
 探索範囲の中では、ノードは切り出しの中の番号（`RoadSlice.nodes`の添字）、区間は探索用グラフの番号
 （`LazyRoadGraph.edge_rows`の添字、`TracedLoop.data`もこの番号列）で持つ。区間の文字列の鍵
-（`edge_id`、`domain/graph.py: edge_key`）とノードの鍵は、**経路に載った区間の分だけ**番号から作る
+（`edge_id`、`domain/graph.py: edge_id_of`）とノードの鍵は、**経路に載った区間の分だけ**番号から作る
 （`lean_edge`・`node_key_of`）——範囲全体ぶんの鍵や区間オブジェクトを作ると、範囲の区間数に比例した
 メモリを生成のたびに払うため。クライアントが送り返す鍵（区間の乗り換え）は`lazy_index_of`が番号へ戻す。
 道路網に無い区間・並行区間の採られなかった側は番号を持たない（None）。
@@ -967,9 +967,9 @@ numbaでJITする探索と、探索の中へ展開する部品を置く。JITの
   探索は区間の番号で動き、このオブジェクトを作らない。DBの区間を指す`(osm_way_id, segment_index, forward)`は
   必ず持つ。形（`geometry`）と断面の点（`profile`）は、作るときに道路網の配列の行から付ける
   （`domain/road_network.py: edge_shape`・`edge_profile`）。
-- 区間とノードの文字列の鍵（`edge_key`・`node_key`）と、区間の鍵の読み戻し（`parse_edge_key`）は
-  ここだけが持つ。路面タイルのフィーチャーの鍵（向きを持たない区間。`edge_feature_key_sql`）も同じ場所に置く
-  ——`edge_key`とは別の鍵で、タイルのSQLが組み立てる。APIが運ぶ鍵とDBの`(osm_way_id, segment_index, forward)`の対応がここで決まる。
+- 区間とノードの文字列の鍵（`edge_id_of`・`node_key`）と、区間の鍵の読み戻し（`parse_edge_id`）は
+  ここだけが持つ。路面タイルのフィーチャーの鍵（向きを持たない区間。`domain/graph.py: edge_feature_key`）も同じ場所に置く
+  ——`edge_id_of`とは別の鍵で、タイルの線は1本の区間を往復で共有する。APIが運ぶ鍵とDBの`(osm_way_id, segment_index, forward)`の対応がここで決まる。
 
 ### `domain/route.py`
 
@@ -1017,7 +1017,7 @@ numbaでJITする探索と、探索の中へ展開する部品を置く。JITの
 ### `domain/geo.py`・`domain/errors.py`
 
 `geo.py`は球面三角法の地理計算——2地点の球面距離と初期方位角、それを多数の地点へまとめて求める配列版、
-角度から方位の呼び名への変換（例: `haversine_distance_km`・`compass_label`）、距離を度の幅へ直す目安（`KM_PER_DEGREE_LATITUDE`・`km_per_degree_longitude`と、SQLの前置フィルタの箱を距離の判定より必ず広くする`degrees_covering_m`）——と、多数の地点それぞれに最も近い点を球面の距離で選ぶ`nearest_point_indices`（1地点の口`nearest_point_index`。雨の材料・アメダス・暑さ指数の最寄りがすべてここを通る。点が1つも無ければ断るので、無いときの答えは呼び手が決める）を持つ。緯度・経度の値の範囲（`Latitude`・`Longitude`）と走行方位の範囲（`BearingDeg`、0以上360未満）もここが持ち、`Coordinates`・`BoundingBox`・HTTPの要求の緯度経度・走行方位がこの型で書く。方位の呼び名は
+角度から方位の呼び名への変換（例: `haversine_distance_km`・`compass_label`）、距離を度の幅へ直す目安（`KM_PER_DEGREE_LATITUDE`・`km_per_degree_longitude`と、SQLの前置フィルタの箱を距離の判定より必ず広くする`degrees_covering_m`）——と、1地点に最も近い点を球面の距離で選ぶ`nearest_point_index`（観測所・情報提供地点の最寄りはここを通る。点が1つも無ければNone）を持つ。緯度・経度の値の範囲（`Latitude`・`Longitude`）と走行方位の範囲（`BearingDeg`、0以上360未満）もここが持ち、`Coordinates`・`BoundingBox`・HTTPの要求の緯度経度・走行方位がこの型で書く。方位の呼び名は
 16方位の並び（`SIXTEEN_POINT_LABELS`）1つだけを持ち、8方位（`COMPASS_LABELS`）はその1つおきとして導く——アメダスの
 16方位の風向（`infrastructure/jma_amedas_client.py`）もこの並びを引くので、同じ向きが画面の場所によって違う名前にならない。`LatLon`（`Protocol`）・
 `LatLonPoint`（`NamedTuple`）は`Coordinates`（Pydantic、API境界の入力検証用）を経由

@@ -179,7 +179,7 @@ def pedestrian_road_codes(bicycle: np.ndarray, excepted: np.ndarray, *, excepted
 
 def active_kinds(
     rows: np.ndarray, edge_regulation_start: np.ndarray, edge_regulation_count: np.ndarray, edge_regulations: np.ndarray,
-    regulation_slot_start: np.ndarray, regulation_slot_count: np.ndarray, regulation_slot_values: np.ndarray,
+    regulation_slot_count: np.ndarray, regulation_slot_values: np.ndarray,
     slot_active: np.ndarray, slotless_active: bool,
 ) -> tuple[np.ndarray, np.ndarray]:
     """区間の行`rows`ごとの、(効いている規制に普通自転車も対象の組があるか, 普通自転車は除外の組があるか)。`slot_active`は

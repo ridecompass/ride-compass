@@ -35,7 +35,7 @@ interface RouteFormProps extends Omit<PointListProps, "conditions"> {
     >;
   /** 保存した候補を、その役割の地点として置き、置いた地点を選ぶ（経由地は足す）。 */
   onPlaceFound: (role: PinRole, candidate: PlaceCandidate, waypointIndex: number | null) => void;
-  /** 「負担」タブの中身。 */
+  /** 「走りにくさ」タブの中身。 */
   weightsPanel: React.ReactNode;
   /** 「道路」タブの中身。 */
   exclusionsPanel: React.ReactNode;
@@ -144,7 +144,7 @@ export default function RouteForm({
                 ...(distanceToleranceRatio === undefined
                   ? []
                   : [toleranceSentence(distanceToleranceRatio, distanceInput)]),
-                "・「距離を決める」を外すと、距離を決めません。所要時間と負担の和が小さい道で目的地へ向かいます[周回なら、経由地を回って出発地へ]。",
+                `・「距離を決める」を外すと、距離を決めません。${routeGenerateConfig.cost_wording}が小さい道で目的地へ向かいます[周回なら、経由地を回って出発地へ]。`,
                 `・${routeGenerateConfig.busy_safe_distance_km}kmより長い目標は、混み合っているときに作れないことがあります。`,
               ].join("\n")}
             />

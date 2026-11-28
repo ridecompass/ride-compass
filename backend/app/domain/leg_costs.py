@@ -1,6 +1,6 @@
 """レグ（時刻・向き）ごとのコスト配列の合成。
 
-探索範囲の材料の表・費用の軸の定義・0次フィルタ・風の予報から、区間ごとの費用（所要時間に代償の秒を足した秒、
+探索範囲の材料の表・費用の軸の定義・0次フィルタ・風と気温の予報から、区間ごとの費用（所要時間に代償の秒を足した秒、
 `domain/ledger_costs.py`）と所要時間を、時刻ビンごとに合成する。区間の表示が読む代償の秒と事実の量も同じ入力から求める。外部とはやり取りせず、配列だけを受け取って配列を返す。
 探索（`services/road_graph_engine.py`）はここが合成した配列をそのまま読み、区間の表示も同じ配列から読む
 （探索コストと表示の一致、design-principles.md構造仕様10）。構造と前提はdocs/modules/backend/routing-engine.md
@@ -49,11 +49,11 @@ from app.domain.search_graph import EDGE_VALUE_DTYPE, kernel_array
 from app.domain.traffic import POI_COUNT_KINDS, stop_count_material_ids, stop_event
 from app.domain.timed_regulations import RegulationJudgement, TimedRegulations
 from app.domain.tuning import REGULATION_MARGIN_MINUTES_ID, Tuning
-from app.domain.wind import WindForecastSeries
-from app.domain.wind_context import WindContext
+from app.domain.wind import WeatherForecastSeries
+from app.domain.wind_context import WeatherContext
 
 # レグの中を時刻で区切るビンの幅（h）と本数の上限。**風の予報が1時間刻みのため、幅もそれに
-# 揃え、ビンはその開始時刻で評価する**——`domain/wind.py: WindForecastSeries.time_index`が最も近い正時を引くため、
+# 揃え、ビンはその開始時刻で評価する**——`domain/wind.py: WeatherForecastSeries.time_index`が最も近い正時を引くため、
 # 幅を細かくしても隣のビンが同じ予報時刻を引くだけで、合成の回数だけが増える。
 TIME_BIN_HOURS = 1.0
 MAX_TIME_BINS = 4
@@ -63,9 +63,12 @@ MAX_TIME_BINS = 4
 #: 土地被覆の割合の欠けを取込の範囲全体の平均の割合で埋める）。置き換え方を変えたら、ここも変える。
 MISSING_TRAVEL_DATA_WORDING = (
     "データが欠けた所は、次の値で計算しています。\n"
-    "・坂を測れない所[標高が無いか乱れている]: 地域でよくある坂\n"
-    "・信号などの止まる所の数や、周りの建物・林の様子が分からない区間: 平均の値\n"
+    "・坂を測れない所[標高が無いか乱れている]: 地域の道の坂の分布どおりの坂\n"
+    "・信号などの止まる所の数や、周りの建物・林の様子が分からない区間: 地域の平均の値\n"
     "・標高の無い区間の空気の濃さ: 海面の高さのもの")
+
+#: `missing_travel_data_share`の割合（「N%の」）に続けて、利用者に言う短い文。埋め方は値ごとに違うので、どれかの埋め方の名前を言わない。
+MISSING_TRAVEL_DATA_HEADING = "道のりはデータが欠けていて、代わりの値で計算しています"
 
 #: 所要時間の見積もりが何を足したものかを、利用者に言う文（区間の走行時間・止まる出来事の待ち・曲がる所の時間）。
 DURATION_ESTIMATE_WORDING = "走る時間に、信号などで止まる時間と曲がる時間を足した見積もりです。"
@@ -78,7 +81,7 @@ class BinTime(NamedTuple):
     ビンはレグの向きや開始時刻が違っても同じ中身なので、ビンの使い回しの鍵になる。区間ごとの通過時刻で合成するビンは、
     区間ごとの配列（切り出した区間の順）で持つ。"""
 
-    # 風の予報が引く時刻の添字（`WindForecastSeries.time_index`）。
+    # 風と気温の予報が引く時刻の添字（`WeatherForecastSeries.time_index`）。
     forecast: int | np.ndarray
 
     def take(self, rows: np.ndarray) -> "BinTime":
@@ -91,8 +94,6 @@ class BinTime(NamedTuple):
 class LegValues:
     """区間の表示が読む、ある時刻で経路上の行だけを合成した値（`LegCostComposer.values_at_rows`）。配列は渡した行の並び。"""
 
-    # 区間ごとの進行方向への向かい風成分（m/s、風が無ければ0）。
-    headwind_ms: np.ndarray
     # 軸id→区間ごとの代償の秒（`domain/ledger_costs.py: LedgerCosts.row_seconds`）と、避け方の倍率が区間の所要時間から
     # 下げた秒（0以下）と上乗せした秒（0以上）。
     penalty_by_axis: dict[str, np.ndarray]
@@ -223,25 +224,26 @@ def burden_weights(axes: CostAxisDefinitions, parameters: LedgerParameters, mate
 
 def axis_facts(settings: ModelSettings, materials: Mapping[str, MaterialColumn],
                rows: np.ndarray, distance_m: np.ndarray, penalty_by_axis: Mapping[str, np.ndarray],
-               ascent_m: float | None, headwind_ms: np.ndarray | None, stops: float) -> dict[str, AxisFact]:
+               ascent_m: float | None, stops: float) -> dict[str, AxisFact]:
     """費用の軸id→その軸の秒の元になった事実（その軸の換算ルールが読む値を1つ）。数える軸（`penalty_by_axis`の軸）だけで、
-    求められない事実は載せない。`materials`の列は行`rows`で引き、`distance_m`・`penalty_by_axis`・`headwind_ms`は`rows`の並び。
+    求められない事実は載せない。`materials`の列は行`rows`で引き、`distance_m`・`penalty_by_axis`は`rows`の並び。
     ルートの事実と道の窓が、どちらもここで作る。
 
-    - 数で言う体力の費目は、費目の決まり（`domain/cost_axes.py: EffortItemRule.number`）が登り`ascent_m`・向かい風の成分の長さで
-      重みを付けた平均（風を読めなければNone）・止まる回数`stops`から取る値。
+    - 数で言う体力の費目は、費目の決まり（`domain/cost_axes.py: EffortNumberFact.shown`）が登り`ascent_m`・止まる回数`stops`から
+      取る値（決まりが事実を出さない費目は載せない）。
     - ほかの体力の費目（転がり抵抗の分け方）と道のストレスの軸（定義の材料）は、読む材料の値（`_material_fact`）。
     """
     axes = settings.cost_axes
-    inputs = EffortFactInputs(ascent_m, None if headwind_ms is None else length_weighted_mean(headwind_ms, distance_m), stops)
+    inputs = EffortFactInputs(ascent_m, stops)
     facts: dict[str, AxisFact] = {}
     for axis_id, seconds in penalty_by_axis.items():
         item = EFFORT_AXES.get(axis_id)
         number = None if item is None else EFFORT_ITEM_RULES[item].number
         fact: AxisFact | None
         if number is not None:
-            value = number.value(inputs)
-            fact = None if value is None else AxisFact(label=number.label, value=value, unit=number.unit)
+            value = None if number.shown is None else number.shown.value(inputs)
+            fact = None if number.shown is None or value is None else AxisFact(
+                label=number.shown.label, value=value, unit=number.shown.unit)
         else:
             material = (axes.burden[axis_id].burden.material if item is None
                         else rolling_resistance_material_id(settings.road_classes))
@@ -353,7 +355,7 @@ class LegCostComposer:
         self,
         search_materials: SearchMaterials,
         search_masks: RoadAvoidanceMasks,
-        wind_series: WindForecastSeries,
+        weather_series: WeatherForecastSeries,
         start: datetime,
         speed_kmh: float,
         lazy_row_index: np.ndarray,
@@ -383,9 +385,9 @@ class LegCostComposer:
         #: 区間の費用が所要時間に対して下がる最小の倍率（好む側の段の区間があればその倍率、無ければ1）。探索の見込み
         #: （`domain/route_search.py: heuristic_seconds`）を、費用の下界に保つよう緩める。レグの規制の判定で下がれば、そこで緩める。
         self.min_cost_scale = float(search_masks.cost_scale.min(initial=1.0))
-        self._wind_series = wind_series
-        # 区間ごとに風を引く入力（切り出した区間の順）。
-        self._wind = WindContext.of(wind_series, search_materials)
+        self._weather_series = weather_series
+        # 区間ごとに風と気温を引く入力（切り出した区間の順）。
+        self._weather = WeatherContext.of(weather_series, search_materials)
         self.start = start
         self.speed_kmh = speed_kmh
         self._lazy_row_index = lazy_row_index
@@ -418,16 +420,16 @@ class LegCostComposer:
 
     def bin_time(self, hours: float) -> BinTime:
         """全区間を出発から`hours`時間後の時刻で合成するビンの、時刻の入力（`BinTime`）。"""
-        return BinTime(self._wind_series.time_index(self.start, hours))
+        return BinTime(self._weather_series.time_index(self.start, hours))
 
     def previous_run_from(self, hours: float) -> datetime | None:
         """出発から`hours`時間後までに前に出たrunの風を引くなら、その風に替わる時刻
-        （`domain/wind.py: WindForecastSeries.previous_run_from`）。"""
-        return self._wind_series.previous_run_from(self.start, hours)
+        （`domain/wind.py: WeatherForecastSeries.previous_run_from`）。"""
+        return self._weather_series.previous_run_from(self.start, hours)
 
     def _passage_time(self, passage_hours: np.ndarray) -> BinTime:
         """区間ごとの通過時刻（出発からの経過[h]、切り出した区間の順）で合成するビンの、時刻の入力（`BinTime`）。"""
-        return BinTime(self._wind_series.time_index(self.start, passage_hours))
+        return BinTime(self._weather_series.time_index(self.start, passage_hours))
 
     def compose(
         self,
@@ -556,13 +558,13 @@ class LegCostComposer:
         レグの交通規制の判定`judgement`（`LegCostArrays.judgement`）で合成し直した表示の値。"""
         avoidance = judgement.masks if judgement is not None else self._avoidance
         rows = np.asarray(rows, dtype=np.int64)
-        headwind, crosswind, temperature = self._wind.take(rows).components(time.take(rows).forecast)
+        headwind, crosswind, temperature = self._weather.take(rows).components(time.take(rows).forecast)
         inputs = self._travel_inputs
         travel_seconds, penalty_by_axis = self._ledger.row_seconds(inputs.model, headwind, crosswind, temperature, rows)
         # 探索の費用（`_bin_costs`）のうち、避け方の倍率が所要時間から足し引きした分。探索と同じ式で、float64で求める。
         scaled = avoidance_seconds(avoidance.cost_scale[rows].astype(np.float64),
                                    np.asarray(travel_seconds + inputs.wait_seconds[rows], dtype=np.float64))
-        return LegValues(headwind_ms=headwind, penalty_by_axis=penalty_by_axis,
+        return LegValues(penalty_by_axis=penalty_by_axis,
                          preferred_seconds=np.minimum(scaled, 0.0), avoided_seconds=np.maximum(scaled, 0.0),
                          deciding_rows=avoidance.deciding_at(rows))
 
@@ -589,23 +591,24 @@ class LegCostComposer:
         return int(self._full_row_index[full_row])
 
     def missing_travel_data_share(self, rows: np.ndarray) -> float | None:
-        """切り出した区間の順の行`rows`の距離のうち、所要時間の計算で取込の範囲全体の平均で埋めた長さの割合。坂は測れない間
-        （`unknown_m`）の長さだけを平均の坂で埋め、停止要因の件数の無い区間は区間の全体を平均の密度で数える（`_travel_inputs`が
-        欠けを置き換えるのと同じ値を見る）。区間の長さで数えると、短い間の揺れ1か所で割合が何倍にもなる。距離の合計が0ならNone。"""
+        """切り出した区間の順の行`rows`の距離のうち、所要時間の計算で値が欠けて埋めた長さの割合（埋め方は
+        `MISSING_TRAVEL_DATA_WORDING`）。坂は測れない間（`unknown_m`）の長さだけを数え、停止要因の件数か土地被覆の割合の無い区間は
+        区間の全体を数える（`_travel_inputs`と風の高さの倍率が埋めるのと同じ欠けを見る）。区間の長さで数えると、短い間の揺れ1か所で
+        割合が何倍にもなる。距離の合計が0ならNone。"""
         distance = self._search_materials.distance_m[rows]
         total = float(distance.sum())
         if total <= 0:
             return None
-        stops_missing = np.zeros(len(rows), dtype=bool)
+        whole_missing = self._search_materials.wind_heights.filled()[rows]
         for material_id in stop_count_material_ids():
-            stops_missing |= np.isnan(self._static_material_arrays[material_id][rows])
-        filled = np.where(stops_missing, distance, self._travel_inputs.model.unknown_m[rows])
+            whole_missing |= np.isnan(self._static_material_arrays[material_id][rows])
+        filled = np.where(whole_missing, distance, self._travel_inputs.model.unknown_m[rows])
         return round(float(filled.sum()) / total, 4)
 
     @cached_property
     def _ledger(self) -> LedgerCosts:
         """費目の帳簿の式。道のストレスは時刻に依らないので、ここで1回だけ求める。"""
-        return LedgerCosts.for_model(self._settings.cost_axes, self._parameters, self._travel_inputs.model, self._burden_per_km)
+        return LedgerCosts.for_model(self._parameters, self._travel_inputs.model, self._burden_per_km)
 
     @cached_property
     def _burden_per_km(self) -> dict[str, np.ndarray]:
@@ -613,11 +616,11 @@ class LegCostComposer:
         return burden_weights(self._settings.cost_axes, self._parameters, self._materials, self._burden_fills)
 
     def axis_facts(self, rows: np.ndarray, penalty_by_axis: Mapping[str, np.ndarray], ascent_m: float | None,
-                   headwind_ms: np.ndarray, turn_kickoffs: float) -> dict[str, AxisFact]:
-        """切り出した区間の順の行`rows`を通る経路の、軸ごとの事実（`axis_facts`）。`penalty_by_axis`・`headwind_ms`は`rows`の
-        並び。止まる回数には、曲がる所の漕ぎ出し`turn_kickoffs`回を足す。"""
+                   turn_kickoffs: float) -> dict[str, AxisFact]:
+        """切り出した区間の順の行`rows`を通る経路の、軸ごとの事実（`axis_facts`）。`penalty_by_axis`は`rows`の並び。止まる回数には、
+        曲がる所の漕ぎ出し`turn_kickoffs`回を足す。"""
         return axis_facts(self._settings, self._materials, rows, self.distance_m[rows], penalty_by_axis,
-                          ascent_m, headwind_ms, float(self._travel_inputs.stops[rows].sum()) + turn_kickoffs)
+                          ascent_m, float(self._travel_inputs.stops[rows].sum()) + turn_kickoffs)
 
     def turn_penalty_by_axis(self, kickoffs: float) -> dict[str, float]:
         """曲がる所の漕ぎ出し`kickoffs`回の代償の秒（軸id → 秒。`LedgerCosts.turn_penalty_by_axis`）。"""
@@ -645,4 +648,4 @@ class LegCostComposer:
     def _ledger_bin(self, time: BinTime) -> tuple[np.ndarray, np.ndarray]:
         """費目の帳簿の式の、時刻`time`の区間ごとの`(走行時間, 代償の秒)`。"""
         return self._ledger.bin_seconds(self._travel_inputs.model,
-                                        *self._wind.components(time.forecast))
+                                        *self._weather.components(time.forecast))

@@ -46,7 +46,7 @@ def _parameters(strength=1.0, alpha=1.0, beta=180.0, exponent=0.0, disabled=(), 
 
 
 def _ledger(parameters: LedgerParameters, vibration_km: list[float]) -> LedgerCosts:
-    return LedgerCosts(AXES, parameters, wheel_power_w(RIDER), kickoff_extra_j(RIDER, TUNED), {"vibration": np.array(vibration_km)},
+    return LedgerCosts(parameters, wheel_power_w(RIDER), kickoff_extra_j(RIDER, TUNED), {"vibration": np.array(vibration_km)},
                        np.full(len(vibration_km), 1000.0))
 
 
@@ -73,7 +73,7 @@ def test_a_disabled_axis_is_not_built_and_a_disabled_stop_axis_does_not_count_th
     無効にすると、曲がる所の漕ぎ出しも数えず、曲がる所の費用は時間だけになる。"""
     parameters = _parameters(disabled=("ascent", "vibration", "stopping"))
     weights = burden_weights(AXES, parameters, {VIBRATION: CategoricalColumn.encode(["gravel"])}, NO_FILLS)
-    ledger = LedgerCosts(AXES, parameters, wheel_power_w(RIDER), kickoff_extra_j(RIDER, TUNED), weights, np.full(1, 1000.0))
+    ledger = LedgerCosts(parameters, wheel_power_w(RIDER), kickoff_extra_j(RIDER, TUNED), weights, np.full(1, 1000.0))
     ride = _ride(1, gravity=5000.0, inertia=kickoff_extra_j(RIDER, TUNED))
 
     assert set(ledger.penalty_by_axis(ride)) == {"headwind", "friction"}
@@ -83,10 +83,10 @@ def test_a_disabled_axis_is_not_built_and_a_disabled_stop_axis_does_not_count_th
 
 
 def test_with_the_strength_off_no_axis_is_built():
-    """負担の全体の割合を無効（0）にすると、全部の軸を無効にしたのと同じく、どの軸も組まない（内訳にも地図のレンズにも出ない）。"""
+    """走りにくさの全体の割合を無効（0）にすると、全部の軸を無効にしたのと同じく、どの軸も組まない（内訳にも地図のレンズにも出ない）。"""
     parameters = ledger_parameters(CostPreference(strength=0.0), TUNED)
     weights = burden_weights(AXES, parameters, {VIBRATION: CategoricalColumn.encode(["gravel"])}, NO_FILLS)
-    ledger = LedgerCosts(AXES, parameters, wheel_power_w(RIDER), kickoff_extra_j(RIDER, TUNED), weights, np.full(1, 1000.0))
+    ledger = LedgerCosts(parameters, wheel_power_w(RIDER), kickoff_extra_j(RIDER, TUNED), weights, np.full(1, 1000.0))
     ride = _ride(1, gravity=5000.0, inertia=kickoff_extra_j(RIDER, TUNED))
 
     assert ledger.penalty_by_axis(ride) == {}

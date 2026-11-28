@@ -79,6 +79,9 @@ from app.domain.map_display import (
     ROUTE_LINE_WIDTHS_PX,
     ROUTE_SPLICE_DASH,
     AREA_OPACITY,
+    ELEVATION_SATURATION,
+    LANDCOVER_OPACITY,
+    HAZARD_OPACITY,
     FLOOD_LINE_WIDTH_BY_ZOOM,
     RAINBAND_OUTLINE_CASING_WIDTH_PX,
     RAINBAND_OUTLINE_WIDTH_PX,
@@ -153,8 +156,10 @@ from app.domain.region import (
     ROAD_TILE_MAX_ZOOM,
     ROAD_TILE_MIN_ZOOM,
 )
-from app.domain.leg_costs import DURATION_ESTIMATE_WORDING, MISSING_TRAVEL_DATA_WORDING
+from app.domain.leg_costs import DURATION_ESTIMATE_WORDING, MISSING_TRAVEL_DATA_HEADING, MISSING_TRAVEL_DATA_WORDING
 from app.domain.route_search import CANDIDATE_ORDER_WORDING
+from app.domain.ledger_costs import COST_WORDING, PENALTY_WORDING
+from app.domain.road_avoidance import AVOIDANCE_MULTIPLIER_WORDING
 from app.domain.cost_axes import LENS_QUANTITY_LABEL, LENS_UNIT
 from app.config import Settings
 from app.domain.cost_preference import COST_MULTIPLIER_LEVELS, COST_STRENGTH_LEVELS, DISABLED_LABEL, STANDARD_COST_FACTOR
@@ -452,6 +457,9 @@ def main() -> None:
             },
             "area": {
                 "opacity": AREA_OPACITY,
+                "landcoverOpacity": LANDCOVER_OPACITY,
+                "hazardOpacity": HAZARD_OPACITY,
+                "elevationSaturation": ELEVATION_SATURATION,
                 "hillshadeIlluminationDeg": HILLSHADE_ILLUMINATION_DEG,
                 "hillshadeMethod": HILLSHADE_METHOD,
                 "hillshadeExaggeration": HILLSHADE_EXAGGERATION,
@@ -621,18 +629,23 @@ def main() -> None:
             "standard_cost_factor": STANDARD_COST_FACTOR,
             "cost_strength_levels": [level._asdict() for level in COST_STRENGTH_LEVELS],
             "cost_multiplier_levels": [level._asdict() for level in COST_MULTIPLIER_LEVELS],
-            # 負担を数えないことの名前（費用の軸の無効の段と、全体のつまみの0の段）。
+            # 走りにくさを数えないことの名前（費用の軸の無効の段と、全体のつまみの0の段）。
             "disabled_label": DISABLED_LABEL,
             "min_assumed_speed_kmh": MIN_ASSUMED_SPEED_KMH,
             "max_assumed_speed_kmh": MAX_ASSUMED_SPEED_KMH,
             # フロントが状態を問い合わせるとき、終わるまで待たせる秒（口が受け付ける上限そのもの）。
             "job_wait_seconds": JOB_WAIT_MAX_SECONDS,
-            # 利用者が入れる巡航速度の名前と、区間の速度の決め方の文と、所要時間の見積もりが何を足したものかの文と、候補の並べ方の文と、罰の曲がりの扱いの文。
+            # 利用者が入れる巡航速度の名前と、区間の速度の決め方の文と、所要時間の見積もりが何を足したものかの文と、候補の並べ方の文。
             "cruise_speed_label": CRUISE_SPEED_LABEL,
             "travel_model_wording": TRAVEL_MODEL_WORDING,
             "duration_estimate_wording": DURATION_ESTIMATE_WORDING,
             "candidate_order_wording": CANDIDATE_ORDER_WORDING,
-            # 所要時間の計算が値の無い区間をどう数えるかの文。結果の「平均で計算した道のり」の注意の詳しい説明に出す。
+            # 走りにくさが何を数えるかと、費用の式と、道の避け方の倍率が何に掛かるかの文（名詞句）。費用を述べる画面の文が差し込む。
+            "penalty_wording": PENALTY_WORDING,
+            "cost_wording": COST_WORDING,
+            "avoidance_multiplier_wording": AVOIDANCE_MULTIPLIER_WORDING,
+            # データが欠けた道のりの割合（百分率）に続ける注意の文と、所要時間の計算が値の無い区間をどう数えるかの文。
+            "missing_travel_data_heading": MISSING_TRAVEL_DATA_HEADING,
             "missing_travel_data_wording": MISSING_TRAVEL_DATA_WORDING,
             # 地図のレンズ（総合と費用の軸ごと）の量の名前と単位。レンズを述べる画面の文が差し込む。
             "lens_quantity_label": LENS_QUANTITY_LABEL,

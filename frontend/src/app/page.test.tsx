@@ -64,7 +64,7 @@ describe("ルートを作る", () => {
     await user.click(section("ルート結果"));
     expect(section("ルート結果")).toHaveAttribute("aria-expanded", "false");
 
-    await user.click(screen.getByRole("button", { name: /^負担で塗る: / }));
+    await user.click(screen.getByRole("button", { name: /^走りにくさを色で見る/ }));
     await user.click(await screen.findByRole("radio", { name: /登坂/ }));
     await user.keyboard("{Escape}");
     expect(paints("ascent")).toBe(true);
@@ -193,10 +193,10 @@ describe("ルートを作る", () => {
     expect(origin(await generate(user))).toEqual(PLACED);
   });
 
-  it("「負担」タブで選んだ全体の割合と無効にした軸が、生成の要求に載る", async () => {
+  it("「走りにくさ」タブで選んだ全体の割合と無効にした軸が、生成の要求に載る", async () => {
     serveCostAxisCatalog();
     const { user } = renderHome();
-    await user.click(screen.getByRole("tab", { name: "負担" }));
+    await user.click(screen.getByRole("tab", { name: "走りにくさ" }));
     await user.click(
       within(screen.getByRole("radiogroup", { name: "全体の割合" })).getByRole("radio", { name: "150%" }),
     );
@@ -212,36 +212,38 @@ describe("ルートを作る", () => {
     });
   });
 
-  it("負担を説明する文の軸の並びと、ルートの後に選ばずに塗る総合の名前は、費用の軸の一覧の名前で出る", async () => {
+  it("走りにくさを説明する文の軸の並びと、ルートの後に選ばずに塗る総合の名前は、費用の軸の一覧の名前で出る", async () => {
     const catalog = costAxisCatalog(costAxisEntry("first", { label: "甲" }), costAxisEntry("second", { label: "乙" }));
     serveCostAxisCatalog({ ...catalog, total_lens: { ...catalog.total_lens, label: "全部" } });
     const { user } = renderHome();
 
     await waitFor(() =>
-      expect(screen.getByRole("tab", { name: "負担" })).toHaveAttribute(
+      expect(screen.getByRole("tab", { name: "走りにくさ" })).toHaveAttribute(
         "data-usage",
-        expect.stringContaining("負担[甲・乙]を"),
+        expect.stringContaining("走りにくさ[甲・乙]を"),
       ),
     );
-    await user.click(screen.getByRole("tab", { name: "負担" }));
+    await user.click(screen.getByRole("tab", { name: "走りにくさ" }));
     await user.click(screen.getByRole("button", { name: "全体の説明を表示" }));
-    expect(await screen.findByText(/余分にかかるもの\[甲・乙\]を時間に直した/)).toBeInTheDocument();
+    expect(await screen.findByText(/走りにくさ\[甲・乙\]は、/)).toBeInTheDocument();
     await user.keyboard("{Escape}");
 
     jobs.respond([FIRST], LOOP_CONDITIONS);
     await generate(user);
-    expect(await screen.findByRole("button", { name: "負担で塗る: 全部（タップで変更）" })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("button", { name: "走りにくさを色で見る: 全部（タップで変更）" }),
+    ).toBeInTheDocument();
   });
 
-  it("「負担」タブで無効にした軸は、「負担で塗る」の一覧に出ない", async () => {
+  it("「走りにくさ」タブで無効にした軸は、「走りにくさを色で見る」の一覧に出ない", async () => {
     const { user } = renderHome();
-    await user.click(screen.getByRole("tab", { name: "負担" }));
+    await user.click(screen.getByRole("tab", { name: "走りにくさ" }));
     await user.click(
       within(await screen.findByRole("radiogroup", { name: "振動の割合" })).getByRole("radio", { name: "無効" }),
     );
     await user.click(screen.getByRole("button", { name: "パネルを閉じる" }));
-    await user.click(screen.getByRole("button", { name: /^負担で塗る: / }));
-    const options = await screen.findByRole("radiogroup", { name: "負担で塗る" });
+    await user.click(screen.getByRole("button", { name: /^走りにくさを色で見る/ }));
+    const options = await screen.findByRole("radiogroup", { name: "走りにくさを色で見る" });
     const names = within(options)
       .getAllByRole("radio")
       .map((row) => row.textContent ?? "")

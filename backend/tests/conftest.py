@@ -594,6 +594,11 @@ async def reset_derived_revision(conn: asyncpg.Connection) -> None:
     await conn.execute(f"UPDATE {DerivedDataMetaRow.__tablename__} SET revision = 0")
 
 
+async def derived_revision(conn: asyncpg.Connection) -> int:
+    """今の派生の世代。"""
+    return await conn.fetchval(f"SELECT revision FROM {DerivedDataMetaRow.__tablename__}")
+
+
 async def _reset_app_rows(engine) -> None:
     """アプリの表の全行を子の表から順に消し、較正値の行と作り直しに使った較正値の記録を、本番の書き口
     （`TuningOverrideStore.set_value`・`derived_data_meta.replace_tuning`）でテストの値（`TUNING`）に置き直す（本番の表はいつも
@@ -637,6 +642,14 @@ async def road_graph_session(road_graph_engine) -> AsyncSession:
         await session.rollback()
 
     await _reset_app_rows(road_graph_engine)
+
+
+def on_test_db(test):
+    """DBを使うテストの印。テスト用DBへ繋ぐ`road_graph_session`を取り、接続とイベントループをファイルで共有する
+    （testing-backend.md パターン2）。ほかに要るものは、テストが自分で取る。"""
+    for mark in (pytest.mark.asyncio(loop_scope="module"), pytest.mark.usefixtures("road_graph_session")):
+        test = mark(test)
+    return test
 
 
 @pytest_asyncio.fixture(loop_scope="module")

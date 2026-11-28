@@ -76,7 +76,7 @@ describe("useMapView", () => {
     else expect(result.current.lensControl.caveat).toContain(notice);
   });
 
-  it("レンズは総合と費用の軸の順に並び、選んだレンズの1kmあたりの負担の秒を想定速度つきで取り、凡例の下に段の境目の目安を出す", async () => {
+  it("レンズは総合と費用の軸の順に並び、選んだレンズの1kmあたりの走りにくさの秒を想定速度つきで取り、凡例の下に段の境目の目安を出す", async () => {
     serve(
       undefined,
       costAxisCatalog(
@@ -116,29 +116,32 @@ describe("useMapView", () => {
   });
 
   it.each([
-    { case: "負担の全体を無効にした間", costPreference: { ...STANDARD_COST_PREFERENCE, strength: 0 } },
+    { case: "走りにくさの全体を無効にした間", costPreference: { ...STANDARD_COST_PREFERENCE, strength: 0 } },
     {
       case: "全部の軸を個別に無効にした間",
       costPreference: { ...STANDARD_COST_PREFERENCE, disabled_axes: ["ascent", "vibration"] },
     },
-  ])("$case、数える軸が無いので、総合も選べず凡例も出さず、ルートの線を負担で塗らない", async ({ costPreference }) => {
-    serve();
-    const { result, rerender } = renderMapView({ hasDetail: true });
-    await waitFor(() => expect(result.current.lensControl.axisOptions).toHaveLength(LENS_COUNT));
-    act(() => result.current.lensControl.onLensChange("total"));
-    expect(result.current.lensControl.totalLabel).not.toBeNull();
+  ])(
+    "$case、数える軸が無いので、総合も選べず凡例も出さず、ルートの線を走りにくさで塗らない",
+    async ({ costPreference }) => {
+      serve();
+      const { result, rerender } = renderMapView({ hasDetail: true });
+      await waitFor(() => expect(result.current.lensControl.axisOptions).toHaveLength(LENS_COUNT));
+      act(() => result.current.lensControl.onLensChange("total"));
+      expect(result.current.lensControl.totalLabel).not.toBeNull();
 
-    rerender({ costPreference });
+      rerender({ costPreference });
 
-    expect(result.current.lensControl).toMatchObject({
-      lens: UNSELECTED_LENS_ID,
-      totalLabel: null,
-      legend: [],
-      axisOptions: [],
-    });
-    expect(result.current.lensControl.catalogNotice).toContain("塗れる負担はありません");
-    expect(result.current.look).toMatchObject({ lens: UNSELECTED_LENS_ID, costsCounted: false });
-  });
+      expect(result.current.lensControl).toMatchObject({
+        lens: UNSELECTED_LENS_ID,
+        totalLabel: null,
+        legend: [],
+        axisOptions: [],
+      });
+      expect(result.current.lensControl.catalogNotice).toContain("塗れる走りにくさはありません");
+      expect(result.current.look).toMatchObject({ lens: UNSELECTED_LENS_ID, costsCounted: false });
+    },
+  );
 
   it("走る向きは地図の上の向きを [0, 360) の10°刻みへ丸めて地図へ渡し、材料の要求へ向きを載せないので向きを変えても取り直さない。走行中は実際に走る向きと速度を渡す", async () => {
     serve();

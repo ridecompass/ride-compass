@@ -1,7 +1,7 @@
 import asyncio
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
-from pydantic import Field, model_validator
+from pydantic import model_validator
 
 from app.api.dependencies import (
     get_road_inspector_service,
@@ -18,10 +18,9 @@ from app.api.routers._tile_http import (
     tile_response,
     validate_tile_coords,
 )
-from app.api.routers.cost_axis_catalog import cost_preference_query
+from app.api.routers.cost_axis_catalog import CostPreferenceRequest, cost_preference_query
 from app.config import settings
 from app.domain.lens_values import LensMaterials, RoadInspection
-from app.domain.cost_preference import CostPreference, RequestedCostPreference
 from app.domain.geo import BearingDeg
 from app.domain.route_request import ASSUMED_SPEED_KMH, AssumedSpeedKmh
 from app.domain.landcover import LandcoverTileZoom
@@ -123,7 +122,7 @@ async def region_lens(
     request: Request,
     speed_kmh: AssumedSpeedKmh = ASSUMED_SPEED_KMH,
     frame: TimeFrameKey | None = None,
-    preference: CostPreference = Depends(cost_preference_query),
+    preference: CostPreferenceRequest = Depends(cost_preference_query),
     service: LensService = Depends(get_lens_service),
 ) -> Response:
     """ルートを出す前の地図がレンズ`lens_id`（総合`total`か費用の軸のid。`domain/lens_values.py`）で道を塗る、指定タイルの
@@ -137,13 +136,14 @@ async def region_lens(
     check_tile_rate_limit(request, "lens")
     validate_tile_coords(z, x, y)
     async with region_tile_semaphore:
-        body = await service.way_materials(lens_id, z, x, y, frame, speed_kmh, preference)
+        body = await service.way_materials(lens_id, z, x, y, frame, speed_kmh, preference.cost_preference,
+                                          preference.settings)
     if body is None:
-        raise HTTPException(status_code=404, detail="この負担の種類の値はありません。")
+        raise HTTPException(status_code=404, detail="この走りにくさの種類の値はありません。")
     return Response(body, media_type="application/json")
 
 
-class RoadInspectorRequest(StrictModel):
+class RoadInspectorRequest(CostPreferenceRequest):
     osm_way_id: int
     # クリックされたフィーチャーの識別子（路面タイルが焼く`feature_key`）。区間で焼くズームでは区間、道1本で焼くズームでは道1本を指す。
     feature_key: str
@@ -154,10 +154,13 @@ class RoadInspectorRequest(StrictModel):
     # レンズの値は向き・時刻（風）・速さで決まる。地図のレンズの要求と同じ値を送る（時刻はレンズのコマの印。省くと今）。
     # **1本の道は往復2方向で値が違う**ので、両方の向きを返し、地図がいまの走行方位で塗っている向きを示す。
     bearing_deg: BearingDeg
+    # 地図が道を塗っているレンズ。地図と同じ木で、窓が出す向きを選ぶ（走行方位で選ばないレンズは向きで決まらない道を持たない）。
+    # 塗っていなければ省く（総合の塗り方で選ぶ）。
+    lens_id: str | None = None
     frame: TimeFrameKey | None = None
+    # 偽なら風を読まずに求め、風で変わる軸と総合を返さない（出発時刻の風のコマが無いとき。今の風で求めない）。
+    wind: bool = True
     speed_kmh: AssumedSpeedKmh
-    # 利用者の値。ルート生成へ送るのと同じ形・同じ検証。地図のレンズの要求と同じ値を送る。
-    cost_preference: RequestedCostPreference = Field(default_factory=CostPreference)
 
     @model_validator(mode="after")
     def _check_tile_index(self) -> "RoadInspectorRequest":
@@ -206,6 +209,6 @@ async def region_road_inspector(
     # 道を押すたびの単発リクエストなので、タイル向けの上限を流用せず専用の上限を使う。
     enforce_rate_limit(http_request, "road-inspector", settings.road_inspector_rate_limit_per_minute)
     return await road_inspector.inspect(
-        body.osm_way_id, body.feature_key, (body.z, body.x, body.y), body.bearing_deg, body.frame, body.speed_kmh,
-        body.cost_preference,
+        body.osm_way_id, body.feature_key, (body.z, body.x, body.y), body.bearing_deg, body.lens_id, body.frame, body.wind,
+        body.speed_kmh, body.cost_preference, body.settings,
     )

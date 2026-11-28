@@ -80,7 +80,7 @@ def wind_components(wind_speed_ms, wind_direction_deg, travel_bearing_deg) -> tu
 
 
 @dataclass(frozen=True)
-class WindForecastSeries:
+class WeatherForecastSeries:
     """MSMの格子点ごとの時別風向・風速・気温の予報系列（1時間刻み、`times`はタイムゾーン無しのローカル時刻[JST]）。探索前に
     各Edgeの通過予定時刻へ対応する風と気温を引くために使う。`speed_ms`・`direction_deg`・`temperature_c`（地上2m、℃）は
     （`lattice`の格子点, 時刻）で、格子点の値のまま（補間していない）。
@@ -99,11 +99,11 @@ class WindForecastSeries:
         if len(self.times) < 2 or any(values.shape != expected for values in (
                 self.speed_ms, self.direction_deg, self.temperature_c)):
             raise ValueError(
-                f"WindForecastSeries: speed_ms/direction_deg/temperature_c must have the shape {expected} with >= 2 times"
+                f"WeatherForecastSeries: speed_ms/direction_deg/temperature_c must have the shape {expected} with >= 2 times"
             )
         step_hours = (self.times[1] - self.times[0]).total_seconds() / 3600
         if not math.isclose(step_hours, 1.0):
-            raise ValueError(f"WindForecastSeries: expected hourly steps, got {step_hours}h")
+            raise ValueError(f"WeatherForecastSeries: expected hourly steps, got {step_hours}h")
 
     def _sample_index(self, start: datetime, passage_hours: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
         """`start`から`passage_hours`時間後に最も近い時刻の添字と、系列の範囲の外で端へ寄せたか。
@@ -182,7 +182,7 @@ def reached_or_estimated_hours(reached_hours: np.ndarray, estimated_hours: np.nd
 
 def wind_frames(times: list[datetime], version: str, start: datetime, end: datetime) -> list[TimeFrame]:
     """予報の時刻`times`（系列の時刻の形、1時間刻み）の、`start`〜`end`の風のコマ。時刻はそれに最も近い予報のコマの風を引くので
-    （`WindForecastSeries.time_index`。ちょうど中間は後のコマ）、正時の前後30分を1つのコマにし、印は予報の版`version`と正時から作る。
+    （`WeatherForecastSeries.time_index`。ちょうど中間は後のコマ）、正時の前後30分を1つのコマにし、印は予報の版`version`と正時から作る。
     予報の時刻の外（端へ寄せる時刻）はコマを持たない。"""
     half = timedelta(minutes=30)
     hours = [moment for hour in times if start - half <= (moment := hour.replace(tzinfo=JST)) < end + half]

@@ -3913,7 +3913,14 @@
       "LensDirection": {
         "properties": {
           "total_seconds": {
-            "type": "number",
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Total Seconds"
           },
           "axes": {
@@ -5247,6 +5254,9 @@
       },
       "RoadInspectorRequest": {
         "properties": {
+          "cost_preference": {
+            "$ref": "#/components/schemas/CostPreference-Input"
+          },
           "osm_way_id": {
             "type": "integer",
             "title": "Osm Way Id"
@@ -5277,6 +5287,17 @@
             "minimum": 0.0,
             "title": "Bearing Deg"
           },
+          "lens_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lens Id"
+          },
           "frame": {
             "anyOf": [
               {
@@ -5291,14 +5312,16 @@
             ],
             "title": "Frame"
           },
+          "wind": {
+            "type": "boolean",
+            "title": "Wind",
+            "default": true
+          },
           "speed_kmh": {
             "type": "number",
             "maximum": 60.0,
             "minimum": 5.0,
             "title": "Speed Kmh"
-          },
-          "cost_preference": {
-            "$ref": "#/components/schemas/CostPreference-Input"
           }
         },
         "additionalProperties": false,
@@ -5838,6 +5861,9 @@
       },
       "RouteGenerateRequest": {
         "properties": {
+          "cost_preference": {
+            "$ref": "#/components/schemas/CostPreference-Input"
+          },
           "latitude": {
             "type": "number",
             "maximum": 90.0,
@@ -5862,9 +5888,6 @@
               }
             ],
             "title": "Distance Km"
-          },
-          "cost_preference": {
-            "$ref": "#/components/schemas/CostPreference-Input"
           },
           "road_avoidance": {
             "$ref": "#/components/schemas/RoadAvoidanceOverride"

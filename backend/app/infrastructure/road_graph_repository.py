@@ -332,8 +332,8 @@ class RoadGraphRepository:
         self, way_ids: list[int], segment_indexes: list[int]
     ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         """区間（位置で揃えた2本の列）ごとの断面の点の数（int32）と、点を区間の順に隙間なく並べた標高（m、float32、値の無い点は
-        NaN）と位置（区間の長さに対する割合、float32）。点は区間ごとに順方向に並ぶ。標高の行が無い区間は点を持たない。長さ0の
-        区間は、点を等しい間隔に置く。区間ごとの小さな配列は作らない（区間が多いと、その入れ物だけで点の配列の何倍ものメモリになる）。"""
+        NaN）と位置（区間の長さに対する割合、float32）。点は区間ごとに順方向に並ぶ。標高の行が無い区間は点を持たない。
+        区間ごとの小さな配列は作らない（区間が多いと、その入れ物だけで点の配列の何倍ものメモリになる）。"""
         counts: list[np.ndarray] = []
         elevations: list[np.ndarray] = []
         positions: list[np.ndarray] = []

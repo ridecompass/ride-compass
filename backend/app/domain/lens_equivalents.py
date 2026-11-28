@@ -1,6 +1,6 @@
 """地図のレンズの色の物差し（緑の端と一番濃い赤の端を、軸の事実の値で持つ。`domain/cost_axes.py: LensScale`）を、事実の値で刻んだ段
 （境目は1kmあたりの代償の秒）へ読み替える。段の名前は、数で言える事実の値の範囲（「10%以上」）だけを付け、区分の軸と総合には付けない
-（地図は色で負担の大小を見せ、色の理由を文で言わない）。
+（地図は色で走りにくさの大小を見せ、色の理由を文で言わない）。
 
 条件は、標準の人（巡航速度`domain/route_request.py: ASSUMED_SPEED_KMH`）・標準の利用者の値（つまみと倍率）・その事実のほかは平らで
 舗装・無風・止まらない1kmの道。事実の値の道を費用の式（`domain/leg_costs.py: travel_inputs`と同じ走行の模型と
@@ -132,7 +132,7 @@ def _axis_seconds_per_km(settings: ModelSettings, parameters: LedgerParameters, 
            else crr_for_surface(surface, settings.road_classes, tuning))
     model = SegmentSpeedModel(RiderProfile.standard(ASSUMED_SPEED_KMH, tuning), _uniform_slopes(grade),
                               np.full(n, _ROAD_M), crr, np.zeros(n) if kickoffs is None else kickoffs, tuning)
-    ledger = LedgerCosts.for_model(axes, parameters, model, {
+    ledger = LedgerCosts.for_model(parameters, model, {
         burden_id: burden if burden is not None and burden_id == axis_id else np.zeros(n) for burden_id in axes.burden})
     wind = np.zeros(n) if headwind_ms is None else np.asarray(headwind_ms, dtype=np.float64)
     return ledger.row_seconds(model, wind, np.zeros(n), np.full(n, STANDARD_TEMPERATURE_C))[1][axis_id]

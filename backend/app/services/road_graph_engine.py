@@ -42,7 +42,7 @@ from app.domain.geo import (
     bearing_between_array,
     compass_degrees,
 )
-from app.domain.region import BoundingBox, bbox_covering_points
+from app.domain.region import BoundingBox
 from app.domain.road_network import MaterialFills, RoadSlice, material_arrays_of
 from app.domain.route import (
     Coordinates,
@@ -217,14 +217,14 @@ class RoadGraphEngine:
         そのまま渡すだけにする。
         """
         stage_started = start_timer()
-        road, tile_set = await self._graph_service.get_search_slice(bbox)
+        road, tile_set = await self._graph_service.get_search_slice(bbox, self._settings.road_classes)
         slice_ms = elapsed_ms(stage_started)
         if road.edge_count == 0:
             return None
 
         weather_started = start_timer()
-        # 探索範囲を覆う格子点ごとの時別風予報（MSMのローカルファイルから読む。外部API呼び出しは無い）。
-        wind_series = await self._weather_service.get_wind_forecast_lattice(bbox)
+        # 探索範囲を覆う格子点ごとの時別の風と気温の予報（MSMのローカルファイルから読む。外部API呼び出しは無い）。
+        weather_series = await self._weather_service.get_weather_forecast_lattice(bbox)
         weather_ms = elapsed_ms(weather_started)
 
         materials_started = start_timer()
@@ -244,8 +244,6 @@ class RoadGraphEngine:
         # 迂回率は同じ探索範囲で前回の往路木から学習した値があればそれを使う（無ければ既定値）。
         learned_detour_ratio = detour_ratio_cache.get_detour_ratio(tile_set)
 
-        cost_axes = self._cost_axes
-
         def compose_outbound() -> tuple[RoadAvoidanceMasks, LegCostComposer, LegCostArrays]:
             search_masks = compute_search_exclusion(materials, self._road_avoidance, self._avoidance_multipliers)
             regulations = TimedRegulations(
@@ -255,10 +253,10 @@ class RoadGraphEngine:
                 self._avoidance_multipliers)
             composer = LegCostComposer(
                 materials, search_masks,
-                wind_series, start, self._assumed_speed_kmh, lazy_graph.edge_rows,
+                weather_series, start, self._assumed_speed_kmh, lazy_graph.edge_rows,
                 detour_ratio=detour_ratio_or_default(learned_detour_ratio),
                 material_fills=MaterialFills(numeric_means=road.network.numeric_means),
-                burden_fills=network_burden_fills(road.network, cost_axes),
+                burden_fills=network_burden_fills(road.network, self._settings),
                 settings=self._settings,
                 parameters=ledger_parameters(self._cost_preference, self._settings.tuning),
                 regulations=regulations,
@@ -355,8 +353,7 @@ class RoadGraphEngine:
         起点は出て戻れるNodeへ寄せ（`domain/node_spatial_index.py: snap_to_accessible_node`）、寄せられなければ`RoutingError`。"""
         # nowは出発時刻。区間ごとの通過時刻（風・昼夜）はここからの経過で決まる。
         margin_km = max(_BBOX_MARGIN_MIN_KM, radius_km * _BBOX_MARGIN_RATIO)
-        covering = self._graph_service.edge_endpoints(covering_edge_ids)
-        bbox = bbox_covering_points([origin, *points, *covering], radius_km + margin_km)
+        bbox = self._graph_service.bbox_covering([origin, *points], covering_edge_ids, radius_km + margin_km)
 
         search = await self._build_search_graph(bbox, origin, now, points[0] if points else None, radius_km)
         if search is None:

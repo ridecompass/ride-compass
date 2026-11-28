@@ -18,7 +18,7 @@ import numpy as np
 from PIL import Image, ImageColor
 
 from app.domain.jma_tile_specs import jma_tile_spec
-from app.domain.map_display import AREA_OPACITY
+from app.domain.map_display import HAZARD_OPACITY
 from app.domain.weather_display import (
     ATTENTION_LEVEL_OPACITY,
     PRECIPITATION_COLOR_STOPS,
@@ -47,7 +47,7 @@ _PRECIPITATION_COLORS: dict[tuple[int, ...], tuple[int, ...]] = {
     for jma, stop in zip(JMA_PRECIPITATION_TILE_COLORS, PRECIPITATION_COLOR_STOPS, strict=True)
 }
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("ridecompass.jma_tile_recolor")
 
 
 
@@ -79,9 +79,9 @@ def _level_tile_colors() -> dict[str, _LevelTileColors]:
 
 _LEVEL_TILE_COLORS = _level_tile_colors()
 
-#: 注意の段の画素の不透明度。画面は配信元のタイルを地図の面の濃さ（`AREA_OPACITY`）で重ねるので、掛けて
+#: 注意の段の画素の不透明度。画面は段で塗る災害のタイルを災害の面の濃さ（`HAZARD_OPACITY`）で重ねるので、掛けて
 #: `ATTENTION_LEVEL_OPACITY`になる値にする。
-_ATTENTION_ALPHA = round(255 * ATTENTION_LEVEL_OPACITY / AREA_OPACITY)
+_ATTENTION_ALPHA = round(255 * ATTENTION_LEVEL_OPACITY / HAZARD_OPACITY)
 
 #: 警告を出した（配信要素id, 色）。同じ色はタイルごとに何度も来るので、プロセスで1度だけ出す。
 _warned_unknown: set[tuple[str, RGB]] = set()

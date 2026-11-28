@@ -65,6 +65,7 @@
 | 残った作業ツリーとスクラッチの片付け（`scripts/worktree_sweep.py`） | [architecture/setup.md](../architecture/setup.md)「残った作業ツリーとスクラッチの片付け」 | 消すものと消さないもの・打つ所 |
 | 本番でルートを作る確かめ（`backend/scripts/prod_route_check.py`） | [architecture/tech-stack.md](../architecture/tech-stack.md)「本番でルートを作る確かめ」 | 何を見て落とすか・どこから回すか・待ちの上限の根拠 |
 | 本番の点のタイルの確かめ（`backend/scripts/prod_point_tile_check.py`） | [architecture/tech-stack.md](../architecture/tech-stack.md)「本番の点のタイルの確かめ」 | 何を見て落とすか・どこから回すか・上限の根拠 |
+| 本番の証明書の確かめ（`backend/scripts/prod_cert_check.py`） | [architecture/tech-stack.md](../architecture/tech-stack.md)「本番の宛先」 | 名前と証明書の置き場・更新の仕組み・残りの日数を見る所 |
 
 判断の目安は**「その制約を、コードだけを読んで知れるか」**。知れないならモジュール設計書の
 範囲外で、docs/architecture/側を見る。
@@ -86,7 +87,7 @@
 
 | モジュール | 内容 |
 |---|---|
-| [ルート設定・結果パネル](frontend/route-settings-and-results.md) | 負担の倍率・候補一覧・負担の内訳 |
+| [ルート設定・結果パネル](frontend/route-settings-and-results.md) | 走りにくさの倍率・候補一覧・走りにくさの内訳 |
 | [地図: 軸・ルート色分け](frontend/map-axis-coloring.md) | 式の木と道ごとの材料で塗るレンズの描画 |
 | [地図: 動的気象レイヤー](frontend/dynamic-weather-layers.md) | 降水・キキクル等の地図表示 |
 | [地図: 静的レイヤー・道路表示](frontend/static-map-layers.md) | 路面・道路種別・自転車レーン・POI・事故の地図表示 |

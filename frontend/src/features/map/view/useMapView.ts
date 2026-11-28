@@ -95,7 +95,7 @@ interface MapViewState {
   costPreference: CostPreference;
 }
 
-/** レンズ`lensId`が数える負担を塗るか。総合は数える軸が1つでもあるとき（`totalCounted`）、軸はその軸を数えるとき。 */
+/** レンズ`lensId`が数える走りにくさを塗るか。総合は数える軸が1つでもあるとき（`totalCounted`）、軸はその軸を数えるとき。 */
 function lensCounted(
   lensId: string,
   preference: CostPreference,
@@ -127,13 +127,17 @@ export function useMapView({
     NO_STORED_VALUES,
   );
   const totalLens = costCatalog.lenses?.totalLens ?? null;
-  // 数える軸が1つも無い間は総合も数えないので、総合を選べず、総合の名前と凡例を出さず、ルートの線も負担で塗らず、選べる負担が
+  // 数える軸が1つも無い間は総合も数えないので、総合を選べず、総合の名前と凡例を出さず、ルートの線も走りにくさで塗らず、選べる走りにくさが
   // 無いことを添える。
   const totalCounted = useMemo(
     () => costCatalog.axes.some((axis) => countsAxis(costPreference, axis.axisId)),
     [costCatalog.axes, costPreference],
   );
-  const [storedLens, setLens] = useStoredState<LensId>("ridecompass:route-style-mode", "塗る負担", UNSELECTED_LENS_ID);
+  const [storedLens, setLens] = useStoredState<LensId>(
+    "ridecompass:route-style-mode",
+    "塗る走りにくさ",
+    UNSELECTED_LENS_ID,
+  );
   // 選んでいたレンズの軸をあとから数えなくしたら、選んでいない状態として扱う（選びは残し、数え直せばまた塗る）。
   const lens = lensCounted(storedLens, costPreference, totalLens?.axisId, totalCounted)
     ? storedLens
@@ -183,8 +187,8 @@ export function useMapView({
   const speedKmh = riding?.speedKmh ?? ride.speedKmh;
   const frames = useTimeFrames(ride.at);
   const wayConditions = useMemo(
-    () => ({ bearingDeg, lensFrame: frames.lens, speedKmh }),
-    [bearingDeg, frames.lens, speedKmh],
+    () => ({ bearingDeg, lensFrame: frames.lens, speedKmh, paintedLensId: painted }),
+    [bearingDeg, frames.lens, speedKmh, painted],
   );
   const wayMaterials = useWayMaterials(fetchLenses, viewport, wayConditions, costPreference, totalLens?.axisId ?? null);
   const [roadTabOnMap, setRoadTabOnMap] = useStoredState("ridecompass:road-tab-on-map", "道路タブを地図で見るか", true);
@@ -273,12 +277,12 @@ export function useMapView({
       hasDetail,
       caveat:
         [
-          // 段の名前の事実は、標準の負担の割合で求めたもの。軸のレンズは割合を変えると同じ事実の道が別の段で塗られる。
+          // 段の名前の事実は、標準の走りにくさの割合で求めたもの。軸のレンズは割合を変えると同じ事実の道が別の段で塗られる。
           painted !== null &&
           painted !== totalLens?.axisId &&
           (costPreference.strength !== STANDARD_COST_FACTOR ||
             (costPreference.multipliers[painted] ?? STANDARD_COST_FACTOR) !== STANDARD_COST_FACTOR)
-            ? "凡例の事実は標準の負担の割合での値です。いまは「負担」タブで割合を変えているので、色はその割合で塗っています。"
+            ? "凡例の事実は標準の走りにくさの割合での値です。いまは「走りにくさ」タブで割合を変えているので、色はその割合で塗っています。"
             : null,
           windPreviousRunNotice(lensFetch?.windPreviousRunFrom),
         ]
@@ -286,11 +290,11 @@ export function useMapView({
           .join(" ") || null,
       catalogNotice: !costCatalog.loaded
         ? costCatalog.failed
-          ? "負担の種類の一覧を取得できないため、塗る負担を選べません。"
-          : "負担の種類の一覧を読み込んでいます。"
+          ? "走りにくさの種類の一覧を取得できないため、塗る走りにくさを選べません。"
+          : "走りにくさの種類の一覧を読み込んでいます。"
         : totalCounted
           ? null
-          : `「負担」タブの全体か全部の種類が${DISABLED_LABEL}のため、塗れる負担はありません。`,
+          : `「走りにくさ」タブの全体か全部の種類が${DISABLED_LABEL}のため、塗れる走りにくさはありません。`,
       dataStatus: lensFetch
         ? deriveFetchLayerStatus(
             lensFetch.loading,

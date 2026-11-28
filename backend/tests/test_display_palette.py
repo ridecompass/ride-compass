@@ -33,10 +33,12 @@ from app.domain.display_palette import (
     ordered_colors,
     resolved_display_axes,
 )
-from app.domain.map_display import AREA_OPACITY, ROAD_UNKNOWN_OPACITY
+from app.domain.landcover import LANDCOVER_CLASSES
+from app.domain.map_display import AREA_OPACITY, HAZARD_OPACITY, LANDCOVER_OPACITY, ROAD_UNKNOWN_OPACITY
 from app.domain.primary_attributes import PRIMARY_ATTRIBUTES
 from app.domain.registry import DisplayAxisSpec, DisplayCategorySpec, PrimaryAttributeSpec
-from app.domain.weather_display import PRECIPITATION_COLOR_STOPS
+from app.domain.weather_display import LINEAR_RAINBAND_COLOR, PRECIPITATION_COLOR_STOPS
+from app.domain.weather_elements import LEVELS_OF_SCALE
 
 GROUND = SEMANTIC_COLORS["basemap_ground"]
 
@@ -62,6 +64,8 @@ NOMINAL_DELTA_E = 20.0
 ORDERED_DELTA_E = 10.0
 #: 同時に出る点のレイヤーどうしのどの2色の離れ具合。
 POINT_LAYERS_DELTA_E = 10.0
+#: 面の塗る段を面の濃さで重ねた色が、地から離れる具合（面の濃さの下限）。
+AREA_GROUND_DELTA_E = 15.0
 
 
 def rgb(color: str) -> tuple[float, float, float]:
@@ -181,7 +185,7 @@ EVALUATION_COLORS = [SEMANTIC_COLORS[k] for k in ("evaluation_good", "evaluation
 @given(st.integers(min_value=1, max_value=200))
 @example(len(display_palette.COST_SERIES_COLORS) + 1)
 def test_cost_axis_colors_keep_neighbours_apart_however_many_axes(count):
-    """軸を管理APIで足しても、どの軸も色を持ち、積み上げのグラフと差の棒で隣り合う軸が見分けられ、地図の負担の塗り
+    """軸を管理APIで足しても、どの軸も色を持ち、積み上げのグラフと差の棒で隣り合う軸が見分けられ、地図の走りにくさの塗り
     （緑→赤）と取り違えない。灰色で埋めると、増えた軸どうしと値の無い所が見分けられない。"""
     colors = cost_series_colors(count)
 
@@ -250,10 +254,31 @@ def test_a_road_without_a_value_is_still_visible_on_the_ground():
     assert contrast(line, GROUND) >= NO_DATA_LINE_CONTRAST
 
 
-def test_minor_road_casings_stay_visible_under_every_rain_band():
-    """細い道の縁取りは面の上に描かれず、面を重ねた地に載る。割ると、雨を出した所で細い道の並びが消える。"""
+def test_minor_road_casings_stay_visible_under_rain_and_landcover():
+    """細い道の縁取りは面の上に描かれず、面を重ねた地に載る。割ると、雨・土地被覆を出した所で細い道の並びが消える。"""
     casing = SEMANTIC_COLORS["basemap_minor_road_casing"]
-    grounds = [GROUND, *(over_ground(stop.color, AREA_OPACITY) for stop in PRECIPITATION_COLOR_STOPS)]
+    landcover = [cls.color for cls in LANDCOVER_CLASSES if cls.painted]
+    assert landcover, "塗る土地被覆の分類が1つも無い"
+    grounds = [
+        GROUND,
+        *(over_ground(stop.color, AREA_OPACITY) for stop in PRECIPITATION_COLOR_STOPS),
+        *(over_ground(color, LANDCOVER_OPACITY) for color in landcover),
+    ]
 
     for ground in grounds:
         assert contrast(casing, ground) >= NO_DATA_LINE_CONTRAST, ground
+
+
+def test_every_painted_weather_band_stands_out_from_the_ground():
+    """雨の段と線状降水帯予測は`AREA_OPACITY`、災害の塗る段は配信元のタイルの色のまま`HAZARD_OPACITY`の濃さで地に
+    重なる。割ると、その段の所が何も無い所と見分けられない。"""
+    hazards = [level.tile_color or level.color for levels in LEVELS_OF_SCALE.values() for level in levels if level.painted]
+    assert hazards, "塗る災害の段が1つも無い"
+    painted = [
+        *((stop.color, AREA_OPACITY) for stop in PRECIPITATION_COLOR_STOPS),
+        (LINEAR_RAINBAND_COLOR, AREA_OPACITY),
+        *((color, HAZARD_OPACITY) for color in hazards),
+    ]
+
+    for color, opacity in painted:
+        assert delta_e(over_ground(color, opacity), GROUND) >= AREA_GROUND_DELTA_E, color

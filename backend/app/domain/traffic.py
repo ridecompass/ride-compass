@@ -225,11 +225,16 @@ def stop_cluster_sql(geom: str, eps_m: str, partition: str) -> str:
     return f"ST_ClusterDBSCAN({ground_m_sql(geom)}, eps := {eps_m}, minpoints := 1) OVER (PARTITION BY {partition})"
 
 
+
+#: 範囲の境目で`stop_cluster_sql`のまとまりが切れないよう範囲の外へ読む幅の、まとめる距離に対する倍率（まとめる距離ずつ
+#: この数だけ先まで連なる点を読む）。まとまりは鎖のようにどこまでも延びうるので、それより先まで連なるまとまりは境目で割れうる。
+STOP_CLUSTER_REACH_STEPS = 2
+
 # コンビニは OpenStreetMap からは取らない——補給の点のコンビニは Overture の地点（`domain/stop_place.py`の群
 # 「コンビニ」）から出し、1つの種類を2つの出どころから出さない。
 _SupplyPoiKind = Literal["vending_drinks", "vending_unknown", "toilets", "drinking_water", "bicycle_parking"]
 
-#: `node_kinds.kind`の語彙。`tag_kind_sql`が付けうる種別で、表の検査制約もここから作る。
+#: `node_kinds.kind`の語彙。タグの規則と自販機の式が付けうる種別で、表の検査制約もここから作る。
 NODE_KINDS: frozenset[str] = STOP_POI_KINDS | frozenset(get_args(_SupplyPoiKind))
 
 _AMENITY_SUPPLY_KINDS: dict[str, _SupplyPoiKind] = {
@@ -308,7 +313,7 @@ TAG_KIND_RULES: tuple[tuple[str, str, str, int], ...] = tuple(
 
 #: 自販機だけは`vending`の値が`;`で連なるため表に落ちない。式で当てる。どの群よりも
 #: 後に見る（`amenity`の表に`vending_machine`は無いので、ここが最後の引き当てになる）。
-_VENDING_PRIORITY = len(_TAG_KIND_GROUPS) + 1
+VENDING_PRIORITY = len(_TAG_KIND_GROUPS) + 1
 _VENDING_MACHINE = ("amenity", "vending_machine")
 
 #: 補給・休憩の種別が付きうるタグ（タグ名, 値）。自販機は何を売るかによらず含む。
@@ -319,7 +324,7 @@ _SUPPLY_POI_TAG_KEYS = frozenset(key for key, _value in SUPPLY_POI_TAGS)
 
 
 def has_supply_poi_tag(tags: Mapping[str, str]) -> bool:
-    """`tags`が補給・休憩の種別が付きうるタグを持つか。値は`tag_kind_sql`と同じく、前後の
+    """`tags`が補給・休憩の種別が付きうるタグを持つか。値は`rule_match_sql`と同じく、前後の
     空白を落として小文字にしてから比べる。"""
     return any((value := tags.get(key)) is not None and (key, value.strip(" ").lower()) in SUPPLY_POI_TAGS
                for key in _SUPPLY_POI_TAG_KEYS)
@@ -425,48 +430,36 @@ def _values_clause(rules: tuple[tuple[str, str, str, int], ...]) -> str:
         for key, value, result, priority in rules)
 
 
-def _rule_match_sql(rules: tuple[tuple[str, str, str, int], ...]) -> str:
-    """表の規則に当たった候補を (id, result, priority) で返す断片。"""
+def rule_match_sql(source: str, rules: tuple[tuple[str, str, str, int], ...]) -> str:
+    """`source`（`id`・`tags`を返す関係の名前）の行のうち、表の規則`rules`に当たったものを (id, result, priority) で返す断片。
+
+    タグの値は前後の空白を落として小文字にしてから比べる。
+    """
     return f"""
     SELECT s.id, r.result, r.priority
-    FROM src s JOIN (VALUES {_values_clause(rules)})
+    FROM {source} s JOIN (VALUES {_values_clause(rules)})
                  AS r(tag_key, tag_value, result, priority)
       ON lower(btrim(s.tags->>r.tag_key)) = r.tag_value"""
 
 
-def tag_kind_sql(source: str) -> str:
-    """`source`（`id`・`tags`を返す関係）の各行へ、停止要因・補給休憩の種別を1つ付ける。
+def first_rule_sql(matched: str) -> str:
+    """当たった規則の行`matched`（`id`・`result`・`priority`を返す関係の名前）から、行ごとに優先順位の一番先の結果を選ぶ (id, result)。"""
+    return f"SELECT DISTINCT ON (id) id, result FROM {matched} ORDER BY id, priority"
 
-    どれにも当たらない行は返らない。
+
+def vending_kind_sql(tags: str) -> str:
+    """タグ`tags`の点が自販機なら、何を売るかで決めた種別のSQL式。自販機でない・飲食物を売ると言い切れない値だけなら NULL。
+
+    `vending`が無い・空なら`vending_unknown`。
     """
     vending = ", ".join(_quote(v) for v in sorted(_SUPPLY_VENDING_VALUES))
-    return f"""
-WITH src AS ({source}),
-matched AS ({_rule_match_sql(TAG_KIND_RULES)}
-    UNION ALL
-    SELECT s.id, v.result, {_VENDING_PRIORITY}
-    FROM src s
-    CROSS JOIN LATERAL (
+    return f"""(CASE WHEN lower(btrim({tags}->>{_quote(_VENDING_MACHINE[0])})) = {_quote(_VENDING_MACHINE[1])} THEN (
         SELECT CASE WHEN coalesce(array_length(q.vals, 1), 0) = 0 THEN 'vending_unknown'
-                    WHEN q.vals && ARRAY[{vending}] THEN 'vending_drinks' END AS result
+                    WHEN q.vals && ARRAY[{vending}] THEN 'vending_drinks' END
         FROM (SELECT array_remove(array_agg(nullif(btrim(lower(t)), '')), NULL) AS vals
-              FROM unnest(string_to_array(coalesce(s.tags->>'vending', ''), ';')) AS t) q
-    ) v
-    WHERE lower(btrim(s.tags->>{_quote(_VENDING_MACHINE[0])})) = {_quote(_VENDING_MACHINE[1])} AND v.result IS NOT NULL
-)
-SELECT DISTINCT ON (id) id, result AS kind FROM matched ORDER BY id, priority
-"""
+              FROM unnest(string_to_array(coalesce({tags}->>'vending', ''), ';')) AS t) q) END)"""
 
 
-def direction_sql(source: str) -> str:
-    """`source`（`id`・`tags`を返す関係）の各行へ通行方向を付ける。
-
-    どれにも当たらない行も`_DIRECTION_DEFAULT`で返る——道は必ずどちらかに通れる。
-    """
-    return f"""
-WITH src AS ({source}),
-matched AS ({_rule_match_sql(DIRECTION_RULES)}),
-best AS (SELECT DISTINCT ON (id) id, result FROM matched ORDER BY id, priority)
-SELECT s.id, coalesce(b.result, {_quote(_DIRECTION_DEFAULT)}) AS direction
-FROM src s LEFT JOIN best b ON b.id = s.id
-"""
+def direction_or_default_sql(direction: str) -> str:
+    """規則で決めた通行方向の式`direction`（どれにも当たらなければ NULL）を、当たらない道を両方向にして返すSQL式。"""
+    return f"coalesce({direction}, {_quote(_DIRECTION_DEFAULT)})"

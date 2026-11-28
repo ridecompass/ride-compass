@@ -1,6 +1,6 @@
 "use client";
 
-// 地図の小窓（点の吹き出し・道の小窓・区間の小窓）を組む部品。どの小窓も「上の帯」と塊（負担の塊・施設の行）だけで組む
+// 地図の小窓（点の吹き出し・道の小窓・区間の小窓）を組む部品。どの小窓も「上の帯」と塊（走りにくさの塊・施設の行）だけで組む
 // ——小窓ごとに別の組み方をすると、同じ値が小窓によって違う形に見える。
 
 import { useQuery } from "@tanstack/react-query";
@@ -23,8 +23,8 @@ const hintClass = cn(textVariants({ variant: "hint" }), "m-0");
 export const POPUP_HANDLE_ATTRIBUTE = "data-popup-handle";
 
 /**
- * 小窓の上の帯。つまんで小窓をずらす所で、触れても中身をスクロールせず文字を選ばない。右端は、小窓の器の右上に重なる Street View・
- * 寄せるアイコンと×（どれも幅32px・高さ44px）の幅だけ空ける。
+ * 小窓の上の帯。つまんで小窓をずらす所で、触れても中身をスクロールせず文字を選ばない。右端は、小窓の器の右上に重なる寄せる
+ * アイコンと×（どれも幅32px・高さ44px）の幅だけ空ける。
  */
 export function PopupHeader({ label, children }: { label: string; children: ReactNode }) {
   return (

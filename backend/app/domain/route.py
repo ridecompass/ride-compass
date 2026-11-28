@@ -24,8 +24,6 @@ ELEVATION_M_DECIMALS = 1
 COST_SECONDS_DECIMALS = 1
 #: 応答の止まる回数の見込みの桁。
 STOP_COUNT_DECIMALS = 1
-#: 応答の風の速さ（m/s）の桁。
-WIND_MS_DECIMALS = 1
 #: 応答の道の向き（度）の桁。
 ROAD_BEARING_DEG_DECIMALS = 0
 
@@ -76,7 +74,7 @@ class PenaltyBreakdown(StrictModel):
     # 上乗せした秒（0以上）。
     preferred_seconds: float
     avoided_seconds: float
-    # 曲がる所の罰（選ばせないために置く秒。Uターン）の和（0以上）。実際に失う時間ではないので所要時間に入らず、道の負担でも
+    # 曲がる所の罰（選ばせないために置く秒。Uターン）の和（0以上）。実際に失う時間ではないので所要時間に入らず、道の走りにくさでも
     # ないので1kmあたりの代償にも入らない。区間（道1本の分）は曲がる所を持たないので0。
     turn_penalty_seconds: float
 
@@ -276,7 +274,7 @@ class EvaluatedRoute(StrictModel):
 
     def penalty_per_km(self) -> float | None:
         """候補全体の1kmあたりの代償の秒（曲がる所の漕ぎ出しと避け方の秒を含むルート全体の損）。曲がる所の
-        罰は道の負担でないので入れない——入れると、地図のレンズの総合の段で塗る候補の帯が道の負担とずれる。
+        罰は道の走りにくさでないので入れない——入れると、地図のレンズの総合の段で塗る候補の帯が道の走りにくさとずれる。
         候補の帯は応答の`penalty_seconds_per_km`で塗る。所要時間か
         長さが無ければNone。"""
         if self.estimated_duration_seconds is None or not self.distance_km > 0:
@@ -292,7 +290,7 @@ class EvaluatedRoute(StrictModel):
         return None if per_km is None else round(per_km, COST_SECONDS_DECIMALS)
 
     facts: RouteFacts
-    # 所要時間の見積もりで、取込の範囲全体の平均で埋めた長さの、距離に対する割合（0〜1。数え方は
+    # 所要時間の見積もりで、値が欠けて埋めた長さの、距離に対する割合（0〜1。数え方は
     # `domain/leg_costs.py: LegCostComposer.missing_travel_data_share`）。画面が利用者へ知らせる。区間が無ければNone。
     missing_travel_data_share: float | None
     # 経路を構成するEdge idの列（起点から順）。フロントは候補どうしの共通部分を集合演算で
@@ -541,12 +539,7 @@ def _shape_positions(edges: list[LeanEdge]) -> list[list[float]]:
     first_at = np.minimum(first, len(along) - 1)
     last_at = np.minimum(np.maximum(first + counts - 1, first), len(along) - 1)
     total = np.repeat(along[last_at] - along[first_at], counts)
-    within = np.arange(counts.sum()) - np.repeat(first, counts)
-    even = within / np.repeat(np.maximum(counts - 1, 1), counts)  # 長さ0のEdgeは等しい間隔
-    with np.errstate(divide="ignore", invalid="ignore"):
-        at = np.where(total > 0, (along - np.repeat(along[first_at], counts)) / total, even)
-    at[np.repeat(counts > 0, counts) & (within == 0)] = 0.0
-    at[within == np.repeat(counts - 1, counts)] = 1.0
+    at = (along - np.repeat(along[first_at], counts)) / total
     flat = at.tolist()
     return [flat[start:start + count] for start, count in zip(first.tolist(), counts.tolist())]
 

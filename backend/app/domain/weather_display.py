@@ -166,7 +166,7 @@ def tile_pixel_level(rgb: RGB, colors: Sequence[RGB | None]) -> int | None:
     return min(distances)[1] if distances else None
 
 
-#: 注意の段（`painted`がFalseの段）を地図で見せる濃さ。塗る段（地図の面の濃さ`map_display.py: AREA_OPACITY`）より
+#: 注意の段（`painted`がFalseの段）を地図で見せる濃さ。塗る段（災害の面の濃さ`map_display.py: HAZARD_OPACITY`）より
 #: ずっと薄くし、範囲は分かるが下の道と地名が読めるようにする。
 ATTENTION_LEVEL_OPACITY = 0.12
 

@@ -41,11 +41,11 @@ interface RoadInspectorPopupProps {
 
 const hintClass = cn(textVariants({ variant: "hint" }), "m-0");
 
-// 地図の道をクリックしたときの中身。答えるのは「この道は何者で、どれだけの負担か」。開いたら負担を取りに行く。
-// 開いたときに見せるのは上の帯（名前・路面など）と負担だけで、属性は畳む（地図の上の小さな枠に収めるため）。
+// 地図の道をクリックしたときの中身。答えるのは「この道は何者で、どれだけの走りにくさか」。開いたら走りにくさを取りに行く。
+// 開いたときに見せるのは上の帯（名前・路面など）と走りにくさだけで、属性は畳む（地図の上の小さな枠に収めるため）。
 export default function RoadInspectorPopup({ properties, track, conditions, costPreference }: RoadInspectorPopupProps) {
-  // 負担は道・走行の条件・利用者の値ごとに持つ（値を変えたら取り直す）。条件は開いたときのものに留める——出発時刻は「今」へ
-  // 5分刻みで進むので、今の条件で引き直すと開いている間に負担が消える。
+  // 走りにくさは道・走行の条件・利用者の値ごとに持つ（値を変えたら取り直す）。条件は開いたときのものに留める——出発時刻は「今」へ
+  // 5分刻みで進むので、今の条件で引き直すと開いている間に走りにくさが消える。
   const [opened] = useState(conditions);
   const name = roadDisplayName(properties);
   const summary = roadFactSummary(properties);
@@ -56,15 +56,13 @@ export default function RoadInspectorPopup({ properties, track, conditions, cost
     {
       queryKey: ["road-inspector", wayId, featureKey, opened, costPreference],
       queryFn: async () => {
-        // 地図のレンズと同じく、出発時刻の風のコマが無ければ（予報の範囲の外）今の風で求めない。
-        if (opened.lensFrame === null) throw new Error("出発時刻の風の予報がありません");
         const value = await withFreshFrames(fetchRoadInspection(wayId!, featureKey!, opened, costPreference));
-        if (value === null) throw new Error("負担が返りませんでした");
+        if (value === null) throw new Error("走りにくさが返りませんでした");
         return value;
       },
       // コマの一覧が届くまでは取らない。
       enabled: inspectable && opened.lensFrame !== undefined,
-      // 同じ道を同じ条件・利用者の値で開き直したときは、前に取った負担を出す。
+      // 同じ道を同じ条件・利用者の値で開き直したときは、前に取った走りにくさを出す。
       staleTime: Infinity,
     },
     getQueryClient(),
@@ -86,12 +84,12 @@ export default function RoadInspectorPopup({ properties, track, conditions, cost
           {summary.length > 0 && <span className={cn(hintClass, "ml-1.5")}>{summary.join("・")}</span>}
         </span>
       </PopupHeader>
-      {inspectable && inspector.isPending && <p className={hintClass}>負担を読み込んでいます</p>}
+      {inspectable && inspector.isPending && <p className={hintClass}>走りにくさを読み込んでいます</p>}
       {inspector.isError && (
         <p className={cn(hintClass, "flex items-center gap-1.5")}>
-          負担を取得できませんでした。
+          走りにくさを取得できませんでした。
           <Button
-            usage="取得できなかったこの道の負担を、もう一度取得します。"
+            usage="取得できなかったこの道の走りにくさを、もう一度取得します。"
             variant="ghost"
             size="panelIcon"
             aria-label="再試行"
@@ -124,8 +122,12 @@ function LensValues({ lens }: { lens: LensInspection }) {
   const values = lens[slot];
   if (values === null) return <p className={hintClass}>この向きには走れません。</p>;
   const rows = penaltyRows(Object.fromEntries(values.axes.map((axis) => [axis.axis_id, axis.seconds])), costCatalog);
+  const factLabels = rows.flatMap((row) => values.facts[row.id]?.label ?? []);
   return (
     <div className="flex flex-col gap-1">
+      {values.total_seconds === null && (
+        <p className={hintClass}>風の予報を読めないため、風に依る走りにくさと合計は出せません。</p>
+      )}
       <div className="flex flex-wrap items-center gap-1.5">
         <p className={hintClass}>
           {slot === "along" ? "道の向き" : "逆向き"}
@@ -134,8 +136,8 @@ function LensValues({ lens }: { lens: LensInspection }) {
         <ToggleGroup
           value={view}
           onValueChange={setView}
-          aria-label="負担の出し方"
-          usage="軸ごとの負担を、秒で出すか、秒にする前の事実[登り・止まる回数等]で出すかを切り替えます。"
+          aria-label="走りにくさの出し方"
+          usage={`軸ごとの走りにくさを、秒で出すか、秒にする前の事実${factLabels.length === 0 ? "" : `[${factLabels.join("・")}]`}で出すかを切り替えます。`}
           className="ml-auto"
         >
           <ToggleGroupItem value="seconds" className="py-0.5">
@@ -149,7 +151,7 @@ function LensValues({ lens }: { lens: LensInspection }) {
       {/* 事実の名前と単位は backend が付ける（ルートの一覧と同じ作り方）。 */}
       {view === "seconds" ? (
         <PenaltyBreakdown
-          total={sectionSeconds(values.total_seconds)}
+          total={values.total_seconds === null ? null : sectionSeconds(values.total_seconds)}
           items={rows.flatMap((row) =>
             Math.round(row.seconds) === 0 ? [] : [{ row, text: sectionSeconds(row.seconds) }],
           )}
@@ -181,7 +183,7 @@ function FactList({ rows }: { rows: readonly RoadFactRow[] }) {
   );
 }
 
-/** この道の属性。地図のタイルから分かる事実に、負担を取ったときに届くタグを足し、**同じ項目は1度だけ**出す（タイルとタグの
+/** この道の属性。地図のタイルから分かる事実に、走りにくさを取ったときに届くタグを足し、**同じ項目は1度だけ**出す（タイルとタグの
  * 両方が持つ項目がある）。中は日本語で読める値だけにし、英語の生の値・登録外のタグ（`name`・`ref`等、OSM編集者が自由に
  * 書ける）は、数が読めないため、さらに畳んだ「その他のタグ」に置く。畳んでおく——走行中に読むものではなく、開いたままだと
  * 地図の上の枠からはみ出す。 */

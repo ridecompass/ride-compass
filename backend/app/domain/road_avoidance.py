@@ -54,6 +54,10 @@ def level_multipliers(tuning: Tuning) -> dict[AvoidanceLevel, float]:
     }
 
 
+#: `level_multipliers`の倍率が何に掛かるかを、利用者に言う名詞句。掛かる先を変えたら、ここも変える。
+AVOIDANCE_MULTIPLIER_WORDING = "所要時間に掛けて費用にする倍率"
+
+
 class AvoidanceRow(NamedTuple):
     """避け方を選べる行1つ。"""
 

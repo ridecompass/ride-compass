@@ -15,6 +15,7 @@ from app.domain.geo import (
     km_per_degree_longitude,
 )
 from app.domain.leg_costs import LegCostArrays, LegCostComposer
+from app.domain.ledger_costs import COST_WORDING
 from app.domain.route import COST_SECONDS_DECIMALS, EvaluatedRoute, seconds_per_km
 from app.domain.route_diversity import pareto_layer_index
 from app.domain.routing import time_bin_of
@@ -322,7 +323,6 @@ def leg_of_edge_by_half(weights: Sequence[float]) -> list[int]:
 
     区間より前の重み（走行秒か距離）の累積が全体の半分に届いていなければ往路、届いていれば復路
     ——レグが表す「走り始めの時刻帯／走り終わりの時刻帯」の近似が入れ替わる点として中間を採る。
-    重みが全部0の経路（長さ0の区間だけ）は全部を復路にする（距離の重みが無く、どちらでも結果に効かない）。
     """
     half = sum(weights) / 2
     leg_of_edge, travelled = [], 0.0
@@ -417,8 +417,8 @@ def prefers_reverse(forward_cost: float, reverse_cost: float) -> bool:
     return reverse_cost < forward_cost
 
 
-#: `candidate_order`の並べ方を、利用者に言う文（代償を利用者には負担と呼ぶ）。並べ方を変えたら、ここも変える。
-CANDIDATE_ORDER_WORDING = "所要時間と負担の和が小さい順[周回は1kmあたりの和が小さい順]"
+#: `candidate_order`の並べ方を、利用者に言う文（代償を利用者には走りにくさと呼ぶ）。並べ方を変えたら、ここも変える。
+CANDIDATE_ORDER_WORDING = f"{COST_WORDING}が小さい順[周回は1kmあたりの和が小さい順]"
 
 
 def candidate_order(candidate: EvaluatedRoute, *, loop: bool) -> float:
