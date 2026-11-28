@@ -28,18 +28,24 @@ import { DesktopRoutePanels, MobileRoutePanels } from "./RoutePanels";
 import { mapTapModeOf, usePagePanels } from "./usePagePanels";
 import { useRideGuidance } from "./useRideGuidance";
 import { countRideMetric } from "@/lib/rideMetrics";
+import AccountGate from "@/features/account/AccountGate/AccountGate";
 
 export default function Home() {
+  return <AccountGate>{(open) => <HomeMap open={open} />}</AccountGate>;
+}
+
+// `open` は、ログインと同意が済んだか。済むまで地図は最初の画面の後ろにあり、現在地を取りに行かない（許可を聞く窓を先に出さない）。
+function HomeMap({ open }: { open: boolean }) {
   countRideMetric("pageRenders");
   const clientConfig = useClientConfig();
   // 走行モード（現在地を追い続けて地図を動かす）。走りとしてありえる速さの上限は、走行モデルの下りの最高速度。
-  // 案内を終えた走りは、残すかを聞いてから送る。
+  // 案内を終えた走りは、聞かずに走行ログへ送る。
   const rideKeep = useRideKeep();
-  const riding = useRideMode(clientTuningValue(clientConfig, CLIENT_TUNING_IDS.maxDescentKmh), rideKeep.offer);
+  const riding = useRideMode(clientTuningValue(clientConfig, CLIENT_TUNING_IDS.maxDescentKmh), rideKeep.send);
   // 走行モードの間は、地図と予定ルートのプロファイルに集中する配置にする（地図の上の操作を出さず、パネルは帯の「ルート」で開く）。
   const navigating = riding.status !== "off";
   const ridePosition = riding.map?.position ?? null;
-  const place = useLocation(ridePosition);
+  const place = useLocation(ridePosition, open);
   const { location, originLocated, setManualLocation, resetOriginToCurrent } = place;
   const originManual = place.locationSource === "manual";
 
@@ -248,7 +254,8 @@ export default function Home() {
             sheetOpen={sheetOpen}
             usageGuideActive={usageGuideActive}
             onUsageGuideEnd={() => setUsageGuideActive(false)}
-            firstVisitIntro={firstVisitIntro}
+            // 最初の画面の後ろでは、初回の案内を出さない（済んでから地図の上に出す）。
+            firstVisitIntro={{ ...firstVisitIntro, shown: firstVisitIntro.shown && open }}
             rideKeep={rideKeep}
           />
         </div>

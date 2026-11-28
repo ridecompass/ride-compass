@@ -16,7 +16,14 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { HOUR_MS } from "@/lib/duration";
 import { onBackend } from "@/testing/backendServer";
-import { ROAD_CLASS_COLOR, renderHome, section, serveHome, showRoadSurface } from "@/testing/homePage";
+import {
+  ROAD_CLASS_COLOR,
+  renderHome,
+  section,
+  serveHome,
+  showRoadSurface,
+  signedInAndConsented,
+} from "@/testing/homePage";
 import { themedPaint } from "@/features/map/basemapTheme";
 import { LAYER_DATA_STATUS_LABELS } from "@/features/map/layers/mapLayers";
 import { LOADING_STATUS_DELAY_MS } from "@/features/map/useShownDataStatus";
@@ -79,6 +86,7 @@ describe("画面の枠", () => {
   it("地図の中央の「地図を読み込み中…」の札は、時間では外れず、基礎地図が描けた（`load`）ときに外れる", () => {
     vi.useFakeTimers();
     try {
+      signedInAndConsented();
       render(<Home />);
       act(() => vi.runOnlyPendingTimers());
       expect(screen.getByText("地図を読み込み中…")).toBeInTheDocument();

@@ -10,22 +10,18 @@ import { clientConfigResponse } from "@/testing/clientConfig";
 import { TWO_COST_AXES } from "@/testing/costAxes";
 import type { ClientConfigResponse, CostAxisCatalogResponse } from "@/types/route";
 import type { TimeFrames } from "@/features/map/regionApi";
-import type { AccountStatus } from "@/services/accountApi";
+import { accountStatus } from "@/testing/accountStatus";
 import { WIDE_TIME_FRAMES } from "@/testing/timeFrames";
 
-// 走行モードを使うと、どのテストでも走り始めに画面の版を読み、案内を終えたときに自分の状態を読んで走りを送る（`lib/rideTrack.ts`・
-// `features/ride/useRideKeep.ts`）。走りの記録を見ないテストでも出る要求なので、既定で応える（ログインして同意した人として。テストごとの
+// 地図の画面は開くと自分の状態を読み、ログインして同意した人にだけ地図を出す（`features/account/AccountGate/AccountGate.tsx`）。走行モードを
+// 使うと、どのテストでも走り始めに画面の版を読み、案内を終えたときに走りを送る（`lib/rideTrack.ts`・`features/ride/useRideKeep.ts`）。
+// 地図の画面を開くテストや走りの記録を見ないテストでも出る要求なので、既定で応える（ログインして同意した人として。テストごとの
 // 片付けでも残る）。応え方を見るテストは、自分で上書きする。
 export const backendServer = setupServer(
   http.get("*/api/version", () => HttpResponse.json({ commit: null, started_at: "2026-11-16T00:00:00Z" })),
   http.get(`${API_BASE_URL}/api/me`, () => HttpResponse.json(accountStatus())),
   http.post(`${API_BASE_URL}/api/rides`, () => new HttpResponse(null, { status: 204 })),
 );
-
-/** 自分の状態（`GET /api/me`）。既定はログインして今の版に同意した人。 */
-export function accountStatus(overrides: Partial<AccountStatus> = {}): AccountStatus {
-  return { signed_in: true, consented: true, terms_version: 1, google_client_id: "test-client-id", ...overrides };
-}
 
 export interface SentRequest {
   method: string;

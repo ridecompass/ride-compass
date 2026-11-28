@@ -11,21 +11,18 @@ import { formatDurationShort } from "@/lib/duration";
 import { formatAlongDistance } from "@/lib/geoDistance";
 import { getQueryClient } from "@/lib/queryClient";
 import { formatJstDateTime, jstParts } from "@/lib/time";
+import GoogleSignInButton from "@/components/GoogleSignInButton/GoogleSignInButton";
+import { ACCOUNT_KEY, useAccountStatus, useGoogleSignIn } from "@/hooks/useAccountStatus";
 import {
   deleteMyRide,
-  getAccountStatus,
   getMyRide,
   listMyRides,
-  signInWithGoogle,
   signOut,
   withdrawConsent,
   type RideDetail,
   type RideSummary,
 } from "@/services/accountApi";
 
-import GoogleSignInButton from "../RideKeepCard/GoogleSignInButton";
-
-const ACCOUNT_KEY = ["account"] as const;
 const RIDES_KEY = ["my-rides"] as const;
 
 /** 走った線（休むごとに分けた線。点は[経度, 緯度]）。 */
@@ -38,12 +35,8 @@ interface RideLogProps {
 
 /** 走行ログのページの中身。自分の走りの一覧と1件の走った線を見せて1件ずつ消し、ログアウトと記録をやめる操作を置く。 */
 export default function RideLog({ trackMap }: RideLogProps) {
-  const client = getQueryClient();
-  const account = useQuery({ queryKey: ACCOUNT_KEY, queryFn: getAccountStatus }, client);
-  const signIn = useMutation(
-    { mutationFn: signInWithGoogle, onSuccess: (status) => client.setQueryData(ACCOUNT_KEY, status) },
-    client,
-  );
+  const account = useAccountStatus();
+  const signIn = useGoogleSignIn();
   const status = account.data;
 
   if (account.error) return <ErrorText error={account.error} />;
@@ -190,7 +183,7 @@ function AccountSection({ consented }: { consented: boolean }) {
       {consented ? (
         <div className="flex flex-col gap-2">
           <p className={cn(textVariants({ variant: "hint" }), "m-0")}>
-            記録をやめると、これからの走りは残しません。残した走りは消えず、ここで見返せます。
+            記録をやめると、アプリを使えなくなります（地図の画面を開くと最初の画面に戻り、同意をもう一度聞きます）。残した走りは消えず、ここで見返せます。
           </p>
           <Button
             usage={null}
@@ -205,7 +198,7 @@ function AccountSection({ consented }: { consented: boolean }) {
         </div>
       ) : (
         <p className={cn(textVariants({ variant: "hint" }), "m-0")}>
-          記録をやめています。次に走りを残すときに、同意をもう一度聞きます。
+          記録をやめています。地図の画面を開くと、同意をもう一度聞きます。
         </p>
       )}
       <Button
