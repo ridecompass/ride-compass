@@ -19,6 +19,6 @@
   "thresholds": {
     "docs/modules/backend/routing-engine.md": 1200,
     "frontend/src/types/generated/api.d.ts": 3700,
-    "frontend/src/types/generated/mapDisplay.ts": 1100
+    "frontend/src/types/generated/mapDisplay.ts": 1000
   }
 }
