@@ -10,6 +10,7 @@ import type { MapScene } from "./mapScene";
 import { composeScene, type SceneGroup } from "./mapSceneGroups";
 import { areaRasterGroup, type AreaRasterState } from "@/features/map/scene/groups/areaRasters";
 import { axisLineGroup, type AxisLineState } from "@/features/map/scene/groups/axisLines";
+import { rideTrackGroup, type RideTrackLines } from "@/features/map/scene/groups/rideTrack";
 import { pointGroup, type PointState } from "@/features/map/scene/groups/points";
 import { roadLineGroup, type RoadLineState } from "@/features/map/scene/groups/roadLines";
 import { routeGroup, type RouteState } from "@/features/map/scene/groups/routes";
@@ -45,4 +46,9 @@ export function buildMapScene(inputs: SceneInputs): MapScene {
 /** 俯瞰図（`MapOverview/MapOverview.tsx`）に載せる、気象の家族だけの scene。 */
 export function buildOverviewScene(weather: WeatherState): MapScene {
   return composeScene([weatherGroup], weather);
+}
+
+/** 走行ログの地図（`RideTrackMap/RideTrackMap.tsx`）に載せる、走った線だけの scene。 */
+export function buildRideTrackScene(lines: RideTrackLines): MapScene {
+  return composeScene([rideTrackGroup], lines);
 }
