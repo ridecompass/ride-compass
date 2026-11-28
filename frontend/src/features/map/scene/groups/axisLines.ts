@@ -3,8 +3,8 @@
  * 道の値は、backend が配る式の木（費用の軸の一覧の `map_lens.formula`）を地図の式へ置き換えて、地図が道ごとに求める。
  * 木へ入れる道ごとの材料は feature-state で、走る条件（向き・想定速度）は地図全体の global-state で受け取る——向き・
  * 速度を変えても材料は取り直さず、global-state を置き直すだけで色が変わる。**feature-state の値は MapLibre の絞り込み
- * からも `line-dasharray` からも読めない**ため、凡例で隠した段は透明で落とし、値の無い道は同じ線の中で薄い灰色の実線に
- * する（破線にするには全部の道を描く線をもう1つ重ねることになり、レンズを出している間の描く量が倍になる）。
+ * からも `line-dasharray` からも読めない**ため、凡例で隠した段は透明で落とし、値の無い道の破線は、破線だけの線を
+ * 重ねて濃さ（feature-state を読める）で出し入れする。
  *
  * ソースは道路の線と同じ路面タイル。宣言は合成（`composeScene`）が1本へ畳む。
  */
@@ -94,19 +94,18 @@ function byWayValue(axis: AxisLine, cases: (value: unknown) => { missing: unknow
 
 /** 段ごとの色。値が無い道と、まだ来ていない道は別の色にする。 */
 function colorExpression(axis: AxisLine): unknown {
+  // 値の無い道は破線の線が描くので、実線の側は透明にする（重ねると破線が実線に埋もれる）。
   return byWayValue(axis, (value) => ({
-    missing: ["case", fetchedExpression(axis), NO_DATA_LEGEND_BAND.color, palette.semantic.loading],
+    missing: ["case", fetchedExpression(axis), palette.semantic.hidden, palette.semantic.loading],
     otherwise: bandStep(axis.bands, value, (band) => band.color),
   }));
 }
 
-/** 濃さ。材料が届いて値の無い道だけを、道路の線の値の無い道と同じ薄さにする（まだ来ていない道は薄くしない——薄くすると
- * 「まだ来ていない」と「値が無い」が区別できない）。 */
-function opacityExpression(axis: AxisLine): unknown {
-  const known = mapDisplay.road.knownOpacity;
+/** 値の無い道のうち、材料が届いた道だけを見せる濃さ（まだ来ていない道は取得中の色の実線が描く）。 */
+function noDataOpacityExpression(axis: AxisLine): unknown {
   return byWayValue(axis, () => ({
-    missing: ["case", fetchedExpression(axis), mapDisplay.road.unknownOpacity, known],
-    otherwise: known,
+    missing: ["case", fetchedExpression(axis), mapDisplay.road.unknownOpacity, 0],
+    otherwise: 0,
   }));
 }
 
@@ -138,15 +137,29 @@ export const axisLineGroup = declareGroup<AxisLineState>((state) => {
     type: "line",
     minzoom: LENS_LAYER_MIN_ZOOM,
   });
-  const layers: readonly SceneLayerEntry[] = state.axes.map((axis) => ({
-    ...lineOf(axis.axisId),
-    paint: {
-      "line-color": colorExpression(axis),
-      "line-width": mapDisplay.road.lineWidthPx,
-      "line-opacity": opacityExpression(axis),
+  const layers: readonly SceneLayerEntry[] = state.axes.flatMap((axis) => [
+    {
+      ...lineOf(axis.axisId),
+      paint: {
+        "line-color": colorExpression(axis),
+        "line-width": mapDisplay.road.lineWidthPx,
+        // 取得中は薄くしない——薄くすると「まだ来ていない」と「対象外」が区別できない。
+        "line-opacity": mapDisplay.road.knownOpacity,
+      },
+      visible: axis.visible,
     },
-    visible: axis.visible,
-  }));
+    // 値の無い道だけを、薄い破線で描く。
+    {
+      ...lineOf(`${axis.axisId}-no-data`),
+      paint: {
+        "line-color": NO_DATA_LEGEND_BAND.color,
+        "line-width": mapDisplay.road.lineWidthPx,
+        "line-opacity": noDataOpacityExpression(axis),
+        "line-dasharray": ["literal", [...mapDisplay.noDataDash]],
+      },
+      visible: axis.visible,
+    },
+  ]);
 
   return { sources, layers, globalState: state.conditions };
 });
