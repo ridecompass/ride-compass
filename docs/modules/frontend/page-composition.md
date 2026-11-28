@@ -17,7 +17,7 @@
 | レイヤー | ファイル |
 |---|---|
 | app | `page.tsx`（機能のフックをつなぎ、下の枠へ渡す）・`HomeHeader.tsx`（ヘッダー［走行中は走りの帯］と、取れていないことの印・開発者向けのログ）・`HomeMapPane.tsx`（地図と、地図の上に重ねる操作・走行中の下端）・`RoutePanels.tsx`（デスクトップの左のパネルとモバイルの下部タブ・シート。どちらも「ルート設定」「ルート結果」の2区分）・`useRideGuidance.ts`（走行モードの間の進み・次に曲がる所・残り）・`usePagePanels.ts`（画面の枠: 区分・シートの開閉と高さ・地図で効いているパネル・まだ見ていない結果と、地図を押したときの意味の決まり）・`layout.tsx`・`error.tsx`・`terms/page.tsx`と`privacy/page.tsx`（利用規約とプライバシーポリシー。[開発者機能](developer-tools.md)の対象ファイル表） |
-| hooks | `useStoredState.ts`・`useIsMobile.ts`・`useVisualViewport.ts`・`useLocation.ts`・`useDebouncedValue.ts`・`useIsomorphicLayoutEffect.ts` |
+| hooks | `useStoredState.ts`・`useIsMobile.ts`・`useVisualViewport.ts`・`useLocation.ts`・`useDebouncedValue.ts`・`useIsomorphicLayoutEffect.ts`・`useCramped.ts`（行が収まりきらない間だけ詰めた形にする印） |
 | features/map/view | `useMapView.ts`（地図の見え方の状態と、地図・操作部品へ渡す値）・`mapLook.ts`（地図へ渡す見え方の値の型）・`lens.ts`（選んだレンズから全道路を塗るレンズ・凡例を導く）・`overlayChips.ts`（地図上チップの状態とレイヤー表示の保存形式）・`legendFilters.ts`（凡例で隠した行の保存先の読み書き） |
 | features/map/MapView | `useLayerDataStatus.ts`（MapLibreのソースイベントからレイヤーごとの取得状態を算出して渡す）・`useMapLifecycle.ts`（地図を作り、読み込み・失敗・動かした範囲・向き・ソースの取得のイベントを状態と知らせ先へつなぐ。「地図を描き直す」のスタイルの取り直しも持つ）・`MapLoadStatus.tsx`（基礎地図が描けるまで地図の中央に出す読み込み中の札〔俯瞰図も使う〕と、地図が白紙のまま止まったときの案内）・`mapCamera.ts`（ルート・選んだ区間を収める・地点へ寄せるときに、地図の上に重ねた部品を避ける。線が見えている所に入るかも同じ避け方で測る）・`useSectionFocus.ts`（頼まれたときだけ形へ寄せ〔小窓の寄せるアイコンとグラフの寄せるボタンと、区間の小窓の入る所を作るときが同じ手続きを使う〕、選んだ区間が見えている所の外にあるかを知らせる） |
 | lib | `apiBaseUrl.ts`・`apiClient.ts`（backendのAPIを呼ぶ口と、全呼び出しが共有する骨格。下記）・`apiPath.ts`（アプリ自身が呼ばないURL［地図ライブラリへ渡すタイル・スタイル］のパスをOpenAPIの宣言と型で照合して作る）・`apiError.ts`・`backendInternalUrl.ts`・`queryClient.ts`（画面のデータ取得が共有するTanStack Queryのキャッシュ。下記「データ取得の骨格」）・`safeStorage.ts`（localStorageの読み書きの口。読めない・書けないときは、どの保存値かを添えて投げる。下記「状態の永続化」）・`paletteCssVariables.ts`（地図に塗る色と同じ色をUIにも出す箇所へ、配信された値をCSS変数として流す。`layout.tsx`がサーバー側で`:root`へ入れる。CSSが値を持つのはライト/ダークで2値を持つものだけ）・`duration.ts`（時間の長さの単位［秒・分・時のミリ秒］と、所要時間・待ち時間を「N分」で書く書き方。1時間を超えても分で書き、候補の一覧・候補の中身・差し替えの比較で同じ単位で見比べる）・`numberFormat.ts`（桁での丸めと、差の前に置く符号）・`urlTemplate.ts`（パスのテンプレートの`{名前}`を埋める。`apiPath.ts`と気象庁の配信のパスが使う）・`geoDistance.ts`（2点間の大円距離と、ルートに沿った道のりの書き方〔1km未満は10m単位、以上は0.1km単位。走行中の曲がる所のカードと近くの施設の位置が同じ桁で出す〕。地球の半径はbackendの値を生成物`geo-config.json`で読み、2点の距離がbackendと合うことは、`cardinalLabel`と同じ表をテストが通して確かめる）・`localPlane.ts`（狭い範囲の緯度経度を、経度方向をcos(緯度)で縮めた平面として扱う近似と、緯度1度の長さ・辺の上で地点に最も近い点・2点の間の方位・線の地点に最も近い辺の進む向き。地図の上で最も近い点を求める所はどれもこれを通す）・`mapScale.ts`（MapLibre の地図のズームと緯度から、1画素が地上の何 m か・経度1度が何画素か。地図の縮尺を地上の長さへ直す所はどれもこれを通し、自分で式を持たない）・`routeClock.ts`（ルートの計画の時刻を、ルートの上の距離で読む。区間の中は、区間の到達予想と次の区間の到達予想［最後の区間は所要時間の終わり］の間を距離に比例させる）・`routeDistance.ts`（ルートの区間を始点からの距離で読む: 候補の中の同じ区間・区間の道なりの形・形の上で距離の割合ぶん進んだ点とそこで分けた前後・2つの距離の間の形・ある点に最も近いルートの上の点・Edgeの境界ごとの距離。線の点ごとの道のり（応答の`point_distances_m`）を物差しにし、道のりのグラフと地図と走行モードと編集の差が同じ距離で読む。点ごとの道のりを持たない区間だけは、区間の長さを形の長さの割合で分ける（`lib/routeDistance.ts: segmentPointKms`））・`streetViewUrl.ts`（地図の地点と向きから開く Google マップの Street View の URL。公式の Maps URLs の形で、Android ではアプリへ向きが届く`intent:`の形にする。位置と向きだけで決まるので backend へは問い合わせない。施設の名前のリンクは所在を引くので backend が形を持つ（`services/placeLinkApi.ts`）のと違う）・`storedList.ts`（この端末に保存した一覧への入れ方）・`adminApiPrefix.ts`（管理APIの転送の口と、backendの管理APIのパスの接頭辞）・`mapOverlayEdges.ts`（地図の上に重ねる部品へ付ける「どの辺を覆うか」の印と、印の付いた部品が覆う幅の実測。印を付ける部品は地図の機能の外にもあるので共有の層に置く。下記「`MapView`との境界」）・`routeFit.ts`（ルート・区間の形を地図へ収める範囲と、地図の上に重ねた部品を避けて収める・寄せるときの余白とずれ。`MapView`が地図を動かす瞬間に呼ぶ）・`validArea.ts`（backend が添える値の範囲が地点を含むか・走行中に取る地点を動かすか）・`assumedSpeed.ts`（想定速度の範囲と丸め。走行条件の入力と、走行中に地図の道の値へ載せる速さが使う）・`magneticDeclination.ts`（日本付近の偏角と、磁北を基準にした方角を真北の基準へ直すこと）・`tapSlop.ts`（押したか動かしたかを分ける遊びの幅。使い方の説明・長押しのツールチップ・下部シートのつまみが使う） |
@@ -605,9 +605,8 @@ JSはその旗を読むだけで数値を写さない:
   （`outcomeTabSignal`）——条件の変更と新しい結果は「開けば新しいものがある」で取る行動が同じなので
   分けず、急いで見るべき失敗と、開いても候補の無い候補0件だけを見分けさせる。点は色と形だけなので、意味をタブの`aria-description`にも持たせる。デスクトップと同じく
   「ルート設定」シートは`RouteForm`（タブの中身を描く。タブ列と選択状態はシートを囲む
-  `Tabs.Root`が持つ）を描画し、`headerLead`propへタブ列（`SettingsTabsList.tsx`）、
-  `headerAction`propへ`GenerateRouteActions.tsx`（「ルート生成」のボタンと、
-  条件が変わっている印）をデスクトップと同じ部品から渡す。
+  `Tabs.Root`が持つ）を描画し、`headerLead`propへタブ・候補数・「ルート生成」のボタンと条件が変わっている印の1行
+  （`features/route/RouteForm/SettingsHeaderRow.tsx: SettingsHeaderRow`）をデスクトップと同じ部品で渡す。
 
 `BottomSheet`はposition:fixedのオーバーレイで暗幕を敷かない（表示中も地図をパン/ズーム
 できる）。地図の操作ボタンは右上の列にあり、シートを持ち上げるとその下側から順にシートの裏へ隠れる。見出しの文字は読み上げ（シートの名前）だけに残して画面に出さない——下部タブで選んでいる名前と同じで、空いた幅を操作に回す。見出し行には差し込み口が2つあり、左寄せが`headerLead`、右上の
@@ -621,8 +620,8 @@ JSはその旗を読むだけで数値を写さない:
 `components/BottomSheet/BottomSheet.tsx: useChosenSheetHeight`が持ち、`app/usePagePanels.ts: usePagePanels`がそれを2枚のシートへ渡す値にまとめる。決めた値が
 無い間は開くたびに中身へ合わせる。合わせる側でも開いている間は合わせ直さない
 （候補の切り替えのたびに地図の見える範囲が動かないように）が、`fitKey`が変わったときだけは
-中身が別物になったとみなして合わせ直す（「ルート設定」シートはタブを渡す——切替先の中身が
-開いた時点の高さに収まらないままになるため）。
+中身が別物になったとみなして合わせ直す（「ルート設定」シートは条件タブの地点の行の数等を渡す。タブは渡さない——
+タブを替えるたびに高さが変わると、頭の行のタブが指の下から動く。切替先の中身が開いた時点の高さに収まらなければ、本文の中で動かす）。
 
 **開いた時点で中身なりの高さへ合わせる**（`naturalHeightOf`）。中身に印（`SHEET_FIT_END_ATTRIBUTE`）の要素があれば、その下端までに合わせる
 （「ルート結果」は道のりのグラフに付け、低い高さで候補とグラフが見える所までを開く。中身の残りは本文をスクロールして見る）。シートが中身より高いと、

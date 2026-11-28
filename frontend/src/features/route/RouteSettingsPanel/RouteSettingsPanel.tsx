@@ -153,6 +153,7 @@ export default function RouteSettingsPanel({ costPreference, onCostPreferenceCha
         <Button
           usage={`走りにくさの種類ごとの割合と無効を、すべて標準[${STANDARD_LABEL}]に戻します。全体の割合は変えません。`}
           variant="secondary"
+          size="xs"
           className="self-end"
           disabled={standard}
           onClick={() => onCostPreferenceChange({ ...STANDARD_COST_PREFERENCE, strength: costPreference.strength })}

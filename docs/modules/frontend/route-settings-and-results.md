@@ -12,7 +12,7 @@
 | `features/route/RouteForm/RouteForm.tsx` | 「条件」タブの中身: 上から、周回か目的地かの2択（アイコンの下に文字を置く縦並びで、行の高さを変えずに幅を詰め、空いた幅をルーラーへ回す）と距離の目標（「距離を決める」の入り切り・ルーラー・値・(i)）の1行・地点の一覧（`RouteForm/PointList.tsx`）。「ルート設定」区分の各タブの中身を`Tabs.Content`として並べ（タブ列と選択状態は外、下記参照）、「保存済み」タブでは「地点」「設定」の切り替えの右に「いまの設定を保存」を置く |
 | `features/route/RouteSettingsPanel/LevelScale.tsx` | 段を1本の目盛りの上の点から選び、選んでいる段の名前を右に小さく出す行の選び手（道路タブの行と走りにくさタブの行）。選んだ段は段の色の丸（色の無い段は目立たない色）、選んでいない段は目盛りの線（色の無い段は長い線）か、数えない段は「–」の印 |
 | `lib/costPreference.ts` | 利用者の費用の好み（つまみと倍率と無効の軸）そのものの決まり: 標準・軸を数えるか・軸の倍率の引き方・地図のレンズの要求へ載せる書き方（ルートと地図の両方が読む） |
-| `features/route/RouteForm/SettingsTabsList.tsx` | 「ルート設定」のタブ列（条件・走りにくさ・道路・保存済み）。道路のタブの名前は、地図の道路のまとまりの名前（`lib/screenNames.ts: ROAD_SETTINGS_TAB_NAME`）。見出し行に置き、選ぶ状態は囲む`Tabs.Root`から読む |
+| `features/route/RouteForm/SettingsTabsList.tsx` | 「ルート設定」のタブ列（条件・走りにくさ・道路・保存済み）。道路のタブの名前は、地図の道路のまとまりの名前（`lib/screenNames.ts: ROAD_SETTINGS_TAB_NAME`）。候補数・「ルート生成」と1行に並べ（`features/route/RouteForm/SettingsHeaderRow.tsx: SettingsHeaderRow`）、選ぶ状態は囲む`Tabs.Root`から読む |
 | `features/route/RouteForm/RouteSettingsForm.tsx` | `RouteForm`へ、走りにくさ・道路・条件の保存・保存した条件の一覧の4つのタブの中身を、生成の条件と保存した条件から組んで渡す |
 | `features/route/GenerateRouteActions/GenerateRouteActions.tsx` | 「ルート設定」の見出し行の右端: 候補数の選び手（「8件▾」。押すと件数を並べた小窓を開き、選ぶと閉じる）・「ルート生成」のボタン（スマホのシートではアイコンに文字「生成」を添え、PC のパネルはアイコンだけ。[デザインシステム](frontend-design-system.md)「5-1. パネルの操作ボタンの形」）。候補を作ったあとに条件を変えると、「生成」の右上の角に印を重ね（行の幅を取らないので、どの幅でも見出しの行に収まる）、その意味をボタンの名前と長押しの説明に足す。印そのものは押せない |
 | `features/route/RouteForm/PointList.tsx` | 出発地 → 経由地 → 終点［周回の間は押せない「出発地へ戻る」、目的地なら目的地］を通る順に並べる縦の一覧と、見出しの右の「＋ 経由地」。行を押すとその地点を選び、その行に付く探す小窓（`PlaceSearch/PointSearch.tsx`）を開く。行の「地図で置く」は小窓を開かずにその地点を選び、☆は保存した地点といまの地点の保存だけの小窓を開く。行の✕で消し、つまみで並べ替える。名前は生成の条件と、置いた位置から引いた辺りから引く（下記「地点の指定」「住所・施設で探す」） |
@@ -335,17 +335,16 @@ backendの入れ替えでジョブが消えて見つからない等）、打ち�
 「ルート設定」区分自体を「条件」（`RouteForm`の2択・距離の目標・地点の一覧）・
 「走りにくさ」（`weightsPanel`propで受け取る`RouteSettingsPanel`一式）・
 「道路」（`exclusionsPanel`prop、`HardFilterPanel`）・「保存済み」（中の「地点」は`SavedPlacesPanel`、「設定」は`savedConditionsPanel`propの`SavedConditionsPanel`で、その切り替えの右に`saveConditionsButton`propの「いまの設定を保存」）のタブへ分ける。
-**タブ列（`Tabs.List`）は見出し行の左（見出しのすぐ右）に置き、タブの中身
+**タブ列（`Tabs.List`）は、候補数・「ルート生成」と並ぶ1行の左に置き、タブの中身
 （`Tabs.Content`）は本文に出る**ため、
 両方を囲む`Tabs.Root`（`@radix-ui/react-tabs`）は`app/RoutePanels.tsx`、選択状態は`app/page.tsx`が持つ
-（タブ列は`SettingsTabsList.tsx`、`RouteForm`は中身だけを描く）。タブ専用の行を作らないぶん本文の縦が空き、ラベルは
-2文字へ詰める。どのタブも`forceMount`で常時マウントし表示だけ`data-state`で切り替える
+（タブ列は`SettingsTabsList.tsx`、`RouteForm`は中身だけを描く）。タブ専用の行を作らないぶん本文の縦が空く。タブは薄い地の
+帯の上に並べ、選んだタブだけを札として浮かせる（`components/ui/Tabs/Tabs.tsx`の`segmented`。詰めた間隔でも1続きの語に読めない）。どのタブも`forceMount`で常時マウントし表示だけ`data-state`で切り替える
 （「条件」タブの地点の小窓の開き閉じと、「保存済み」タブの名前の下書きがローカルstateを持つため、タブ切替のたびに
 アンマウントすると失われる。ルート結果のタブと同じ方式。`features/route/RouteForm/RouteForm.tsx: KeptTabContent`）。
-「ルート生成」ボタンも同じ見出し行の**右端**に置く（デスクトップは`Disclosure`の`trailing`
-の中で左右へ分け、モバイルはタブを`BottomSheet`の`headerLead`・ボタンを`headerAction`へ
-渡す）。中身を切り替えるタブと、押して生成を走らせるボタンは役割が違うため、行の中でも
-離し、タブは下線型・ボタンは塗りと見た目でも分ける（「ルート結果」見出し行の
+「ルート生成」ボタンも同じ1行の**右端**に置く（デスクトップは「ルート設定」の見出しの下の、畳んでも出したままの行〔`Disclosure`の
+`subheader`〕、モバイルはシートの頭の`headerLead`へ、同じ`SettingsHeaderRow`を渡す）。中身を切り替えるタブと、押して生成を走らせるボタンは
+役割が違うため、行の中でも離し、タブは帯の上の札・ボタンは塗りと見た目でも分ける（「ルート結果」見出し行の
 `RouteOutcomeHeaderActions.tsx`と
 同じ場所）にあり、どのタブを見ていても押せる（`features/route/GenerateRouteActions/GenerateRouteActions.tsx: GenerateRouteActions`）。検証エラーは本文でもボタンの隣でもなく
 「ルート結果」欄へ出す（[page-composition.md](page-composition.md)の「生成に関する

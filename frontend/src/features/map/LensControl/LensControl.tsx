@@ -12,7 +12,7 @@ import { ClearLensIcon } from "@/components/ui/icons/icons";
 import { BurdenPaintIcon } from "@/components/ui/icons/lucideIcons";
 import { cn } from "@/lib/cn";
 import { textVariants } from "@/components/ui/Text/Text";
-import { BURDEN_PAINT_NAME } from "@/lib/screenNames";
+import { BURDEN_PAINT_NAME, BURDEN_PAINT_SHORT_NAME } from "@/lib/screenNames";
 import { LENS_QUANTITY_LABEL } from "@/lib/mapDisplay/costLensPaint";
 import { useShownDataStatus } from "@/features/map/useShownDataStatus";
 import { LensRow, type LensOption } from "./LensRow";
@@ -61,12 +61,10 @@ export default function LensControl({
   // レンズを選んでいないときは、ルートの前は道路を塗らず、ルートの後はルートの線を総合で塗る（費用の軸の一覧が届く前と、取れない間は1色）。
   const unselected = lens === UNSELECTED_LENS_ID;
   const selected = axisOptions.find((option) => option.id === lens);
-  // ルートの前に選んでいなければ（道路を塗らない）、ピルは画面の名前そのものを出す。
-  const pillLabel = unselected
-    ? hasDetail && totalLabel !== null
-      ? totalLabel
-      : LENS_SCREEN_NAME
-    : (selected?.label ?? lens);
+  // ルートの後に選んでいなければ総合の名前を出す。ルートの前に選んでいなければ（道路を塗らない）、画面の名前の短い形を出す。
+  const totalPill = unselected && hasDetail ? totalLabel : null;
+  const pillLabel = unselected ? (totalPill ?? BURDEN_PAINT_SHORT_NAME) : (selected?.label ?? lens);
+  const namesLensOnly = unselected && totalPill === null;
   const pillColor = selected?.color ?? LENS_NEUTRAL_COLOR;
   // 帯は色の段だけを並べ（受け皿の「データなし」等は除く）、右端の段の名前（一番濃い色の値）を帯の右に添える。
   const bands = legend.filter((entry) => !entry.isFallback);
@@ -82,7 +80,7 @@ export default function LensControl({
             size="bare"
             shape="pill"
             className="max-w-full flex-row items-center gap-1 border-0 px-2.5 py-1 text-[length:var(--font-size-sm)] whitespace-nowrap focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-accent-strong)]"
-            aria-label={`${pillLabel === LENS_SCREEN_NAME ? LENS_SCREEN_NAME : `${LENS_SCREEN_NAME}: ${pillLabel}`}（タップで変更）`}
+            aria-label={`${namesLensOnly ? LENS_SCREEN_NAME : `${LENS_SCREEN_NAME}: ${pillLabel}`}（タップで変更）`}
             title={statusLabel}
             usage={`選んだ走りにくさの種類の${LENS_QUANTITY_LABEL}で、地図の道路[ルートを作った後はルートの線]を塗ります。\n・横の帯は左ほど小さく、右ほど大きい走りにくさです（右に値があれば、その値から一番濃い色）。\n・道を押すと、その道の値が出ます。`}
           >

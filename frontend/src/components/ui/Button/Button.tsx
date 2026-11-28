@@ -48,9 +48,9 @@ export const buttonVariants = cva(
          * `components/UsageGuide/UsageTooltip.tsx`のツールチップに出る）。 */
         panelIcon: "rounded-sm px-1.5 py-1",
         /** パネルの主役の操作（ルート生成・このルートで走る）。`panelIcon`と同じ高さで、アイコンに短い文字（`ButtonLabel`）を添える。
-         * 狭い幅（`max-narrow:`）では文字を隠し、余白も`panelIcon`と同じに詰める（docs/modules/frontend/frontend-design-system.md
-         * 「5-1. パネルの操作ボタンの形」）。 */
-        panelLabeled: "rounded-sm px-2 py-1 text-[length:var(--font-size-sm)] max-narrow:px-1.5",
+         * 置いた行が収まりきらない間（`hooks/useCramped.ts: useCramped`）は文字を隠し、余白も`panelIcon`と同じに詰める
+         * （docs/modules/frontend/frontend-design-system.md「5-1. パネルの操作ボタンの形」）。 */
+        panelLabeled: "rounded-sm px-2 py-1 text-[length:var(--font-size-sm)] group-data-[cramped=true]/fit:px-1.5",
         /** 窓・シート・小窓・案内を閉じる✕（`ghost`と組む）。✕は細い字形なので、控えめな色にせず文字の色で描く。 */
         close: "size-7 rounded-sm text-[length:var(--font-size-md)] text-[var(--foreground)]",
         /** 上部の帯の印（警報）。値の並びに混ざるので、枠の無い`ghost`と組む。 */
@@ -83,10 +83,10 @@ interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement>, Var
   usage: string | null;
 }
 
-/** `panelLabeled`のアイコンに添える短い文字。名前は`aria-label`が持つので読み上げから隠し、狭い幅では出さない。 */
+/** `panelLabeled`のアイコンに添える短い文字。名前は`aria-label`が持つので読み上げから隠し、置いた行が収まりきらない間は出さない。 */
 export function ButtonLabel({ children }: { children: string }) {
   return (
-    <span aria-hidden="true" className="max-narrow:hidden">
+    <span aria-hidden="true" className="group-data-[cramped=true]/fit:hidden">
       {children}
     </span>
   );

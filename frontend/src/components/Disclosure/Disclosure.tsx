@@ -18,6 +18,8 @@ interface DisclosureProps {
   /** 見出しの行に並べる、開閉とは別の操作（タブ・ボタン等）。トリガー（button）の外に置く（中だとbuttonの入れ子になり、
    * 押すと開閉に巻き込まれる）。 */
   trailing?: ReactNode;
+  /** 見出しの行の下に置く、畳んでも出したままの行（中身を切り替えるタブと、畳んでも押せる操作）。 */
+  subheader?: ReactNode;
   children: ReactNode;
   /** 渡すと呼ぶ側が開閉の状態を持つ（onOpenChangeと対で使う）。 */
   open?: boolean;
@@ -47,6 +49,7 @@ export default function Disclosure({
   bodyClassName,
   summary,
   trailing,
+  subheader,
   children,
   open,
   onOpenChange,
@@ -86,6 +89,7 @@ export default function Disclosure({
         ) : (
           trigger
         )}
+        {subheader}
         <Accordion.Content className={bodyClassName}>{children}</Accordion.Content>
       </Accordion.Item>
     </Accordion.Root>
