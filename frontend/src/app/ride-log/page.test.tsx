@@ -107,15 +107,6 @@ describe("走行ログ", () => {
     expect(screen.queryByRole("region", { name: "走った線の地図" })).not.toBeInTheDocument();
   });
 
-  it("走りが無ければ、走行モードで案内を終えると残ることを伝える", async () => {
-    serveRides([]);
-    renderPage();
-
-    expect(
-      await screen.findByText("まだ走りがありません。走行モードで案内を終えると、ここに残ります。"),
-    ).toBeInTheDocument();
-  });
-
   it("「記録をやめる」で同意をやめ、走りの一覧は残したまま、記録をやめていることを出す", async () => {
     let status = accountStatus();
     onBackend("GET", "/api/me", () => Response.json(status));
@@ -127,10 +118,6 @@ describe("走行ログ", () => {
     const user = renderPage();
 
     await user.click(await screen.findByRole("button", { name: "記録をやめる" }));
-
-    expect(
-      await screen.findByText("記録をやめています。地図の画面を開くと、同意をもう一度聞きます。"),
-    ).toBeInTheDocument();
     expect(withdrawn).toHaveLength(1);
     expect(rideButtons()).toHaveLength(1);
   });

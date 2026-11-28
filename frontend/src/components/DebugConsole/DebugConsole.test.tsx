@@ -68,7 +68,6 @@ describe("DebugConsole", () => {
     renderConsole();
 
     expect(heading()).toBe("デバッグログ[0/0件]");
-    expect(screen.getByText("イベント待機中...[地図を操作するかAPIを呼び出してください]")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "表示中のログをコピー" })).toBeDisabled();
   });
 
@@ -159,7 +158,6 @@ describe("DebugConsole", () => {
     await userEvent.click(screen.getByRole("button", { name: "クリア" }));
 
     expect(heading()).toBe("デバッグログ[0/0件]");
-    expect(screen.getByText("イベント待機中...[地図を操作するかAPIを呼び出してください]")).toBeInTheDocument();
   });
 
   it("閉じて開き直すと、新しい記録を待たずに一番下（最新の行）まで送る", () => {

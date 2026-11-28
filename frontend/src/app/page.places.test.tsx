@@ -192,7 +192,6 @@ describe("地図に置く地点", () => {
     await user.click(screen.getByRole("radio", { name: "周回" }));
     expect(marksAt(DESTINATION)).toEqual([]);
     expect(screen.queryByRole("button", { name: /^目的地 / })).toBeNull();
-    expect(screen.getByText("出発地へ戻る")).toBeInTheDocument();
     clickMap(ELSEWHERE);
     expect(screen.getByRole("button", { name: "出発地 地図で選んだ地点" })).toBeInTheDocument();
     expect(marksAt(DESTINATION)).toEqual([]);

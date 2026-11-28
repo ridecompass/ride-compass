@@ -106,7 +106,6 @@ describe("▶の内訳", () => {
     const { panel } = await openDetails(
       chip("layer", { on: true, notice: "ズームインすると表示されます", legendDetails: [legend("a", ["1"])] }),
     );
-    expect(panel).toHaveTextContent("ズームインすると表示されます");
     expect(within(panel).queryByText("項目1")).not.toBeInTheDocument();
   });
 

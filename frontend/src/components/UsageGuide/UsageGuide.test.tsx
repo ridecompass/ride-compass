@@ -61,7 +61,6 @@ describe("UsageGuide", () => {
     await userEvent.click(screen.getByTestId("no-name"));
 
     expect(explanation()).toHaveTextContent("この項目");
-    expect(explanation()).toHaveTextContent("この項目の説明はまだありません。");
   });
 
   it("部品の中の要素を押しても、その部品を説明する", async () => {

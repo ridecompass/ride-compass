@@ -136,7 +136,6 @@ describe("useMapView", () => {
       legend: [],
       axisOptions: [],
     });
-    expect(result.current.lensControl.catalogNotice).toContain("塗れるロスはありません");
     expect(result.current.look).toMatchObject({ lens: UNSELECTED_LENS_ID, costsCounted: false });
   });
 

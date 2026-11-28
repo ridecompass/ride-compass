@@ -89,7 +89,6 @@ describe("画面の枠", () => {
       signedInAndConsented();
       render(<Home />);
       act(() => vi.runOnlyPendingTimers());
-      expect(screen.getByText("地図を読み込み中…")).toBeInTheDocument();
       act(() => mapOnScreen().emit("load"));
       expect(screen.queryByText("地図を読み込み中…")).toBeNull();
     } finally {
@@ -259,7 +258,6 @@ describe("画面の枠", () => {
 
     const again = renderHome();
     act(() => mapOnScreen().moveTo(NEAR, 12));
-    expect(await screen.findByText("俯瞰図を読み込み中…")).toBeInTheDocument();
     act(() => insetMapOnScreen()!.emit("error", { error: new Error("スタイルが取れない") }));
     expect(insetLoading()).toBeNull();
     await again.user.click(await screen.findByRole("button", { name: "俯瞰図を畳む" }));

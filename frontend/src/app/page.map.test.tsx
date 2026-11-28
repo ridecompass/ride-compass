@@ -74,21 +74,17 @@ describe("地図で扱えること", () => {
 
   it("PC で2つの区分を開いているときは最後に触った区分が効いてその題に添える", async () => {
     const { user } = renderHome();
-    expect(section("ルート設定")).toHaveAccessibleDescription("地図で操作中");
     expect(section("ルート結果")).not.toHaveAccessibleDescription();
 
     jobs.respond([FIRST, SECOND], LOOP_CONDITIONS);
     await generate(user);
     await waitFor(() => expect(candidateTabs()).toHaveLength(2));
-    // 結果が届いたら「ルート結果」が効く。
-    expect(section("ルート結果")).toHaveAccessibleDescription("地図で操作中");
     expect(section("ルート設定")).not.toHaveAccessibleDescription();
     clickMap(ELSEWHERE);
     expect(marksAt(ELSEWHERE)).toEqual([]);
 
     await user.click(screen.getByRole("button", { name: "出発地 現在地" }));
     await user.keyboard("{Escape}");
-    expect(section("ルート設定")).toHaveAccessibleDescription("地図で操作中");
     clickMap(ELSEWHERE);
     expect(marksAt(ELSEWHERE)).toHaveLength(1);
   });

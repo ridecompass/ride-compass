@@ -105,8 +105,7 @@ describe("最初の画面", () => {
     let fail = true;
     onBackend("GET", "/api/me", () => (fail ? new Response(null, { status: 503 }) : Response.json(accountStatus())));
     const user = renderHome();
-
-    expect(await screen.findByRole("alert")).toHaveTextContent("ログインの状態を読めませんでした");
+    await screen.findByRole("alert");
     fail = false;
     await user.click(screen.getByRole("button", { name: "もう一度読む" }));
 

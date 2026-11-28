@@ -34,6 +34,8 @@ export function roadFeatureKey(properties: RoadSurfacePopupProperties): string |
 export interface RoadFactRow {
   label: string;
   value: string;
+  /** 値を持たず、当てはまるかだけの項目（トンネル等）。当てはまる行だけを並べるので、あれば常に真。 */
+  present?: true;
 }
 
 type Material = (typeof materialCatalog)[number];
@@ -84,14 +86,14 @@ export function roadFactRows(properties: RoadSurfacePopupProperties): RoadFactRo
     }
   }
   for (const material of PRESENT_FACT_MATERIALS) {
-    if (tileValue(properties, material)) rows.push({ label: materialLabel(material), value: "あり" });
+    if (tileValue(properties, material)) rows.push({ label: materialLabel(material), value: "あり", present: true });
   }
   return rows;
 }
 
 /** 上の帯に小さく添える、この道の事実の短い並び（路面・等級・状態の値と、当てはまるトンネル等の名前）。 */
 export function roadFactSummary(properties: RoadSurfacePopupProperties): string[] {
-  return roadFactRows(properties).map((row) => (row.value === "あり" ? row.label : row.value));
+  return roadFactRows(properties).map((row) => (row.present ? row.label : row.value));
 }
 
 /** 材料の宣言をタイルの属性の名前（OSMのキーと同じ綴り）で引く。 */

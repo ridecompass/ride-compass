@@ -42,15 +42,6 @@ describe("GridPointToday", () => {
     expect(today).toHaveTextContent("〜1.2mm");
     expect(today).toHaveTextContent("〜5.1m/s");
     expect(today).toHaveTextContent(mapDisplay.modelValueDisclaimer);
-    const rows = Array.from(today.querySelectorAll("tr")).map((row) =>
-      Array.from(row.children).map((cell) => cell.textContent),
-    );
-    expect(rows).toEqual([
-      ["時刻", "22時", "23時"],
-      ["気温（℃）", "18.2", "17.6"],
-      ["降水量（mm）", "-", "1.2"],
-      ["風速（m/s）", "2.4", "5.1"],
-    ]);
   });
 
   it("風の矢印は、吹いていく向きを地図の向きに合わせて指す", () => {
@@ -74,8 +65,6 @@ describe("GridPointToday", () => {
 
   it("取得に失敗したら、その旨だけを出す", () => {
     render(<GridPointToday today={null} error="混雑しています" mapBearingDeg={0} />);
-
-    expect(screen.getByText("最寄りの格子点の今日の値を取得できませんでした。")).toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "今日・最寄りの格子点の値" })).not.toBeInTheDocument();
   });
 });

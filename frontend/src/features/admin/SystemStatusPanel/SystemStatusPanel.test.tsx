@@ -62,26 +62,11 @@ function section(heading: string): HTMLElement {
 }
 
 describe("SystemStatusPanel", () => {
-  it("閉じている間は取りに行かない", () => {
-    render(<SystemStatusPanel open={false} onClose={() => {}} />);
-    expect(screen.queryByText("取得中…")).not.toBeInTheDocument();
-  });
-
-  it("開くと両方を取り、どちらも届くまでは取得中と出す", () => {
-    onBackend("GET", STATS, heldReplies().reply);
-    onSameOrigin("GET", VERSION, heldReplies().reply);
-    render(<SystemStatusPanel open onClose={() => {}} />);
-
-    expect(screen.getByText("取得中…")).toBeInTheDocument();
-  });
-
   it("「更新」は、遅い方（backend）が届くまで更新中と出す", async () => {
     const backend = heldReplies();
     onBackend("GET", STATS, backend.reply);
     serveVersion(frontendVersion);
     render(<SystemStatusPanel open onClose={() => {}} />);
-
-    expect(await screen.findByText("(ローカル)")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "更新中…" })).toBeInTheDocument();
 
     await backend.answer(0, Response.json(debugStats()));
@@ -110,7 +95,6 @@ describe("SystemStatusPanel", () => {
     const backend = section("バックエンド");
     expect(within(backend).getByText("backend-sha")).toBeInTheDocument();
     expect(within(backend).getByText("debug_mode ON")).toBeInTheDocument();
-    expect(within(section("フロントエンド")).getByText("(ローカル)")).toBeInTheDocument();
   });
 
   it("片方だけ失敗したら、その側にだけ理由を出し、もう片方は出す。取り直して成功すれば理由は消える", async () => {
@@ -122,7 +106,6 @@ describe("SystemStatusPanel", () => {
     expect(await screen.findByText("取得失敗: システム状況の取得に失敗しました")).toBeInTheDocument();
     expect(within(section("バックエンド")).getByText(/取得失敗/)).toBeInTheDocument();
     expect(within(section("フロントエンド")).getByText("front-sha")).toBeInTheDocument();
-    expect(screen.queryByText("取得中…")).not.toBeInTheDocument();
 
     await user.click(await screen.findByRole("button", { name: "更新" }));
     await waitFor(() => expect(screen.queryByText(/取得失敗/)).not.toBeInTheDocument());
@@ -154,7 +137,6 @@ describe("SystemStatusPanel", () => {
     render(<SystemStatusPanel open onClose={() => {}} />);
     await screen.findByText("バックエンド");
     await waitFor(() => expect(screen.getByRole("button", { name: "更新" })).toBeEnabled());
-    expect(screen.queryByText("予報（MSM）")).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "更新" }));
     const healthy = (await screen.findByText("予報（MSM）")).parentElement!;

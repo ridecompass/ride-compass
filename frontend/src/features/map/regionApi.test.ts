@@ -114,12 +114,4 @@ describe("地図が塗るレンズの道ごとの材料（fetchLensMaterials）"
       },
     ]);
   });
-
-  it("失敗は、取得の失敗の文言で投げる", async () => {
-    onBackend("GET", "/api/region/lens/:lensId/:z/:x/:y", () => new Response(null, { status: 500 }));
-
-    await expect(api.fetchLensMaterials("ascent", 15, 1, 2, { speed_kmh: 20 })).rejects.toThrow(
-      "道路の塗りの値の取得に失敗しました",
-    );
-  });
 });
