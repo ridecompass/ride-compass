@@ -52,7 +52,7 @@ WHERE abs(lat) < {MAX_MERCATOR_LATITUDE}
 
 
 async def ground_elevations_m(session: AsyncSession, lat_lon: list[tuple[float, float]]) -> list[float | None]:
-    """地点（緯度, 経度）ごとの地形の標高（m。取り込んだ範囲の外・値の無い画素はNone）を、渡した順に。画素を引く関数
+    """地点（緯度, 経度）ごとの地形の標高（m。取り込んだ範囲の外・まわりの画素に値の無い点はNone）を、渡した順に。画素を引く関数
     （`infrastructure/dem_elevation.py: fill_elevations`）は asyncpg の接続を受けるので、セッションの下の接続で流す。"""
     if not lat_lon:
         return []

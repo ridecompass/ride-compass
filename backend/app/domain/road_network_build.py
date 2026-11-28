@@ -8,8 +8,7 @@
 
 **道1本の材料は、区間の値を1つの集め方で道ごとに1回集める**（区間ごとに一番若い行の値を、道の向きに走った値
 （`along_way`）にして、区間の長さで重みを付けて集める）: 数値は値のある区間の平均、真偽と分類は区間の長さの和が一番長い値
-（同じ長さなら小さい値。真偽は1.0か0.0）。値の無い区間は数えず、どの区間にも値が無ければ値を持たない。区間を持たない道は、
-道の生データから読んだ値を持つ（`EdgelessWays`）。
+（同じ長さなら小さい値。真偽は1.0か0.0）。値の無い区間は数えず、どの区間にも値が無ければ値を持たない。
 """
 
 from dataclasses import dataclass
@@ -18,7 +17,6 @@ from typing import Any
 import numpy as np
 
 from app.domain.elevation_profile import (
-    STEEPEST_MIN_INTERVAL_M,
     SUMMARY_COLUMNS,
     ElevationProfiles,
     grade_distribution,
@@ -27,22 +25,53 @@ from app.domain.elevation_profile import (
 )
 from app.domain.geo import bearings_between
 from app.domain.material_catalog import ELEVATION_GAIN_PER_KM, GRADIENT_PERCENT, MATERIAL_CATALOG
-from app.domain.road_network import RoadNetwork
-from app.domain.search_graph import EDGE_VALUE_DTYPE, run_starts
+from app.domain.road_network import RoadNetwork, edge_key
+from app.domain.search_graph import EDGE_VALUE_DTYPE, range_positions, run_starts
+from app.domain.traffic_regulation import SLOT_FIELDS, active_kinds, invariant_slots, pedestrian_road_codes
 
 
 @dataclass(frozen=True)
-class EdgelessWays:
-    """区間を持たない道（`osm_way_id`の昇順）の、道の生データから読んだ材料（列と語彙は区間の材料と同じ）。"""
+class NetworkRegulations:
+    """区間に当たった交通規制（`infrastructure/road_graph_repository.py: get_network_regulations`）。規制は0始まりの番号で、
+    当たりは区間の番号順、組は規制の番号順。"""
 
-    osm_way_id: np.ndarray
-    numeric_values: np.ndarray
-    categorical_codes: np.ndarray
+    regulation_count: int
+    hit_way: np.ndarray
+    hit_segment: np.ndarray
+    hit_regulation: np.ndarray
+    slot_regulation: np.ndarray
+    slot_values: np.ndarray  # (組, `domain/traffic_regulation.py: SLOT_FIELDS`)
 
     @classmethod
-    def none(cls, numeric_columns: int, categorical_columns: int) -> "EdgelessWays":
-        return cls(np.zeros(0, dtype=np.int64), np.zeros((0, numeric_columns)),
-                   np.zeros((0, categorical_columns), dtype=np.int16))
+    def none(cls) -> "NetworkRegulations":
+        empty = np.zeros(0, dtype=np.int64)
+        return cls(0, empty, empty, empty, empty, np.zeros((0, len(SLOT_FIELDS)), dtype=np.int16))
+
+
+def regulation_arrays(edge_way_id: np.ndarray, edge_segment: np.ndarray, regulations: NetworkRegulations,
+                      ) -> tuple[dict[str, Any], np.ndarray]:
+    """`RoadNetwork`の規制の欄と、材料`pedestrian_road`の列の番号（`PEDESTRIAN_ROAD_LABELS`の並びの語彙。時刻で変わらない組だけで
+    決め、自転車も対象の規制と除外の規制が両方効く区間は、自転車も禁止）。区間の行は道・区間の番号順で、同じ区間の両向きの行が
+    同じ規制を持つ。"""
+    row_key = edge_key(edge_way_id, edge_segment)
+    hit_key = edge_key(regulations.hit_way, regulations.hit_segment)
+    low, high = np.searchsorted(row_key, hit_key, "left"), np.searchsorted(row_key, hit_key, "right")
+    per_hit = high - low
+    row = range_positions(low, per_hit)
+    order = np.argsort(row, kind="stable")
+    regulation = np.repeat(regulations.hit_regulation, per_hit)[order]
+    count = np.bincount(row[order], minlength=len(row_key)).astype(np.int16)
+    slot_count = np.bincount(regulations.slot_regulation, minlength=regulations.regulation_count).astype(np.int16)
+    fields = {
+        "edge_regulation_start": np.cumsum(count, dtype=np.int64) - count, "edge_regulation_count": count,
+        "regulation_index": regulation.astype(np.int32),
+        "regulation_slot_start": np.cumsum(slot_count, dtype=np.int64) - slot_count, "regulation_slot_count": slot_count,
+        "regulation_slot_values": regulations.slot_values,
+    }
+    bicycle, excepted = active_kinds(np.arange(len(row_key)), fields["edge_regulation_start"], count, regulation,
+                                     slot_count, regulations.slot_values,
+                                     invariant_slots(regulations.slot_values), slotless_active=True)
+    return fields, pedestrian_road_codes(bicycle, excepted)
 
 
 def build_road_network(
@@ -52,12 +81,11 @@ def build_road_network(
     edge_shape_points: np.ndarray, shape_lon: np.ndarray, shape_lat: np.ndarray, numeric_ids: tuple[str, ...],
     numeric_values: np.ndarray, categorical_codes: np.ndarray, distance_m: np.ndarray, edge_profile_start: np.ndarray,
     edge_profile_points: np.ndarray, profile_elevation_m: np.ndarray, profile_position: np.ndarray,
-    edgeless: EdgelessWays | None = None, **facts: Any,
+    max_grade: float, steepest_min_interval_m: float, **facts: Any,
 ) -> RoadNetwork:
     """道の事実から`RoadNetwork`を組む。区間は有向の行（`RoadNetwork`の行順）で、端のそばの向きは形から決まらない区間がNaN。
     形と断面の点は、区間ごとに道の順方向に1回だけ、区間の行の順に隙間なく並べ、両向きの行が同じ点を指す。材料の行列`numeric_values`の
-    断面から決まる列は、渡した行列の中で埋める。`edgeless`は区間を持たない道（省くと無い）。`facts`はそのまま
-    写す`RoadNetwork`の欄。"""
+    断面から決まる列は、渡した行列の中で埋める。`facts`はそのまま写す`RoadNetwork`の欄。"""
     distance = np.asarray(distance_m, dtype=np.float64)
     first_of_edge = run_starts(edge_way_id) | run_starts(edge_segment)
     edge_of_row = np.cumsum(first_of_edge) - 1
@@ -75,12 +103,12 @@ def build_road_network(
     elevation = np.asarray(profile_elevation_m, dtype=np.float32)
     position = np.asarray(profile_position, dtype=np.float32)
     distribution = grade_distribution(profile_start[first_of_edge], profile_points[first_of_edge], elevation, position,
-                                      distance[first_of_edge])
+                                      distance[first_of_edge], max_grade)
     spans = profile_spans(ElevationProfiles(profile_start, profile_points, np.asarray(edge_forward, dtype=bool),
-                                            elevation, position, distribution), distance)
+                                            elevation, position, distribution, max_grade), distance)
     summaries = dict(zip(SUMMARY_COLUMNS, profile_summaries(
         profile_start, profile_points.astype(np.int64), np.asarray(edge_forward, dtype=np.bool_), elevation, position,
-        distance, STEEPEST_MIN_INTERVAL_M).T, strict=True))
+        distance, steepest_min_interval_m, max_grade).T, strict=True))
 
     # 材料の行列は取込範囲全体で道路網の配列の大半を占めるので、写さずに断面から決まる列だけを埋める。
     values = np.asarray(numeric_values, dtype=EDGE_VALUE_DTYPE)
@@ -99,13 +127,13 @@ def build_road_network(
         numeric_ids=numeric_ids, numeric_values=values, numeric_means=_numeric_means(numeric_ids, values, distance),
         categorical_codes=categorical_codes,
         **_way_values(edge_way_id, first_of_edge, np.asarray(edge_forward, dtype=bool), distance, numeric_ids, values,
-                      summaries["elevation_loss_m"], categorical_codes,
-                      edgeless or EdgelessWays.none(values.shape[1], np.shape(categorical_codes)[1])),
+                      summaries["elevation_loss_m"], categorical_codes),
         distance_m=distance, edge_way_bearing_deg=_way_bearings(node_lat, node_lon, edge_way_id, edge_forward, edge_from,
                                                           edge_to),
         **summaries, edge_profile_start=profile_start, edge_profile_points=profile_points,
         profile_elevation_m=elevation, profile_position=position,
         edge_span_start=spans.start, edge_span_count=spans.count, span_length_m=spans.length_m, span_grade=spans.grade,
+        span_carries=spans.carries,
         unknown_elevation_m=spans.unknown_m, mean_elevation_m=spans.mean_elevation_m,
         **facts,
     )
@@ -142,9 +170,8 @@ def _numeric_means(numeric_ids: tuple[str, ...], values: np.ndarray, distance_m:
 
 
 def per_km(amount: np.ndarray, distance_m: np.ndarray) -> np.ndarray:
-    """区間の量`amount`の、区間の長さ1kmあたり（長さ0の区間はNaN）。"""
-    distance = np.asarray(distance_m, dtype=np.float64)
-    return np.divide(amount, distance / 1000.0, out=np.full(len(distance), np.nan), where=distance > 0)
+    """区間の量`amount`の、区間の長さ1kmあたり。"""
+    return amount / (np.asarray(distance_m, dtype=np.float64) / 1000.0)
 
 
 def along_way(material_id: str, values: np.ndarray, forward: np.ndarray, elevation_loss_m: np.ndarray,
@@ -161,22 +188,14 @@ def along_way(material_id: str, values: np.ndarray, forward: np.ndarray, elevati
 
 def _way_values(edge_way_id: np.ndarray, first_of_edge: np.ndarray, edge_forward: np.ndarray, distance_m: np.ndarray,
                 numeric_ids: tuple[str, ...], numeric_values: np.ndarray, elevation_loss_m: np.ndarray,
-                categorical_codes: np.ndarray, edgeless: EdgelessWays) -> dict[str, Any]:
-    """道1本の値の欄（`RoadNetwork`の`way_*`）。区間を持つ道は区間ごとに一番若い行の、道の向きに走った値を集め、区間を持たない
-    道と合わせて道の番号の昇順に並べる。"""
+                categorical_codes: np.ndarray) -> dict[str, Any]:
+    """道1本の値の欄（`RoadNetwork`の`way_*`。道の番号の昇順）。区間ごとに一番若い行の、道の向きに走った値を集める。"""
     edges = np.flatnonzero(first_of_edge)
     owner_first = run_starts(edge_way_id[edges])
     owner = np.cumsum(owner_first) - 1
     count = int(owner_first.sum())
     length = distance_m[edges]
-    # 区間を持つ道と持たない道を道の番号の順に並べた行へ、集めた値を直に書く（集めてからつなぐと、道の行列を3つ同時に持つ）。
-    way_ids = np.concatenate([np.asarray(edge_way_id[edges][owner_first], dtype=np.int64), edgeless.osm_way_id])
-    order = np.argsort(way_ids, kind="stable")
-    position = np.empty(len(order), dtype=np.int64)
-    position[order] = np.arange(len(order))
-    of_edges, of_edgeless = position[:count], position[count:]
-    numeric = np.full((len(order), numeric_values.shape[1]), np.nan, dtype=EDGE_VALUE_DTYPE)
-    numeric[of_edgeless] = edgeless.numeric_values
+    numeric = np.full((count, numeric_values.shape[1]), np.nan, dtype=EDGE_VALUE_DTYPE)
     for column, material_id in enumerate(numeric_ids):
         values = along_way(material_id, numeric_values[edges, column], edge_forward[edges], elevation_loss_m[edges], length)
         known = ~np.isnan(values)
@@ -189,9 +208,8 @@ def _way_values(edge_way_id: np.ndarray, first_of_edge: np.ndarray, edge_forward
             # 重みの無い（空の）bincount は整数で返るので、浮動小数にしてから割る。
             gathered = np.bincount(owner[known], weights=values[known] * length[known], minlength=count).astype(np.float64)
             np.divide(gathered, weight, out=gathered, where=weight > 0)
-        numeric[of_edges, column] = np.where(weight > 0, gathered, np.nan)
-    codes = np.zeros((len(order), np.shape(categorical_codes)[1]), dtype=np.int16)
-    codes[of_edgeless] = edgeless.categorical_codes
+        numeric[:, column] = np.where(weight > 0, gathered, np.nan)
+    codes = np.zeros((count, np.shape(categorical_codes)[1]), dtype=np.int16)
     for column in range(codes.shape[1]):
         values = np.asarray(categorical_codes[edges, column], dtype=np.int64)
         known = values != 0
@@ -200,8 +218,9 @@ def _way_values(edge_way_id: np.ndarray, first_of_edge: np.ndarray, edge_forward
         sums = np.bincount(inverse, weights=length[known])
         longest = np.lexsort((-sums, pairs // 2**16))
         longest = longest[run_starts(pairs[longest] // 2**16)]
-        codes[of_edges[pairs[longest] // 2**16], column] = pairs[longest] % 2**16
-    return {"way_osm_id": way_ids[order], "way_numeric_values": numeric, "way_categorical_codes": codes}
+        codes[pairs[longest] // 2**16, column] = pairs[longest] % 2**16
+    return {"way_osm_id": np.asarray(edge_way_id[edges][owner_first], dtype=np.int64), "way_numeric_values": numeric,
+            "way_categorical_codes": codes}
 
 def _way_bearings(node_lat: np.ndarray, node_lon: np.ndarray, way: np.ndarray, forward: np.ndarray,
                   edge_from: np.ndarray, edge_to: np.ndarray) -> np.ndarray:

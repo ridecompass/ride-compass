@@ -4,23 +4,24 @@ from collections.abc import Mapping, Sequence
 
 from app.domain.stopwatch import elapsed_ms, start_timer
 from app.domain.errors import SearchAreaTooLargeError, SearchMemoryBusyError
-from app.domain.geo import LatLonPoint
-from app.domain.graph import parse_edge_key
+from app.domain.geo import LatLon
+from app.domain.graph import parse_edge_id
 from app.domain.region import BoundingBox, tiles_covering_bbox
 from app.domain.attributes import CategoricalColumn
-from app.domain.cost_axes import Burden, CostAxisDefinitions
+from app.domain.cost_axes import Burden
 from app.domain.leg_costs import burden_fills
-from app.domain.road_classes import RoadClassDefinitions, current_road_classes
+from app.domain.road_classes import RoadClassDefinitions
 from app.domain.road_network import (
     RoadNetwork,
     RoadSlice,
-    edge_endpoint_points,
+    bbox_covering_edges,
     network_material_column,
     road_class_columns,
     slice_network,
 )
+from app.domain.model_settings import ModelSettings, current_model_settings
 from app.domain.route_search import DETOUR_RATIO_SHARING_ZOOM
-from app.infrastructure import container_memory
+from app.infrastructure import container_memory, road_network_store
 from app.infrastructure.detour_ratio_cache import TileSet
 
 logger = logging.getLogger("ridecompass.graph")
@@ -69,12 +70,12 @@ class SearchMemory:
 _classes: tuple[RoadNetwork, RoadClassDefinitions, tuple[dict[str, CategoricalColumn], dict[str, CategoricalColumn]]] | None = None
 
 
-def network_classes(network: RoadNetwork) -> tuple[dict[str, CategoricalColumn], dict[str, CategoricalColumn]]:
-    """取込範囲全体の区分の列と層ごとの値。道路網と区分の全体の組ごとに1回だけ作り、組が替わったら丸ごと入れ替える。
+def network_classes(network: RoadNetwork, definitions: RoadClassDefinitions
+                    ) -> tuple[dict[str, CategoricalColumn], dict[str, CategoricalColumn]]:
+    """取込範囲全体の、区分`definitions`の列と層ごとの値。道路網と区分の組ごとに1回だけ作り、組が替わったら丸ごと入れ替える。
 
     別のスレッドが同時に作り直しても、どちらも同じ組から同じ列を作るだけなので、束縛の差し替えは1回で済ませる。"""
     global _classes
-    definitions = current_road_classes()
     cached = _classes
     if cached is not None and cached[0] is network and cached[1] is definitions:
         return cached[2]
@@ -91,12 +92,12 @@ def network_classes(network: RoadNetwork) -> tuple[dict[str, CategoricalColumn],
 _burden_fills: tuple[RoadNetwork, Mapping[str, CategoricalColumn], dict[str, Burden], dict[str, float]] | None = None
 
 
-def network_burden_fills(network: RoadNetwork, axes: CostAxisDefinitions) -> dict[str, float]:
-    """道のストレスの軸id→材料の欠けた区間を埋める、取込範囲全体の重さの平均（`domain/leg_costs.py: burden_fills`）。全区間を
-    数えるので、道路網・区分の列・道のストレスの軸の費目の組ごとに1回だけ求める。"""
+def network_burden_fills(network: RoadNetwork, settings: ModelSettings) -> dict[str, float]:
+    """写し`settings`の道のストレスの軸id→材料の欠けた区間を埋める、取込範囲全体の重さの平均（`domain/leg_costs.py:
+    burden_fills`）。全区間を数えるので、道路網・区分の列・道のストレスの軸の費目の組ごとに1回だけ求める。"""
     global _burden_fills
-    classes = network_classes(network)[0]
-    burdens = {axis_id: axis.burden for axis_id, axis in axes.burden.items()}
+    classes = network_classes(network, settings.road_classes)[0]
+    burdens = {axis_id: axis.burden for axis_id, axis in settings.cost_axes.burden.items()}
     cached = _burden_fills
     if cached is not None and cached[0] is network and cached[1] is classes and cached[2] == burdens:
         return cached[3]
@@ -106,9 +107,15 @@ def network_burden_fills(network: RoadNetwork, axes: CostAxisDefinitions) -> dic
     return fills
 
 
-def _slice(network: RoadNetwork, bbox: BoundingBox) -> RoadSlice:
+def warm_road_network() -> None:
+    """道路網の置き場が入れ替わっていれば読み直し、取込範囲全体の区分の列と道のストレスの軸の欠けを埋める平均を求めておく。
+    全区間を数えるので、スレッドから呼ぶ。"""
+    network_burden_fills(road_network_store.current(), current_model_settings())
+
+
+def _slice(network: RoadNetwork, bbox: BoundingBox, road_classes: RoadClassDefinitions) -> RoadSlice:
     return slice_network(
-        network, network_classes(network),
+        network, network_classes(network, road_classes),
         bbox.min_longitude, bbox.min_latitude, bbox.max_longitude, bbox.max_latitude,
     )
 
@@ -132,8 +139,8 @@ class GraphService:
         self._memory.release(self._reserved)
         self._reserved = 0
 
-    async def get_search_slice(self, bbox: BoundingBox) -> tuple[RoadSlice, TileSet]:
-        """探索範囲の区間を返す。返したら、その区間の数に比例する生成のメモリを`release_search_memory`まで取っておく。
+    async def get_search_slice(self, bbox: BoundingBox, road_classes: RoadClassDefinitions) -> tuple[RoadSlice, TileSet]:
+        """探索範囲の区間を、区分`road_classes`の列とともに返す。返したら、その区間の数に比例する生成のメモリを`release_search_memory`まで取っておく。
 
         切り出すのはbboxそのもの。あわせて返すbboxを覆うz12タイルの集合は、近い範囲をまとめて
         指す鍵として使う（学習した迂回率の鍵）。
@@ -141,7 +148,7 @@ class GraphService:
         started = start_timer()
         tiles = tiles_covering_bbox(bbox, DETOUR_RATIO_SHARING_ZOOM)
         # 全区間を走査するので、イベントループの外で切り出す。
-        road = await asyncio.to_thread(_slice, self._network, bbox)
+        road = await asyncio.to_thread(_slice, self._network, bbox, road_classes)
         try:
             self._reserved += self._memory.reserve(road.edge_count)
         except (SearchAreaTooLargeError, SearchMemoryBusyError) as exc:
@@ -156,7 +163,8 @@ class GraphService:
         tile_set = frozenset((DETOUR_RATIO_SHARING_ZOOM, x, y) for x, y in tiles)
         return road, tile_set
 
-    def edge_endpoints(self, edge_ids: Sequence[str]) -> list[LatLonPoint]:
-        """区間の鍵の列の、両端の地点（取込範囲全体の道路網から引く）。形の合わない鍵と道路網に無い区間は飛ばす。"""
-        edges = [parsed for edge_id in edge_ids if (parsed := parse_edge_key(edge_id)) is not None]
-        return edge_endpoint_points(self._network, edges)
+    def bbox_covering(self, points: Sequence[LatLon], edge_ids: Sequence[str], margin_km: float) -> BoundingBox:
+        """`points`と、区間の鍵の列`edge_ids`の区間を覆う探索の矩形（`domain/road_network.py: bbox_covering_edges`）。
+        形の合わない鍵と道路網に無い区間は飛ばす。"""
+        edges = [parsed for edge_id in edge_ids if (parsed := parse_edge_id(edge_id)) is not None]
+        return bbox_covering_edges(self._network, points, edges, margin_km)

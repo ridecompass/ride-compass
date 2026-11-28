@@ -29,7 +29,8 @@ from app.domain.time_zone import as_series_time
 from app.domain.model_settings import ModelSettings
 from app.domain.tuning import SNAP_CORRECTION_ID
 from app.domain.errors import RoutingError
-from app.domain.search_materials import SearchMaterials, build_search_materials
+from app.domain.search_materials import ColumnsOrEmpty, SearchMaterials, build_search_materials
+from app.domain.timed_regulations import TimedRegulations
 from app.domain.hard_filters import compute_routable_nodes, compute_search_exclusion
 from app.domain.leg_costs import LegCostArrays, LegCostComposer
 from app.domain.cost_axes import burden_material_ids
@@ -41,7 +42,7 @@ from app.domain.geo import (
     bearing_between_array,
     compass_degrees,
 )
-from app.domain.region import BoundingBox, bbox_covering_points
+from app.domain.region import BoundingBox
 from app.domain.road_network import MaterialFills, RoadSlice, material_arrays_of
 from app.domain.route import (
     Coordinates,
@@ -81,10 +82,11 @@ from app.domain.route_diversity import overlap_ratio, physical_overlap_ratio, se
 from app.domain.wind import (
     cruise_hours,
     detour_ratio_or_default,
+    straight_line_hours,
 )
 from app.infrastructure import detour_ratio_cache
 from app.services.graph_service import GraphService, network_burden_fills
-from app.domain.loop_routing import LoopTurnaround, TracedLoop
+from app.domain.loop_routing import LoopTurnaround, TracedLoop, waypoint_offsets_along
 from app.services.weather_service import WeatherService
 from app.services import road_graph_via_routes
 from app.services.road_graph_candidates import evaluate_routes
@@ -168,22 +170,6 @@ class _TurnaroundData:
     outbound_length_m: float
 
 
-def _waypoint_offsets_along(context: RoadGraphContext, nodes: list[int], waypoints: list[Coordinates]) -> list[int]:
-    """置いた経由地を、組んだ経路（通るノードの列`nodes`）が置いた順に通る所（`TracedLoop.waypoint_offsets`）。
-    1つでも通らなければ（乗り換えで経由地を飛ばした・寄せられない）空にする——並びの何番目が何番目の経由地かを
-    崩さないため、通らない経由地だけを抜かない。"""
-    offsets: list[int] = []
-    start = 0
-    for point in waypoints:
-        snapped = snap_point(context, point)
-        if snapped is None or snapped[0] not in nodes[start:]:
-            return []
-        # 同じNodeへ寄った経由地が続けば同じ所を通る（生成の前段の、長さ0の区間と同じ）。
-        start = nodes.index(snapped[0], start)
-        offsets.append(start)
-    return offsets
-
-
 class RoadGraphEngine:
     """評価条件は解決済みの値だけを受け取る（既定を持たない）。組み立ては
     `services/route_generation_setup.py: assemble_route_generation_setup`だけが行う。"""
@@ -220,24 +206,25 @@ class RoadGraphEngine:
         return self._settings
 
     async def _build_search_graph(
-        self, bbox: BoundingBox, origin: Coordinates, now: datetime
+        self, bbox: BoundingBox, origin: Coordinates, now: datetime, first_point: Coordinates | None, radius_km: float,
     ) -> _SearchGraph | None:
         """bboxに対する探索用グラフ（lazy_graph）＋bbox全体ぶんのコスト配列を構築する。
         風の時別予報が無いときの風（出発時点の値）は`origin`（起点）の地点で決める。時別予報は`bbox`を覆う格子点ごとに引く。
+        準備の往路の交通規制は、`first_point`（最初の置いた点。無ければ`radius_km`の先）へ着く見込みまでの時間帯で判定する。
 
         `GraphService.get_search_slice`が切り出した区間の材料から探索の材料の表（`SearchMaterials`）を組み、費目の帳簿の式
         （`domain/ledger_costs.py`）でコスト配列を**bbox全体ぶん1回だけ**numpyで合成する。探索本体へは合成済みのnumpy配列を
         そのまま渡すだけにする。
         """
         stage_started = start_timer()
-        road, tile_set = await self._graph_service.get_search_slice(bbox)
+        road, tile_set = await self._graph_service.get_search_slice(bbox, self._settings.road_classes)
         slice_ms = elapsed_ms(stage_started)
         if road.edge_count == 0:
             return None
 
         weather_started = start_timer()
-        # 探索範囲を覆う格子点ごとの時別風予報（MSMのローカルファイルから読む。外部API呼び出しは無い）。
-        wind_series = await self._weather_service.get_wind_forecast_lattice(bbox)
+        # 探索範囲を覆う格子点ごとの時別の風と気温の予報（MSMのローカルファイルから読む。外部API呼び出しは無い）。
+        weather_series = await self._weather_service.get_weather_forecast_lattice(bbox)
         weather_ms = elapsed_ms(weather_started)
 
         materials_started = start_timer()
@@ -257,20 +244,28 @@ class RoadGraphEngine:
         # 迂回率は同じ探索範囲で前回の往路木から学習した値があればそれを使う（無ければ既定値）。
         learned_detour_ratio = detour_ratio_cache.get_detour_ratio(tile_set)
 
-        cost_axes = self._cost_axes
-
         def compose_outbound() -> tuple[RoadAvoidanceMasks, LegCostComposer, LegCostArrays]:
             search_masks = compute_search_exclusion(materials, self._road_avoidance, self._avoidance_multipliers)
+            regulations = TimedRegulations(
+                road.network, road.rows,
+                ColumnsOrEmpty(material_arrays_of(road, self._settings.tuning).columns, road.edge_count, self._settings.road_classes),
+                search_masks, materials.hard_filtered, self._settings.road_classes, self._road_avoidance,
+                self._avoidance_multipliers)
             composer = LegCostComposer(
                 materials, search_masks,
-                wind_series, start, self._assumed_speed_kmh, lazy_graph.edge_rows,
+                weather_series, start, self._assumed_speed_kmh, lazy_graph.edge_rows,
                 detour_ratio=detour_ratio_or_default(learned_detour_ratio),
                 material_fills=MaterialFills(numeric_means=road.network.numeric_means),
-                burden_fills=network_burden_fills(road.network, cost_axes),
+                burden_fills=network_burden_fills(road.network, self._settings),
                 settings=self._settings,
                 parameters=ledger_parameters(self._cost_preference, self._settings.tuning),
+                regulations=regulations,
             )
-            return search_masks, composer, composer.compose("outbound", 0.0, +1)
+            # 準備の往路は所要の見込みを持たない（届く先が決まらない）ので、規制は最初の置いた点（無ければ届く見込みの半径）までの
+            # 直線距離×迂回率÷巡航速度の時間帯で判定する。
+            reach_hours = (straight_line_hours(origin, first_point, composer.speed_kmh, composer.detour_ratio)
+                           if first_point is not None else cruise_hours(radius_km * composer.detour_ratio, composer.speed_kmh))
+            return search_masks, composer, composer.compose("outbound", 0.0, +1, regulation_hours=(0.0, reach_hours))
 
         search_masks, composer, outbound = await asyncio.to_thread(compose_outbound)
         cost_ms = elapsed_ms(cost_started)
@@ -328,7 +323,7 @@ class RoadGraphEngine:
         return node_index, accessible, passable, statics, turn_structure
 
     def _build_turn_structure(self, search: _SearchGraph, statics: SearchGraphStatics) -> TurnExpandedStructure:
-        """状態＝有向区間の遷移構造。区間と頂点の階級・端のそばの向き・信号の有無は道路網の配列の欄を読む。"""
+        """状態＝有向区間の遷移構造。区間と頂点の階級・端のそばの向き・信号の交差点は道路網の配列の欄を読む。"""
         road, lazy_graph = search.road, search.lazy_graph
         network = road.network
         rows = road.rows[lazy_graph.edge_rows]
@@ -336,11 +331,9 @@ class RoadGraphEngine:
             statics.csr, lazy_graph, np.asarray(network.edge_start_bearing_deg[rows], dtype=np.float64),
             np.asarray(network.edge_end_bearing_deg[rows], dtype=np.float64),
             np.asarray(network.edge_rank[rows], dtype=np.int64), self._turn_cost,
-            np.asarray(network.node_has_signals[road.nodes], dtype=bool),
+            np.asarray(network.node_signal_place[road.nodes], dtype=np.int32),
             np.asarray(network.node_max_rank[road.nodes], dtype=np.int64),
             np.asarray(network.node_branch_count[road.nodes], dtype=np.int16),
-            statics.edge_length_m,
-            network.stop_cluster_distance_m,
         )
 
     async def prepare(
@@ -360,10 +353,9 @@ class RoadGraphEngine:
         起点は出て戻れるNodeへ寄せ（`domain/node_spatial_index.py: snap_to_accessible_node`）、寄せられなければ`RoutingError`。"""
         # nowは出発時刻。区間ごとの通過時刻（風・昼夜）はここからの経過で決まる。
         margin_km = max(_BBOX_MARGIN_MIN_KM, radius_km * _BBOX_MARGIN_RATIO)
-        covering = self._graph_service.edge_endpoints(covering_edge_ids)
-        bbox = bbox_covering_points([origin, *points, *covering], radius_km + margin_km)
+        bbox = self._graph_service.bbox_covering([origin, *points], covering_edge_ids, radius_km + margin_km)
 
-        search = await self._build_search_graph(bbox, origin, now)
+        search = await self._build_search_graph(bbox, origin, now, points[0] if points else None, radius_km)
         if search is None:
             return None
         node_index, accessible, passable, statics, turn_structure = await self._build_search_structures(search)
@@ -406,9 +398,12 @@ class RoadGraphEngine:
         if leg_index == 0:
             leg = context.legs[0]
         else:
+            leg_start = cruise_hours(cumulative_m / 1000, context.composer.speed_kmh)
+            # 経由地のあいだのレグは所要の見込みを持たないので、規制は区間の両端の直線距離×迂回率÷巡航速度の時間帯で判定する。
+            reach_hours = straight_line_hours(node_coordinates(context, from_node), node_coordinates(context, to_node),
+                                              context.composer.speed_kmh, context.composer.detour_ratio)
             leg = context.composer.compose(
-                leg_name(leg_index),
-                cruise_hours(cumulative_m / 1000, context.composer.speed_kmh), +1,
+                leg_name(leg_index), leg_start, +1, regulation_hours=(leg_start, leg_start + reach_hours),
             )
             context.legs.append(leg)
         return turn_expanded_shortest_path(
@@ -553,8 +548,9 @@ class RoadGraphEngine:
                 )
                 in_ring[end_node] = False
             in_ring[start_node] = False
+            # 通れるかは往路のレグで決める（時刻で変わる交通規制は、レグの時間帯で通れない区間がある）。
             in_ring &= nodes_reached_without_retracing(
-                statics.csr, context.passable, context.accessible, [start_node, end_node],
+                statics.csr, np.isfinite(outbound.cost_lazy), context.accessible, [start_node, end_node],
             )
             ring = np.flatnonzero(in_ring)
             if len(ring) == 0:
@@ -719,7 +715,7 @@ class RoadGraphEngine:
         起点から始まり・終点（目的地、無ければ出発地）へ着く**ことをここで確かめる（送られた列をそのまま信じると、
         評価は成功するのに経路として成立しないルートが候補一覧へ並ぶ。周回どうしを乗り換えた経路が出発地へ戻ることもここで決まる）。
 
-        置いた経由地は生成と同じNodeへ寄せ、組んだ経路の中で置いた順に通る所を探す（`_waypoint_offsets_along`）。
+        置いた経由地は生成と同じNodeへ寄せ、組んだ経路の中で置いた順に通る所を探す（`domain/loop_routing.py: waypoint_offsets_along`）。
 
         終点（`resolve_end`の結果）は生成と同じ所で決めるため、比べる相手は元の候補が実際に終わったNodeになる。
 
@@ -766,9 +762,16 @@ class RoadGraphEngine:
                     duration_hours=leg_duration_hours(total_m / 1000, context.composer.speed_kmh),
                 ),
             ]
+        # 時刻で変わる交通規制は、区間を通るレグの時間帯で除くことがある（上の確かめは時刻で変わらない除外だけを見る）。
+        blocked = sum(not np.isfinite(context.legs[leg].cost_lazy[index]) for index, leg in zip(path, leg_of_edge, strict=True))
+        if blocked:
+            raise RoutingError(f"経路が、通る時間帯に探索から除く区間を通ります count={blocked}")
+        snapped = [snap_point(context, point) for point in waypoints]
         return TracedLoop(
             bearing=None, distance_km=round(total_m / 1000, DISTANCE_KM_DECIMALS), data=path, leg_of_edge=leg_of_edge,
-            waypoint_offsets=_waypoint_offsets_along(context, [tails[0], *heads], waypoints), reversible=False,
+            waypoint_offsets=waypoint_offsets_along(
+                [tails[0], *heads], [None if snap is None else snap[0] for snap in snapped]),
+            reversible=False,
         )
 
     def is_loop_too_similar(

@@ -20,16 +20,17 @@ export const RIDE = {
   costPreference: STANDARD_COST_PREFERENCE,
   conditions: {
     bearingDeg: 0,
-    at: new Date("2026-09-24T00:00:00Z"),
+    lensFrame: "v1-2026092409",
     speedKmh: 20,
+    paintedLensId: null,
     z: 14,
     x: 1,
     y: 2,
   },
 };
 
-/** 1つの向きの負担。軸ごとの秒と元の事実は、見たい呼び出し側が書く。 */
-export function lensDirection(totalSeconds: number, overrides: Partial<LensDirection> = {}): LensDirection {
+/** 1つの向きの負担。軸ごとの秒と元の事実は、見たい呼び出し側が書く。合計がnullなら風を読めずに求めた負担。 */
+export function lensDirection(totalSeconds: number | null, overrides: Partial<LensDirection> = {}): LensDirection {
   return { total_seconds: totalSeconds, axes: [], facts: {}, ...overrides };
 }
 

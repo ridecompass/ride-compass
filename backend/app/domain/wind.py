@@ -1,6 +1,6 @@
 import math
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from functools import cached_property
 
 import numpy as np
@@ -9,6 +9,8 @@ from numba import njit
 from app.domain.geo import haversine_distance_km, haversine_distance_km_array
 from app.domain.msm import MsmBlock
 from app.domain.route import Coordinates
+from app.domain.time_frames import TimeFrame, frames_from
+from app.domain.time_zone import JST
 from app.domain.way_value_formula import (
     FormulaNode,
     Unary,
@@ -78,7 +80,7 @@ def wind_components(wind_speed_ms, wind_direction_deg, travel_bearing_deg) -> tu
 
 
 @dataclass(frozen=True)
-class WindForecastSeries:
+class WeatherForecastSeries:
     """MSMの格子点ごとの時別風向・風速・気温の予報系列（1時間刻み、`times`はタイムゾーン無しのローカル時刻[JST]）。探索前に
     各Edgeの通過予定時刻へ対応する風と気温を引くために使う。`speed_ms`・`direction_deg`・`temperature_c`（地上2m、℃）は
     （`lattice`の格子点, 時刻）で、格子点の値のまま（補間していない）。
@@ -97,11 +99,11 @@ class WindForecastSeries:
         if len(self.times) < 2 or any(values.shape != expected for values in (
                 self.speed_ms, self.direction_deg, self.temperature_c)):
             raise ValueError(
-                f"WindForecastSeries: speed_ms/direction_deg/temperature_c must have the shape {expected} with >= 2 times"
+                f"WeatherForecastSeries: speed_ms/direction_deg/temperature_c must have the shape {expected} with >= 2 times"
             )
         step_hours = (self.times[1] - self.times[0]).total_seconds() / 3600
         if not math.isclose(step_hours, 1.0):
-            raise ValueError(f"WindForecastSeries: expected hourly steps, got {step_hours}h")
+            raise ValueError(f"WeatherForecastSeries: expected hourly steps, got {step_hours}h")
 
     def _sample_index(self, start: datetime, passage_hours: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
         """`start`から`passage_hours`時間後に最も近い時刻の添字と、系列の範囲の外で端へ寄せたか。
@@ -176,3 +178,14 @@ def reached_or_estimated_hours(reached_hours: np.ndarray, estimated_hours: np.nd
     """区間ごとの通過時刻: 前向きの探索が届いた区間は実際の到達時刻`reached_hours`、届かない（有限でない）
     区間だけ直線距離からの推定`estimated_hours`。"""
     return np.where(np.isfinite(reached_hours), reached_hours, estimated_hours)
+
+
+def wind_frames(times: list[datetime], version: str, start: datetime, end: datetime) -> list[TimeFrame]:
+    """予報の時刻`times`（系列の時刻の形、1時間刻み）の、`start`〜`end`の風のコマ。時刻はそれに最も近い予報のコマの風を引くので
+    （`WeatherForecastSeries.time_index`。ちょうど中間は後のコマ）、正時の前後30分を1つのコマにし、印は予報の版`version`と正時から作る。
+    予報の時刻の外（端へ寄せる時刻）はコマを持たない。"""
+    half = timedelta(minutes=30)
+    hours = [moment for hour in times if start - half <= (moment := hour.replace(tzinfo=JST)) < end + half]
+    instants = [max(hour - half, start) for hour in hours]
+    frames = frames_from(instants, [f"{version}-{hour:%Y%m%d%H}" for hour in hours], min(hours[-1] + half, end)) if hours else []
+    return [frame for frame in frames if frame.start < end]

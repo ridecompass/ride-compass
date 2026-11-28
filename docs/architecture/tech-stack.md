@@ -13,6 +13,7 @@
 | Frontendスタイリング | Tailwind CSS + Radix UI + `frontend/src/components/ui/`（CSS Modulesは使わない） | 使い分け基準・Design Token・意図的に作らないものは[frontend-design-system.md](../modules/frontend/frontend-design-system.md) |
 | Frontendのデータ取得 | TanStack Query（`@tanstack/react-query`） | 取得の共有・取り直し・状態の骨格。MIT（依存の`@tanstack/query-core`も同じ）で、商用で使える。対応するReactは18・19（パッケージの`peerDependencies`）。使い方は[page-composition.md](../modules/frontend/page-composition.md)「データ取得の骨格」 |
 | FrontendのAPIの呼び出し | openapi-fetch（`openapi-typescript`の生成物からパス・問い合わせ・本文・応答の型を推論する） | MIT（依存の`openapi-typescript-helpers`も同じ）で、商用で使える。版の制約は下記。使い方は[page-composition.md](../modules/frontend/page-composition.md) |
+| Frontendの日本語の折り返し | BudouX（`budoux`。文を言葉のまとまりに分ける） | Apache-2.0（依存の`linkedom`等はISC・MIT・BSD-2-Clause）で、商用で使える。CSSの`word-break: auto-phrase`はiPhoneのSafariとFirefoxが対応しない（MDNの互換表の元データ）ため、Chromeがその中で使うBudouXで分ける。使うのは文を分ける部品（`Parser`と日本語のモデル）だけ。依存の`linkedom`は、ブラウザ向けの組み立てではブラウザ用の部品に置き換わる（パッケージの`browser`の欄）。使い所は`frontend/src/components/ui/GuideText/GuideText.tsx` |
 | Frontendアイコン | lucide-react（汎用の形）＋自前のSVG（このアプリ固有の概念の形） | 振り分けと線の太さのそろえ方は`frontend/src/components/ui/icons/icons.tsx`（土台と自前の形）・`frontend/src/components/ui/icons/lucideIcons.tsx`（lucideの包み）。lucideはISC（一部のアイコンはFeather由来でMIT）で、商用で使える |
 | Backend | Python + FastAPI | バージョンの正本は`backend/requirements.txt` |
 | DB | PostgreSQL + PostGIS | 生データ層・派生層・MVT生成（`ST_AsMVT`）の唯一の系統。**取込範囲外は「データ未整備」として扱い、外部APIへのフォールバックを持たない**。ルート生成には`DATABASE_URL`への実接続が必須 |
@@ -220,7 +221,7 @@ Next.jsのHTMLの404が返る（backendの404はJSON）。本番のAPIを手で�
 
 本番へ届くファイル（`deploy_gate.py: deploy_paths`。gitのpathspecとして`git diff --name-only`に当てさせる）は、
 イメージに入るもの——`backend/Dockerfile`と、出したいコミットのそのDockerfileがCOPYするもの——と、イメージの外から届くもの
-（`deploy_gate.py: HOST_PATHS`）である。イメージに入らないもの（テスト・lint設定・ベンチマーク等）は、COPYしないことで外れ、
+（`deploy_gate.py: HOST_PATHS`）である。イメージに入らないもの（テスト・lint設定等）は、COPYしないことで外れ、
 別の一覧を持たない。`backend/ops/`（VMのホストで動くsystemdのユニットとシェル）はイメージに入らないが`HOST_PATHS`に入る
 ——デプロイがVMの作業コピーをそのコミットへ揃えて`systemctl daemon-reload`を打つことでだけ届く。イメージには入るが本番
 プロセスが読まないもの（`export_openapi.py`とそれだけが読む表示値の宣言）は`deploy_gate.py: NOT_DEPLOYED`が外す。
@@ -480,6 +481,13 @@ Docker の既定（`json-file`）のログはコンテナに付き、デプロ�
   `ridecompass-backend`。`docker run --rm` のバッチは名前を付けなければ Docker が付けた名前になるので、`IMAGE_NAME=ridecompass-backend:latest`
   で絞って日時で見分ける）。動いているコンテナの分は `docker logs` でも読める。
 - **管理画面の「開発者」タブ**の直近のログはプロセスのメモリの中だけにあり、再起動で消える。後から調べる記録には journal を読む。
+- **応答の速さの1行**: 配信のコンテナは、外部I/Oとキャッシュの記録（`backend/app/infrastructure/debug_log.py: log_external_call`。地図のタイルの
+  `region:road-surface-tile`・`region:<点のレイヤー>-tile`・`region:landcover-tile`・レンズの`region:lens`等）を時計の10分ちょうどで区切り、その間に記録の
+  あった種類ごとに1行を INFO で出す（コンテナを止めるときも、その時点までの分を出す）。書式は
+  `[summary:<種類>] window_s=<区切りの秒> calls=<件数> errors=<誤りの数> hit_rate=<持ちに当たった割合。持ちを見ない種類は-> <組>_ms=n:<件数>,p50:<中央値>,p90:<90%点>,max:<最大>`
+  で、組は持ちに当たった要求（`hit`）・当たらなかった要求（`miss`）・持ちを見ない要求（`nocache`）のうち件数のあるもの。所要はミリ秒で、
+  中央値と90%点は比が1.1の刻みの上端で出す（真の値より最大で1割大きい）。起動の直後の区切りは10分より短い（`window_s`で分かる）。
+  種類ごとに拾うには `sudo journalctl CONTAINER_NAME=ridecompass-backend --since "<日時>" -o cat | grep -F "[summary:region:road-surface-tile]"`。
 
 根拠は Docker の journald ドライバの公式の文書（https://docs.docker.com/engine/logging/drivers/journald/ ）と
 journald.conf（https://www.freedesktop.org/software/systemd/man/latest/journald.conf.html ）。

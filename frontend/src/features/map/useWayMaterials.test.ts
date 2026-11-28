@@ -15,6 +15,7 @@ import { heldReplies, onBackend } from "@/testing/backendServer";
 import { mapCatalogFor } from "@/testing/mapCatalog";
 import { TWO_COST_AXES } from "@/testing/costAxes";
 import type { MapViewport } from "@/features/map/view/mapLook";
+import type { RideConditions } from "@/features/map/regionApi";
 
 import { useWayMaterials } from "./useWayMaterials";
 import { STANDARD_COST_PREFERENCE } from "@/lib/costPreference";
@@ -47,9 +48,15 @@ const VIEWPORT: MapViewport = { west: 139.76, south: 35.68, east: 139.77, north:
 const NEXT_TILE_VIEWPORT = { ...VIEWPORT, west: VIEWPORT.west + 360 / 2 ** 14, east: VIEWPORT.east + 360 / 2 ** 14 };
 /** `VIEWPORT`とタイルの重ならない範囲。 */
 const ELSEWHERE_VIEWPORT = { ...VIEWPORT, west: VIEWPORT.west + 1, east: VIEWPORT.east + 1 };
-const AT = new Date("2026-09-24T00:00:00Z");
-const LATER = new Date("2026-09-24T01:00:00Z");
-const CONDITIONS = { at: AT, bearingDeg: 0, speedKmh: 20 };
+/** 出発の時刻を含むレンズのコマの印と、その次のコマの印。 */
+const FRAME = "v1-2026092409";
+const NEXT_FRAME = "v1-2026092410";
+const CONDITIONS: RideConditions = {
+  lensFrame: FRAME,
+  bearingDeg: 0,
+  speedKmh: 20,
+  paintedLensId: null,
+};
 
 const WAY_MATERIALS = "/api/region/lens/:lensId/:z/:x/:y";
 
@@ -63,7 +70,7 @@ function serveWayMaterials(failsAt: (x: number) => boolean = () => false) {
     const [lensId, , x] = path.split("/").slice(-4);
     if (failsAt(Number(x))) return new Response(null, { status: 500 });
     return Response.json({
-      materials: { [`${lensId}@${x}@${query.at ?? "-"}@${query.speed_kmh ?? "-"}`]: { x: Number(x) } },
+      materials: { [`${lensId}@${x}@${query.frame ?? "-"}@${query.speed_kmh ?? "-"}`]: { x: Number(x) } },
       wind_previous_run_from: null,
     });
   });
@@ -114,7 +121,7 @@ describe("useWayMaterials（道ごとの材料）", () => {
   });
 
   it.each([
-    ["出発時刻と想定速度を載せる", ASCENT, `${AT.toISOString()}@20`],
+    ["出発時刻のコマと想定速度を載せる", ASCENT, `${FRAME}@20`],
     ["想定速度だけを載せる", UNTIMED_ASCENT, "-@20"],
     ["何も載せない", UNCONDITIONED_ASCENT, "-@-"],
   ])("出発時刻と想定速度は、レンズが載せると宣言したものだけを要求に載せる: %s", async (_, lens, expected) => {
@@ -127,13 +134,22 @@ describe("useWayMaterials（道ごとの材料）", () => {
     expect(conditions).toEqual(new Set([expected]));
   });
 
-  it("出発時刻が変わると取り直し、取り直す間は前の材料を残して読み込み中にする", async () => {
+  it("時刻に依るレンズは、コマの一覧が届くまで取らず、出発時刻のコマが無ければ取れないことを出す", async () => {
+    const waiting = render({ axes: [ASCENT], viewport: VIEWPORT, conditions: { ...CONDITIONS, lensFrame: undefined } });
+    await debounced();
+    expect(waiting.result.current.get("ascent")).toMatchObject({ loading: false, hasFetched: false });
+
+    const outside = render({ axes: [ASCENT], viewport: VIEWPORT, conditions: { ...CONDITIONS, lensFrame: null } });
+    await vi.waitFor(() => expect(outside.result.current.get("ascent")?.error).toBe("出発時刻の風の予報がありません"));
+  });
+
+  it("出発時刻のコマが変わると取り直し、取り直す間は前の材料を残して読み込み中にする", async () => {
     const { result, rerender } = render({ axes: [ASCENT], viewport: VIEWPORT, conditions: CONDITIONS });
     await fetched(result);
     const held = heldReplies();
     onBackend("GET", WAY_MATERIALS, held.reply);
 
-    rerender({ axes: [ASCENT], viewport: VIEWPORT, conditions: { ...CONDITIONS, at: LATER } });
+    rerender({ axes: [ASCENT], viewport: VIEWPORT, conditions: { ...CONDITIONS, lensFrame: NEXT_FRAME } });
     await vi.waitFor(() => expect(held.arrived()).toBeGreaterThan(0));
     expect(result.current.get("ascent")).toMatchObject({ loading: true, hasFetched: true });
     expect(result.current.get("ascent")?.materials.size).toBeGreaterThan(0);

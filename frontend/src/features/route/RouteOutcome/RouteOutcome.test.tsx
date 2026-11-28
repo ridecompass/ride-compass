@@ -1,13 +1,6 @@
 /**
  * `features/route/RouteOutcome/RouteOutcome.tsx`——「ルート結果」の中身のうち、候補が無い間の案内と、候補の上の知らせと、候補の一覧。
  *
- * 見るもの:
- * - 候補が無い間の案内（生成中の進み方・生成前）と、候補がある間の条件のずれ・既定の配分で作ったこと・目的地の補正・
- *   前に出た予報の風で作ったことの知らせ、乗り換えで作った経路と同じ道だったので選んだ候補の知らせと、選んだカードを一覧の横の見える範囲へ送ること
- * - 候補の一覧: 群（最速・生成した候補・合成）の間の区切りの線と名前の印（意味を読み上げの名前に持つ）、カードに出す
- *   名前・距離・所要時間・負担（内訳が無ければ「—」）と、下の帯の色（1kmあたりの負担を
- *   地図の総合のレンズと同じ段の色・内訳が無ければ値の無い色）、並びの先頭の数字の見方の見本（押しても候補を選ばない）と、その(i)のカードの数字と印の説明（費用の軸の一覧の名前と文を差し込む）、選ばれているタブ（選んだ候補・無ければ先頭）と、タブを押したときに上がる操作
- *
  * ここで見ないもの: 選んだ候補の中身（元との違い・道のりのグラフ・内訳・区間の詳しく・編集面） → `RouteOutcome.selected.test.tsx`。
  * 一覧の並び・群・名前の決め方 → `features/route/routeTabLabel.ts`。
  * 結果の状態の移り変わり → `features/route/useRouteResults.ts`。値を子・文へそのまま渡すだけの所
@@ -150,10 +143,10 @@ describe("候補の一覧", () => {
     expect(screen.getByRole("tab", { name: /^1 / })).toHaveAttribute("aria-selected", "true");
 
     await userEvent.click(within(cardSample()).getByRole("button", { name: "所要時間と負担の説明を表示" }));
-    expect(await screen.findByText("・上の段: 距離")).toBeInTheDocument();
-    expect(screen.getByText("・稲妻の印: 最速ルート")).toBeInTheDocument();
+    const items = (await screen.findAllByRole("listitem")).map((item) => item.textContent);
+    expect(items).toEqual(expect.arrayContaining(["・上の段: 距離", "・稲妻の印: 最速ルート"]));
     expect(screen.getByText(`所要時間: ${routeGenerateConfig.duration_estimate_wording}`)).toBeInTheDocument();
-    expect(screen.getByText("負担: 避けたいもの[軸ア・軸イ]を通る分を時間に直したものです。")).toBeInTheDocument();
+    expect(screen.getByText(`負担[軸ア・軸イ]: ${routeGenerateConfig.penalty_wording}です。`)).toBeInTheDocument();
     expect(
       screen.getByText(`並び: 先頭は最速、残りは${routeGenerateConfig.candidate_order_wording}です。`),
     ).toBeInTheDocument();

@@ -9,9 +9,9 @@
 
 | レイヤー | ファイル |
 |---|---|
-| domain | `attributes.py`（`attributes.py: elevation_values_sql`。区間の断面の点列から標高・勾配を出すSQLを組み立てる） |
-| infrastructure | `dem_elevation.py`（地点の標高を、取り込んだ標高タイルから製品の優先の順に引く。値の無い点だけを次の製品で引く） |
-| batch | `source_adapters/gsi_dem_tile.py`（取込と取得。取得はプロファイルが挙げた製品ごとに全タイルを置き場へ写し、取込は写したタイルを製品ごとに読んでint32へ詰める。取込は配信元を叩かない）・`dem_tile_store.py`（写したタイルの置き場と、その製品に無いことの印）・`source_adapters/raster_wkb.py`（画素の並びをPostGISの`raster`へ包む）・`derive_elevation.py`（派生） |
+| domain | `elevation_profile.py`（断面から所要時間の点の間と標高・勾配の要約を出す） |
+| infrastructure | `dem_elevation.py`（地点の標高を、取り込んだ標高タイルのまわりの4画素の双線形補間で、製品の優先の順に引く。値の無い点だけを次の製品で引く） |
+| batch | `source_adapters/gsi_dem_tile.py`（取込と取得。取得はプロファイルが挙げた製品ごとに全タイルを置き場へ写し、取込は写したタイルを製品ごとに読んでint32へ詰める。取込は配信元を叩かない）・`dem_tile_store.py`（写したタイルの置き場と、その製品に無いことの印）・`source_adapters/raster_wkb.py`（画素の並びをPostGISの`raster`へ包む）・`derive_elevation.py`（派生。区間の断面の点列を間引くSQL`derive_elevation.py: elevation_profile_sql`も持つ） |
 
 ## 3段に分かれている
 
@@ -20,16 +20,17 @@
    │ source_adapters/gsi_dem_tile.py: 製品ごとにint32へ詰めて、製品×タイル1枚=1行
    ▼
 source_features(source='dem')          ← 生データ。取り直さない限り変わらない
-   │ derive_elevation.py: 区間を等しい間隔に分けた点で、画素ごとに製品を選んで標高を読み、揺れを間引いて勾配を出す
+   │ derive_elevation.py: 区間を等しい間隔に分けた点で、点ごとに製品を選んで標高を双線形で読み、揺れを間引く
    ▼
-edge_elevation（start/end・gain/loss・average・一番急な登りと下り・断面の点）
-   │ 探索フェーズが材料として読む（road_graph_repository.py）
+edge_elevation（断面の点の標高と位置）
+   │ 道路網の配列を作るときに読み、要約（start/end・gain/loss・average・一番急な登りと下り）を出す
+   │ （road_network_store.py・domain/elevation_profile.py: profile_summaries）
    ▼
 経路の集計（domain/route.py: elevation_gain）
 ```
 
-値の出し方そのものは`domain/attributes.py: elevation_values_sql`が持つ。派生バッチは
-点ごとの画素を読む関係を渡して実行するだけで、上限も欠測の扱いもそこには無い。
+間引き方は派生バッチの`batch/derive_elevation.py: elevation_profile_sql`が（呼び手が1つのSQL文の手順なので、実行する層が持つ）、
+要約の出し方は`domain/elevation_profile.py`が持つ。間引きの閾値は較正値から渡し、勾配の上限は派生バッチに無い。
 
 ## 断面の点の拾い方と間引き方
 
@@ -37,7 +38,7 @@ edge_elevation（start/end・gain/loss・average・一番急な登りと下り�
 点の間隔が描き手ごとにばらつき、細かく描いた道ほど標高データの揺らぎを登りとして積む。間隔は標高データの格子（DEM5Aは約5m）に
 合わせる——格子より広げると、格子が持つ短い起伏を拾わない。
 
-拾った点は、較正値`elevation.profile_tolerance_m`の閾値で間引いてから残す（`domain/attributes.py: elevation_values_sql`）。断面
+拾った点は、較正値`elevation.profile_tolerance_m`の閾値で間引いてから残す（`batch/derive_elevation.py: elevation_profile_sql`）。断面
 （横が道のり、縦が標高）に Douglas-Peucker をかけ、閾値以下の上下を揺れとして消す。残る点の間の勾配は元の点の間の一番急な
 勾配を越えない。閾値を十分に越える短い急坂はその急さのまま残り、高さが閾値の数倍に満たない短い段は前後と一緒になだらかに残ることがある。閾値は配信元が公表する標高の精度（DEM5Aは標準偏差0.3m以内。
 https://maps.gsi.go.jp/development/hyokochi.html ）に合わせる。平らな道ほど点が少なくなるので、点の数は拾った点の数より
@@ -45,30 +46,29 @@ https://maps.gsi.go.jp/development/hyokochi.html ）に合わせる。平らな�
 
 **一番急な登りと下り**（`steepest_gain_percent`・`steepest_loss_percent`）は、GraphHopper の`SlopeCalculator`の max_slope の式で
 残した点から測る（1つ前の2点の標高の平均から今の点までの勾配と、区間の両端の勾配の最大。式と最短の長さは
-`domain/attributes.py: elevation_values_sql`・`domain/elevation_profile.py: STEEPEST_MIN_INTERVAL_M`）。隣り合う2点だけで測ると、5m おきに拾った断面の
+`domain/elevation_profile.py: profile_summaries`・較正値`elevation.steepest_min_interval_m`）。隣り合う2点だけで測ると、5m おきに拾った断面の
 短い間の揺れがそのまま一番急になる。下りは逆向きに走ったときの登りとして、逆の順に並べた点に同じ式を当てる（式は前の点を見るので、並べる向きで値が変わる）。平均（`average_grade`）と違い、区間の中で登って下っても打ち消し合わない。ルートの区間の続く坂の斜度はこれから作る（`domain/route.py: steepest_signed_percent`）。区間の中で計算し直さず、
 道の値を同じ所から読む。距離は点の道のりの位置の差で測る（点どうしの直線で測ると、曲がった区間で勾配が大きく出る）。
 
 ## 断面の点を残す
 
-断面の点の標高と位置（`elevation_profile_m`・`elevation_profile_along_m`。順方向の並びで、逆向きの行は読む側が勾配の符号を返す）を
+断面の点の標高と位置（`elevation_profile_m`・`elevation_profile_along_m`。順方向の並びで、逆向きの行は読む側が点を逆順にたどって勾配の符号を返す）を
 区間の標高の表に残す。間引いた点なので間隔はそろわず、点の間の長さは位置の差で測る。所要時間と体力は
 この点の間ごとに求め（[経路エンジン](routing-engine.md)）、獲得標高・平均勾配・一番急な所の要約も同じ点の間から出す——
 目的ごとに別の束ね方で持つと、読む所によって値が食い違う。点の間を勾配として数えるかも両方で同じにする。ルート生成と地図のレンズが
 読む要約は、道路網の配列を作るときに断面から出し（`domain/elevation_profile.py: profile_summaries`。判定は所要時間と同じ
-`domain/elevation_profile.py: interval_grade`）、勾配と登りの量の材料もここで出す（材料の出どころが`profile`）。派生の表の要約の列
-（`domain/attributes.py: elevation_values_sql`）は管理画面の欠損割合だけが読む。2つの書き方は、同じ断面を両方に通して同じ値を
-見るテスト（`test_elevation_values.py`）が一致を守る。
+`domain/elevation_profile.py: interval_grade`）、勾配と登りの量の材料もここで出す（材料の出どころが`profile`）。派生の表は
+要約を持たない——持つと、同じ規則をSQLとnumpyの2つに書くことになる。
 道路網の配列は、向きつきの行ごとの始まりの位置と点の数と、全行をつないだ標高と点の位置（区間の長さに対する割合）の配列で持ち、
 所要時間と体力を解く点の間（`domain/elevation_profile.py: ProfileSpans`）も、配列を作るときに全区間について1回だけ作って持つ
 （`domain/road_network.py: RoadNetwork.elevation_spans`）。
-位置を持たない行（作り直す前の行）は、点を等しい間隔に置いて読む（`domain/elevation_profile.py: along_fractions`）。標高の無い点の間と
+区間の長さは0より大きく（`domain/road_network.py: RoadNetwork`が組むときに確かめる）、読む側は長さ0を扱わない。標高の無い点の間と
 点が2つ未満の区間は、道路網全体の点の間の勾配の分布どおりの坂として走る（`domain/elevation_profile.py`）。
 
 ## 勾配を出さない区間
 
-`average_grade`がNULLなのは、標高を出せなかった区間だけではない。勾配として数える点の間が1つも無い区間も持たない。
-**舗装公道としてありえない急勾配**（`domain/elevation_profile.py: MAX_PLAUSIBLE_GRADE_PERCENT`）の点の間は、
+平均勾配（`average_grade`）が無いのは、標高を出せなかった区間だけではない。勾配として数える点の間が1つも無い区間も持たない。
+**舗装公道としてありえない急勾配**（較正値`elevation.max_plausible_grade_percent`。道路網の配列を作るときに読み、作った一様な坂には当てない）の点の間は、
 計算したうえで**数えない**と決めた間である。道の起伏ではなくDEMの読み違いで、丸めても上限で切っても直らない。
 
 両端の標高（start/end）は残す。0次ハードフィルタは値の無い区間を
@@ -82,10 +82,10 @@ DEMが返すのは地表面の標高で、桁や坑道の高さではない—�
 標高だけで上り下りと勾配を出す（派生が断面の点を両端の2点だけにする。`batch/derive_elevation.py`）。
 
 **橋・トンネルの端の頂点は、道に沿って近い地面の標高で直す**（GraphHopper の`BridgeTunnelTowerCorrection`と同じ手順。
-式と長さは`batch/derive_elevation.py`の冒頭と`STRUCTURE_GROUND_SEARCH_M`・`STRUCTURE_SLOPE_FLOOR`）。配信元はDEMから
+式と長さは`batch/derive_elevation.py`の冒頭と較正値`elevation.structure_ground_search_m`・`elevation.structure_slope_floor`）。配信元はDEMから
 構造物を除いているので、OSM の橋の端がその除かれた範囲に入ると、端の点は水面や谷底を返す（例: 荒川の朝霞水門の端が2.7m・
 堤防の上は約13m）。トンネルの坑口は山肌の高い値を返す。両端だけを引く作りではその値がそのまま構造物の高さになり、端を共有する
-隣の道にも急な偽の坂ができる。そこで端の頂点から構造物でない道だけを`STRUCTURE_GROUND_SEARCH_M`（50m）までたどり、地面の値を
+隣の道にも急な偽の坂ができる。そこで端の頂点から構造物でない道だけを較正値`elevation.structure_ground_search_m`（初めの値は50m）までたどり、地面の値を
 道のりで重みづけて平均した値に置き換える。置き換えで接する道の勾配が急になるものは直さず、直した端に続く道は端から同じ長さ以内を
 直線に引き直す（段を残さない）。途中の頂点で区間が分かれた橋・トンネルの内側の頂点は、外へつながる頂点から補う（GraphHopper の
 `EdgeElevationInterpolator`と同じ式）。
@@ -106,8 +106,12 @@ DEMが返すのは地表面の標高で、桁や坑道の高さではない—�
 製品のタイルを行として作らない。どの製品の行も無い地点に落ちる区間は標高を持たない。
 取込は、印も本文も無い（まだ試していない）タイルを製品ごとに数えてWARNINGで出す。
 
-タイルの中の欠測（`"e"`）は画素ごとに扱う。上位の製品が欠けた画素だけが下位の製品で埋まり、
-どの製品にも値が無い画素は欠測のまま残る。水部がその典型で、配信元は「地図上で水部になって
+点の標高は、まわりの4画素の双線形補間で引く（値は画素の中心にあるとみなす。GraphHopper の`graph.elevation.interpolate: bilinear`と
+同じ置き方）。最寄りの1画素で引くと、5m おきに拾う点が画素の境をまたぐたびに値が段で変わり、間引きはその段を残すので、平らな道に
+偽の起伏と急坂が出る。4画素はズーム全体の画素の番地で決めるので、タイルの端の点は隣のタイルの画素を読む。
+
+タイルの中の欠測（`"e"`）は点ごとに扱う。4画素のうち値の無い画素は外し、値のある画素だけで重みを付け直す。4画素のどれにも値の無い
+点だけが下位の製品で埋まり、どの製品にも値が無い点は欠測のまま残る。水部がその典型で、配信元は「地図上で水部になって
 いる地域では、標高値がデータに入っていない場合や、正確な値が入っていない場合があります」
 （https://maps.gsi.go.jp/development/hyokochi.html ）と書いている——下位の製品を足しても、
 欠測の大半は埋まらない。
@@ -151,9 +155,9 @@ DEMが返すのは地表面の標高で、桁や坑道の高さではない—�
 
 ### 製品ごとの性質（配信元の仕様、コードからは導けない）
 
-`PRODUCT_PRIORITY`（`domain/gsi_tiles.py`。地図の陰影・走った記録の標高も同じ順で画素を埋める）は、配信元が「その地点で最も計測精度の良い値」を
+`PRODUCT_PRIORITY`（`domain/gsi_tiles.py`。地図の陰影・走った記録の標高も同じ順で埋める）は、配信元が「その地点で最も計測精度の良い値」を
 採るときの順（DEM5A→DEM5B→DEM5C→DEM10B）である。配信元はこの順を**画素ごと**に当てる
-（https://maps.gsi.go.jp/development/hyokochi.html ）ので、派生も画素ごとに当てる——タイル
+（https://maps.gsi.go.jp/development/hyokochi.html ）ので、派生も点ごとに当てる——タイル
 単位で1製品を選ぶと、選んだ製品の欠測画素が、他の製品に値があっても埋まらない。取得は
 この順を使わず、宣言した製品を全部取る。
 

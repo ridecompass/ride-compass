@@ -1,7 +1,7 @@
 """交通規制の派生（`derive_traffic_regulations.derive`）が、規制を区間へ当てた値。
 
 見るのは、線に沿う区間（折れた線なら区間に沿う所）と面の中の区間に当たり、規制を横切るだけの区間（帯にまるごと入る
-短い区間も）と離れた区間に当たらないこと、1つの区間に2つの規制が当たれば列ごとに強い方を取ること。
+短い区間も）と離れた区間に当たらないこと、1つの区間に2つの規制が当たれば両方を持つこと、規制の条件の組を畳まずに持つこと。
 
 ここで見ないもの:
 - 規制1件がいつ・誰に効くかの判断 → `test_traffic_regulation.py`
@@ -14,7 +14,7 @@ from shapely.geometry import LineString, Polygon
 
 from app.batch import derive_topology, derive_traffic_regulations
 from app.batch.ingest import SourceRecord
-from app.domain.traffic_regulation import ALL_DAY, TIMED
+from app.domain.traffic_regulation import RegulationSlot
 from app.domain.tuning import REGULATION_EDGE_SHARE_ID, REGULATION_LINE_HALF_WIDTH_ID, REGULATION_MAX_ANGLE_ID
 from app.infrastructure.source_models import PEDESTRIAN_ROAD_KIND
 from tests.source_ingest import ingest_records, way_record
@@ -71,14 +71,14 @@ def _across(way_id: int) -> LineString:
 
 @pytest_asyncio.fixture(loop_scope="module")
 async def derived(derive_conn):
-    """道を取り込んで区間まで作り、規制を取り込んで段を流した状態。区間の鍵 → (全体の時間帯, 自転車の時間帯)。"""
+    """道を取り込んで区間まで作り、規制を取り込んで段を流した状態の接続。"""
     ways = (ALONG, INSIDE, CROSSED, APART, SHORT_CROSSED, BENT)
     await ingest_records("osm_way", [way_record(w, _road(w), [w * 10, w * 10 + 1]) for w in ways], conn=derive_conn)
     await derive_topology.derive(derive_conn)
     await ingest_records("jartic_regulation", [
         # 対象の車両が無い規制は、自転車も対象。
         _regulation("along", _along(ALONG)),
-        # 面の中の区間には、終日の自動車だけの規制と、時間帯の自転車も対象の規制が当たる。
+        # 面の中の区間には、自動車だけの規制と、時間帯の自転車も対象の規制が当たる。
         _regulation("around", _around(INSIDE), **{"対象車両コード1_A": "10"}),
         _regulation("around_timed", _around(INSIDE), **{"規制時間1_開始": "800", "規制時間1_終了": "2000"}),
         _regulation("across", _across(CROSSED)),
@@ -88,10 +88,22 @@ async def derived(derive_conn):
     await derive_traffic_regulations.derive(
         derive_conn, line_half_width_m=TUNING[REGULATION_LINE_HALF_WIDTH_ID], edge_share=TUNING[REGULATION_EDGE_SHARE_ID],
         max_angle_deg=TUNING[REGULATION_MAX_ANGLE_ID])
-    rows = await derive_conn.fetch(
-        "SELECT osm_way_id, pedestrian_road, pedestrian_road_bicycle FROM edge_traffic_regulations")
-    return {row["osm_way_id"]: (row["pedestrian_road"], row["pedestrian_road_bicycle"]) for row in rows}
+    return derive_conn
 
 
 async def test_regulations_reach_edges_along_lines_and_inside_areas(derived):
-    assert derived == {ALONG: (ALL_DAY, ALL_DAY), INSIDE: (ALL_DAY, TIMED), BENT: (ALL_DAY, ALL_DAY)}
+    rows = await derived.fetch("SELECT osm_way_id, regulation_id FROM edge_traffic_regulations")
+
+    assert sorted((row["osm_way_id"], row["regulation_id"]) for row in rows) == [
+        (ALONG, "along"), (INSIDE, "around"), (INSIDE, "around_timed"), (BENT, "bent")]
+
+
+async def test_the_conditions_of_a_regulation_are_kept_as_its_slots(derived):
+    """組を持たない規制は組の行を持たず、組を持つ規制は組の値をそのまま持つ。"""
+    rows = await derived.fetch("SELECT * FROM traffic_regulation_slots WHERE regulation_id IN ('along', 'around', 'around_timed')")
+
+    assert {row["regulation_id"]: RegulationSlot(**{k: v for k, v in dict(row).items() if k not in ("regulation_id", "slot")})
+            for row in rows} == {
+        "around": RegulationSlot(False),
+        "around_timed": RegulationSlot(True, hours_from=8 * 60, hours_to=20 * 60),
+    }

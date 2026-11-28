@@ -734,6 +734,25 @@
               "minimum": 0,
               "title": "Y"
             }
+          },
+          {
+            "name": "frame",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 64,
+                  "pattern": "^[0-9A-Za-z-]+$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Frame"
+            }
           }
         ],
         "responses": {
@@ -940,20 +959,22 @@
             }
           },
           {
-            "name": "at",
+            "name": "frame",
             "in": "query",
             "required": false,
             "schema": {
               "anyOf": [
                 {
                   "type": "string",
-                  "format": "date-time"
+                  "minLength": 1,
+                  "maxLength": 64,
+                  "pattern": "^[0-9A-Za-z-]+$"
                 },
                 {
                   "type": "null"
                 }
               ],
-              "title": "At"
+              "title": "Frame"
             }
           },
           {
@@ -1016,6 +1037,23 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/region/time-frames": {
+      "get": {
+        "operationId": "region_time_frames_api_region_time_frames_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TimeFrames"
                 }
               }
             }
@@ -2963,10 +3001,6 @@
           },
           "road_classes": {
             "$ref": "#/components/schemas/RoadClassCatalog"
-          },
-          "travel_model_wording": {
-            "type": "string",
-            "title": "Travel Model Wording"
           }
         },
         "additionalProperties": false,
@@ -2974,8 +3008,7 @@
         "required": [
           "client_tuning",
           "accident_years",
-          "road_classes",
-          "travel_model_wording"
+          "road_classes"
         ],
         "title": "ClientConfigResponse"
       },
@@ -4188,7 +4221,14 @@
       "LensDirection": {
         "properties": {
           "total_seconds": {
-            "type": "number",
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Total Seconds"
           },
           "axes": {
@@ -5611,6 +5651,9 @@
       },
       "RoadInspectorRequest": {
         "properties": {
+          "cost_preference": {
+            "$ref": "#/components/schemas/CostPreference-Input"
+          },
           "osm_way_id": {
             "type": "integer",
             "title": "Osm Way Id"
@@ -5641,26 +5684,41 @@
             "minimum": 0.0,
             "title": "Bearing Deg"
           },
-          "at": {
+          "lens_id": {
             "anyOf": [
               {
-                "type": "string",
-                "format": "date-time"
+                "type": "string"
               },
               {
                 "type": "null"
               }
             ],
-            "title": "At"
+            "title": "Lens Id"
+          },
+          "frame": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 64,
+                "minLength": 1,
+                "pattern": "^[0-9A-Za-z-]+$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Frame"
+          },
+          "wind": {
+            "type": "boolean",
+            "title": "Wind",
+            "default": true
           },
           "speed_kmh": {
             "type": "number",
             "maximum": 60.0,
             "minimum": 5.0,
             "title": "Speed Kmh"
-          },
-          "cost_preference": {
-            "$ref": "#/components/schemas/CostPreference-Input"
           }
         },
         "additionalProperties": false,
@@ -5713,6 +5771,10 @@
             "type": "boolean",
             "title": "Has No Data"
           },
+          "min_zoom": {
+            "type": "integer",
+            "title": "Min Zoom"
+          },
           "classes": {
             "items": {
               "$ref": "#/components/schemas/RoadClassView"
@@ -5732,6 +5794,7 @@
           "panel_hint",
           "hide_missing_rows",
           "has_no_data",
+          "min_zoom",
           "classes"
         ],
         "title": "RoadMapLayerView"
@@ -6195,6 +6258,9 @@
       },
       "RouteGenerateRequest": {
         "properties": {
+          "cost_preference": {
+            "$ref": "#/components/schemas/CostPreference-Input"
+          },
           "latitude": {
             "type": "number",
             "maximum": 90.0,
@@ -6219,9 +6285,6 @@
               }
             ],
             "title": "Distance Km"
-          },
-          "cost_preference": {
-            "$ref": "#/components/schemas/CostPreference-Input"
           },
           "road_avoidance": {
             "$ref": "#/components/schemas/RoadAvoidanceOverride"
@@ -6449,6 +6512,10 @@
             "type": "array",
             "title": "Avoidance Stretches"
           },
+          "regulation_margin": {
+            "type": "boolean",
+            "title": "Regulation Margin"
+          },
           "lens_seconds_per_km": {
             "anyOf": [
               {
@@ -6481,6 +6548,7 @@
           "penalty",
           "road_classes",
           "avoidance_stretches",
+          "regulation_margin",
           "lens_seconds_per_km"
         ],
         "title": "RouteSegmentDetail"
@@ -6647,6 +6715,57 @@
           "note"
         ],
         "title": "TableEntry"
+      },
+      "TimeFrame": {
+        "properties": {
+          "start": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Start"
+          },
+          "end": {
+            "type": "string",
+            "format": "date-time",
+            "title": "End"
+          },
+          "key": {
+            "type": "string",
+            "title": "Key"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "start",
+          "end",
+          "key"
+        ],
+        "title": "TimeFrame"
+      },
+      "TimeFrames": {
+        "properties": {
+          "road_surface": {
+            "items": {
+              "$ref": "#/components/schemas/TimeFrame"
+            },
+            "type": "array",
+            "title": "Road Surface"
+          },
+          "lens": {
+            "items": {
+              "$ref": "#/components/schemas/TimeFrame"
+            },
+            "type": "array",
+            "title": "Lens"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "road_surface",
+          "lens"
+        ],
+        "title": "TimeFrames"
       },
       "TimelineKind": {
         "type": "string",

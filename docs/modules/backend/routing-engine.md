@@ -13,9 +13,9 @@
 
 | レイヤー | ファイル |
 |---|---|
-| domain | `road_network.py`（取込範囲全体の道路網を、有向の区間とノードの番号で引ける列の配列として持つ型。行の並び・分類の材料を語彙への番号で持つことはそのdocstringが持つ）・`road_network_build.py`（道の事実から道路網の配列を組み、事実から安く導ける値（区間と頂点の階級・端のそばの向きの欠け・形の外接矩形・道の向き・断面から決まる値・材料の平均）を取込範囲全体について1回だけ求める）・`routing.py`（numbaでJITする探索。一対全の木・2点間探索・前任者を辿る経路の復元）・`tree_paths.py`（一対全の木から経路を取り出す・木の経路どうしの重複率・前向きと後ろ向きの木の繋ぎ目とそこで継いだ経路）・`connectivity.py`（出て戻れるノードの集まりと、来た道を戻らずに行き来できるノード）・`search_kernels.py`（探索のJITをイメージの組み立てで焼く）・`search_graph.py`（探索用グラフと、同じ番号を持つCSRの構造）・`turn_structure.py`（状態＝有向区間・辺＝ターンの遷移構造と、経路の曲がる所）・`route_diversity.py`（候補の経路どうしの重なりの測り方と、重なり・パレートの層で候補を間引く手順）・`node_spatial_index.py`（置いた点に一番近いノードの索引と、寄せてよいノードへの寄せ方）・`graph.py`・`route.py`・`route_road_classes.py`（区間に載せる道の区分の値を道路網の行から読む`route_road_classes.py: SegmentClassReader`。値は地図がそのレイヤを塗るのと同じ値で、「緑と水」は割合が最も多いクラス。「緑と水」の鍵は、区間に土地被覆のクラスの並びを載せると宣言した地図の層（`domain/map_display.py: MapLayerSpec.segment_series`）のid）・`geo.py`・`errors.py`・`region.py`（矩形（`domain/region.py: BoundingBox`）と地点を覆う矩形の組み立て、XYZタイルとの相互変換（緯度経度・Web Mercatorのメートル・同じ式のSQL）。タイル座標の型（路面のズーム`domain/region.py: RoadTileZoom`・列と行`domain/region.py: TileIndex`。ほかのレイヤーのズームの型はそのレイヤーの宣言の隣）と、列・行がズームの範囲にあるかの検査`domain/region.py: check_tile_index`も持ち、タイルを受ける入口（path・本文）はどれもこれで書く。タイル配信・取込・派生バッチ・推計気象分布の画素（`infrastructure/jma_suikei_client.py`）もこの変換を共有する）・`cycling_speed.py`（自転車の走行モデル。平地・無風の巡航速度からホイール出力を逆算し、勾配・向かい風・空気密度（区間の標高と気温）・転がり抵抗から区間ごとの速度を走行方程式で解く。速度の逆算は`v`の3次方程式になるため二分法で、区間ごとのループをnumbaでJITする。候補の所要時間と基準線の探索コストがここから出る）・`tuning.py`（ルーティング評価が読む固定値の宣言。走ってみて決める値と標準の人の好みの定義［較正値］のid・効き方はここが持ち（値はDBの表）、エンジンが読む値・管理画面が並べる項目・変更が効くために何をやり直す必要があるかをそこから導く。較正値ではない固定値は載せない。管理画面の保存は値を断らず、値で計算が成り立たないときは使う所が`tuning.py: require_tuning`で較正値を名指して止まる——条件は使う所が持つ）・`model_settings.py`（1回の計算が読む較正値・道の区分・費用の軸の定義の束と、全体からの写し方）・`tuning_labels.py`（較正値の管理画面での名前。値を使う側の宣言が持つ対象を添える）・`route_search.py`（探索が候補を選ぶ判断の値と手順。折返し点・復路・代替経路の間引きのしきい値、往路と周回全長の比の範囲と折返し点を探すリング、候補を同じとみなす距離の粒度、目的地を寄せてよい距離、候補の並べ方（パレート層と1kmあたりの費用の秒）・同点の組・離れているかの判定・逆回りとの比べ方・A*の下界・迂回率の測り方と共有の粒度、応答の候補の並び）・`loop_routing.py`（周回・目的地ルートの探索結果を運ぶ型。探索の実装と候補を並べる戦略のどちらにも属さない）・`route_request.py`（ルート生成の要求が受け付ける値の範囲（返す候補数の既定と上限・想定速度の既定と範囲の型`route_request.py: AssumedSpeedKmh`を含む。想定速度は地図のレンズ・道の窓の入口も同じ型で受ける）と、その外れを知らせる文。経由地・目的地が出発地から届く範囲にあるかの検査`route_request.py: check_points_within_reach`。要求の検証と、画面が操作を止める上限の生成物が同じ宣言を読む。検証を通った要求が何を生成するか（距離あり・距離なし・差し替えた経路）の型も持ち、仕上げの戦略を選ぶのはこの型だけ）・`wind.py`（風と気温の予報の系列と格子・出発時点の風・通過予定時刻と迂回率の模型）・`wind_context.py`（区間ごとに風と気温を引く入力［区間の向き・最寄りの格子点・風の高さの倍率］を1か所で組み、時刻ごとの乗り手の高さの風を区間の向きへ分けた成分と、区間の気温を出す。走行モデルと区間の表示が同じ値を読む）・`wind_height.py`（予報の地上10mの風を、土地被覆の粗度長で乗り手の高さの風へ直す倍率と、通る日の季節の倍率。出し方は下の走行モデルの段落）・`leg_costs.py`（レグごとのコスト配列の合成。探索の材料の表・費用の軸の定義・0次フィルタ・風の予報から、探索のコストと区間の表示が読む配列を時刻ビンごとに作る。ルートの事実と道の窓が共有する軸の事実の作り方（`axis_facts`）も持つ。外部とやり取りせず配列だけを受け取るので、エンジンの途中状態を組まずに確かめられる。下記「レグ別コスト配列」） |
-| services | `route_generator.py`（戦略層。生成の骨組みと、距離の有無で分かれる仕上げの戦略）・`road_graph_engine.py`（探索範囲の準備・前段・距離ありの仕上げ）・`road_graph_context.py`（1回の生成の間、エンジン・仕上げ・候補の組み立てが共有する状態`road_graph_context.py: RoadGraphContext`と前段の結果`road_graph_context.py: FixedLegs`、生成と乗り換えが共に使う終点`road_graph_context.py: ResolvedEnd`、そこから区間・ノードを引く部品）・`road_graph_via_routes.py`（距離なしの仕上げ。via-nodeの代わりの道と基準線）・`road_graph_candidates.py`（選んだ経路を応答の候補へ組み立てる`road_graph_candidates.py: evaluate_routes`）・`graph_service.py`・`route_generation_job.py`（生成のジョブの本体: 枠を待ち、候補に実際に適用した条件のエコーを添えて結果か失敗の文を記録する。結果の型`route_generation_job.py: RouteGenerateResponse`は応答の型でもある）・`generation_slots.py`（同時実行の枠と、枠を待つ待ち行列。プロセスに1つ）・`route_generation_setup.py`（エンジンの組み立てと評価条件の既定の解決。組んだエンジンで要求の対象の候補を作る段取り`route_generation_setup.py: generate_route_candidates`。道路網はここで生成ごとに1度だけ読んで`GraphService`へ渡し、生成の間はそれだけを切り出し、候補にその世代`network_revision`を付ける） |
-| infrastructure | `road_graph_repository.py`（道路網・材料の読み出し専用）・`material_joins.py`（材料の式が読む別名`material_joins.py: em`・`material_joins.py: wm`を与える表の結び方）・`road_tile_sql.py`（地図のタイルと、タイルと同じ選び方でフィーチャーの鍵・名前・形を読むSQL）・`road_network_store.py`（道路網全体の配列をDBから作り、ディスクへ置き、読む）・`detour_ratio_cache.py`（探索範囲ごとに学習した迂回率）・`cache_identity.py`（キャッシュ鍵の組み立て方の正本。手で書くリビジョンと、焼き込みSQL・列構成から導く署名を合成する。道路網の置き場の形の署名とタイル配信側の世代も同じ関数を使う）・`container_memory.py`（このプロセスのコンテナのメモリ上限。読み込む量の上限を導く）・`heap_release.py`（解放した割り当ての領域を OS へ返す。生成のジョブの終わりに呼ぶ）・`derived_data_meta.py`（派生データの世代と、今の派生の表を作った全ソースの取込・較正値。世代はバッチが中身を書き直すたびに進む単調カウンタで、デプロイを伴わない変化を表せる唯一の経路。配信するタイルのために生データの世代も一緒に読む） |
+| domain | `road_network.py`（取込範囲全体の道路網を、有向の区間とノードの番号で引ける列の配列として持つ型。行の並び・分類の材料を語彙への番号で持つことはそのdocstringが持つ）・`road_network_build.py`（道の事実から道路網の配列を組み、事実から安く導ける値（区間と頂点の階級・端のそばの向きの欠け・形の外接矩形・道の向き・断面から決まる値・材料の平均）を取込範囲全体について1回だけ求める）・`routing.py`（numbaでJITする探索。一対全の木・2点間探索・前任者を辿る経路の復元）・`tree_paths.py`（一対全の木から経路を取り出す・木の経路どうしの重複率・前向きと後ろ向きの木の繋ぎ目とそこで継いだ経路）・`connectivity.py`（出て戻れるノードの集まりと、来た道を戻らずに行き来できるノード）・`search_kernels.py`（探索のJITをイメージの組み立てで焼く）・`search_graph.py`（探索用グラフと、同じ番号を持つCSRの構造）・`turn_structure.py`（状態＝有向区間・辺＝ターンの遷移構造と、経路の曲がる所）・`route_diversity.py`（候補の経路どうしの重なりの測り方と、重なり・パレートの層で候補を間引く手順）・`node_spatial_index.py`（置いた点に一番近いノードの索引と、寄せてよいノードへの寄せ方）・`graph.py`・`route.py`・`route_road_classes.py`（区間に載せる道の区分の値を道路網の行から読む`route_road_classes.py: SegmentClassReader`。値は地図がそのレイヤを塗るのと同じ値で、「緑と水」は割合が最も多いクラス。「緑と水」の鍵は、区間に土地被覆のクラスの並びを載せると宣言した地図の層（`domain/map_display.py: MapLayerSpec.segment_series`）のid）・`geo.py`・`errors.py`・`region.py`（矩形（`domain/region.py: BoundingBox`）と地点を覆う矩形の組み立て、XYZタイルとの相互変換（緯度経度・Web Mercatorのメートル・同じ式のSQL）。タイル座標の型（路面のズーム`domain/region.py: RoadTileZoom`・列と行`domain/region.py: TileIndex`。ほかのレイヤーのズームの型はそのレイヤーの宣言の隣）と、列・行がズームの範囲にあるかの検査`domain/region.py: check_tile_index`も持ち、タイルを受ける入口（path・本文）はどれもこれで書く。タイル配信・取込・派生バッチ・推計気象分布の画素（`infrastructure/jma_suikei_client.py`）もこの変換を共有する）・`cycling_speed.py`（自転車の走行モデル。平地・無風の巡航速度からホイール出力を逆算し、勾配・向かい風・空気密度（区間の標高と気温）・転がり抵抗から区間ごとの速度を走行方程式で解く。速度の逆算は`v`の3次方程式になるため二分法で、区間ごとのループをnumbaでJITする。候補の所要時間と基準線の探索コストがここから出る）・`tuning.py`（ルーティング評価が読む固定値の宣言。走ってみて決める値と標準の人の好みの定義［較正値］のid・効き方はここが持ち（値はDBの表）、エンジンが読む値・管理画面が並べる項目・変更が効くために何をやり直す必要があるかをそこから導く。較正値ではない固定値は載せない。管理画面の保存は値を断らず、値で計算が成り立たないときは使う所が`tuning.py: require_tuning`で較正値を名指して止まる——条件は使う所が持つ）・`model_settings.py`（1回の計算が読む較正値・道の区分・費用の軸の定義の束と、全体からの写し方）・`tuning_labels.py`（較正値の管理画面での名前。値を使う側の宣言が持つ対象を添える。管理画面に並べる項目の形`tuning_labels.py: TuningParameterView`も今の値から組む）・`route_search.py`（探索が候補を選ぶ判断の値と手順。折返し点・復路・代替経路の間引きのしきい値、往路と周回全長の比の範囲と折返し点を探すリング、候補を同じとみなす距離の粒度、目的地を寄せてよい距離、候補の並べ方（パレート層と1kmあたりの費用の秒）・最速の印を付ける1本`route_search.py: quickest_route`・同点の組・離れているかの判定・逆回りとの比べ方・A*の下界・迂回率の測り方と共有の粒度、応答の候補の並び）・`loop_routing.py`（周回・目的地ルートの探索結果を運ぶ型と、置いた経由地を組んだ経路が通る所`loop_routing.py: waypoint_offsets_along`。探索の実装と候補を並べる戦略のどちらにも属さない）・`no_route_reasons.py`（候補を1本も返せないときの、利用者へ見せる理由の文。変えてみる設定として道路のまとまり`domain/map_display.py: ROAD_OVERLAY_GROUP`の名前を名指す）・`route_request.py`（ルート生成の要求が受け付ける値の範囲（返す候補数の既定と上限・想定速度の既定と範囲の型`route_request.py: AssumedSpeedKmh`を含む。想定速度は地図のレンズ・道の窓の入口も同じ型で受ける）と、その外れを知らせる文。経由地・目的地が出発地から届く範囲にあるかの検査`route_request.py: check_points_within_reach`。要求の検証と、画面が操作を止める上限の生成物が同じ宣言を読む。検証を通った要求が何を生成するか（距離あり・距離なし・差し替えた経路）の型も持ち、仕上げの戦略を選ぶのはこの型だけ）・`wind.py`（風と気温の予報の系列と格子・出発時点の風・通過予定時刻と迂回率の模型）・`wind_context.py`（区間ごとに風と気温を引く入力［区間の向き・最寄りの格子点・風の高さの倍率］を1か所で組み、時刻ごとの乗り手の高さの風を区間の向きへ分けた成分と、区間の気温を出す。走行モデルと区間の表示が同じ値を読む）・`wind_height.py`（予報の地上10mの風を、土地被覆の粗度長で乗り手の高さの風へ直す倍率と、通る日の季節の倍率。出し方は下の走行モデルの段落）・`leg_costs.py`（レグごとのコスト配列の合成。探索の材料の表・費用の軸の定義・0次フィルタ・風の予報から、探索のコストと区間の表示が読む配列を時刻ビンごとに作る。ルートの事実と道の窓が共有する軸の事実の作り方（`axis_facts`）も持つ。外部とやり取りせず配列だけを受け取るので、エンジンの途中状態を組まずに確かめられる。下記「レグ別コスト配列」） |
+| services | `route_generator.py`（戦略層。生成の骨組みと、距離の有無で分かれる仕上げの戦略）・`road_graph_engine.py`（探索範囲の準備・前段・距離ありの仕上げ）・`road_graph_context.py`（1回の生成の間、エンジン・仕上げ・候補の組み立てが共有する状態`road_graph_context.py: RoadGraphContext`と前段の結果`road_graph_context.py: FixedLegs`、生成と乗り換えが共に使う終点`road_graph_context.py: ResolvedEnd`、そこから区間・ノードを引く部品）・`road_graph_via_routes.py`（距離なしの仕上げ。via-nodeの代わりの道と基準線）・`road_graph_candidates.py`（選んだ経路を応答の候補へ組み立てる`road_graph_candidates.py: evaluate_routes`）・`graph_service.py`・`route_generation_job.py`（生成の受け付け`route_generation_job.py: admit_route_generation`——混み合いなら断りを記録し、空いていればジョブを登録して枠へ入れる。空きの判定から起動までを1つの同期の関数に閉じる——と、生成のジョブの本体: 枠を待ち、候補に実際に適用した条件のエコーを添えて結果か失敗の文を記録する。結果の型`route_generation_job.py: RouteGenerateResponse`は応答の型でもある）・`generation_slots.py`（同時実行の枠と、枠を待つ待ち行列。プロセスに1つ）・`route_generation_setup.py`（エンジンの組み立てと評価条件の既定の解決。組んだエンジンで要求の対象の候補を作る段取り`route_generation_setup.py: generate_route_candidates`。道路網はここで生成ごとに1度だけ読んで`GraphService`へ渡し、生成の間はそれだけを切り出し、候補にその世代`network_revision`を付ける） |
+| infrastructure | `road_graph_repository.py`（道路網・材料の読み出し専用）・`material_joins.py`（材料の式が読む別名`material_joins.py: em`・`material_joins.py: wm`を与える表の結び方）・`road_tile_sql.py`（道路網の配列から選んだフィーチャーを路面タイルに焼くSQLと、道の名前を読むSQL）・`road_network_store.py`（道路網全体の配列をDBから作り、ディスクへ置き、読む）・`detour_ratio_cache.py`（探索範囲ごとに学習した迂回率）・`cache_identity.py`（キャッシュ鍵の組み立て方の正本。手で書くリビジョンと、焼き込みSQL・列構成から導く署名を合成する。道路網の置き場の形の署名とタイル配信側の世代も同じ関数を使う）・`container_memory.py`（このプロセスのコンテナのメモリ上限。読み込む量の上限を導く）・`heap_release.py`（解放した割り当ての領域を OS へ返す。生成のジョブの終わりに呼ぶ）・`derived_data_meta.py`（派生データの世代と、今の派生の表を作った全ソースの取込・較正値。世代はバッチが中身を書き直すたびに進む単調カウンタで、デプロイを伴わない変化を表せる唯一の経路。配信するタイルのために生データの世代も一緒に読む） |
 | api | `routes.py` |
 
 探索が読む`road_edges`と材料のテーブル（ORMの宣言）・それを作るバッチは
@@ -31,8 +31,11 @@ road_graphエンジンは自前Road Graph（DB由来のノード/Edge）で経�
 ——所要時間にはターンの時間（割合 × 待ち）、コストには遷移ごとの費用（下の「探索の状態」）。
 止まる出来事（停止要因・曲がる所）は**止まる割合 × 止まったときの待ち**で時間に数え、同じ割合ぶんの漕ぎ出しの体力を
 慣性の費目に書く（`domain/traffic.py: StopEvent`・`domain/cycling_speed.py: kickoff_extra_j`）。速度は区間の断面の点の間ごとに解いて区間の走行時間へ足し合わせる（`domain/elevation_profile.py`）
-——平均勾配1つで解くと、登って下る区間が平地と同じ時間になる。点の間はリクエストに1回だけ平らな並びに詰め、風の時刻ごとの
-ビンはその並びを1本のループで解く（点の間は区間の約2.5倍。本番の探索の範囲・約66万区間で、開発機でビン1本約50ms）。
+——平均勾配1つで解くと、登って下る区間が平地と同じ時間になる。1本の区間の中では、点の間を走る順に勢い（運動エネルギー）を
+持ち越し、速さがその点の間の釣り合いの速さに落ちるまでは踏み増さない（`domain/cycling_speed.py: _carried_spans`。区間の最初の
+点の間と、標高の無い間のすぐあとの点の間は、釣り合いの速さで入り直す）——持ち越さないと、上りの間の踏み増しだけが体力に積まれて
+下りで戻らず、標高の小さな揺れや区間の中の短い上り下りを重く数える。点の間はリクエストに1回だけ平らな並びに詰め、風の時刻ごとの
+ビンはその並びを1本のループで解く（点の間は区間の約2.5倍。開発機で、66万区間・点の間171万のビン1本が約140ms）。
 坂・向かい風・路面のどれで抵抗が増えても、同じ決まりで踏み増す（`domain/cycling_speed.py: _pushed_power`）。1Nあたりの踏み増しは
 巡航速度（m/s）で止め、その条件で巡航速度を保つ出力を越えない（巡航の遅い人が登りや向かい風で巡航より速くならない）。`select_fastest_route`の
 返す基準線は、区間も曲がる所も時間だけで選ぶ。走行モデルの空気抵抗は相対風速の
@@ -55,15 +58,15 @@ z0g は中点に一番近い MSM の格子点が同じ区間どうしの z0r の
 どの区間にも土地被覆が無い道路網は開けた平地（0.03m）とする。粗度長は較正値の頭打ち（WMO-No.8 が式5.3 で補正してよいとする粗度長の上限。標準の模型ではない仮の定義）で抑える。格子の側の粗度が
 全区間から決まるので、倍率は道路網が格子ごとに1回だけ求めて持ち（`domain/road_network.py: RoadNetwork.wind_height_factors`。
 同時に来た要求も1本に並べて求める）、探索と地図のレンズは切り出した区間の材料（`domain/attributes.py: EdgeMaterialColumns.wind_heights`）
-から同じ区間の同じ値を引く。ルートの事実と道の窓の向かい風は、走行モデルが使う乗り手の高さの値を、そうと分かる名前
-（`domain/cost_axes.py: HEADWIND_FACT_LABEL`）で出す（地図のレンズの段の名前は短く保つため、値と単位だけを出す）。地図に出す風（矢印）は予報の10mの値のまま。
+から同じ区間の同じ値を引く。乗り手の高さへ直した風は格子点に無い値なので、画面に数で出さず（ルートの事実と道の窓は向かい風の
+秒だけを出す。[外部データソース](../../architecture/data-sources.md)「今の扱い」）、所要時間・費用・道の色分けにだけ使う。地図に出す風（矢印）は予報の10mの格子点の値のまま。
 
 Edgeコストは「探索の材料の表（[費用・材料](evaluation-scoring.md)「探索の材料の表」）＋リクエスト時ベクトル計算」方式で
 算出する——探索が実際に訪れたEdgeに対してPythonのコスト計算コールバックを都度呼ぶのでは
 なく、`prepare`が対象bbox全体ぶんの
 コスト配列を1回だけnumpyで合成し、探索へは合成済みの配列をそのまま渡す（探索中にPythonの
 関数フレームを作らない）。
-標高（勾配）は派生済みの`edge_elevation`を材料として読むだけで組み込み済み
+標高（勾配）は派生済みの`edge_elevation`の断面から道路網の配列を作るときに出し、組み込み済み
 （探索中にGSI API呼び出しは発生しない）。風は**到達時刻ごと**に効く——レグを時刻ビンへ
 刻み、ビンごとのコスト配列を探索前に合成しておいて、探索が到達時刻をラベルとして運ぶ
 （下記「レグ内の時刻ビン」）。
@@ -127,7 +130,7 @@ Edgeコストは「探索の材料の表（[費用・材料](evaluation-scoring.
 依らない抵抗（`domain/cycling_speed.py: SegmentSpeedModel`）・停止の待ち・道のストレスの代償——はリクエストに1回だけ求めて
 使い回す。ビンの中身を決めるのは風の予報が引く時刻だけなので、同じ時刻のビン（`domain/leg_costs.py: BinTime`）はレグの向き・開始時刻が違っても1回だけ合成して使い回す。レグは表示の値を持たず、区間の表示（`domain/leg_costs.py: LegValues`）は、経路をたどって決めたビンの時刻（`LegCostArrays.bin_times`）で経路上の行だけを合成し直して読む（`domain/leg_costs.py: LegCostComposer.values_at_rows`）——全区間ぶんの表示の値をレグごとに持つと、区間数×レグ数ぶん膨らむ。区間ごとの通過時刻で合成したレグも、その時刻を区間ごとの配列で持つ同じ形（`BinTime`）で表す。レグのビンの配列は使い回すビンを指すことがあるので、探索はどのレグの配列も書き換えない。1ビンの中でも、
 予報の引き当て（風と気温）と乗り手の高さへの換算と風の分解（方位との差の三角関数）は、走行モデルと区間の表示（向かい風の成分）と地図のレンズが同じ値を読む
-（`domain/wind_context.py: WindContext`）。合成結果`LegCostArrays`は通過予定時刻で決まる配列（ビンごとのコスト・所要時間と各ビンの時刻）だけを持ち、
+（`domain/wind_context.py: WeatherContext`）。合成結果`LegCostArrays`は通過予定時刻で決まる配列（ビンごとのコスト・所要時間と各ビンの時刻）だけを持ち、
 時刻で変わらない列（区分の材料・道のストレスの重さ）は合成器（`domain/leg_costs.py: LegCostComposer`）が
 1つだけ持つ。レグは`RoadGraphContext.legs`に添字順で並ぶ:
 
@@ -141,12 +144,12 @@ Edgeコストは「探索の材料の表（[費用・材料](evaluation-scoring.
 
 `TracedLoop.leg_of_edge`が経路上の各Edgeのレグ添字を運び、`_build_segment_details`は
 そのレグのビンの時刻で合成し直した値を読む（探索と表示の一致、[設計原則](../../architecture/design-principles.md)10）。
-区間の代償の内訳（軸ごと・好む道で下げた秒・避ける道で上乗せした秒）と向かい風の成分は、経路上の行だけをそのビンの時刻で解き直して求め
+区間の代償の内訳（軸ごと・好む道で下げた秒・避ける道で上乗せした秒）は、経路上の行だけをそのビンの時刻で解き直して求め
 （`LegCostComposer.values_at_rows`。`road_graph_candidates.py: _build_segment_details`が経路上の行でまとめて読む）。
-候補の事実は、その区間の内訳と向かい風の成分と、時刻に依らない列から求める（`LegCostComposer.axis_facts`。作り方は道の窓と
+候補の事実は、その区間の内訳と、時刻に依らない列から求める（`LegCostComposer.axis_facts`。作り方は道の窓と
 同じ`domain/leg_costs.py: axis_facts`）。
 逆回り候補はレグ割当ても反転する（先に走る側が往路配列、`reverse_leg_assignment`）。レグ番号は走行順に振られるため、Edge列の反転と同時に番号自体も`max_leg - leg`へ振り直す。探索範囲を覆う格子点ごとの時別の風と気温の予報
-（`WeatherService.get_wind_forecast_lattice`。格子点はMSMの格子点そのもの（`domain/msm.py: MsmBlock`）で、
+（`WeatherService.get_weather_forecast_lattice`。格子点はMSMの格子点そのもの（`domain/msm.py: MsmBlock`）で、
 探索範囲に依らない。各Edgeは中点に最も近い格子点の値を変えずに引く——ルートを出す前の地図も同じ点を引く。
 中点が並びの外にあるEdgeは、端の格子点の値で計算する）で、利用者の値に依らず時刻で合成する。予報が読めなければ
 生成は失敗する（無風で探さない）。
@@ -447,7 +450,7 @@ dataclassのフィールド既定値に置く）と、実行時に変えた値�
 
 候補のid・種類（`kind`: 周回`loop`・目的地`destination`・合成`spliced`）・方位を持たない候補の名前・
 最速の印（`is_fastest`）は、どの入口でも並べ終えた最後に`route_generator.py: _label`が1か所で付ける。どの形でも、返す候補の
-うち見積もりの所要時間がいちばん短い1本（同着は並びの先の方。`route_generator.py: _quickest`）に付ける——一覧の先頭の「最速」と
+うち見積もりの所要時間がいちばん短い1本（同着は並びの先の方。`domain/route_search.py: quickest_route`）に付ける——一覧の先頭の「最速」と
 時間の列の基準が、どの形でも同じ決め方の1本になり、いちばん速い候補が並びの途中に埋もれない。返す候補が1本だけ・所要時間の
 ある候補が無いときは付けない。どの候補も区間の乗り換えの
 元にできるので、乗り換えの可否は持たない（上の`generate_spliced_route`）。idは
@@ -538,7 +541,7 @@ idの文字列や要求の形から決め直さない。
 - **待ちの表**: 交差点の事実2つ（信号・大きさ）× 通り方の事実2つ（立場・動き〔直進・左・右〕）の升ごとの待ち。升は鍵の組み合わせから
   導き（`WAIT_PASSAGES`）、基準の通り方（上位の道を渡らずに直進。信号ありは道の側の信号の基本の待ちだけ、信号なしは何も起きない）だけは
   升を持たない。升の値は、基準より増える分。
-  - 信号: 交差点に信号があるか（道路網の列`node_has_signals`）。
+  - 信号: 交差点が信号の交差点に入るか（道路網の列`node_signal_place`）。
   - 大きさ: 交差点に集まる道の最大階級が、通過交通のある階級（`MAJOR_CROSSING_MIN_RANK`。県道クラス以上）以上か。
   - 立場: 入る区間の階級が、交差点に集まる道の最大階級より下か（階級は`domain/traffic.py: highway_rank`で比べる）。大きさと独立に
     決めるので、自転車道（階級0）から生活道路（階級1）へ出る所は「小さな交差点で上位の道へ入る」升になり、その升の値で待ちを決める。
@@ -546,21 +549,18 @@ idの文字列や要求の形から決め直さない。
   - 表にしたのは、待ちがこれらの組で決まり、それぞれ独立の層に分けると実走に合わないため。信号のある交差点で上位の道を渡る待ちは
     直進のときだけ大きく、二段階右折の待ちは立場によらない（実走で測った値）。ほかと絡まないと分かった要因は層として重ね、
     絡む要因だけを表の鍵に足す。
-- **待ちの表は、信号のある交差点では1つの交差点で1回だけ引く**: 入る区間の始点も信号のある分かれ道で、区間が停止の点をまとめる距離
-  （道路網の値`stop_cluster_distance_m`）より短ければ、同じ交差点の中を進む区間とみなして表を引かない（曲がりの減速は数える）。
-  上下線の分かれた道を渡ると、信号の頂点を2つ続けて通るため。長さを見ずに始点の信号だけで決めると、別々の信号の交差点を直に結ぶ
-  区間（関東の本番で、両端が信号の交差点の区間の約2割が100m以上）で、2つ目の交差点の待ちを落とす。限り:
-  - 見るのは入る区間1本だけなので、信号の頂点の間に信号の無い頂点を挟む交差点は2つの交差点に数える（頂点の信号は信号の点からの
-    半径で付くので、交差点の中の頂点はほとんど信号がある）。
-  - 頂点の信号は半径で付くので、信号の交差点のすぐ手前の脇道の交差点も信号として引きうる（関東の本番で、県道クラス以上の信号の
+- **待ちの表は、信号のある交差点では1つの交差点で1回だけ引く**: 入る区間の始点も同じ信号の交差点（下の「交差点の信号・最大階級」）
+  の分かれ道なら、同じ交差点の中を進む区間とみなして表を引かない（曲がりの減速は数える）。上下線の分かれた道を渡ると、信号の
+  頂点を2つ続けて通るため。始点が分かれ道でなければ（信号の交差点は半径で点を入れるので、すぐ手前の道の継ぎ目も入る）数える。限り:
+  - 見るのは入る区間1本だけなので、信号の頂点の間に信号の無い頂点を挟む交差点は2つの交差点に数える（頂点は信号の点からの
+    半径で交差点に入るので、交差点の中の頂点はほとんど入る）。
+  - 頂点は半径で交差点に入るので、信号の交差点のすぐ手前の脇道の交差点も信号として引きうる（関東の本番で、県道クラス以上の信号の
     頂点のうち、信号の点がその交差点のもの〔頂点の上か、集まる区間の上〕でないものは2.3%）。
   - 上下線の分かれた上位の道へ下の階級の道から右折すると、表は1つ目の頂点の直進で引くので、右折の升より少なく出る。
   信号の無い交差点は頂点ごとに引く（上下線の分かれた道は片側ずつ）。
 
-信号の有無と最大階級は`node_turns`の列で、グラフのノードに載って探索まで届く。
-埋めるのは派生バッチ（下記「交差点の信号・最大階級」節）で、**行の無いノードは既定値**
-（信号なし・階級0）で読まれる。既定値は安全側に倒れる——信号なしとして扱えば横断の費用が
-付き、階級0は読み込んだ部分グラフからの導出を下回るため下限を上げる方向にしか効かない。
+頂点が入る信号の交差点は道路網の配列の頂点の欄（`RoadNetwork.node_signal_place`）で、派生の`signal_place_nodes`から写す
+（下記「交差点の信号・最大階級」節）。入らない頂点は信号なしで読まれ、安全側に倒れる——信号なしとして扱えば横断の費用が付く。
 
 グラフは辺基準へ物理的に展開せず、遷移は`SearchGraphStatics`のCSRから導く。目的地から
 遡る木は同じ遷移を転置した配列（`TurnExpandedStructure.reverse_transitions`、最初に
@@ -611,7 +611,7 @@ Nodeごとのコストは、そのNodeへ入る区間の最小を採る（木を
 
 探索範囲の中では、ノードは切り出しの中の番号（`RoadSlice.nodes`の添字）、区間は探索用グラフの番号
 （`LazyRoadGraph.edge_rows`の添字、`TracedLoop.data`もこの番号列）で持つ。区間の文字列の鍵
-（`edge_id`、`domain/graph.py: edge_key`）とノードの鍵は、**経路に載った区間の分だけ**番号から作る
+（`edge_id`、`domain/graph.py: edge_id_of`）とノードの鍵は、**経路に載った区間の分だけ**番号から作る
 （`lean_edge`・`node_key_of`）——範囲全体ぶんの鍵や区間オブジェクトを作ると、範囲の区間数に比例した
 メモリを生成のたびに払うため。クライアントが送り返す鍵（区間の乗り換え）は`lazy_index_of`が番号へ戻す。
 道路網に無い区間・並行区間の採られなかった側は番号を持たない（None）。
@@ -967,9 +967,9 @@ numbaでJITする探索と、探索の中へ展開する部品を置く。JITの
   探索は区間の番号で動き、このオブジェクトを作らない。DBの区間を指す`(osm_way_id, segment_index, forward)`は
   必ず持つ。形（`geometry`）と断面の点（`profile`）は、作るときに道路網の配列の行から付ける
   （`domain/road_network.py: edge_shape`・`edge_profile`）。
-- 区間とノードの文字列の鍵（`edge_key`・`node_key`）と、区間の鍵の読み戻し（`parse_edge_key`）は
-  ここだけが持つ。路面タイルのフィーチャーの鍵（向きを持たない区間。`edge_feature_key_sql`）も同じ場所に置く
-  ——`edge_key`とは別の鍵で、タイルのSQLが組み立てる。APIが運ぶ鍵とDBの`(osm_way_id, segment_index, forward)`の対応がここで決まる。
+- 区間とノードの文字列の鍵（`edge_id_of`・`node_key`）と、区間の鍵の読み戻し（`parse_edge_id`）は
+  ここだけが持つ。路面タイルのフィーチャーの鍵（向きを持たない区間。`domain/graph.py: edge_feature_key`）も同じ場所に置く
+  ——`edge_id_of`とは別の鍵で、タイルの線は1本の区間を往復で共有する。APIが運ぶ鍵とDBの`(osm_way_id, segment_index, forward)`の対応がここで決まる。
 
 ### `domain/route.py`
 
@@ -1017,7 +1017,7 @@ numbaでJITする探索と、探索の中へ展開する部品を置く。JITの
 ### `domain/geo.py`・`domain/errors.py`
 
 `geo.py`は球面三角法の地理計算——2地点の球面距離と初期方位角、それを多数の地点へまとめて求める配列版、
-角度から方位の呼び名への変換（例: `haversine_distance_km`・`compass_label`）、距離を度の幅へ直す目安（`KM_PER_DEGREE_LATITUDE`・`km_per_degree_longitude`と、SQLの前置フィルタの箱を距離の判定より必ず広くする`degrees_covering_m`）——と、多数の地点それぞれに最も近い点を球面の距離で選ぶ`nearest_point_indices`（1地点の口`nearest_point_index`。雨の材料・アメダス・暑さ指数の最寄りがすべてここを通る。点が1つも無ければ断るので、無いときの答えは呼び手が決める）を持つ。緯度・経度の値の範囲（`Latitude`・`Longitude`）と走行方位の範囲（`BearingDeg`、0以上360未満）もここが持ち、`Coordinates`・`BoundingBox`・HTTPの要求の緯度経度・走行方位がこの型で書く。方位の呼び名は
+角度から方位の呼び名への変換（例: `haversine_distance_km`・`compass_label`）、距離を度の幅へ直す目安（`KM_PER_DEGREE_LATITUDE`・`km_per_degree_longitude`と、SQLの前置フィルタの箱を距離の判定より必ず広くする`degrees_covering_m`）——と、1地点に最も近い点を球面の距離で選ぶ`nearest_point_index`（観測所・情報提供地点の最寄りはここを通る。点が1つも無ければNone）を持つ。緯度・経度の値の範囲（`Latitude`・`Longitude`）と走行方位の範囲（`BearingDeg`、0以上360未満）もここが持ち、`Coordinates`・`BoundingBox`・HTTPの要求の緯度経度・走行方位がこの型で書く。方位の呼び名は
 16方位の並び（`SIXTEEN_POINT_LABELS`）1つだけを持ち、8方位（`COMPASS_LABELS`）はその1つおきとして導く——アメダスの
 16方位の風向（`infrastructure/jma_amedas_client.py`）もこの並びを引くので、同じ向きが画面の場所によって違う名前にならない。`LatLon`（`Protocol`）・
 `LatLonPoint`（`NamedTuple`）は`Coordinates`（Pydantic、API境界の入力検証用）を経由
@@ -1044,8 +1044,8 @@ numbaでJITする探索と、探索の中へ展開する部品を置く。JITの
 
 区間（`road_edges`）は**向きを持たない1本1行**で、有向の枝は道路網全体の配列を作るときに組む
 （`road_network_store.py`。一方通行は`way_directions.direction`を見て走れる向きの枝だけを
-作る。向きごとに通れるかは`domain/traffic.py: travel_allowed`が決める）。DBへ向きを伝えるのは`(osm_way_id, segment_index, forward)`の3つ組で、向きで変わる値
-（方位・標高）はSQLが入れ替え・符号反転して返す（`material_joins.py: reversed_partner`）。材料の値の
+作る。向きごとに通れるかは`domain/traffic.py: travel_allowed`が決める）。DBへ向きを伝えるのは`(osm_way_id, segment_index, forward)`の3つ組で、向きで変わる値の
+うち方位はSQLが逆向きの行で180°回して返し（`road_graph_repository.py: _EXTRA_MATERIAL_ARRAY_COLUMNS`）、標高は断面を逆に辿る。材料の値の
 求め方は`domain/material_sql.py`・`domain/material_catalog.py`が持ち、リポジトリは式が前提に
 する別名（`w`/`re`/`em`/`wm`）のFROM句を組み立てるだけで式を書かない（`em`・`wm`は`material_joins.py: material_from_clause`）。
 
@@ -1062,9 +1062,9 @@ SQLは`road_tile_sql.py`が持ち、リポジトリが流す。
 ST_AsMVT丸ごと生成。層の値は道路網の配列から求める。[dynamic-way-values.md](dynamic-way-values.md)「タイルの材料」）は、
 `COVERAGE_SQL`（取込の宣言した範囲か）をMVT生成と同じ1クエリへ畳み込み、1タイル1DB往復に
 まとめる設計を共有する（点のタイルのSQLも同じ判定を読む。[静的道路属性](static-road-attributes.md)「点のタイル」）。カバレッジ外はNone、カバレッジ内で0件なら空、という契約で呼び出し側
-（`RegionService`）が空タイルと区別する。路面タイル・押した所に近い道（`ROADS_AT_SQL`）・派生データベースの書き出しの行
-（`DERIVED_DATABASE_ROWS_SQL`）は、どれも**同じ`_TILE_FEATURE_SOURCE_SQL`からフィーチャーを引き**、材料は鍵で道路網の配列から引く
-（`domain/road_features.py: feature_materials`）。
+（`RegionService`）が空タイルと区別する。路面タイル・地図のレンズ・押した所に近い道・派生データベースの書き出しの行は、どれも
+**同じ`domain/road_features.py: map_features`でフィーチャーを道路網の配列から選び**、形と材料も同じ配列から引く
+（`domain/road_features.py: feature_lines`・`feature_materials`）。DBは路面タイルの枠で切る所と焼く所（ST_AsMVT）と、道の名前だけを持つ。
 
 ### 道路網全体の配列（`road_network_store.py`）
 
@@ -1079,7 +1079,7 @@ ST_AsMVT丸ごと生成。層の値は道路網の配列から求める。[dynam
 
 **配列を作るときに、道の事実から安く導ける値を取込範囲全体について1回だけ求める**（`domain/road_network_build.py: build_road_network`）。
 ルート生成と地図のレンズは要求の中でこれらを求め直さない。区分の列と道のストレスの軸の欠けを埋める平均は、管理APIで変わる区分の
-定義に依るので配列に持たず、起動のあとと置き場が入れ替わったあとに定期の仕事が求めておく（`main.py: _warm_road_network_job`）。
+定義に依るので配列に持たず、起動のあとと置き場が入れ替わったあとに定期の仕事が求めておく（`services/graph_service.py: warm_road_network`）。
 風を乗り手の高さへ直す倍率は、すぐ効く較正値（乗り手の高さ・粗度長の頭打ち）と予報の格子に依るので配列に持たず、最初に読んだ
 要求が求めて道路網と同じ寿命で持つ（`domain/road_network.py: RoadNetwork.wind_height_factors`）。
 
@@ -1094,8 +1094,6 @@ ST_AsMVT丸ごと生成。層の値は道路網の配列から求める。[dynam
 区間の端のそばの方位（交差点での曲がりを測る向き）は、読み出しの文が区間の形（`road_edges.geom`）から求め、
 折れ線の向きに進む行と逆に進む行のそれぞれへ渡す。風・勾配が読む区間の方位（端から端）とは別の列である。端から測る道のりは較正値（`turn.bearing_distance_m`）で、
 読み出しの文は派生を作り直したときに使った値（[静的道路属性](static-road-attributes.md)「派生」の作り直しに使った較正値）で描く。
-停止の点をまとめる距離（`stop.cluster_distance_m`）も、作り直しに使った値を配列の値（`RoadNetwork.stop_cluster_distance_m`）に持ち、
-曲がる所が同じ交差点の中の区間を見分けるのに読む——区間の停止要因の数を同じ値でまとめたので、作り直すまで両者が食い違わない。
 置き場の署名は既定の値で描いた文から作り、値を入れない——web は今の署名で世代が最も新しい置き場を開くので、署名に今の上書きを
 入れると、管理画面で値を変えた時点で作り直す前に開ける置き場を失う。値を変えて作り直すと、配列を作り直して新しい世代の置き場になる。
 
@@ -1128,7 +1126,7 @@ backendは置き場を読むだけで、読むのは`current()`の1か所であ�
 
 | エンドポイント | 内容 |
 |---|---|
-| `POST /api/routes/generate` | 202を即座に返す非同期ジョブ投稿。`asyncio.create_task`でジョブ本体（`services/route_generation_job.py: run_route_generation_job`）を起動し、タスク参照を`services/generation_slots.py: GenerationSlots`が保持する（`BackgroundTasks`だとレスポンス送出の失敗でジョブが起動せず、記録したジョブが待ちのまま残る） |
+| `POST /api/routes/generate` | 202を即座に返す非同期ジョブ投稿。受け付け（`services/route_generation_job.py: admit_route_generation`）が`asyncio.create_task`でジョブ本体（`services/route_generation_job.py: run_route_generation_job`）を起動し、タスク参照を`services/generation_slots.py: GenerationSlots`が保持する（`BackgroundTasks`だとレスポンス送出の失敗でジョブが起動せず、記録したジョブが待ちのまま残る） |
 | `GET /api/routes/generate/{job_id}` | ジョブの状態・結果を取得（`job_registry`、サーバー再起動で失われる）。`wait_seconds`を渡すと終わるまで（上限まで）待って返す |
 
 - **バックグラウンドジョブはリクエストスコープのDBセッションを使えない**。
@@ -1137,8 +1135,7 @@ backendは置き場を読むだけで、読むのは`current()`の1か所であ�
   対象（周回・経由地と目的地・差し替えた経路）で分岐して候補を作る。ジョブの受付（同時実行の上限・ジョブの記録）と
   応答の組み立てはルーターに残る。
 - **エンジンを組むのは`services/route_generation_setup.py: assemble_route_generation_setup`だけ**。ルート生成の
-  ジョブ・計測（`benchmarks/`は`get_route_generation_setup_opener`の開き方をそのまま使う）・テストの
-  どれもここを通り、省略された評価条件（利用者の値・想定速度・避け方）の既定もここで1度だけ決める。
+  ジョブとテストのどれもここを通り、省略された評価条件（利用者の値・想定速度・避け方）の既定もここで1度だけ決める。
   エンジンは既定を持たず、解決済みの値だけを受け取る——既定を2か所で持つと、経路ごとに
   違う条件で探すことになり、しかもどちらも正常に見える。
 - **画面の操作で届く上限の外れは、日本語の文で断る**（`domain/route_request.py: _request_error`）。
@@ -1167,7 +1164,7 @@ backendは置き場を読むだけで、読むのは`current()`の1か所であ�
 
 ## 交差点の信号・最大階級（`batch/derive_nodes.py`が埋める）
 
-ターンの費用が読む信号の有無（`node_turns.has_traffic_signals`）は
+ターンの費用が読む信号の交差点（`signal_place_nodes`。頂点が入る交差点の番号）は
 派生バッチ`derive_nodes.py`が埋める（バッチ自体は[静的道路属性・タイル配信](static-road-attributes.md)
 の管轄。ここには探索側から見た前提だけを書く）。頂点の階級は、道路網の配列を作るときに、そこへ入る区間と出る区間の
 一番高い階級を道路網全体で数える（`domain/road_network_build.py: node_max_ranks`。部分グラフの外へはみ出した上位の道も数える）。
@@ -1176,15 +1173,15 @@ backendは置き場を読むだけで、読むのは`current()`の1か所であ�
 （`domain/traffic.py: stop_count_material_ids`）ため、ターン側が足すのは、曲がりの減速と、待ちの表の升（基準の通り方より増える分。上の「探索の状態」）だけ。升は入る区間と
 交差点と出る区間の組で決まり、Edgeへ畳み込むとどちらの端の信号か・どの道から入りどこへ出たかが失われて区別できない。
 
-信号は交差点そのもののノードではなく流入路ごと・横断歩道位置ごとの別ノードとして描かれる
-ため、判定は`osm_node_id`の一致ではなく半径（較正値`signal.match_radius_m`）で
-行う。**半径は結果を大きく動かす**——広げるほど「信号あり」とみなすノードが増え、そのぶん
+信号の点は交差点そのもののノードではなく流入路ごと・横断歩道位置ごとの別ノードとして描かれる
+ため、信号の点を`stop.cluster_distance_m`でまとめて交差点にし、点（頂点も種別の付いた点も）は`osm_node_id`の一致ではなく
+信号の点からの半径（較正値`signal.match_radius_m`）で交差点に入れる。2つの交差点に入る点は一番近い信号の点の交差点に入る。
+曲がる所の信号・道の側の信号の数（数の段）・地図の信号の点は、どれもこの交差点を読む。**半径は結果を大きく動かす**——広げるほど「信号あり」とみなすノードが増え、そのぶん
 ターンの費用が下がる（幹線が集まる交差点で信号ありとみなす割合は、10mで37.4%・60mで67.9%まで
 変わり頭打ちが無い）。較正されていない値である。管理画面で変えた値は、派生を`nodes`の段から作り直すまで効かない。
 
-**暗黙の前提**: この半径は、同じ交差点の点をまとめる距離（較正値の`stop.cluster_distance_m`）とは別の値
-として持つ。問うていることが違う（あちらは「同じ停止か」、こちらは「この交差点に信号があるか」）
-ため、まとめる距離を較正で動かしたときに横断の費用まで一緒に動いてはいけない。
+**暗黙の前提**: この半径は、信号の点どうしを1つの交差点にまとめる距離（較正値の`stop.cluster_distance_m`）とは別の値
+として持つ。問うていることが違う（あちらは「この2つの信号は同じ交差点か」、こちらは「この点はこの交差点のものか」）。
 
 ## 暗黙の前提のまとめ
 

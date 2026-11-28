@@ -1,6 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
+import { withFreshFrames } from "@/features/map/useTimeFrames";
 import { useState } from "react";
 import { PopupHeader } from "@/components/MapPopup/MapPopupParts";
 import { isDebugEnabled } from "@/lib/debugLog";
@@ -55,11 +56,12 @@ export default function RoadInspectorPopup({ properties, track, conditions, cost
     {
       queryKey: ["road-inspector", wayId, featureKey, opened, costPreference],
       queryFn: async () => {
-        const value = await fetchRoadInspection(wayId!, featureKey!, opened, costPreference);
+        const value = await withFreshFrames(fetchRoadInspection(wayId!, featureKey!, opened, costPreference));
         if (value === null) throw new Error("負担が返りませんでした");
         return value;
       },
-      enabled: inspectable,
+      // コマの一覧が届くまでは取らない。
+      enabled: inspectable && opened.lensFrame !== undefined,
       // 同じ道を同じ条件・利用者の値で開き直したときは、前に取った負担を出す。
       staleTime: Infinity,
     },
@@ -120,8 +122,12 @@ function LensValues({ lens }: { lens: LensInspection }) {
   const values = lens[slot];
   if (values === null) return <p className={hintClass}>この向きには走れません。</p>;
   const rows = penaltyRows(Object.fromEntries(values.axes.map((axis) => [axis.axis_id, axis.seconds])), costCatalog);
+  const factLabels = rows.flatMap((row) => values.facts[row.id]?.label ?? []);
   return (
     <div className="flex flex-col gap-1">
+      {values.total_seconds === null && (
+        <p className={hintClass}>風の予報を読めないため、風に依る負担と合計は出せません。</p>
+      )}
       <div className="flex flex-wrap items-center gap-1.5">
         <p className={hintClass}>
           {slot === "along" ? "道の向き" : "逆向き"}
@@ -131,7 +137,7 @@ function LensValues({ lens }: { lens: LensInspection }) {
           value={view}
           onValueChange={setView}
           aria-label="負担の出し方"
-          usage="軸ごとの負担を、秒で出すか、秒にする前の事実[登り・止まる回数等]で出すかを切り替えます。"
+          usage={`軸ごとの負担を、秒で出すか、秒にする前の事実${factLabels.length === 0 ? "" : `[${factLabels.join("・")}]`}で出すかを切り替えます。`}
           className="ml-auto"
         >
           <ToggleGroupItem value="seconds" className="py-0.5">
@@ -145,7 +151,7 @@ function LensValues({ lens }: { lens: LensInspection }) {
       {/* 事実の名前と単位は backend が付ける（ルートの一覧と同じ作り方）。 */}
       {view === "seconds" ? (
         <PenaltyBreakdown
-          total={sectionSeconds(values.total_seconds)}
+          total={values.total_seconds === null ? null : sectionSeconds(values.total_seconds)}
           items={rows.flatMap((row) =>
             Math.round(row.seconds) === 0 ? [] : [{ row, text: sectionSeconds(row.seconds) }],
           )}

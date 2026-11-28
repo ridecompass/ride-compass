@@ -1,8 +1,9 @@
 """`domain/road_network.py`——取込範囲全体の道路網を番号で引く配列と、その切り出し。
 
 入口は次のとおり。
-- `RoadNetwork`: 組み立てた時点で行数・列数の食い違いを断る
+- `RoadNetwork`: 組み立てた時点で行数・列数の食い違いと長さ0の区間を断る
 - `slice_network`: 範囲に掛かる区間と、その両端のノードを取り出す
+- `bbox_covering_edges`: 探索の範囲を、送られた区間を取りこぼさずに組む
 - `road_class_columns`・`material_arrays_of`: 区分の列と、切り出した区間の材料
 - `RoadNetwork.numeric_means`: 欠けた数値の材料を埋める、取込範囲全体の平均（組むときに`domain/road_network_build.py`が求める）
 - `elevation_attribute`: 1区間の標高属性（断面から組むときに求めた値）
@@ -27,7 +28,9 @@ from hypothesis import strategies as st
 from app.domain.material_catalog import GRADIENT_PERCENT
 from app.domain.road_classes import class_material_id
 from app.domain.road_network_build import filled_bearings
+from app.domain.geo import LatLonPoint
 from app.domain.road_network import (
+    bbox_covering_edges,
     edge_profile,
     edge_row_of,
     edge_shape,
@@ -47,10 +50,11 @@ from tests.tuning_fixture import TUNED
         {"distance_m": np.zeros(len(EDGES) + 1)},  # 区間の列が1行多い
         {"numeric_ids": ("num_a",)},  # 材料の行列の列数と名前の数が合わない
         {"categorical_vocab": ()},  # 分類の列に語彙が無い
+        {"distance_m": np.zeros(len(EDGES))},  # 区間の長さが0
     ],
 )
-def test_arrays_of_mismatched_shape_are_refused_where_they_are_built(broken):
-    with pytest.raises(ValueError, match="道路網の配列の形"):
+def test_arrays_breaking_the_contract_are_refused_where_they_are_built(broken):
+    with pytest.raises(ValueError, match="道路網の配列"):
         replace(network(), **broken)
 
 
@@ -81,6 +85,20 @@ def test_a_slice_keeps_the_edges_and_their_ends_of_the_whole_network(lon_a, lon_
     for position, global_row in enumerate(road.rows):
         assert road.node_lon[road.edge_from[position]] == whole.node_lon[whole.edge_from[global_row]]
         assert road.node_lon[road.edge_to[position]] == whole.node_lon[whole.edge_to[global_row]]
+
+
+@given(lon=lons, lat=lats, edges=st.lists(st.sampled_from(EDGES), unique=True))
+@example(lon=139.000, lat=35.0, edges=[EDGES[-1]])  # 送られた区間が、置いた点から遠い東の端にある
+def test_the_search_area_built_around_sent_edges_slices_every_one_of_them(lon, lat, edges):
+    """探索の範囲を送られた区間（確定済みの経路）から組むと、その範囲で切り出す区間は送られた区間を必ず含む——取りこぼすと、
+    経路の生成は送られた区間を探索範囲の外に見て失敗する。余裕を10mにして、送られた区間の端が矩形の縁のそばにある場面を作る。"""
+    whole = network()
+    sent = [(way, segment, forward) for way, segment, forward, *_ in edges]
+
+    bbox = bbox_covering_edges(whole, [LatLonPoint(lat, lon)], [*sent, (999, 0, True)], 0.01)
+    road = slice_network(whole, ({}, {}), bbox.min_longitude, bbox.min_latitude, bbox.max_longitude, bbox.max_latitude)
+
+    assert {edge_row_of(whole, *edge) for edge in sent} <= set(road.rows.tolist())
 
 
 def test_the_materials_and_road_classes_of_a_slice_follow_its_rows():

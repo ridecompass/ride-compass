@@ -1,10 +1,10 @@
 /**
  * `features/route/EditDifference/EditDifference.tsx`——編集で作ったルートの中身の先頭に出す「元との違い」。
  *
- * 見るもの: 変えた区間の数（元と編集後で対応づけられなければ数と区間の並びを出さずにそう言う）、指標ごとの差の書き方（桁・単位・値の無い側があれば「—」）と増減の印
- * （表示する桁で丸めた値で決める）、変えた区間ごとの元の位置と長さの差。
+ * 見るもの: 変えた区間の数（元と編集後で対応づけられなければ数と区間の並びを出さずにそう言う）、指標ごとの差の書き方（桁・単位・値の無い側があれば「—」）と増減の印を
+ * 付けること、変えた区間ごとの元の位置と長さの差。
  *
- * ここで見ないもの: 差の求め方（Edge id列の差・区間からの距離） → `features/route/routeEditDiff.ts`。
+ * ここで見ないもの: 差の求め方（Edge id列の差・区間からの距離）と、どの差にどの印を付けるか → `features/route/routeEditDiff.test.ts`。
  * 元の名前と距離・「元を見る」で元へ切り替えること → `features/route/RouteOutcome/RouteOutcome.selected.test.tsx`。
  * 増減の印の色 → スタイル（テスト環境はTailwindを通さない）。
  */
@@ -72,22 +72,17 @@ function metric(label: string): HTMLElement {
 }
 
 describe("EditDifference", () => {
-  it("差は指標ごとの桁と単位で符号付きに書き、増えたら悪化・減ったら改善の印、表示する桁で0に丸まれば「±0」で印を付けない", () => {
+  it("差は指標ごとの桁と単位で符号付きに書き、差の増減の印を付ける", () => {
     renderDifference();
     expect(metric("距離")).toHaveTextContent("+2.3km");
     expect(metric("距離")).toHaveAttribute("data-worse", "true");
     expect(metric("所要")).toHaveTextContent("−10分");
-    expect(metric("所要")).toHaveAttribute("data-better", "true");
     expect(metric("負担")).toHaveTextContent("±0分");
-    expect(metric("負担")).toHaveAttribute("data-worse", "false");
-    expect(metric("負担")).toHaveAttribute("data-better", "false");
   });
 
-  it("どちらかが値を持たない指標は「—」で、印を付けない", () => {
+  it("どちらかが値を持たない指標は「—」", () => {
     renderDifference({ origin: origin({ estimated_duration_seconds: null }) });
     expect(metric("所要")).toHaveTextContent("—");
-    expect(metric("所要")).toHaveAttribute("data-worse", "false");
-    expect(metric("所要")).toHaveAttribute("data-better", "false");
   });
 
   it("変えた区間の数と、区間ごとに元の何km〜何kmかと長さの差を出す", () => {

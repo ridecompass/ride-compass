@@ -9,7 +9,7 @@ from typing import assert_never
 
 from app.domain.cost_preference import CostPreference
 from app.domain.road_avoidance import AvoidanceLevel, resolve_road_avoidance
-from app.domain.model_settings import ModelSettings, current_model_settings
+from app.domain.model_settings import ModelSettings
 from app.domain.road_network import RoadNetwork
 from app.domain.route import Coordinates, RouteCandidate
 from app.domain.route_request import (
@@ -58,9 +58,9 @@ def assemble_route_generation_setup(
 
     省略された評価条件の既定はここで1度だけ決める。以後は解決済みの値だけを回し、
     レスポンスのconditionsへも同じ値をエコーする（画面が見る値と探索が使う値を分けない）。
-    較正値・区分・軸の定義もここで1度だけ写し、生成の間は管理APIの書き込みに左右されない。
+    較正値・区分・軸の定義は要求が運ぶ写し（`requested.settings`）を回し、生成の間は管理APIの書き込みに左右されない。
     """
-    settings = current_model_settings()
+    settings = requested.settings
     applied = _AppliedConditions(
         cost_preference=requested.cost_preference.resolved(settings.cost_axes),
         assumed_speed_kmh=requested.assumed_speed_kmh,

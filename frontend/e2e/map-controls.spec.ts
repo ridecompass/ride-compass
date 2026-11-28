@@ -10,12 +10,12 @@ import { WIDTHS } from "./states";
 // ボタンの数が変わったのに積み始めの位置が追わなければ、方位磁針の下の継ぎ目が広がるか重なる。
 
 const RIGHT_COLUMN =
-  /^(拡大|縮小|縮尺|地図の向き|北を上にする|進む向きを上にする|出発時刻|想定速度|現在地に移動|走行モード)/;
+  /^(拡大|縮小|縮尺|地図の向き|北を上にする|進む向きを上にする|出発時刻|想定速度|現在地に移動|ストリートビューの地点と向きを決める|走行モード)/;
 
 type ColumnButton = { name: string; onTop: boolean; top: number; bottom: number };
 
-/** 走っていない間の列: 拡大・縮小と方位磁針の下に、出発時刻・想定速度・現在地に移動・走行モードを積む。 */
-const NOT_RIDING = { head: ["拡大", "縮小"], compass: "地図の向き", stacked: 4 };
+/** 走っていない間の列: 拡大・縮小と方位磁針の下に、出発時刻・想定速度・現在地に移動・ストリートビュー・走行モードを積む。 */
+const NOT_RIDING = { head: ["拡大", "縮小"], compass: "地図の向き", stacked: 5 };
 
 /** 右の列のボタンの名前・押す点で最前面にあるか・上端と下端（上から順）。 */
 async function rightColumnButtons(page: Page): Promise<ColumnButton[]> {
@@ -91,9 +91,11 @@ test("スマホ: ルート設定のシートを開いたまま「表示」の一
   await openMobileApp(page);
   const sheet = await openMobileSheet(page, "ルート設定");
   await page.getByRole("button", { name: "地図に出す情報", exact: true }).click();
-  const last = page
-    .getByRole("dialog", { name: "地図に出す情報", exact: true })
-    .getByRole("button", { name: "絞り込みをすべて解除" });
+  const list = page.getByRole("dialog", { name: "地図に出す情報", exact: true });
+  // 最初に並ぶ項目だけでは一覧が短く、シートと重ならない。ⓘを全部開いて、一覧を画面の下端まで伸ばす。
+  const info = list.getByRole("button", { name: /の説明を表示$/ });
+  while ((await info.count()) > 0) await info.first().click();
+  const last = list.getByRole("button", { name: "絞り込みをすべて解除" });
   await last.scrollIntoViewIfNeeded();
 
   const sheetTop = (await sheet.boundingBox())!.y;

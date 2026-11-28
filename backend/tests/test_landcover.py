@@ -1,9 +1,9 @@
-"""`domain/landcover.py`——道の周りの土地被覆の画素数を、クラスごとの割合へ変える。
+"""道の周りの土地被覆の画素数を、クラスごとの割合へ変える。
 
 入口は次のとおり。
-- `class_percentages_sql`: 区間ごとのクラス別の画素数から割合の行を返すSQL（PostGISで実行して確かめる）
-- `LandcoverPercentages`: その行を受け取るモデル
-- `check_landcover_classes`: クラスの宣言を、読む所のどこでも1つのクラスに決まらなければ断る（架空の宣言で見る。本番の宣言は読み込みの時点でこれを通る）
+- `batch/derive_landcover.py: class_percentages_sql`: 区間ごとのクラス別の画素数から割合の行を返すSQL（PostGISで実行して確かめる）
+- `domain/landcover.py: LandcoverPercentages`: その行を受け取るモデル
+- `domain/landcover.py: check_landcover_classes`: クラスの宣言を、読む所のどこでも1つのクラスに決まらなければ断る（架空の宣言で見る。本番の宣言は読み込みの時点でこれを通る）
 
 ここで見ないもの:
 - 道の周りの帯から画素を数えること → `test_derive_landcover.py`
@@ -16,7 +16,13 @@
 import pytest
 from sqlalchemy import text
 
+from app.batch.derive_landcover import class_percentages_sql
 from app.domain import landcover
+from app.domain.tuning import LANDCOVER_MIN_VALID_PIXELS_ID
+from tests.tuning_fixture import TUNING
+
+#: 割合を出す有効な画素の下限（テストの較正値）。
+MIN_VALID_PIXELS = TUNING[LANDCOVER_MIN_VALID_PIXELS_ID]
 
 
 
@@ -39,7 +45,7 @@ async def percentages(session, counts: list[tuple[int, int, int, int]]) -> list[
     """`(osm_way_id, segment_index, cls, n)`の行を関係として渡し、返った行を辞書で返す。"""
     rows = ", ".join(f"({way}, {segment}, {cls}, {n})" for way, segment, cls, n in counts)
     relation = f"SELECT * FROM (VALUES {rows}) AS c(osm_way_id, segment_index, cls, n)"
-    result = await session.execute(text(landcover.class_percentages_sql(relation)))
+    result = await session.execute(text(class_percentages_sql(relation, MIN_VALID_PIXELS)))
     return [dict(row._mapping) for row in result]
 
 
@@ -55,7 +61,7 @@ async def test_no_data_and_clouds_are_left_out_of_the_denominator(road_graph_ses
 
 @on_postgis
 async def test_a_segment_with_too_few_valid_pixels_has_no_row(road_graph_session):
-    enough = landcover.MIN_VALID_PIXELS
+    enough = MIN_VALID_PIXELS
     rows = await percentages(
         road_graph_session,
         [

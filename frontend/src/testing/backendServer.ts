@@ -9,6 +9,8 @@ import { API_BASE_URL } from "@/lib/apiBaseUrl";
 import { clientConfigResponse } from "@/testing/clientConfig";
 import { TWO_COST_AXES } from "@/testing/costAxes";
 import type { ClientConfigResponse, CostAxisCatalogResponse } from "@/types/route";
+import type { TimeFrames } from "@/features/map/regionApi";
+import { WIDE_TIME_FRAMES } from "@/testing/timeFrames";
 
 // 走行モードを使うと、どのテストでも走り始めに画面の版を読み、案内を終えたときに走りを送る（`lib/rideTrack.ts`）。走りの記録を
 // 見ないテストでも出る要求なので、既定で応える（テストごとの片付けでも残る）。応え方を見るテストは、自分で上書きする。
@@ -91,6 +93,11 @@ export function gunzippedJson(request: Request): Promise<unknown> {
 /** 画面の設定の取得に`response`を返す（多くの画面が描くと同時に取る）。 */
 export function serveClientConfig(response: ClientConfigResponse = clientConfigResponse()): void {
   onBackend("GET", "/api/client-config", () => Response.json(response));
+}
+
+/** 時刻で変わる値のコマの一覧（`GET /api/region/time-frames`）に`response`を返す。 */
+export function serveTimeFrames(response: TimeFrames = WIDE_TIME_FRAMES): void {
+  onBackend("GET", "/api/region/time-frames", () => Response.json(response));
 }
 
 /** 費用の軸の一覧の取得に`response`を返す。 */

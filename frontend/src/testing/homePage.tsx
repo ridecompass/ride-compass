@@ -7,7 +7,13 @@ import { expect, onTestFinished, vi } from "vitest";
 
 import Home from "@/app/page";
 import { CLIENT_TUNING_IDS } from "@/lib/clientConfig";
-import { onBackend, onSameOrigin, serveClientConfig, serveCostAxisCatalog } from "@/testing/backendServer";
+import {
+  onBackend,
+  onSameOrigin,
+  serveClientConfig,
+  serveCostAxisCatalog,
+  serveTimeFrames,
+} from "@/testing/backendServer";
 import { clientConfigResponse, roadClass, roadClassCatalog, roadMapLayer } from "@/testing/clientConfig";
 import { serveGenerationJobs } from "@/testing/generationJobs";
 import { installGeolocation } from "@/testing/geolocation";
@@ -78,6 +84,7 @@ export function serveHome() {
   jobs = serveGenerationJobs();
   serveClientConfig(CLIENT_CONFIG);
   serveCostAxisCatalog();
+  serveTimeFrames();
   onSameOrigin("GET", "/api/jma-tile/*", () => Response.json([]));
   onBackend("GET", "/api/jma-tile-index", () => Response.json({ available: false, coverage: null, elements: {} }));
   onBackend("GET", "/api/weather/amedas", () => Response.json(OBSERVATION));

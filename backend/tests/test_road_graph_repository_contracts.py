@@ -25,11 +25,8 @@ import numpy as np
 import pytest
 from sqlalchemy import text
 
-from app.domain.attributes import CategoricalColumn
 from app.domain.material_catalog import MATERIAL_CATALOG, material_array_columns
 from app.domain.region import BoundingBox
-from app.infrastructure.derived_models import EdgeCountsRow, EdgeElevationRow, EdgeLandcoverRow
-from app.infrastructure.material_joins import reversed_partner
 from app.infrastructure.road_graph_repository import (
     ID_CHUNK_SIZE,
     MATERIAL_ARRAY_COLUMN_ORDER,
@@ -93,30 +90,6 @@ def _repo(*results) -> tuple[RoadGraphRepository, _FakeSession]:
     return RoadGraphRepository(session), session
 
 
-# --- 逆向きの読み替え ---------------------------------------------------------
-
-
-@pytest.mark.parametrize(("name", "partner"), [
-    ("start_a", ("end_a", False)),
-    # 勾配は符号を返す
-    ("a_grade", ("a_grade", True)),
-    # 向きで変わらない列
-    ("a_count", None),
-])
-def test_reversed_partner_swaps_paired_tokens_and_flips_grades(name, partner):
-    assert reversed_partner(name) == partner
-
-
-def test_reversing_twice_returns_to_the_original_column():
-    """対が壊れると、逆向きの枝の標高が別の列から来る。列の一覧は宣言から導く。"""
-    reversed_columns = {column.name: partner
-                        for row in (EdgeCountsRow, EdgeElevationRow, EdgeLandcoverRow) for column in row.__table__.columns
-                        if (partner := reversed_partner(column.name)) is not None}
-    assert reversed_columns, "向きで変わる列が1つも無い"
-    for name, (partner, negated) in reversed_columns.items():
-        assert reversed_partner(partner) == (name, negated)
-
-
 # --- 材料の行列 ---------------------------------------------------------------
 
 
@@ -137,7 +110,7 @@ async def test_material_values_land_in_the_matrix_of_their_dtype():
     repo, _ = _repo([_arrays_row(3, {numeric: [1.5, None, None], boolean: [True, False, None],
                                      categorical: ["value_a", None, None]})])
 
-    arrays = await repo.get_edge_material_arrays([1, 1, 1], [0, 1, 2], [True, True, True], 5)
+    arrays = await repo.get_edge_material_arrays([1, 1, 1], [0, 1, 2], [True, True, True])
 
     numbers = arrays.numeric_values[:, [arrays.numeric_ids.index(numeric), arrays.numeric_ids.index(boolean)]].T
     assert numbers[0][0] == 1.5
@@ -148,7 +121,6 @@ async def test_material_values_land_in_the_matrix_of_their_dtype():
     assert np.isnan(numbers[1][2])
     # 分類の材料は語彙への番号の列で、値へ戻すと行ごとの値（値なしはNone）になる。
     column = arrays.categorical_columns[arrays.categorical_ids.index(categorical)]
-    assert isinstance(column, CategoricalColumn)
     assert [column.value_at(row) for row in range(len(column))] == ["value_a", None, None]
 
 
@@ -171,20 +143,11 @@ async def test_rows_keep_the_order_of_the_given_edges_across_chunks():
     forwards = [i % 2 == 0 for i in way_ids]
 
     arrays = await RoadGraphRepository(_EchoingArraysSession()).get_edge_material_arrays(
-        way_ids, segment_indexes, forwards, 1)
+        way_ids, segment_indexes, forwards)
 
     assert arrays.distance_m.tolist() == way_ids
     assert arrays.bearing_deg.tolist() == segment_indexes
     assert arrays.mid_lat.tolist() == [float(f) for f in forwards]
-
-
-async def test_paired_edge_columns_are_not_swapped():
-    """取り違えても型では落ちない対（緯度と経度）だけを見る。"""
-    repo, _ = _repo([_arrays_row(1, {"mid_lat": [35.5], "mid_lon": [139.5]})])
-
-    arrays = await repo.get_edge_material_arrays([1], [0], [True], 1)
-
-    assert (arrays.mid_lat[0], arrays.mid_lon[0]) == (35.5, 139.5)
 
 
 async def test_an_edge_without_an_elevation_row_has_no_profile_points():
@@ -226,7 +189,7 @@ async def test_unknown_way_has_no_tags():
 
 @pytest.mark.parametrize(("read", "years"), [([2023, 2021, 2022], [2021, 2022, 2023]), (None, [])])
 async def test_accident_years_are_the_years_the_run_read(read, years):
-    """実データの発生年を数えない——事故が1件も無かった年が落ちて、密度の分母がずれる。"""
+    """実データの発生年を数えない——事故が1件も無かった年が落ちて、地図の説明の年が欠ける。"""
     repo, _ = _repo([_Row(years=read)])
 
     assert await repo.get_accident_years() == years

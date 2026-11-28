@@ -13,7 +13,6 @@ import { declareGroup, type SceneLayerEntry, type SceneSourceEntry } from "@/fea
 /** 面の濃さ。**動かす前に`docs/modules/frontend/static-map-layers.md`「面の濃さ」を読む**
  * ——下限・上限の両方に根拠がある。 */
 const AREA = mapDisplay.area;
-export const AREA_OPACITY = AREA.opacity;
 
 /** 土地被覆タイルが実データを持つ範囲（正本は配信側。生成物から受け取る）。 */
 const LANDCOVER_ZOOM = { min: regionTileConfig.landcover.min_zoom, max: regionTileConfig.landcover.max_zoom };
@@ -80,17 +79,17 @@ function sourcesFor(state: AreaRasterState): readonly SceneSourceEntry[] {
 
 function layersFor(state: AreaRasterState): readonly SceneLayerEntry[] {
   const visible = (role: Exclude<AreaRasterRole, "hillshade">) => state.visible[role] === true;
-  const raster = (role: "elevation" | "landcover"): SceneLayerEntry => ({
+  const raster = (role: "elevation" | "landcover", paint: Record<string, number>): SceneLayerEntry => ({
     role,
     tier: "area",
     source: AREA_SOURCE_ID[role],
     type: "raster",
-    paint: { "raster-opacity": AREA_OPACITY },
+    paint,
     visible: visible(role),
   });
   return [
-    raster("elevation"),
-    raster("landcover"),
+    raster("elevation", { "raster-opacity": AREA.opacity, "raster-saturation": AREA.elevationSaturation }),
+    raster("landcover", { "raster-opacity": AREA.landcoverOpacity }),
     {
       role: "hillshade",
       tier: "area",

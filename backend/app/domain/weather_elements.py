@@ -119,6 +119,10 @@ class WeatherElement(NamedTuple):
 #: 線状降水帯予測を重ねる幅（分）。「今後3時間以内に大雨のおそれ」という予報なので、現在から3時間先の間だけ重ねる。
 _LINEAR_RAINBAND_WINDOW_MINUTES = 3 * 60
 
+#: 大雨キキクルの説明が名前で引く、統合する元の要素の名前。
+_INUNDATION_LABEL = "浸水キキクル"
+_FLOOD_LABEL = "洪水キキクル[河川]"
+
 #: 並びが同じ段（面・線・記号）の中の重なり順になる。災害は面を下に、見落としやすい線（洪水）・
 #: 点（落雷）を上に置き、大雨は土砂・浸水を統合した指標なので個別の2つより下に置く。
 WEATHER_ELEMENTS: tuple[WeatherElement, ...] = (
@@ -152,7 +156,7 @@ WEATHER_ELEMENTS: tuple[WeatherElement, ...] = (
             _NEAREST,
             description=(
                 "大雨災害発生の危険度が急激に高まっている線状降水帯の雨域"
-                f"[赤い輪郭線。実況〜{forecast_reach('slmcs_unifyfcst')}先のみ]"
+                f"[輪郭線。実況〜{forecast_reach('slmcs_unifyfcst')}先のみ]"
             ),
             legend_color=LINEAR_RAINBAND_OUTLINE_COLOR,
         )
@@ -171,7 +175,7 @@ WEATHER_ELEMENTS: tuple[WeatherElement, ...] = (
         "大雨キキクル",
         FrameRule("current"),
         level_scale="risk_levels",
-        description="浸水キキクルと洪水キキクル[河川]のうち、危険度の高い方を段階で示す気象庁の情報。",
+        description=f"{_INUNDATION_LABEL}と{_FLOOD_LABEL}のうち、危険度の高い方を段階で示す気象庁の情報。",
         # 浸水キキクルと同じ範囲に同じ段を重ねる（https://www.jma.go.jp/jma/kishou/know/bosai/riskmap_heavyrain.html）。
         initially_hidden=True,
     ),
@@ -190,7 +194,7 @@ WEATHER_ELEMENTS: tuple[WeatherElement, ...] = (
         "inundation",
         "rasterTile",
         ("inund",),
-        "浸水キキクル",
+        _INUNDATION_LABEL,
         FrameRule("current"),
         level_scale="risk_levels",
         description="短い時間の強い雨で、道路や低い土地が水につかる危険度の高まりを段階で示す気象庁の情報。",
@@ -220,7 +224,7 @@ WEATHER_ELEMENTS: tuple[WeatherElement, ...] = (
         "flood",
         "vectorTile",
         ("flood",),
-        "洪水キキクル[河川]",
+        _FLOOD_LABEL,
         FrameRule("current"),
         level_scale="risk_levels",
         description="大雨で川があふれる危険度の高まりを、川に沿った色で示す気象庁の情報。",

@@ -292,6 +292,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/region/time-frames": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["region_time_frames_api_region_time_frames_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/region/roads-at": {
         parameters: {
             query?: never;
@@ -877,8 +893,6 @@ export interface components {
             /** Accident Years */
             accident_years: number[];
             road_classes: components["schemas"]["RoadClassCatalog"];
-            /** Travel Model Wording */
-            travel_model_wording: string;
         };
         /** Condition */
         Condition: {
@@ -1268,7 +1282,7 @@ export interface components {
         /** LensDirection */
         LensDirection: {
             /** Total Seconds */
-            total_seconds: number;
+            total_seconds: number | null;
             /** Axes */
             axes: components["schemas"]["LensAxisSeconds"][];
             /** Facts */
@@ -1729,6 +1743,7 @@ export interface components {
         };
         /** RoadInspectorRequest */
         RoadInspectorRequest: {
+            cost_preference?: components["schemas"]["CostPreference-Input"];
             /** Osm Way Id */
             osm_way_id: number;
             /** Feature Key */
@@ -1741,11 +1756,17 @@ export interface components {
             y: number;
             /** Bearing Deg */
             bearing_deg: number;
-            /** At */
-            at?: string | null;
+            /** Lens Id */
+            lens_id?: string | null;
+            /** Frame */
+            frame?: string | null;
+            /**
+             * Wind
+             * @default true
+             */
+            wind: boolean;
             /** Speed Kmh */
             speed_kmh: number;
-            cost_preference?: components["schemas"]["CostPreference-Input"];
         };
         /** RoadMapLayerView */
         RoadMapLayerView: {
@@ -1765,6 +1786,8 @@ export interface components {
             hide_missing_rows: boolean;
             /** Has No Data */
             has_no_data: boolean;
+            /** Min Zoom */
+            min_zoom: number;
             /** Classes */
             classes: components["schemas"]["RoadClassView"][];
         };
@@ -1899,13 +1922,13 @@ export interface components {
         };
         /** RouteGenerateRequest */
         RouteGenerateRequest: {
+            cost_preference?: components["schemas"]["CostPreference-Input"];
             /** Latitude */
             latitude: number;
             /** Longitude */
             longitude: number;
             /** Distance Km */
             distance_km?: number | null;
-            cost_preference?: components["schemas"]["CostPreference-Input"];
             road_avoidance: components["schemas"]["RoadAvoidanceOverride"];
             /** Max Routes */
             max_routes: number;
@@ -1963,6 +1986,8 @@ export interface components {
             };
             /** Avoidance Stretches */
             avoidance_stretches: components["schemas"]["AvoidanceStretch"][];
+            /** Regulation Margin */
+            regulation_margin: boolean;
             /** Lens Seconds Per Km */
             readonly lens_seconds_per_km: {
                 [key: string]: number;
@@ -2022,6 +2047,28 @@ export interface components {
             needs_attention: boolean;
             /** Note */
             note: string;
+        };
+        /** TimeFrame */
+        TimeFrame: {
+            /**
+             * Start
+             * Format: date-time
+             */
+            start: string;
+            /**
+             * End
+             * Format: date-time
+             */
+            end: string;
+            /** Key */
+            key: string;
+        };
+        /** TimeFrames */
+        TimeFrames: {
+            /** Road Surface */
+            road_surface: components["schemas"]["TimeFrame"][];
+            /** Lens */
+            lens: components["schemas"]["TimeFrame"][];
         };
         /**
          * TimelineKind
@@ -2610,7 +2657,9 @@ export interface operations {
     };
     region_road_surface_tile_api_region_road_surface_tiles__z___x___y__pbf_get: {
         parameters: {
-            query?: never;
+            query?: {
+                frame?: string | null;
+            };
             header?: never;
             path: {
                 z: number;
@@ -2712,7 +2761,7 @@ export interface operations {
         parameters: {
             query?: {
                 speed_kmh?: number;
-                at?: string | null;
+                frame?: string | null;
                 strength?: number;
                 multipliers?: string | null;
                 disabled_axes?: string | null;
@@ -2744,6 +2793,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    region_time_frames_api_region_time_frames_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TimeFrames"];
                 };
             };
         };

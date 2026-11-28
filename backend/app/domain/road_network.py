@@ -12,7 +12,7 @@
 分類の材料は文字列のまま持たず、列ごとの語彙への番号で持つ（番号0は値なし）。
 """
 
-from collections.abc import Iterable, Iterator, Mapping
+from collections.abc import Iterable, Iterator, Mapping, Sequence
 import logging
 import threading
 from dataclasses import dataclass, fields
@@ -27,9 +27,10 @@ from app.domain.attributes import (
     MaterialColumn,
 )
 from app.domain.elevation_profile import ProfileSpans
-from app.domain.geo import LatLonPoint
+from app.domain.geo import LatLon, LatLonPoint
 from app.domain.material_catalog import GRADIENT_PERCENT
 from app.domain.msm import MsmGrid
+from app.domain.region import BoundingBox, bbox_covering_points
 from app.domain.road_classes import RoadClassDefinitions, class_columns, layer_columns
 from app.domain.search_graph import EdgeValues, run_starts
 from app.domain.stopwatch import elapsed_ms, start_timer
@@ -43,22 +44,24 @@ _WIND_HEIGHTS_LOCK = threading.Lock()
 logger = logging.getLogger("ridecompass.graph")
 
 #: 行数が区間でも頂点でもなく、点（形・断面の点・点の間）の数の欄の頭。
-_POINT_PREFIXES = ("profile_", "shape_", "span_")
+_POINT_PREFIXES = ("profile_", "shape_", "span_", "regulation_")
 
 
 @dataclass(frozen=True, eq=False)
 class RoadNetwork:
-    """`revision`は作った時点の派生データの世代（`derived_data_meta.revision`）。"""
+    """`revision`は作った時点の派生データの世代（`derived_data_meta.revision`）。
+
+    区間の長さ（`distance_m`）は全行が0より大きく、断面の点の位置（`profile_position`）は標高の点と同じ数だけある（DBの表
+    `road_edges`・`edge_elevation`の制約が保証する）。読む側は長さ0・位置の欠けを扱わない。
+    """
 
     revision: int
-    # 停止の点を1つの場所にまとめる距離（較正値`stop.cluster_distance_m`の、作り直しに使った値）。信号の頂点どうしを結ぶ区間が
-    # これより短ければ、同じ交差点の中を進む区間。
-    stop_cluster_distance_m: float
 
     node_osm_id: np.ndarray  # int64, 昇順
     node_lat: np.ndarray  # float64
     node_lon: np.ndarray  # float64
-    node_has_signals: np.ndarray  # bool
+    # 頂点が入る信号の交差点の番号（`signal_place_nodes.place_id`。入らなければ-1）。番号が同じ頂点は同じ交差点。
+    node_signal_place: np.ndarray  # int32
     # そこに集まる区間の一番高い階級（`edge_rank`の最大。道路網全体で数える）。
     node_max_rank: np.ndarray  # int8
     # そこに集まる道の本数（`road_nodes.branch_count`）。3本以上なら分かれ道。
@@ -120,17 +123,28 @@ class RoadNetwork:
     edge_span_count: np.ndarray  # int32
     span_length_m: np.ndarray  # float32、行数は点の間の数
     span_grade: np.ndarray  # float32
+    span_carries: np.ndarray  # bool、前の点の間から勢いを引き継ぐか
     unknown_elevation_m: np.ndarray  # float64
     mean_elevation_m: np.ndarray  # float64
 
-    # 道1本の値（区分の層が道1本で塗るズームの値）。道は区間を持つ道と、区間を持たない道（区間の列には現れない）の全部で、
-    # `osm_way_id`の昇順。材料の列は区間の材料と同じ並びと語彙で、区間を持つ道は区間の値を集めたもの（`domain/road_network_build.py`）。
+    # 区間に当たった交通規制（`domain/traffic_regulation.py`）。区間の行ごとに、`regulation_index`の中の始まりの位置と規制の数。
+    # 規制ごとに、`regulation_slot_values`（`domain/traffic_regulation.py: SLOT_FIELDS`の列）の中の始まりの位置と組の数。
+    # 材料`pedestrian_road`の列は時刻で変わらない組だけで決めた値で、時刻を決めて読む所はこの欄から決め直す。
+    edge_regulation_start: np.ndarray  # int64
+    edge_regulation_count: np.ndarray  # int16
+    regulation_index: np.ndarray  # int32、行数は区間と規制の組の数
+    regulation_slot_start: np.ndarray  # int64、行数は規制の数
+    regulation_slot_count: np.ndarray  # int16、行数は規制の数
+    regulation_slot_values: np.ndarray  # (組, 欄) int16
+
+    # 道1本の値（区分の層が道1本で塗るズームの値）。区間を持つ道の全部で、`osm_way_id`の昇順。材料の列は区間の材料と同じ並びと
+    # 語彙で、区間の値を集めたもの（`domain/road_network_build.py`）。
     way_osm_id: np.ndarray  # int64
     way_numeric_values: EdgeValues  # (道, 列), NaN=欠損
     way_categorical_codes: np.ndarray  # (道, 列) int16。0は値なし
 
     def __post_init__(self) -> None:
-        """行数と列数が揃っていることを、組み立てた場所で確かめる。
+        """行数と列数が揃い、区間の長さが0より大きいことを、組み立てた場所で確かめる。
 
         揃わないまま使うと、別の区間の材料・別のノードの座標を黙って読む。
         """
@@ -145,7 +159,9 @@ class RoadNetwork:
         }
         for start, count, points in (("edge_profile_start", "edge_profile_points", "profile_elevation_m"),
                                      ("edge_shape_start", "edge_shape_points", "shape_lon"),
-                                     ("edge_span_start", "edge_span_count", "span_length_m")):
+                                     ("edge_span_start", "edge_span_count", "span_length_m"),
+                                     ("edge_regulation_start", "edge_regulation_count", "regulation_index"),
+                                     ("regulation_slot_start", "regulation_slot_count", "regulation_slot_values")):
             first, number = getattr(self, start), getattr(self, count)
             if len(first) and int(np.max(first + number)) > len(getattr(self, points)):
                 wrong[start] = len(getattr(self, points))
@@ -170,6 +186,8 @@ class RoadNetwork:
                 f"道路網の配列の形が揃っていません ノード={node_count} 区間={edge_count} "
                 f"行数={wrong} 列数={wrong_columns}"
             )
+        if not np.all(self.distance_m > 0):
+            raise ValueError(f"道路網の配列に長さが0より大きくない区間があります 行={np.flatnonzero(~(self.distance_m > 0))[:10].tolist()}")
 
     @property
     def edge_count(self) -> int:
@@ -179,7 +197,7 @@ class RoadNetwork:
     def elevation_spans(self) -> ProfileSpans:
         """全区間の、所要時間と体力を解く点の間。"""
         return ProfileSpans(self.edge_span_start, self.edge_span_count, self.span_length_m, self.span_grade,
-                            self.unknown_elevation_m, self.mean_elevation_m)
+                            self.span_carries, self.unknown_elevation_m, self.mean_elevation_m)
 
     @cached_property
     def edge_first_rows(self) -> np.ndarray:
@@ -191,6 +209,12 @@ class RoadNetwork:
         """`edge_first_rows`の区間の鍵（`edge_key`。昇順）。道路網と同じ寿命で1回だけ求める。"""
         first = self.edge_first_rows
         return edge_key(self.edge_way_id[first], self.edge_segment[first])
+
+    @cached_property
+    def landcover_filled(self) -> np.ndarray:
+        """区間ごとの、土地被覆の割合のどれかが欠けていて、`wind_height_factors`が埋めた値で倍率を求めるか（区間の順の bool）。"""
+        columns = [self.numeric_ids.index(field) for field in ROUGHNESS_LENGTH_M]
+        return np.isnan(self.numeric_values[:, columns]).any(axis=1)
 
     def wind_height_factors(self, grid: MsmGrid, tuning: Tuning) -> np.ndarray:
         """全区間の、予報の10mの風を乗り手の高さへ直す倍率（`domain/wind_height.py: height_factors`）。土地被覆の割合の欠けは、
@@ -279,7 +303,7 @@ def road_class_columns(
         },
     }
     classes = class_columns(definitions, facts, network.edge_count)
-    return classes, layer_columns(definitions, {**facts, **classes}, network.edge_count)
+    return classes, layer_columns(definitions, {**facts, **classes})
 
 
 def slice_network(
@@ -288,10 +312,10 @@ def slice_network(
     min_lon: float, min_lat: float, max_lon: float, max_lat: float,
 ) -> RoadSlice:
     """区間の形の外接矩形が範囲に重なる区間を取り出す。範囲の外へはみ出す区間も、端点ごと含む。"""
-    return slice_rows(network, classes, _rows_in_bbox(network, min_lon, min_lat, max_lon, max_lat))
+    return slice_rows(network, classes, rows_in_bbox(network, min_lon, min_lat, max_lon, max_lat))
 
 
-def _rows_in_bbox(network: RoadNetwork, min_lon: float, min_lat: float, max_lon: float, max_lat: float) -> np.ndarray:
+def rows_in_bbox(network: RoadNetwork, min_lon: float, min_lat: float, max_lon: float, max_lat: float) -> np.ndarray:
     """区間の形の外接矩形が範囲に重なる区間の行（昇順）。"""
     overlaps = np.asarray(network.edge_max_lon) >= min_lon
     overlaps &= np.asarray(network.edge_min_lon) <= max_lon
@@ -381,7 +405,8 @@ def material_arrays_of(road: RoadSlice, tuning: Tuning) -> EdgeMaterialColumns:
         mid_lat=np.asarray(network.mid_lat[rows]),
         mid_lon=np.asarray(network.mid_lon[rows]),
         elevation_spans=network.elevation_spans.take(rows),
-        wind_heights=WindHeights(lambda grid: network.wind_height_factors(grid, tuning), rows),
+        wind_heights=WindHeights(lambda grid: network.wind_height_factors(grid, tuning), rows,
+                                 lambda: network.landcover_filled),
     )
 
 
@@ -442,16 +467,20 @@ def edge_row_of(network: RoadNetwork, osm_way_id: int, segment_index: int, forwa
     return None
 
 
-def edge_endpoint_points(network: RoadNetwork, edges: Iterable[tuple[int, int, bool]]) -> list[LatLonPoint]:
-    """`(道, 区間番号, 向き)`の区間の両端の地点。道路網に無い区間は飛ばす。"""
-    points: list[LatLonPoint] = []
+def bbox_covering_edges(
+    network: RoadNetwork, points: Sequence[LatLon], edges: Iterable[tuple[int, int, bool]], margin_km: float,
+) -> BoundingBox:
+    """`points`と、`(道, 区間番号, 向き)`の区間`edges`の両端を覆う矩形に`margin_km`の余裕を足したもの（`bbox_covering_points`）。
+    道路網に無い区間は飛ばす。区間の形は両端を含むので、この矩形で切り出す範囲（`rows_in_bbox`）は、道路網にある`edges`の
+    区間を必ず含む。"""
+    ends: list[LatLon] = []
     for edge in edges:
         row = edge_row_of(network, *edge)
         if row is None:
             continue
         for node in (int(network.edge_from[row]), int(network.edge_to[row])):
-            points.append(LatLonPoint(float(network.node_lat[node]), float(network.node_lon[node])))
-    return points
+            ends.append(LatLonPoint(float(network.node_lat[node]), float(network.node_lon[node])))
+    return bbox_covering_points([*points, *ends], margin_km)
 
 
 # --- 区間の鍵と、昇順の鍵の中の位置 --------------------------------------------------------------------------

@@ -104,7 +104,8 @@ def _row_reads(
     reads = []
     for (leg_index, time_bin), indices in groups.items():
         group_rows = np.array([rows[i] for i in indices], dtype=np.int64)
-        values = context.composer.values_at_rows(group_rows, context.legs[leg_index].bin_times[time_bin])
+        leg = context.legs[leg_index]
+        values = context.composer.values_at_rows(group_rows, leg.bin_times[time_bin], leg.judgement)
         reads.append(_RowRead(values, indices, group_rows))
     return reads
 
@@ -199,6 +200,13 @@ def _build_best_candidate(
     chosen = _trace(context, edges_in_path, path, traced.leg_of_edge, traced.waypoint_offsets)
     elevation_by_edge = _elevation_by_edge(context, edges_in_path, path)
     reversed_path = _reverse_traced_edges(path, context) if traced.reversible else None
+    # 逆回りはレグを振り直すので、順回りで通れる区間が、逆回りの時間帯では交通規制で通れないことがある。通れない区間を含む
+    # 逆回りは作らない（無限大の所要で時刻をたどれない）。
+    if reversed_path is not None and not all(
+        np.isfinite(context.legs[leg].cost_lazy[index])
+        for index, leg in zip(reversed_path[1], reverse_leg_assignment(traced.leg_of_edge), strict=True)
+    ):
+        reversed_path = None
     if reversed_path is not None:
         reverse_edges, reverse_path = reversed_path
         reverse = _trace(
@@ -341,7 +349,8 @@ def _build_segment_details(
                 preferred_seconds=preferred_seconds,
                 avoided_seconds=avoided_seconds,
                 deciding_row=deciding_row,
-                road_classes=road_classes.values_at(row),
+                road_classes=road_classes.values_at(row, judgement := context.legs[orientation.leg_of_edge[index]].judgement),
+                regulation_margin=judgement is not None and judgement.timed_at(row),
             )
         )
 
@@ -367,16 +376,14 @@ def _segment_penalties(orientation: _Orientation) -> list[_SegmentPenalty]:
 
 def _route_facts(orientation: _Orientation, context: RoadGraphContext, elevation_gain_m: float | None,
                  turn_kickoffs: float) -> RouteFacts:
-    """経路の事実（`domain/leg_costs.py: LegCostComposer.axis_facts`）。軸ごとの秒と向かい風は区間を通る時刻の値で、止まる回数には
+    """経路の事実（`domain/leg_costs.py: LegCostComposer.axis_facts`）。軸ごとの秒は区間を通る時刻の値で、止まる回数には
     曲がる所の漕ぎ出し`turn_kickoffs`回を足す。"""
     rows = np.asarray(orientation.rows, dtype=np.int64)
-    headwind_ms = np.empty(len(rows))
     penalty_by_axis = {axis_id: np.empty(len(rows)) for axis_id in orientation.reads[0].values.penalty_by_axis}
     for read in orientation.reads:
-        headwind_ms[read.indices] = read.values.headwind_ms
         for axis_id, seconds in penalty_by_axis.items():
             seconds[read.indices] = read.values.penalty_by_axis[axis_id]
-    return RouteFacts(axes=context.composer.axis_facts(rows, penalty_by_axis, elevation_gain_m, headwind_ms, turn_kickoffs))
+    return RouteFacts(axes=context.composer.axis_facts(rows, penalty_by_axis, elevation_gain_m, turn_kickoffs))
 
 
 _TURN_DIRECTION = {TurnKind.LEFT: "left", TurnKind.RIGHT: "right", TurnKind.UTURN: "uturn"}

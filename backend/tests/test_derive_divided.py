@@ -15,9 +15,10 @@ import pytest
 import pytest_asyncio
 
 from app.batch import derive_topology, derive_way_directions
-from app.domain.divided_carriageway import GEOMETRIC_GAP_M, NAMED_GAP_M
+from app.domain.tuning import DIVIDED_GEOMETRIC_GAP_ID, DIVIDED_NAMED_GAP_ID
+from tests.tuning_fixture import TUNING
 from app.domain.geo import KM_PER_DEGREE_LATITUDE
-from tests.source_ingest import WAY_ORIGIN, ingest_records, way_record
+from tests.source_ingest import WAY_ORIGIN, ingest_records, stage_tuning, way_record
 
 # moduleスコープのroad_graph_engine（conftest.py）の上のDBを使うため、.claude/rules/testing-backend.mdのパターン2どおり
 # loop_scope="module"が必須。
@@ -48,19 +49,19 @@ SCENES: dict[str, Scene] = {
     "carriageway を申告した両方向の道": Scene(
         {"highway": "primary", "carriageway": "dual"}, None, 0.0, False, False),
     "同じ名前の対向一方通行が名前の距離の内側": Scene(
-        {**ONEWAY, "name": "A"}, {**ONEWAY, "name": "A"}, NAMED_GAP_M - 10, True, True),
+        {**ONEWAY, "name": "A"}, {**ONEWAY, "name": "A"}, TUNING[DIVIDED_NAMED_GAP_ID] - 10, True, True),
     "同じ名前の対向一方通行が名前の距離の外側": Scene(
-        {**ONEWAY, "name": "A"}, {**ONEWAY, "name": "A"}, NAMED_GAP_M + 10, True, False),
+        {**ONEWAY, "name": "A"}, {**ONEWAY, "name": "A"}, TUNING[DIVIDED_NAMED_GAP_ID] + 10, True, False),
     "無名の対向一方通行が寄り添う": Scene(
-        ONEWAY, ONEWAY, GEOMETRIC_GAP_M - 5, True, True),
+        ONEWAY, ONEWAY, TUNING[DIVIDED_GEOMETRIC_GAP_ID] - 5, True, True),
     "無名の対向一方通行が寄り添う距離の外側": Scene(
-        ONEWAY, ONEWAY, GEOMETRIC_GAP_M + 10, True, False),
+        ONEWAY, ONEWAY, TUNING[DIVIDED_GEOMETRIC_GAP_ID] + 10, True, False),
     "同じ向きの一方通行が寄り添う": Scene(
-        ONEWAY, ONEWAY, GEOMETRIC_GAP_M - 5, False, False),
+        ONEWAY, ONEWAY, TUNING[DIVIDED_GEOMETRIC_GAP_ID] - 5, False, False),
     "種別の違う対向一方通行が寄り添う": Scene(
-        ONEWAY, {**ONEWAY, "highway": "secondary"}, GEOMETRIC_GAP_M - 5, True, False),
+        ONEWAY, {**ONEWAY, "highway": "secondary"}, TUNING[DIVIDED_GEOMETRIC_GAP_ID] - 5, True, False),
     "名前の違う対向一方通行が寄り添う": Scene(
-        {**ONEWAY, "name": "A"}, {**ONEWAY, "name": "B"}, GEOMETRIC_GAP_M - 5, True, False),
+        {**ONEWAY, "name": "A"}, {**ONEWAY, "name": "B"}, TUNING[DIVIDED_GEOMETRIC_GAP_ID] - 5, True, False),
 }
 
 
@@ -89,7 +90,7 @@ async def divided_conn(derive_conn):
         way_record(way_id, points, [way_id * 10 + k for k in range(len(points))], tags)
         for ways in WAYS.values() for way_id, tags, points in ways], conn=derive_conn)
     await derive_topology.derive(derive_conn)
-    await derive_way_directions.derive(derive_conn)
+    await derive_way_directions.derive(derive_conn, **stage_tuning("directions"))
     return derive_conn
 
 

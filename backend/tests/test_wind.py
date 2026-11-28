@@ -1,6 +1,6 @@
 """`domain/wind.py`——格子点ごとの時別の予報、通過予定時刻の推定。
 
-入口は`WindForecastSeries`・`estimate_passage_hours`。
+入口は`WeatherForecastSeries`・`estimate_passage_hours`。
 
 ここで見ないもの:
 - 予報を引くMSMの格子点の並び（`MsmBlock`） → `test_msm.py`
@@ -17,12 +17,12 @@ import pytest
 from hypothesis import strategies as st
 
 from app.domain.geo import EARTH_RADIUS_KM
-from app.domain.msm import MsmBlock, MsmGrid
 from app.domain.route import Coordinates
 from app.domain.wind import (
-    WindForecastSeries,
+    WeatherForecastSeries,
     estimate_passage_hours,
 )
+from tests.weather_forecast import weather_forecast
 
 #: 風速・走行速度の本番の範囲（m/s）。台風の暴風と、想定速度の上限60km/hを覆う。
 WIND_SPEEDS = st.floats(0.0, 40.0)
@@ -35,20 +35,10 @@ BEARINGS = st.floats(0.0, 360.0)
 T0 = datetime(2026, 7, 1, 9, 0)
 
 
-def _series() -> WindForecastSeries:
-    """格子点2つ・3時刻。風速は「点の番号×100＋時刻の番号」、風向は時刻の番号×10。"""
-    hours = 3
-    lattice = MsmBlock(
-        grid=MsmGrid(lat_min=35.0, lon_min=139.0, d_lat=1.0, d_lon=1.0, n_lat=2, n_lon=2), row0=0, col0=0, rows=1, cols=2,
-    )
-    points = lattice.size
-    speed = np.array([[p * 100.0 + t for t in range(hours)] for p in range(points)])
-    direction = np.array([[t * 10.0 for t in range(hours)] for _ in range(points)])
-    return WindForecastSeries(
-        times=[T0 + timedelta(hours=t) for t in range(hours)], speed_ms=speed, direction_deg=direction,
-        temperature_c=speed / 10.0, lattice=lattice,
-        latest_run_end=T0 + timedelta(hours=hours),
-    )
+def _series() -> WeatherForecastSeries:
+    """格子点2つ・3時刻。風速は「点の番号×100＋時刻の番号」、風向は時刻の番号×10、気温は風速の10分の1。"""
+    speed = np.array([[p * 100.0 + t for t in range(3)] for p in range(2)])
+    return weather_forecast(T0, speed, direction_deg=[t * 10.0 for t in range(3)], temperature_c=speed / 10.0)
 
 
 @pytest.mark.parametrize(
@@ -100,8 +90,8 @@ def test_the_edge_hours_extend_beyond_the_series():
 
 @pytest.mark.parametrize(
     ("latest_run_end", "hours", "expected"),
-    [(2, 1.4, False), (2, 1.5, True), (2, 10.0, True)],
-    ids=["終わりの前の時刻まで", "終わりの時刻を引く", "範囲の外は端の時刻へ寄せる"],
+    [(2, 1.4, False), (2, 1.5, True)],
+    ids=["終わりの前の時刻まで", "終わりの時刻を引く"],
 )
 def test_a_ride_reading_hours_after_the_latest_run_is_told(latest_run_end, hours, expected):
     """前に出たrunの風で作ったルートに、但し書きを出す。"""

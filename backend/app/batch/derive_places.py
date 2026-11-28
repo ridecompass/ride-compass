@@ -5,20 +5,20 @@
 （駅・公園の外の分類の店・役所等）も、群を持たない地点として入れる——地点の検索に出す。
 
 群は分類とチェーンから決め直す（`domain/stop_place.py: place_group_sql`）。同じ群・同じチェーン
-（`domain/stop_place.py: chain_sql`）で`MERGE_RADIUS_M`以内に並ぶ地点は、確からしさの最も高い1つにまとめる（同じなら識別子の
+（`domain/stop_place.py: chain_sql`）で較正値`place.chain_merge_radius_m`以内に並ぶ地点は、確からしさの最も高い1つにまとめる（同じなら識別子の
 小さいほう。組の決め方は`_INSERT`）。まとまりは近い点を連ねて作るので、端と端がその距離より離れることがある。チェーンの
 分からない地点は別々の店としてまとめない。群を持たずチェーンの分かる地点は、同じチェーンの群を持つ地点が近くにあれば落とす
 （`_MERGE_INTO_GROUPED`）。店の中の ATM の地点は、名前を店の名前へ直してから群とチェーンを決める（`store_name_sql`）——
 店の隣にあれば店とまとまり、無ければ店として残る。
 
-チェーンの分からない地点のうち名前に日本語の文字が無いもの（`japanese_name_sql`）は、群（`CONTACT_MERGE_RADIUS_M`の群だけ）が
+チェーンの分からない地点のうち名前に日本語の文字が無いもの（`japanese_name_sql`）は、群（`domain/stop_place.py: CONTACT_MERGE_GROUPS`の群だけ）が
 同じで同じ連絡先（`contacts_sql`）を持つ、チェーンの分からない日本語の名前の地点があれば落とし、その地点へ寄せる（寄せ先の
 名前・位置・確からしさはそのまま）。使う連絡先は、それを持つ地点が全部互いにその群の距離以内にあるものだけ——遠くの地点とも
 共有する連絡先は、会社・一覧のページや、百貨店・管理事務所の代表の電話で、その場所のものでない。日本語の名前どうし・
 日本語でない名前どうしは寄せない（同じ連絡先を持つ同じ施設群の中の別の場所を残す）。
 
 寺社は文化財の建造物の所有者から出す。所有者の欄の1人ずつのうち寺社の名前（`temple_shrine_owner_sql`）を持つ建物を、
-同じ名前（表記の揺れを除いた形）で`HERITAGE_MERGE_RADIUS_M`以内に連なるものごとに1つの寺社にする。位置はまとまりの
+同じ名前（表記の揺れを除いた形）で較正値`place.heritage_merge_radius_m`以内に連なるものごとに1つの寺社にする。位置はまとまりの
 重心に最も近い建物（重心は境内の外に落ちることがある）、名前は所有者の名前。1つの建物に寺社の所有者が2人いれば、
 両方の寺社に入る。
 
@@ -37,9 +37,7 @@ import asyncpg
 from app.batch.common import affected_rows
 from app.domain.geo import degrees_covering_m, ground_m_sql
 from app.domain.stop_place import (
-    CONTACT_MERGE_RADIUS_M,
-    HERITAGE_MERGE_RADIUS_M,
-    MERGE_RADIUS_M,
+    CONTACT_MERGE_GROUPS,
     StopPlaceGroup,
     address_sql,
     chain_sql,
@@ -88,20 +86,19 @@ OFFSET 0) c
 _CONTACTS = f"""
 CREATE TEMP TABLE _contacts ON COMMIT DROP AS
 SELECT o.overture_id, c.contact, ST_X(o.geom) AS lon, ST_Y(o.geom) AS lat
-FROM {OVERTURE_PLACES_SOURCE_SQL} o CROSS JOIN LATERAL ({contacts_sql("o.websites", "o.phones")}) c;
+FROM {OVERTURE_PLACES_SOURCE_SQL} o CROSS JOIN LATERAL ({contacts_sql("o.websites", "o.phones")}) c
+"""
+
+#: `$1`は群の寄せる距離の一番大きいもの。
+_CONTACT_SPANS = """
 CREATE TEMP TABLE _contact_spans ON COMMIT DROP AS
 SELECT contact, span FROM (
     SELECT contact, count(*) AS holders,
            ST_Distance(ST_MakePoint(min(lon), min(lat))::geography, ST_MakePoint(max(lon), max(lat))::geography) AS span
     FROM _contacts GROUP BY contact
 ) c
-WHERE holders > 1 AND span <= {max(CONTACT_MERGE_RADIUS_M.values())};
-ANALYZE _contacts;
-ANALYZE _contact_spans;
-ANALYZE _places
+WHERE holders > 1 AND span <= $1
 """
-
-_CONTACT_RADII = ", ".join(f"('{group}', {radius})" for group, radius in CONTACT_MERGE_RADIUS_M.items())
 
 # 日本語の名前の地点は落とさないので、寄せ先が連なって消えることはない。群を持たない地点は距離の表に無く、寄せない。
 _MERGE_BY_CONTACT = f"""
@@ -113,7 +110,7 @@ USING (
     JOIN _contacts jc ON jc.contact = s.contact
     JOIN _places fp ON fp.overture_id = fc.overture_id
     JOIN _places j ON j.overture_id = jc.overture_id
-    JOIN (VALUES {_CONTACT_RADII}) AS r(place_group, radius) ON r.place_group = fp.place_group
+    JOIN unnest($1::text[], $2::float8[]) AS r(place_group, radius) ON r.place_group = fp.place_group
     WHERE s.span <= r.radius AND fp.chain IS NULL AND NOT {japanese_name_sql("fp.name")}
       AND j.place_group = fp.place_group AND j.chain IS NULL AND {japanese_name_sql("j.name")}
 ) merged
@@ -121,13 +118,14 @@ WHERE f.overture_id = merged.overture_id
 """
 
 # 群を持つ地点は落とさないので、寄せ先が連なって消えることはない。範囲の箱で索引を引いてから地面の距離で比べる。
+_GROUPED_INDEX = f"CREATE INDEX ON _places USING gist (geom) WHERE {grouped_place_sql()}"
+#: `$1`はまとめる距離（地面の m）、`$2`はそれを覆う度（前置フィルタの箱）。
 _MERGE_INTO_GROUPED = f"""
-CREATE INDEX ON _places USING gist (geom) WHERE {grouped_place_sql()};
 DELETE FROM _places f
 USING _places j
 WHERE f.place_group IS NULL AND f.chain IS NOT NULL AND {grouped_place_sql("j")} AND j.chain = f.chain
-  AND j.geom && ST_Expand(f.geom, {degrees_covering_m(MERGE_RADIUS_M)})
-  AND ST_DWithin(f.geom::geography, j.geom::geography, {MERGE_RADIUS_M})
+  AND j.geom && ST_Expand(f.geom, $2)
+  AND ST_DWithin(f.geom::geography, j.geom::geography, $1)
 """
 
 # 辺りは、まとめたあとに残る行だけで引く（DISTINCT ON の選ぶ列で引くと、まとめて捨てる行にも境界を引く）。
@@ -187,20 +185,27 @@ ORDER BY kept.normalized_name COLLATE "C"
 """
 
 
-async def derive(conn: asyncpg.Connection) -> None:
-    """地点の表を入れ直す。"""
+async def derive(conn: asyncpg.Connection, *, chain_merge_radius_m: float, heritage_merge_radius_m: float,
+                 **contact_merge_radius_m: float) -> None:
+    """地点の表を入れ直す。同じチェーンは`chain_merge_radius_m`、寺社の建物は`heritage_merge_radius_m`以内でまとめ、言語違いの
+    同じ場所は群ごとの`contact_merge_radius_m_<群>`以内で寄せる（どれも較正値。`domain/tuning.py`）。"""
+    radii = [contact_merge_radius_m[f"contact_merge_radius_m_{group}"] for group in CONTACT_MERGE_GROUPS]
     started = time.perf_counter()
     async with conn.transaction():
         await conn.execute("DELETE FROM places")
         await conn.execute(_PLACES)
         read = await conn.fetchval("SELECT count(*) FROM _places")
         await conn.execute(_CONTACTS)
-        merged_by_contact = affected_rows(await conn.execute(_MERGE_BY_CONTACT))
-        merged_into_grouped = affected_rows(await conn.execute(_MERGE_INTO_GROUPED))
-        inserted = affected_rows(await conn.execute(_INSERT, MERGE_RADIUS_M))
+        await conn.execute(_CONTACT_SPANS, max(radii))
+        await conn.execute("ANALYZE _contacts; ANALYZE _contact_spans; ANALYZE _places")
+        merged_by_contact = affected_rows(await conn.execute(_MERGE_BY_CONTACT, [str(g) for g in CONTACT_MERGE_GROUPS], radii))
+        await conn.execute(_GROUPED_INDEX)
+        merged_into_grouped = affected_rows(await conn.execute(
+            _MERGE_INTO_GROUPED, chain_merge_radius_m, degrees_covering_m(chain_merge_radius_m)))
+        inserted = affected_rows(await conn.execute(_INSERT, chain_merge_radius_m))
         await conn.execute(_TEMPLE_BUILDINGS)
         temple_buildings = await conn.fetchval("SELECT count(*) FROM _temple_buildings")
-        temples = affected_rows(await conn.execute(_INSERT_TEMPLES, HERITAGE_MERGE_RADIUS_M))
+        temples = affected_rows(await conn.execute(_INSERT_TEMPLES, heritage_merge_radius_m))
         grouped = await conn.fetchval(f"SELECT count(*) FROM places WHERE {grouped_place_sql()}")
         located = await conn.fetchval("SELECT count(*) FROM places WHERE area IS NOT NULL")
     logger.info("地点: Overture の地点 %d件 → 連絡先で寄せて %d件減・群を持つ同じ店へ寄せて %d件減 → まとめて %d件、"

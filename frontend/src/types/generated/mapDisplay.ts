@@ -3,18 +3,20 @@ export const mapDisplay = {
   "overlayGroups": [
     {
       "key": "road",
-      "label": "道路"
+      "label": "道路",
+      "initialItems": 3
     },
     {
       "key": "environment",
-      "label": "天気と地形"
+      "label": "天気と地形",
+      "initialItems": 2
     },
     {
       "key": "spot",
-      "label": "スポット"
+      "label": "スポット",
+      "initialItems": 3
     }
   ],
-  "overlayGroupInitialItems": 3,
   "legendSharedRows": {
     "other": {
       "label": "その他",
@@ -212,7 +214,7 @@ export const mapDisplay = {
         "雨の降っている所と、この先の雨雲を、時刻を動かして見られます"
       ],
       "panelHint": [
-        "・60分先までは実況に近い予測、15時間先までは短時間予報、48時間先までは数値予報モデルの値で、赤は線状降水帯です。\n・数値予報モデルの計算結果で、大きな誤差を含む可能性があります。予報ではありません。\n・取得に失敗することがあります。"
+        "・60分先までは実況に近い予測、15時間先までは短時間予報、48時間先までは数値予報モデルの値です。\n・数値予報モデルの計算結果で、大きな誤差を含む可能性があります。予報ではありません。\n・取得に失敗することがあります。"
       ],
       "hideMissingRows": false,
       "segmentSeries": null
@@ -225,7 +227,7 @@ export const mapDisplay = {
       "dataNature": "dynamic",
       "drawMinZoom": null,
       "description": [
-        "風の向きと強さを、約5kmごとの矢印で見られます"
+        "風の向きと強さを、矢印で見られます"
       ],
       "panelHint": [
         "・矢印は風の吹いていく向きで、長く太いほど強い風です。\n・48時間先まで時刻で切り替えられます。\n・数値予報モデルの計算結果で、大きな誤差を含む可能性があります。予報ではありません。"
@@ -312,7 +314,8 @@ export const mapDisplay = {
       "tile": {
         "minZoom": 4,
         "maxZoom": 10,
-        "vectorLayer": null
+        "vectorLayer": null,
+        "rasterSizePx": 256
       }
     },
     {
@@ -362,7 +365,8 @@ export const mapDisplay = {
       "tile": {
         "minZoom": 4,
         "maxZoom": 10,
-        "vectorLayer": null
+        "vectorLayer": null,
+        "rasterSizePx": 256
       }
     },
     {
@@ -376,7 +380,7 @@ export const mapDisplay = {
       },
       "gridValue": null,
       "levelScale": null,
-      "description": "大雨災害発生の危険度が急激に高まっている線状降水帯の雨域[赤い輪郭線。実況〜30分先のみ]",
+      "description": "大雨災害発生の危険度が急激に高まっている線状降水帯の雨域[輪郭線。実況〜30分先のみ]",
       "legendColor": "#ff0000",
       "initiallyHidden": false,
       "jmaElements": [
@@ -405,7 +409,7 @@ export const mapDisplay = {
       },
       "gridValue": null,
       "levelScale": null,
-      "description": "大雨災害発生の危険度が急激に高まっている線状降水帯の雨域[赤い輪郭線。実況〜30分先のみ]",
+      "description": "大雨災害発生の危険度が急激に高まっている線状降水帯の雨域[輪郭線。実況〜30分先のみ]",
       "legendColor": "#ff0000",
       "initiallyHidden": false,
       "jmaElements": [
@@ -470,7 +474,8 @@ export const mapDisplay = {
       "tile": {
         "minZoom": 4,
         "maxZoom": 10,
-        "vectorLayer": null
+        "vectorLayer": null,
+        "rasterSizePx": 256
       }
     },
     {
@@ -503,7 +508,8 @@ export const mapDisplay = {
       "tile": {
         "minZoom": 4,
         "maxZoom": 10,
-        "vectorLayer": null
+        "vectorLayer": null,
+        "rasterSizePx": 256
       }
     },
     {
@@ -536,7 +542,8 @@ export const mapDisplay = {
       "tile": {
         "minZoom": 4,
         "maxZoom": 10,
-        "vectorLayer": null
+        "vectorLayer": null,
+        "rasterSizePx": 256
       }
     },
     {
@@ -569,7 +576,8 @@ export const mapDisplay = {
       "tile": {
         "minZoom": 4,
         "maxZoom": 8,
-        "vectorLayer": null
+        "vectorLayer": null,
+        "rasterSizePx": 256
       }
     },
     {
@@ -602,7 +610,8 @@ export const mapDisplay = {
       "tile": {
         "minZoom": 4,
         "maxZoom": 8,
-        "vectorLayer": null
+        "vectorLayer": null,
+        "rasterSizePx": 256
       }
     },
     {
@@ -635,7 +644,8 @@ export const mapDisplay = {
       "tile": {
         "minZoom": 4,
         "maxZoom": 10,
-        "vectorLayer": "flood"
+        "vectorLayer": "flood",
+        "rasterSizePx": null
       }
     },
     {
@@ -750,7 +760,10 @@ export const mapDisplay = {
     "membersProperty": "members"
   },
   "area": {
-    "opacity": 0.55,
+    "opacity": 0.35,
+    "landcoverOpacity": 0.55,
+    "hazardOpacity": 0.55,
+    "elevationSaturation": -0.4,
     "hillshadeIlluminationDeg": 315,
     "hillshadeMethod": "igor",
     "hillshadeExaggeration": 1,

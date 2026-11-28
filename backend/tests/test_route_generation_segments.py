@@ -74,8 +74,8 @@ async def test_a_route_ridden_on_the_wind_of_a_previous_run_is_marked(engine_ove
 
 
 async def test_the_route_rides_the_forecast_wind_lowered_to_the_rider_by_the_roughness_around_the_road(engine_over):
-    """予報は地上10mの風で、乗り手の高さでは道の周りが粗いほど弱い。北へ1km走る道の向かい風の事実は、予報の北風6m/sに
-    周りの土地被覆の粗度長の対数則の倍率（森0.23・水辺0.80）を掛けた値で、同じ道・同じ予報でも森の中のほうが速く着く。"""
+    """予報は地上10mの風で、乗り手の高さでは道の周りが粗いほど弱い。北風6m/sに向かって北へ1km走る道は、同じ道・同じ予報でも
+    森の中のほうが水辺より速く着く（倍率の値は`test_wind_height.py`が見る）。"""
     wind = replace(CALM, speed_ms=np.full_like(CALM.speed_ms, 6.0))
 
     async def ride_north(cover: str):
@@ -89,8 +89,6 @@ async def test_the_route_rides_the_forecast_wind_lowered_to_the_rider_by_the_rou
 
     forest, waterside = await ride_north("trees_percent"), await ride_north("water_percent")
 
-    assert forest.facts.axes["headwind"].value == pytest.approx(6.0 * 0.23, abs=0.06)
-    assert waterside.facts.axes["headwind"].value == pytest.approx(6.0 * 0.80, abs=0.06)
     assert forest.estimated_duration_seconds < waterside.estimated_duration_seconds
 
 
@@ -225,9 +223,8 @@ async def test_each_segment_carries_its_road_classes(engine_over):
         },
         map_layers={"kind": map_layer(0), "tunnel": map_layer(1)},
     )
-    generator = engine_over(grid_network(tunnel_ways={101}, landcover_of=landcover))
-
     with replaced_road_classes(definitions):
+        generator = engine_over(grid_network(tunnel_ways={101}, landcover_of=landcover))
         candidates = (await generator.generate_via_waypoints(
             at(SOUTH_WEST), [], destination=at(SOUTH_EAST), max_routes=3, start_time=DEPARTURE)).candidates
 
@@ -245,10 +242,21 @@ async def test_each_segment_carries_its_road_classes(engine_over):
     ]
 
 
-async def test_the_share_of_the_route_timed_without_data_is_reported(engine_over):
-    """勾配の値が無い道は平地として所要時間を出す。その距離の割合を候補が持ち、画面が利用者へ知らせる。
-    南西→南東の最速は同じ長さの2本の道で、1本目だけ値が無い。"""
-    generator = engine_over(grid_network(no_gradient_ways={100}))
+#: どの道も土地被覆の割合を持つ（試験の道路網の既定は持たない）。
+_COVERED = {way: {c.percent_field: 100.0 if c.percent_field == "built_percent" else 0.0 for c in LANDCOVER_CLASSES}
+            for way in WAYS}
+
+
+@pytest.mark.parametrize("missing", [
+    # 勾配の値が無い道は、標高の欠けを埋めて所要時間を出す。
+    {"no_gradient_ways": {100}, "landcover_of": _COVERED},
+    # 土地被覆の割合が無い道は、割合を埋めて風の高さの倍率を求める。
+    {"landcover_of": {way: cover for way, cover in _COVERED.items() if way != 100}},
+])
+async def test_the_share_of_the_route_timed_without_data_is_reported(engine_over, missing):
+    """値が欠けて埋めて所要時間を出した道の距離の割合を候補が持ち、画面が利用者へ知らせる。南西→南東の最速は同じ長さの
+    2本の道で、1本目だけ値が無い。"""
+    generator = engine_over(grid_network(**missing))
 
     candidates = (await generator.generate_via_waypoints(
         at(SOUTH_WEST), [], destination=at(SOUTH_EAST), max_routes=3, start_time=DEPARTURE)).candidates
@@ -256,10 +264,9 @@ async def test_the_share_of_the_route_timed_without_data_is_reported(engine_over
     fastest = fastest_of(candidates)
     assert ways_of(fastest)[0] == 100
     assert fastest.missing_travel_data_share == pytest.approx(0.5, abs=0.01)
-    complete = (await engine_over(grid_network()).generate_via_waypoints(
+    complete = (await engine_over(grid_network(landcover_of=_COVERED)).generate_via_waypoints(
         at(SOUTH_WEST), [], destination=at(SOUTH_EAST), max_routes=3, start_time=DEPARTURE)).candidates
     assert fastest_of(complete).missing_travel_data_share == 0.0
-
 
 
 async def test_the_duration_and_the_penalty_of_each_axis_and_of_the_preferred_and_avoided_roads_add_up_to_the_cost(

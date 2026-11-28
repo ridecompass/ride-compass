@@ -18,7 +18,7 @@ DB接続・Redis・HTTPクライアント・レート制限・ログ・デバッ
 | domain | `stopwatch.py` | ログへ出す所要時間の測り方（測り始めの`stopwatch.py: start_timer`とミリ秒の整数の`stopwatch.py: elapsed_ms`）。測り始めと終わりは同じ時計で読む |
 | domain | `strict_model.py` | 全Pydanticモデルの基底（`strict_model.py: StrictModel`）。未知のフィールドを黙って捨てず例外にする |
 | api | `admin_auth.py` | 管理API共通の認可境界 |
-| api | `failure_replies.py` | 想定した失敗（上流から取れない→502・MSMを読めない・アメダスの観測値の置き場を読めない・DBに届かない→503）を、どの口でも理由つきで返すアプリ単位の例外の扱い。ルート生成のジョブの失敗の文も同じ`api/failure_replies.py: failure_reply`で決める（下の「DB障害として扱う例外」・`fetch_upstream`の段） |
+| api | `failure_replies.py` | 想定した失敗（上流から取れない・DBに届かない等）を、どの口でも理由つきで返すアプリ単位の例外の扱い。ルート生成のジョブの失敗の文も同じ`api/failure_replies.py: failure_reply`で決める（下の「DB障害として扱う例外」・`fetch_upstream`の段） |
 | api | `admin_paths.py` | 管理APIの経路の接頭辞（認可・キャッシュの決まりが、この下の口をまとめて扱う） |
 | api | `cache_policy.py` | 応答の`Cache-Control`（パスとポリシーの対応表・付与ミドルウェア） |
 | api | `dependencies.py`（横断的な部分のみ、他は各モジュール参照） | DI工場（公開関数は注入の口だけ） |
@@ -107,31 +107,17 @@ FastAPI(lifespan=lifespan)
         ├─ (1) services/definitions_loading.py: refresh_definitions を1回呼び、道の区分 → 費用の軸の定義
         │       （[費用・材料](evaluation-scoring.md)参照）→ 較正値（[ルーティングエンジン](routing-engine.md)参照）の
         │       順に読む。費用の軸は区分から作る材料を指せるので、区分が先。費用の軸の定義の行が無いか
-        │       通らないと、ここで捕捉されず起動自体が失敗する。較正値も、宣言にあるidの行が無ければ起動しない。
-        │       起動を通らずに生成・評価を回す道具（ベンチ・scripts/）も同じ関数で読む
+        │       通らないと、ここで捕捉されず起動自体が失敗する。較正値も、宣言にあるidの行が無ければ起動しない
         ├─ (1') 全体のGCを1回回してから`gc.freeze()`で、ここまでに読み込んだオブジェクト（モジュール・定義）を
         │       恒久の世代へ移す。世代2のGCは追う全オブジェクトを走査してその間イベントループを止めるので、
         │       長生きのものを外して1回を短くする。先に集めるのは、凍らせたゴミは二度と集められないため
-        ├─ (1'') スケジューラをここで作り（アプリの寿命の間だけ動くので、モジュールの大域に持たない）、
-        │       失敗の受け口（EVENT_JOB_ERROR）を付ける（下記「定期ジョブの失敗」）
-        ├─ (2) APSchedulerでJMAアメダス定期更新ジョブを登録（interval分ごと＋
-        │       next_run_time=nowで起動直後にも1回即時実行、コールドスタート対策）
-        ├─ (3) 同じくAPSchedulerでJMA動的タイルの定期プリウォームジョブを登録
-        │       （interval=jma_tile_prewarm_interval_minutes分＋next_run_time=nowで
-        │       同様に起動直後にも即時実行、[動的気象レイヤー](weather-dynamic-layers.md)
-        │       「定期プリウォーム」節参照）
-        ├─ (4) 同じくAPSchedulerで気象庁MSM（風の予報）の.omファイル定期同期ジョブを
-        │       登録（interval=msm_sync_interval_minutes分＋next_run_time=now。初回は
-        │       ローカルにファイルが無く、完了するまでルート評価と地図の道ごとの風が使えない）
-        ├─ (5) 同じくAPSchedulerでディスク永続キャッシュの旧世代掃除ジョブを登録
-        │       （trigger="date"で起動直後に1回だけ。世代を上げたデプロイの直後がこの
-        │       タイミングに当たる、.claude/rules/caching-retention.md「無効化」参照）
-        └─ (6) 同じくAPSchedulerで地域タイルの旧世代掃除ジョブを登録（interval=24時間＋
-                next_run_time=now。世代は派生の作り直し・取込でも再起動なしに変わるため定期に回す。
-                [静的道路属性](static-road-attributes.md)「共通骨格」の旧世代の掃除）
+        └─ (1'') スケジューラをここで作り（アプリの寿命の間だけ動くので、モジュールの大域に持たない）、
+                失敗の受け口（EVENT_JOB_ERROR）を付け（下記「定期ジョブの失敗」）、定期ジョブを登録する。
+                どのジョブをどの間隔で回すかは`main.py: lifespan`が持つ。外部の値を溜めるジョブは
+                起動直後にも1回回し、次の定期実行までキャッシュが空のままにしない
         ▼
   CORSMiddleware → ContentTypeGZipMiddleware（応答のgzip圧縮）
-            → CachePolicyMiddleware（Cache-Control付与、下記「Cache-Controlの一元化」節）
+            → CachePolicyMiddleware（Cache-Control付与、下記「応答のCache-Control」）
             → request_log_middleware（アクセスログ）
             → CorrelationIdMiddleware（リクエストID付与、最も外側）
         ▼
@@ -140,9 +126,11 @@ FastAPI(lifespan=lifespan)
       yield（アプリ稼働中）
         ▼
   シャットダウン: (1) APSchedulerを停止（`wait=False`）→
-                 (2) プロセスで持ち回る接続と資源を閉じる（`process_resources.py: close_process_resources`。
+                 (2) 区切りの途中の外部呼び出しの集計を1行出す（`debug_log.py: log_window_summary`。デプロイで
+                     入れ替わる直前の分も前後の比べに残す）→
+                 (3) プロセスで持ち回る接続と資源を閉じる（`process_resources.py: close_process_resources`。
                      httpxクライアント・Redisクライアント・DBの2系統のエンジン・土地被覆ラスタ・ディスクのキャッシュ）
-                 (3) `gc.unfreeze()`。lifespanは1プロセスで何度も通りうる（テスト等）ので、通るたびに凍らせた循環のゴミを溜めない
+                 (4) `gc.unfreeze()`。lifespanは1プロセスで何度も通りうる（テスト等）ので、通るたびに凍らせた循環のゴミを溜めない
 ```
 
 - ログレベルは`debug_mode`の値でINFO/DEBUGを切り替える（`main.py`のlogging.basicConfig）。
@@ -213,7 +201,7 @@ composeのfrontendの公開先に従う値で、既定値（手元で`next dev`�
 
 DI工場はどちらの系統を使うかを、工場を受ける依存（`api/dependencies.py: TileSessions`・`api/dependencies.py: LongSessions`）の
 型で宣言し、中で工場を呼んで開かない。テストは`app.dependency_overrides`で工場を差し替える（例: DBに届かない状態）。
-HTTPの要求の外（定期ジョブ・ベンチマーク）は、工場を引数で渡して同じ開き方を使う。
+HTTPの要求の外（定期ジョブ・`backend/scripts/`の道具）は、工場を引数で渡して同じ開き方を使う。
 
 ### DB障害として扱う例外（`database.py: DB_UNAVAILABLE_ERRORS`）
 
@@ -522,3 +510,6 @@ push型更新と同じ前提）。`JobRecord`は状態ごとの型の共用体�
 - 成功はDEBUG（`debug_mode`時のみ実質出力）。
 - 集計（`/api/debug/stats`）はカテゴリ単位で呼び出し数・エラー数・キャッシュのヒット率・
   平均/最大所要時間・エラー種別ごとの件数・直近のエラー種別/時刻を持つ。
+- 同じ記録を区切りごとにも集め、`debug_log.py: log_window_summary`が前に呼んでから今までの分をカテゴリごとに1行のINFOで出して空にする
+  （呼ぶのは`main.py`の定期ジョブとアプリの終わり。行の書式と読み方は[技術スタック](../../architecture/tech-stack.md)「本番のログ」）。
+  所要は区切りの中の値を持たず、決まった刻み（`debug_log.py: LATENCY_BUCKET_UPPER_MS`）の度数だけを持つので、1区切りの記憶はカテゴリと組の数だけで決まる。

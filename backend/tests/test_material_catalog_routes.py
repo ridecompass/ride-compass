@@ -18,6 +18,7 @@ from app.infrastructure.material_coverage import (
 from app.main import app
 from app.services.material_coverage_service import MaterialCoverageService
 from tests.admin_auth import AUTH_HEADERS
+from tests.route_world import grid_network, serve_road_network
 
 client = TestClient(app)
 
@@ -41,15 +42,16 @@ class FakeCoverageQuery:
     def __init__(self, counts: MaterialCoverageCounts):
         self._counts = counts
 
-    async def get_material_coverage_counts(self) -> MaterialCoverageCounts:
+    async def get_material_coverage_counts(self, read_network) -> MaterialCoverageCounts:
         return self._counts
 
 
-def test_coverage_returns_the_report_of_counted_and_excluded_materials(admin_credentials, override):
+def test_coverage_returns_the_report_of_counted_and_excluded_materials(admin_credentials, override, road_network_root):
     counted, excluded = next(iter(MATERIAL_COVERAGE_SPECS)), next(iter(MATERIAL_COVERAGE_EXCLUSIONS))
     missing = dict.fromkeys(MATERIAL_COVERAGE_SPECS, 0) | {counted: 1}
-    counts = MaterialCoverageCounts(way_total=4, edge_total=4, missing_by_material=missing)
+    counts = MaterialCoverageCounts(way_total=4, edge_total=4, network_edge_total=4, missing_by_material=missing)
     override(get_material_coverage_service, MaterialCoverageService(FakeCoverageQuery(counts)))
+    serve_road_network(road_network_root, grid_network())
 
     response = client.get("/api/admin/material-catalog/coverage", headers=AUTH_HEADERS)
 

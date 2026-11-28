@@ -33,7 +33,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.domain.accident import PartyType
 from app.domain.material_sql import sql_literals
 from app.domain.place_search import PlaceMatchLevel
-from app.domain.traffic_regulation import RegulationSlot
+from app.domain.traffic_regulation import DAY_CODES, MINUTES_PER_DAY, OTHER_DAYS, RegulationSlot
 from app.infrastructure.orm_base import Base
 
 
@@ -317,14 +317,21 @@ def accidents_within_sql(envelope: str) -> str:
     )
 
 
-def _jsonb_text_array_sql(value: str) -> str:
-    """jsonb の文字列の配列`value`を文字列の配列へ。配列でなければ（無い・null）NULL。"""
-    return f"CASE WHEN jsonb_typeof({value}) = 'array' THEN ARRAY(SELECT jsonb_array_elements_text({value}))::varchar[] END"
+def _jsonb_text_array_sql(value: str, form: str = "e") -> str:
+    """jsonb の文字列の配列`value`を、要素`e`ごとに式`form`を通した文字列の配列へ。配列でなければ（無い・null）NULL。"""
+    return (f"CASE WHEN jsonb_typeof({value}) = 'array'"
+            f" THEN ARRAY(SELECT {form} FROM jsonb_array_elements_text({value}) e)::varchar[] END")
+
+
+#: Overture の配布のウェブサイトの書き方の揺れ（大文字・前後の空白・`http(s)://`・`www.`・末尾の`/`）を外した形。
+_OVERTURE_WEBSITE_FORM = "regexp_replace(lower(trim(e)), '^https?://(www\\.)?|^www\\.|/+$', '', 'g')"
+#: Overture の配布の電話の書き方（`+81339412222`と`03-3941-2222`の両方がある）を、数字だけの国内の形（頭の国番号を0）にしたもの。
+_OVERTURE_PHONE_FORM = "regexp_replace(regexp_replace(e, '[^0-9]', '', 'g'), '^81', '0')"
 
 
 #: Overture の地点の生データ（1件=1点）。群・チェーン・住所の判断（`domain/stop_place.py`）が読む列へ読み替える。配布の列の
 #: 入れ子（`names.primary` 等）はここだけが名指す。`categories`は分類の道筋（`taxonomy.hierarchy`。上の段から下の段への
-#: 語の並び）、ウェブサイト・電話はその文字列の配列で、どれも無ければ NULL。住所は最初の1件の都道府県・市区町村（無ければ
+#: 語の並び）、ウェブサイト・電話はその文字列の配列を書き方の揺れを外した形にしたもので、どれも無ければ NULL。住所は最初の1件の都道府県・市区町村（無ければ
 #: 空の文字列）と残り（無ければ NULL）。
 OVERTURE_PLACES_SOURCE_SQL = (
     "(SELECT natural_key AS overture_id, geom,"
@@ -332,8 +339,8 @@ OVERTURE_PLACES_SOURCE_SQL = (
     " attrs->'brand'->'names'->>'primary' AS brand,"
     " (attrs->>'confidence')::float8 AS confidence, "
     + _jsonb_text_array_sql("attrs->'taxonomy'->'hierarchy'") + " AS categories, "
-    + _jsonb_text_array_sql("attrs->'websites'") + " AS websites, "
-    + _jsonb_text_array_sql("attrs->'phones'") + " AS phones,"
+    + _jsonb_text_array_sql("attrs->'websites'", _OVERTURE_WEBSITE_FORM) + " AS websites, "
+    + _jsonb_text_array_sql("attrs->'phones'", _OVERTURE_PHONE_FORM) + " AS phones,"
     " coalesce(attrs->'addresses'->0->>'region', '') AS region,"
     " coalesce(attrs->'addresses'->0->>'locality', '') AS locality,"
     " nullif(attrs->'addresses'->0->>'freeform', '') AS freeform"
@@ -447,9 +454,32 @@ JARTIC_REGULATIONS_SOURCE_SQL = (
 )
 
 
-def _minutes(hours: str) -> int | None:
-    """規制時間（時分をつないだ数字で、先頭の0を持たない。「800」「2400」）を0:00からの分へ。空なら None。"""
-    return None if not hours else int(hours) // 100 * 60 + int(hours) % 100
+def _minutes(hours: str, *, end: bool = False) -> int | None:
+    """規制時間（時分をつないだ数字。先頭の0は書かれることも書かれないこともある。「800」「0730」「2400」）を0:00からの分へ。
+    空ならNone。終わりの0は、その日の終わり（24:00）。"""
+    if not hours:
+        return None
+    minutes = int(hours) // 100 * 60 + int(hours) % 100
+    return MINUTES_PER_DAY if end and minutes == 0 else minutes
+
+
+#: 配布が「その他」を書く綴り（説明書の共通コード表は99）。
+_OTHER_DAYS_WRITTEN = 9999
+
+
+def _days(code: str) -> int | None:
+    """規制曜日コード。空ならNone。説明書に無いコードは断る（効く日を読み違えたまま区間へ当てない）。"""
+    if not code:
+        return None
+    value = OTHER_DAYS if int(code) == _OTHER_DAYS_WRITTEN else int(code)
+    if value not in DAY_CODES:
+        raise ValueError(f"説明書に無い規制曜日コード: {code}")
+    return value
+
+
+def _month_day(text: str) -> int | None:
+    """期間（月日をつないだ数字。「719」「0401」）。空ならNone。"""
+    return int(text) if text else None
 
 
 def _has_digit(code: str, place: int) -> bool:
@@ -466,15 +496,23 @@ def _includes_bicycle(vehicles: list[str]) -> bool:
 
 
 def regulation_slots(slots_json: str) -> list[RegulationSlot]:
-    """`JARTIC_REGULATIONS_SOURCE_SQL`の`slots`（JSON の文字列）を、条件の組の値へ読み替える。"""
-    return [RegulationSlot(
-        hours_from=_minutes(slot["hours_from"]), hours_to=_minutes(slot["hours_to"]), days=bool(slot["days"]),
-        period=bool(slot["period_from"] or slot["period_to"]), vehicles=any(slot["vehicles"]),
-        vehicles_bicycle=_includes_bicycle(slot["vehicles"]),
-        except_hours=bool(slot["except_hours_from"] or slot["except_hours_to"]), except_days=bool(slot["except_days"]),
-        except_period=bool(slot["except_period_from"] or slot["except_period_to"]),
-        except_vehicles_bicycle=_includes_bicycle(slot["except_vehicles"]),
-    ) for slot in json.loads(slots_json)]
+    """`JARTIC_REGULATIONS_SOURCE_SQL`の`slots`（JSON の文字列）を、条件の組の値へ読み替える。欄が1つも書かれていない組は
+    組に数えない。対象の車両を書かない組は、車両の全部を対象とする。"""
+    slots = []
+    for slot in json.loads(slots_json):
+        if not any(slot[name] for name in _JARTIC_SLOT_COLUMNS) and not any(slot["vehicles"] + slot["except_vehicles"]):
+            continue
+        targets_bicycle = not any(slot["vehicles"]) or _includes_bicycle(slot["vehicles"])
+        slots.append(RegulationSlot(
+            applies_to_bicycles=targets_bicycle and not _includes_bicycle(slot["except_vehicles"]),
+            hours_from=_minutes(slot["hours_from"]), hours_to=_minutes(slot["hours_to"], end=True), days=_days(slot["days"]),
+            period_from=_month_day(slot["period_from"]), period_to=_month_day(slot["period_to"]),
+            except_hours_from=_minutes(slot["except_hours_from"]),
+            except_hours_to=_minutes(slot["except_hours_to"], end=True), except_days=_days(slot["except_days"]),
+            except_period_from=_month_day(slot["except_period_from"]),
+            except_period_to=_month_day(slot["except_period_to"]),
+        ))
+    return slots
 
 
 def _raster_tiles_sql(source: Source) -> str:
@@ -491,26 +529,46 @@ INGESTED_DEM_PRODUCTS_SQL = (
 
 
 def dem_tile_pixels_sql(tile: str, pixels: str) -> str:
-    """標高タイルの行`tile`（`DEM_TILES_SQL`の行の別名）の画素を1回だけ展開し、別名`pixels`の行（`vals`・`nodata`・`width`・
-    `scale`）として結ぶ句（`FROM`の後ろに置く）。点を引く式（`dem_pixel_value_sql`）はこの行を読む。
+    """標高タイルの行`tile`（`DEM_TILES_SQL`の行の別名）の画素を1回だけ展開し、別名`pixels`の行（`vals`・`nodata`・
+    `scale`）として結ぶ句（`FROM`の後ろに置く）。画素を引く式（`dem_pixel_value_sql`）はこの行を読む。
 
     **展開はタイルごとに1回にする**——点ごとに`ST_Value`で引くと、そのたびにタイル全体が読み出される。`OFFSET 0`は副問い合わせを
     平らにさせない（平らにされると、引く点ごとに展開し直す）。値の無い画素も生の値のまま受けて`nodata`と比べる（NULLを含む配列は、
-    添字で引くたびに先頭から数え直す）。幅は`attrs`が持つ——rasterから読むと、そのたびに画素が実体化される。標高は`scale`で割って
-    戻す（取込が整数へ詰めているため。尺度だけはrasterが持てない）。"""
+    添字で引くたびに先頭から数え直す）。標高は`scale`で割って戻す（取込が整数へ詰めているため。尺度だけはrasterが持てない）。"""
     return (f"CROSS JOIN LATERAL (SELECT ST_DumpValues({tile}.rast, 1, false) AS vals, ST_BandNoDataValue({tile}.rast, 1) AS nodata, "
-            f"({tile}.attrs->>'width')::int AS width, ({tile}.attrs->>'scale')::float AS scale OFFSET 0) {pixels}")
+            f"({tile}.attrs->>'scale')::float AS scale OFFSET 0) {pixels}")
 
 
-def dem_pixel_value_sql(pixels: str, fx: str, fy: str, tx: str, ty: str) -> str:
-    """展開した標高タイル（`dem_tile_pixels_sql`の行の別名`pixels`）の、タイル座標（小数）`fx`・`fy`（整数部`tx`・`ty`）に
-    当たる画素の標高（m）の式。値の無い画素はNULL。
+def dem_bilinear_corners_sql(fx: str, fy: str, product: str) -> str:
+    """製品`product`（SQLの式）のタイル座標（小数）`fx`・`fy`の点を双線形補間で引くための、まわりの4画素の行（`tx`・`ty`が
+    その画素のタイルの番地、`ix`・`iy`がタイルの中の1始まりの列・行、`w`が重み）を結ぶ句（`FROM`の後ろに置く）。重みが0の画素も
+    行に入るので、読み手が外す。
 
-    **どの画素かは算術で出す。**`ST_Intersects(rast, 点)`で絞ると当たり判定のたびにタイルの画素が実体化され、外枠だけで
-    絞ると境界線上の点が隣のタイルへ割り当たる。番地で決めれば、rasterに触らずに1画素へ確定する。"""
-    width = f"{pixels}.width"
-    return (f"NULLIF({pixels}.vals[least({width}, floor(({fy} - {ty}) * {width})::int + 1)]"
-            f"[least({width}, floor(({fx} - {tx}) * {width})::int + 1)], {pixels}.nodata) / {pixels}.scale")
+    幅は`attrs`が持つ——rasterから読むと、そのたびに画素が実体化される。製品のタイルはどれも同じ幅で取り込まれる前提で、1枚から読む。
+
+    **値は画素の中心にあるとみなす**（GraphHopper の`core/src/main/java/com/graphhopper/reader/dem/HeightTile.java`の
+    `interpolate`の分岐と同じ置き方）。最寄りの1画素で引くと、5m おきの点が画素の境をまたぐたびに値が段で変わり、平らな道に偽の
+    起伏が出る。**4画素はズームの全体の画素の番地で決めてからタイルへ割る**ので、タイルの端の点は隣のタイルの画素を読み、
+    タイルの境で値が段にならない。**どの画素かは算術で出す**——`ST_Intersects(rast, 点)`で絞ると当たり判定のたびにタイルの
+    画素が実体化される。PostGIS の`ST_Value`の`resample => 'bilinear'`は使わない——点ごとにタイル全体を読み出し、タイルの境で
+    隣のタイルを読まない。"""
+    return f"""CROSS JOIN (SELECT (t.attrs->>'width')::int AS width FROM {DEM_TILES_SQL} t
+  WHERE t.attrs->>'product' = {product} LIMIT 1) bw
+CROSS JOIN LATERAL (SELECT {fx} * bw.width - 0.5 AS gx, {fy} * bw.width - 0.5 AS gy) bp
+CROSS JOIN LATERAL (SELECT floor(bp.gx)::bigint AS x0, floor(bp.gy)::bigint AS y0) bf
+CROSS JOIN LATERAL (VALUES (0, 0), (1, 0), (0, 1), (1, 1)) bd(dx, dy)
+CROSS JOIN LATERAL (SELECT bf.x0 + bd.dx AS px, bf.y0 + bd.dy AS py,
+  (CASE bd.dx WHEN 0 THEN 1 - (bp.gx - bf.x0) ELSE bp.gx - bf.x0 END)
+  * (CASE bd.dy WHEN 0 THEN 1 - (bp.gy - bf.y0) ELSE bp.gy - bf.y0 END) AS w) bq
+CROSS JOIN LATERAL (SELECT floor(bq.px::float / bw.width)::int AS tx, floor(bq.py::float / bw.width)::int AS ty) bt
+CROSS JOIN LATERAL (SELECT bt.tx, bt.ty, (bq.px - bt.tx * bw.width)::int + 1 AS ix, (bq.py - bt.ty * bw.width)::int + 1 AS iy,
+  bq.w) bc"""
+
+
+def dem_pixel_value_sql(pixels: str, ix: str, iy: str) -> str:
+    """展開した標高タイル（`dem_tile_pixels_sql`の行の別名`pixels`）の、1始まりの列`ix`・行`iy`の画素の標高（m）の式。
+    値の無い画素はNULL。"""
+    return f"NULLIF({pixels}.vals[{iy}][{ix}], {pixels}.nodata) / {pixels}.scale"
 
 #: 土地被覆タイル（1枚=1行）。
 LANDCOVER_TILES_SQL = _raster_tiles_sql(Source.LULC)

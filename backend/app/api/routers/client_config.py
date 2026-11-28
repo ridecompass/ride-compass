@@ -7,35 +7,11 @@
 from fastapi import APIRouter, Depends
 
 from app.api.dependencies import get_region_service
-from app.domain.cycling_speed import travel_model_wording
-from app.domain.road_class_catalog import RoadClassCatalog, road_class_catalog
-from app.domain.model_settings import current_model_settings
-from app.domain.strict_model import StrictModel
-from app.domain.tuning import client_tuning_values
-from app.services.region_service import RegionService
+from app.services.region_service import ClientConfigResponse, RegionService
 
 router = APIRouter()
 
 
-class ClientConfigResponse(StrictModel):
-    # フロントが使う較正値（id → いま効いている値、`domain/tuning.py`が宣言。作り直しで効く値は作り直しに使った値）。
-    client_tuning: dict[str, float]
-    # 事故データの収録年（今の事故の数を数えた取込の宣言そのもの）。地図の説明文が範囲を書くために使う。表示側に文字列で
-    # 持つと、取り込み直したときに黙って食い違う。
-    accident_years: list[int]
-    # 道の区分（`domain/road_class_catalog.py: road_class_catalog`）。
-    road_classes: RoadClassCatalog
-    # 巡航速度から区間の速度を決める決まりの文。標準値は較正値なので、生成物でなくここで配る。
-    travel_model_wording: str
-
-
 @router.get("/api/client-config", response_model=ClientConfigResponse)
 async def get_client_config(region_service: RegionService = Depends(get_region_service)) -> ClientConfigResponse:
-    # 区分と較正値はプロセス内の値。事故の収録年と作り直しで効く較正値だけがDBを見る。
-    settings = current_model_settings()
-    return ClientConfigResponse(
-        client_tuning={**client_tuning_values(settings.tuning), **await region_service.get_rebuilt_client_tuning()},
-        accident_years=await region_service.get_accident_years(),
-        road_classes=road_class_catalog(settings.road_classes, settings.tuning),
-        travel_model_wording=travel_model_wording(settings.tuning),
-    )
+    return await region_service.get_client_config()

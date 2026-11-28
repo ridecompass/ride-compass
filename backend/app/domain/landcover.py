@@ -1,4 +1,4 @@
-"""土地被覆クラス別割合（`edge_landcover.lc_*`・`way_landcover.lc_*`）の算出。
+"""土地被覆クラス別割合（`edge_landcover.lc_*`）の算出。
 
 Esri×Impact Observatory Sentinel-2 10m Annual LULCの画素値ヒストグラム（バッチが
 道路centerline周囲のリングから集計したクラス別画素数）を、クラスごとの割合(%)へ
@@ -29,11 +29,6 @@ _LULC_RANGELAND = 11
 
 # No Data(0)・Clouds(10)は分母（有効画素数）から除外する。
 _LULC_INVALID_VALUES = frozenset({0, _LULC_CLOUDS})
-
-# これ未満の有効画素数は「値なし」（行を作らない）。統計的に安定した割合と呼べる
-# 最低限の画素数（10m画素×20 = 2,000m2程度）。
-MIN_VALID_PIXELS = 20
-
 
 @dataclass(frozen=True)
 class LandcoverClass:
@@ -165,28 +160,6 @@ LANDCOVER_TILE_MAX_ZOOM = 14
 LandcoverTileZoom = Annotated[int, Field(ge=LANDCOVER_TILE_MIN_ZOOM, le=LANDCOVER_TILE_MAX_ZOOM)]
 
 
-def class_percentages_sql(counts: str) -> str:
-    """クラスごとの画素数から割合(%)を出すSQL。
-
-    `counts`は`(osm_way_id, segment_index, cls, n)`を返す関係。有効画素数
-    （No Data・Cloudsを除いた合計）が`MIN_VALID_PIXELS`未満の区間は返らない——
-    帯がラスタの外へ大きくはみ出た・雲に覆われていた等、統計として信頼できないため。
-    """
-    invalid = ", ".join(str(v) for v in sorted(_LULC_INVALID_VALUES))
-    tally = ",\n           ".join(
-        f"sum(n) FILTER (WHERE cls = {value}) AS {landcover_key(name)}"
-        for name, value in PERCENT_CLASSES)
-    percents = ",\n       ".join(
-        f"100.0 * coalesce({landcover_key(name)}, 0) / valid_pixels AS {name}"
-        for name, _ in PERCENT_CLASSES)
-    return f"""
-WITH counted AS ({counts}),
-agg AS (
-    SELECT osm_way_id, segment_index,
-           sum(n) FILTER (WHERE cls NOT IN ({invalid}))::int AS valid_pixels,
-           {tally}
-    FROM counted GROUP BY osm_way_id, segment_index)
-SELECT osm_way_id, segment_index, valid_pixels,
-       {percents}
-FROM agg WHERE valid_pixels >= {MIN_VALID_PIXELS}
-"""
+def valid_pixel_sql(cls: str) -> str:
+    """画素値の式`cls`の画素が、割合の分母（有効画素数）に入るかのSQL式。"""
+    return f"{cls} NOT IN ({", ".join(str(v) for v in sorted(_LULC_INVALID_VALUES))})"

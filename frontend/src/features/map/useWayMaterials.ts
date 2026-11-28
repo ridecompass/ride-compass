@@ -10,6 +10,7 @@ import {
 } from "@/features/map/layers/dynamicWayValues";
 import type { WayMaterials } from "@/features/map/scene/groups/axisLines";
 import { tileQueryOptions } from "@/features/map/tileQueries";
+import { withFreshFrames } from "@/features/map/useTimeFrames";
 import type { MapLens } from "@/lib/mapDisplay/mapLens";
 import type { MapViewport } from "@/features/map/view/mapLook";
 import {
@@ -52,12 +53,19 @@ function lensMaterials(
   totalLensId: string | null,
 ) {
   const names = lens.materialConditions;
+  const frame = names.includes("at") ? conditions.lensFrame : "";
   const query: LensMaterialsQuery = {
-    ...(names.includes("at") ? { at: conditions.at.toISOString() } : {}),
+    ...(frame ? { frame } : {}),
     ...(names.includes("speed_kmh") ? { speed_kmh: conditions.speedKmh } : {}),
     ...lensPreferenceQuery(costPreference, lens.lensId, lens.lensId === totalLensId),
   };
-  return { query, fetch: (tile: TileXY) => fetchLensMaterials(lens.lensId, tile.z, tile.x, tile.y, query) };
+  // 時刻に依るレンズは、コマの一覧が届くまで取らない。届いた一覧に出発の時刻のコマが無ければ（予報の範囲の外）、今の風で
+  // 塗らずに取れないことを出す。
+  const fetch =
+    frame === null
+      ? () => Promise.reject(new Error("出発時刻の風の予報がありません"))
+      : (tile: TileXY) => withFreshFrames(fetchLensMaterials(lens.lensId, tile.z, tile.x, tile.y, query));
+  return { query, fetch, enabled: frame !== undefined };
 }
 
 /** 1つのレンズの、表示中のタイルごとの結果をまとめる。 */
@@ -115,10 +123,11 @@ export function useWayMaterials(
   return useQueries(
     {
       queries: lenses.flatMap((lens) => {
-        const { query, fetch } = lensMaterials(lens, debouncedConditions, debouncedPreference, totalLensId);
-        return tiles.map((tile) =>
-          tileQueryOptions(["way-material", "lens", lens.lensId], query, tile, () => fetch(tile)),
-        );
+        const { query, fetch, enabled } = lensMaterials(lens, debouncedConditions, debouncedPreference, totalLensId);
+        return tiles.map((tile) => ({
+          ...tileQueryOptions(["way-material", "lens", lens.lensId], query, tile, () => fetch(tile)),
+          enabled,
+        }));
       }),
       combine,
     },

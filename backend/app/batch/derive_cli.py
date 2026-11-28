@@ -35,7 +35,7 @@
 
 **作り直しの記録（作った取込・使った較正値。`derived_data_meta.py`）は、鍵（取込のソース・較正値）ごとに、
 それを使う段が全部流れたときだけ今の値にし、ほかは前回の記録を残す**（`_carried_over`）——流さなかった段の表は前回の取込・
-較正値で作ったままなので、今の値を書くと記録を読む所（事故密度の分母・地図の点のタイル等）が表と食い違う。
+較正値で作ったままなので、今の値を書くと記録を読む所（地図の点のタイル等）が表と食い違う。
 道路網の配列が読む較正値は、配列（`NETWORK`）が毎回流れるので毎回今の値になる。
 """
 
@@ -72,9 +72,17 @@ from app.batch.common import (
 )
 from app.infrastructure.tuning_overrides import load_tuning_values
 from app.infrastructure import derived_data_meta, derived_database_export, region_tile_cache, road_network_store
+from app.domain.stop_place import CONTACT_MERGE_GROUPS
 from app.domain.tuning import (
-    ACCIDENT_FATAL_WEIGHT_ID,
-    ACCIDENT_MATCH_DISTANCE_ID,
+    DIVIDED_BEARING_TOLERANCE_ID,
+    DIVIDED_GEOMETRIC_GAP_ID,
+    DIVIDED_NAMED_GAP_ID,
+    LANDCOVER_MIN_VALID_PIXELS_ID,
+    PLACE_CHAIN_MERGE_ID,
+    PLACE_HERITAGE_MERGE_ID,
+    STRUCTURE_GROUND_SEARCH_ID,
+    STRUCTURE_SLOPE_FLOOR_ID,
+    place_contact_merge_id,
     ELEVATION_PROFILE_STEP_ID,
     ELEVATION_PROFILE_TOLERANCE_ID,
     LANDCOVER_RING_INNER_ID,
@@ -116,29 +124,35 @@ class DeriveStage:
 
 STAGES: tuple[DeriveStage, ...] = (
     DeriveStage("topology", derive_topology, frozenset({Source.OSM_WAY}), (), ("road_edges", "road_ways", "road_nodes")),
-    DeriveStage("nodes", derive_nodes, frozenset({Source.OSM_NODE, Source.OSM_WAY}), ("topology",),
-                ("node_kinds", "node_turns"), {"signal_radius_m": SIGNAL_MATCH_RADIUS_ID}),
-    DeriveStage("counts", derive_counts, frozenset({Source.OSM_NODE, Source.OSM_WAY, Source.ACCIDENT}),
-                ("topology", "nodes"), ("edge_counts", "way_counts"),
-                {"cluster_distance_m": STOP_CLUSTER_DISTANCE_ID, "accident_fatal_weight": ACCIDENT_FATAL_WEIGHT_ID,
-                 "accident_match_distance_m": ACCIDENT_MATCH_DISTANCE_ID}),
+    DeriveStage("nodes", derive_nodes, frozenset({Source.OSM_NODE}), ("topology",),
+                ("node_kinds", "signal_places", "signal_place_nodes"),
+                {"signal_radius_m": SIGNAL_MATCH_RADIUS_ID, "cluster_distance_m": STOP_CLUSTER_DISTANCE_ID}),
+    DeriveStage("counts", derive_counts, frozenset({Source.OSM_NODE, Source.OSM_WAY}),
+                ("topology", "nodes"), ("edge_counts",),
+                {"cluster_distance_m": STOP_CLUSTER_DISTANCE_ID}),
     # 標高の段は、道から区間が橋かトンネルかだけを読み、その値を区間ごとに表へ残す。
     DeriveStage("elevation", derive_elevation, frozenset({Source.OSM_WAY, Source.DEM}), ("topology",), ("edge_elevation",),
-                {"profile_step_m": ELEVATION_PROFILE_STEP_ID, "profile_tolerance_m": ELEVATION_PROFILE_TOLERANCE_ID}),
-    DeriveStage("landcover", derive_landcover, frozenset({Source.LULC}), ("topology",), ("edge_landcover", "way_landcover"),
-                {"ring_outer_m": LANDCOVER_RING_OUTER_ID, "ring_inner_m": LANDCOVER_RING_INNER_ID}),
+                {"profile_step_m": ELEVATION_PROFILE_STEP_ID, "profile_tolerance_m": ELEVATION_PROFILE_TOLERANCE_ID,
+                 "structure_ground_search_m": STRUCTURE_GROUND_SEARCH_ID, "structure_slope_floor": STRUCTURE_SLOPE_FLOOR_ID}),
+    DeriveStage("landcover", derive_landcover, frozenset({Source.LULC}), ("topology",), ("edge_landcover",),
+                {"ring_outer_m": LANDCOVER_RING_OUTER_ID, "ring_inner_m": LANDCOVER_RING_INNER_ID,
+                 "min_valid_pixels": LANDCOVER_MIN_VALID_PIXELS_ID}),
     DeriveStage("traffic_regulations", derive_traffic_regulations, frozenset({Source.JARTIC_REGULATION}), ("topology",),
-                ("edge_traffic_regulations",),
+                ("traffic_regulations", "traffic_regulation_slots", "edge_traffic_regulations"),
                 {"line_half_width_m": REGULATION_LINE_HALF_WIDTH_ID, "edge_share": REGULATION_EDGE_SHARE_ID,
                  "max_angle_deg": REGULATION_MAX_ANGLE_ID}),
-    DeriveStage("directions", derive_way_directions, frozenset({Source.OSM_WAY}), ("topology",), ("way_directions",)),
+    DeriveStage("directions", derive_way_directions, frozenset({Source.OSM_WAY}), ("topology",), ("way_directions",),
+                {"named_gap_m": DIVIDED_NAMED_GAP_ID, "geometric_gap_m": DIVIDED_GEOMETRIC_GAP_ID,
+                 "bearing_tolerance_deg": DIVIDED_BEARING_TOLERANCE_ID}),
     # 住所の区画は、道路（`osm_way`）のパーティションを読まず、取込の記録から範囲だけを読む（読んだ数の見張りに出ないので、
     # 手で挙げる）。
     DeriveStage("addresses", derive_addresses, frozenset({Source.ABR, Source.ISJ_BLOCK, Source.OSM_WAY}), (),
                 ("address_areas", "address_search_keys", "address_blocks")),
     DeriveStage("places", derive_places,
                 frozenset({Source.OVERTURE_PLACE, Source.BUNKA_HERITAGE, Source.ESTAT_SMALL_AREA}), (),
-                ("places",)),
+                ("places",),
+                {"chain_merge_radius_m": PLACE_CHAIN_MERGE_ID, "heritage_merge_radius_m": PLACE_HERITAGE_MERGE_ID,
+                 **{f"contact_merge_radius_m_{group}": place_contact_merge_id(group) for group in CONTACT_MERGE_GROUPS}}),
 )
 
 
@@ -300,8 +314,8 @@ async def run(database_url: str, stages: Sequence[str] | None = None) -> int:
     try:
         runs = {row["source"]: row["run_id"] for row in await conn.fetch(LATEST_SUCCEEDED_RUNS_SQL)}
         previous = await derived_data_meta.read_records(conn)
-        # 作った取込・較正値の記録も作業用のスキーマで書く——事故密度の分母が取込の記録から読まれ、作業用の
-        # スキーマから作る道路網の配列も数と同じ取込の年で割り、記録した較正値で読むため。どの記録も派生の表と一緒に入れ替わる。
+        # 作った取込・較正値の記録も作業用のスキーマで書く——作業用のスキーマから作る道路網の配列も、記録した較正値で読むため。
+        # どの記録も派生の表と一緒に入れ替わる。
         tables = [*(table for stage in ran for table in stage.tables), *derived_data_meta.RECORD_TABLES]
         await _create_work_tables(conn, tables)
         done = [stage.name for stage in ran]

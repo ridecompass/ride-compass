@@ -1,14 +1,13 @@
 import { expect, test } from "@playwright/test";
 import {
   MOBILE_VIEWPORT,
-  clickFeature,
   doneJobFixture,
   generateRoutes,
   openMobileApp,
   routeGenerateResponseFixture,
 } from "./fixtures";
 
-// 生成した「ルート結果」の、地図とグラフの置き方と、地図で押した区間の小窓（パターン4 観点1〜3）。
+// 生成した「ルート結果」の、地図とグラフの置き方（パターン4 観点1〜3）。地図で押した区間の小窓は`e2e/segment-popup.spec.ts`が見る。
 
 // 観点1（収まる）: 生成したルートを地図へ収めると、開いた「ルート結果」のシートに隠れず、その上の見えている所に描かれる。
 // 地図がどこまで覆われているかは実寸でしか決まらない（シートの高さは中身に合わせて決まる）。
@@ -185,23 +184,4 @@ test.describe("タッチ端末", () => {
     await drag({ x: moved.x + moved.width * 0.2, y: row }, { x: moved.x + moved.width * 0.6, y: row });
     await expect(sheet.getByRole("button", { name: "区間を地図で見る" })).toBeVisible();
   });
-});
-
-// 観点3（カスケードの勝ち負け）: 地図で押した区間の小窓の×は、MapLibreの既定の大きさに負けず、指で押せる幅32px・高さ44pxを持つ。
-// ×の寸法はMapLibreのCSSとアプリのCSSの勝ち負けで決まり、実ブラウザでしか決まらない。
-test("モバイル: 地図で押した区間の小窓の×は、幅32px・高さ44pxの押す所を持つ", async ({ page }) => {
-  await openMobileApp(page);
-  await generateRoutes(page);
-  // 「ルート結果」を閉じて見るだけの間にすると、押した区間の中身を小窓に出す。
-  await page.getByRole("button", { name: "ルート結果", exact: true }).click();
-  await expect(page.getByRole("dialog", { name: "ルート結果" })).toBeHidden();
-  await expect
-    .poll(() => page.evaluate(() => !window.__liveMap().isMoving() && window.__liveMap().loaded()), { timeout: 15_000 })
-    .toBe(true);
-
-  await clickFeature(page, "routeSegment");
-
-  const popup = page.locator(".maplibregl-popup", { has: page.getByRole("group", { name: "区間の小窓の上の帯" }) });
-  const close = (await popup.locator(".maplibregl-popup-close-button").boundingBox())!;
-  expect([close.width, close.height]).toEqual([32, 44]);
 });

@@ -17,7 +17,10 @@ from app.infrastructure.region_tile_cache import discard_region_tiles
 from app.infrastructure.point_tile_layers import POINT_TILE_LAYERS
 from app.infrastructure.vector_tile import ROAD_SURFACE_LAYER_NAME, encode_empty_tile
 from app.services.region_service import RegionService
-from tests.route_world import grid_network, serve_road_network
+from app.domain.region import ROAD_TILE_MIN_ZOOM
+from app.domain.time_frames import StaleTimeFrameError
+from app.services.time_frame_service import TimeFrameService, new_frame_cache
+from tests.route_world import Weather, grid_network, serve_road_network
 
 
 Z, X, Y = 14, 14551, 6447
@@ -30,18 +33,15 @@ class _TileRepository:
     def __init__(self, tile: bytes | None = None):
         self.tile = tile
 
-    async def get_road_surface_tile_mvt(self, z, x, y, bbox, layer_values):
+    async def get_road_surface_tile_mvt(self, z, x, y, bbox, feature_keys, shapes, layer_values):
         return self.tile
-
-    async def get_tile_features(self, z, x, y, bbox):
-        return []
 
     async def get_tile_mvt(self, sql, layer_name, z, x, y, bbox):
         return self.tile
 
 
-def _road_surface_tile(service):
-    return service.get_road_surface_tile(Z, X, Y)
+def _road_surface_tile(service, frame=None):
+    return service.get_road_surface_tile(Z, X, Y, frame, TimeFrameService(Weather(), new_frame_cache()))
 
 
 def _point_tile(service):
@@ -72,6 +72,21 @@ async def test_a_baked_tile_is_served_from_disk_until_the_region_tiles_are_disca
     discard_region_tiles()
 
     assert (kept, await _road_surface_tile(service)) == (b"first", b"second")
+
+
+async def test_a_tile_of_a_frame_outside_the_current_frames_is_refused(road_network_root):
+    """終わったコマ・作り直す前の道路網のコマの印では焼かない（前の効き方で焼いたタイルを今のものとして配らない）。時刻を読まない
+    引いたズームのタイルは印を確かめず、時刻で変わらない規制だけで焼く（古い印でも道の線を消さない）。"""
+    serve_road_network(road_network_root, grid_network())
+    service = RegionService(repository=_TileRepository(tile=b"tile"))
+    time_frames = TimeFrameService(Weather(), new_frame_cache())
+
+    def tile(z: int) -> tuple[int, int, int]:
+        return z, X >> (Z - z), Y >> (Z - z)
+
+    with pytest.raises(StaleTimeFrameError):
+        await service.get_road_surface_tile(*tile(ROAD_TILE_MIN_ZOOM), "0-unknown", time_frames)
+    assert await service.get_road_surface_tile(*tile(ROAD_TILE_MIN_ZOOM - 1), "0-unknown", time_frames) == b"tile"
 
 
 # --- 道の窓 ---

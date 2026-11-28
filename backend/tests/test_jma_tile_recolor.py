@@ -12,7 +12,7 @@ import io
 import pytest
 from PIL import Image, ImageColor
 
-from app.domain.map_display import AREA_OPACITY
+from app.domain.map_display import HAZARD_OPACITY
 from app.domain.weather_display import (
     ATTENTION_LEVEL_OPACITY,
     PRECIPITATION_COLOR_STOPS,
@@ -78,7 +78,7 @@ def test_attention_levels_are_thinned_and_painted_levels_are_kept(path, tile, le
         if level.painted:
             assert pixel[3] == 255
         else:
-            assert pixel[3] / 255 * AREA_OPACITY == pytest.approx(ATTENTION_LEVEL_OPACITY, abs=0.005)
+            assert pixel[3] / 255 * HAZARD_OPACITY == pytest.approx(ATTENTION_LEVEL_OPACITY, abs=0.005)
 
 
 def test_attention_pixels_already_fainter_than_the_target_stay_faint():
@@ -91,11 +91,16 @@ def test_attention_pixels_already_fainter_than_the_target_stay_faint():
     assert pixels(recolored(THUNDER, buffer.getvalue()))[0][3] == 20
 
 
-def test_colors_missing_from_the_level_table_are_served_as_they_came(caplog):
-    """段の表に色の無い画素（配信元の配色の変更・まだ測れていない段）は塗り替えず、警告を出す。"""
-    content = rgba_tile(["#123456"])
+def test_colors_missing_from_the_level_table_are_read_as_the_nearest_level_and_warned(caplog):
+    """段の表の測った色に無い画素（配信元の配色の変更・まだ測れていない段）は、いちばん近い色の段として扱い（画面の範囲の印と
+    同じ段）、警告を出す。"""
+    attention = next(level for level in THUNDER_ACTIVITY_LEVELS if not level.painted)
+    red, green, blue = ImageColor.getrgb(attention.tile_color)
+    near_attention = f"#{red - 2:02x}{green - 2:02x}{blue + 2:02x}"
+    painted = rgba_tile(["#123456"])
 
-    assert recolored(THUNDER, content) == content
+    assert recolored(THUNDER, painted) == painted
+    assert pixels(recolored(THUNDER, rgba_tile([near_attention])))[1][3] < 255
     assert "missing from the level table" in caplog.text
 
 

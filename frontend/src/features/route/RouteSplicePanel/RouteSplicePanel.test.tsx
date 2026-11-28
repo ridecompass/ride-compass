@@ -2,13 +2,12 @@
  * `RouteSplicePanel/RouteSplicePanel.tsx`——区間の乗り換えの結果面。見出し行の操作、元と編集後の指標、軸別の差の棒、案内。
  *
  * 見るもの: 見出し（戻る・回数）と操作（1つ戻す・全部戻す・差分・作成）の出し方・押せる条件・上がる操作、区間を
- * 持たない候補の書き方、指標（距離・所要・負担）の元・編集後・差の書き方と、表示する桁で丸めた差で決める
- * 良し悪しの印、負担が動いた軸の棒（出す境界・読み上げの並び・左右・長さ）と下に書く大きい軸、状態ごとの案内、
+ * 持たない候補の書き方、指標（距離・所要・負担）の元・編集後・差の書き方と、編集後と差に付ける良し悪しの印、負担が動いた軸の棒（出す境界・読み上げの並び・左右・長さ）と下に書く大きい軸、状態ごとの案内、
  * 既にある候補と同じ道であることの知らせとその候補への切り替え、合成の失敗。
  *
  * ここで見ないもの: どの区間を乗り換えるか → `features/route/useSpliceSession.test.ts`、差分と作成の評価 →
  * `features/route/useSpliceSession.preview.test.ts`・`features/route/useSpliceSession.apply.test.ts`。
- * 差の表記（符号・桁）→ `features/route/routeEditDiff.test.ts`。所要の表記 → `lib/duration.test.ts`。
+ * 差の表記（符号・桁）と、どの差にどの印を付けるか → `features/route/routeEditDiff.test.ts`。所要の表記 → `lib/duration.test.ts`。
  * 良し悪しの印から付く色（クラスで付ける見た目）。受け取った値や書いた文をそのまま出すもの（棒の軸の色・(i)の奥の使い方）。
  */
 import { render, screen, within } from "@testing-library/react";
@@ -162,7 +161,7 @@ describe("RouteSplicePanel 指標", () => {
     }
   });
 
-  it("差分を見たら元→編集後と差を出し、表示する桁で丸めた差が増えたら悪い・減ったら良い印を付ける", () => {
+  it("差分を見たら元→編集後と差を出し、編集後と差に差の増減の印を付ける", () => {
     const preview = makeRouteCandidate({
       edge_ids: ["e1", "e4", "e3"],
       distance_km: 13,
@@ -173,14 +172,15 @@ describe("RouteSplicePanel 指標", () => {
 
     const rows = ["距離", "所要", "負担"].map((label) => {
       const { arrow, after, delta } = metric(label);
-      return [label, arrow.textContent, after.textContent, delta.textContent, verdict(after), verdict(delta)];
+      return [label, arrow.textContent, after.textContent, delta.textContent];
     });
     expect(rows).toEqual([
-      ["距離", "→", "13.0km", "+0.7", "悪い", "悪い"],
-      ["所要", "→", "25分", "−5", "良い", "良い"],
-      // 負担の差20秒は分へ丸めると0になるので、良し悪しを言わない。
-      ["負担", "→", "18分", "±0", "なし", "なし"],
+      ["距離", "→", "13.0km", "+0.7"],
+      ["所要", "→", "25分", "−5"],
+      ["負担", "→", "18分", "±0"],
     ]);
+    const { after, delta } = metric("距離");
+    expect([verdict(after), verdict(delta)]).toEqual(["悪い", "悪い"]);
   });
 
   it("元の値が無い指標は「—」を出し、差を出さない", () => {

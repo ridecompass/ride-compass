@@ -14,9 +14,9 @@ from app.domain.attributes import CategoricalColumn
 from app.domain.geo import bearings_between, haversine_distance_km_pairs
 from app.domain.material_catalog import GRADIENT_PERCENT
 from app.domain.road_network import RoadNetwork
-from app.domain.road_network_build import EdgelessWays, build_road_network
+from tests.profile_fixture import MAX_GRADE, STEEPEST_MIN_INTERVAL_M
+from app.domain.road_network_build import NetworkRegulations, build_road_network, regulation_arrays
 from app.domain.traffic import highway_rank
-from tests.tuning_fixture import TUNING
 
 
 @dataclass(frozen=True)
@@ -38,13 +38,15 @@ def road_network(
     segments: Mapping[tuple[int, int], tuple[int, int]],
     *, oneway: Sequence[tuple[int, int]] = (), backward: Sequence[tuple[int, int]] = (), elevation_of: Mapping[tuple[int, int], tuple[float, float]] | None = None,
     numeric: Mapping[str, NumericMaterial] | None = None, categorical: Mapping[str, CategoricalMaterial] | None = None,
-    signal_nodes: Sequence[int] = (), edgeless: EdgelessWays | None = None, revision: int = 1,
+    signal_nodes: Sequence[int] = (), revision: int = 1,
+    regulations: NetworkRegulations | None = None,
 ) -> RoadNetwork:
     """`coordinates`はノード（osm_node_id → (緯度, 経度)）、`segments`は区間（(道, 区間番号) → (始点, 終点)のノード）。
 
     `oneway`の区間は始点→終点の向きだけを、`backward`の区間は終点→始点の向きだけを持つ。`elevation_of`（区間 → (始点, 終点)の標高m）の区間だけ標高を持ち、
     ほかは標高も勾配の値も無い。`numeric`・`categorical`は材料のid → 行ごとの値。集まる道の本数は、区間の端として
-    現れる回数。`edgeless`は区間を持たない道（材料の列は`numeric`の順に`GRADIENT_PERCENT`を足した並びと、`categorical`の並び）。"""
+    現れる回数。
+    `regulations`は区間に当たった交通規制（省くとどの区間にも当たらない）。"""
     node_ids = np.array(sorted({osm for pair in segments.values() for osm in pair}), dtype=np.int64)
     row_of = {int(osm): i for i, osm in enumerate(node_ids)}
     lat = np.array([coordinates[int(osm)][0] for osm in node_ids], dtype=np.float64)
@@ -78,8 +80,10 @@ def road_network(
     classes = {name: CategoricalColumn.encode(values(rows)) for name, values in (categorical or {}).items()}
 
     return build_road_network(
-        revision=revision, stop_cluster_distance_m=TUNING["stop.cluster_distance_m"],
-        node_osm_id=node_ids, node_lat=lat, node_lon=lon, node_has_signals=np.isin(node_ids, list(signal_nodes)),
+        revision=revision, node_osm_id=node_ids, node_lat=lat, node_lon=lon, max_grade=MAX_GRADE,
+        steepest_min_interval_m=STEEPEST_MIN_INTERVAL_M,
+        # 信号の頂点は、それぞれ別の信号の交差点に入る。
+        node_signal_place=np.where(np.isin(node_ids, list(signal_nodes)), np.arange(len(node_ids)), -1).astype(np.int32),
         node_branch_count=np.bincount(
             [row_of[osm] for pair in segments.values() for osm in pair], minlength=len(node_ids)).astype(np.int16),
         edge_way_id=rows.way, edge_segment=rows.segment, edge_forward=rows.forward, edge_from=tail, edge_to=head,
@@ -93,9 +97,9 @@ def road_network(
         else np.zeros((len(directed), 0), dtype=np.int16),
         categorical_vocab=tuple(c.vocab for c in classes.values()),
         distance_m=distance_m, bearing_deg=bearing,
+        **regulation_arrays(rows.way, rows.segment, regulations or NetworkRegulations.none())[0],
         mid_lat=(lat[tail] + lat[head]) / 2, mid_lon=(lon[tail] + lon[head]) / 2,
         edge_profile_start=profile_start[owner], edge_profile_points=profile_points[owner],
         profile_elevation_m=along[profile_points > 0].ravel().astype(np.float32),
         profile_position=np.tile(np.array([0.0, 1.0], dtype=np.float32), int((profile_points > 0).sum())),
-        edgeless=edgeless,
     )

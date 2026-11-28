@@ -28,6 +28,7 @@ import { cn } from "@/lib/cn";
 import { textVariants } from "@/components/ui/Text/Text";
 import { calloutVariants } from "@/components/ui/Callout/Callout";
 import { COST_AXIS_CATALOG_LABEL } from "@/services/costAxisCatalogApi";
+import routeGenerateConfig from "@/types/generated/route-generate-config.json";
 
 // 部品にせず関数で描く。部品の本体で`axisIconFor`の戻りを描くとreact-hooks/static-componentsが誤検知し、
 // パネルの本体の中で部品を定義すると、描き直しのたびにアイコンが作り直される。
@@ -93,9 +94,9 @@ export default function RouteSettingsPanel({ costPreference, onCostPreferenceCha
           <InfoPopover triggerAriaLabel="全体の説明">
             <GuideText
               text={[
-                "所要時間に足す負担の全部を、どれだけの割合で数えるかを決めます。",
-                `・負担は、平地を走るより余分にかかるもの${costAxisNamesNote(catalog)}を時間に直したものです。`,
-                "・道は、所要時間と、この割合を掛けた負担との和が小さくなるように選びます。",
+                "負担の全部を、どれだけの割合で数えるかを決めます。",
+                `・負担${costAxisNamesNote(catalog)}は、${routeGenerateConfig.penalty_wording}です。`,
+                `・道は、${routeGenerateConfig.cost_wording}が小さくなるように選びます。`,
                 `・${STANDARD_LABEL} が標準で、大きくすると所要時間が延びても負担の小さい道を選びやすくなります。`,
                 `・${DISABLED_LABEL}にすると負担を数えず、所要時間だけで選びます[結果にも地図にも負担を出しません]。`,
                 "・下の種類ごとの割合は、この割合にさらに掛かります。",
@@ -105,7 +106,7 @@ export default function RouteSettingsPanel({ costPreference, onCostPreferenceCha
         </span>
         <LevelScale
           aria-label="全体の割合"
-          usage="所要時間に足す負担の全部を、どれだけの割合で数えるかを選びます。"
+          usage="負担の全部を、どれだけの割合で数えるかを選びます。"
           levels={STRENGTH_SCALE}
           value={String(costPreference.strength)}
           onChange={(key) => onCostPreferenceChange({ ...costPreference, strength: Number(key) })}

@@ -18,16 +18,10 @@ from hypothesis import strategies as st
 from hypothesis.extra.numpy import arrays
 from PIL import Image
 
-from app.infrastructure.gsi_dem_png import read_gsi_dem_png, terrain_rgb_png
 from tests.source_ingest import gsi_dem_png
-from tests.tile_images import encode
+from tests.tile_images import encode, terrain_rgb
 
 GSI_NO_DATA = (128, 0, 0)
-
-
-def _terrain_rgb(png: bytes) -> bytes:
-    """地理院の標高タイル1枚をTerrain-RGBのPNGにする。"""
-    return terrain_rgb_png(*read_gsi_dem_png(png))
 
 
 def terrain_rgb_meters(png: bytes) -> np.ndarray:
@@ -40,7 +34,7 @@ def terrain_rgb_meters(png: bytes) -> np.ndarray:
 # 日本の湖底（−400m程度）から富士山頂（3776m）までを余裕を持って覆う。
 @given(arrays(np.int64, (3, 4), elements=st.integers(min_value=-100_000, max_value=500_000)))
 def test_every_elevation_reads_back_to_the_nearest_tenth_of_a_metre(centimeters):
-    meters = terrain_rgb_meters(_terrain_rgb(gsi_dem_png((centimeters / 100).tolist())))
+    meters = terrain_rgb_meters(terrain_rgb(gsi_dem_png((centimeters / 100).tolist())))
 
     np.testing.assert_allclose(meters, centimeters / 100, atol=0.05 + 1e-6)
 
@@ -48,6 +42,6 @@ def test_every_elevation_reads_back_to_the_nearest_tenth_of_a_metre(centimeters)
 def test_a_pixel_without_elevation_becomes_sea_level_not_a_cliff():
     rgb = np.array([[GSI_NO_DATA]], dtype=np.uint8)
 
-    meters = terrain_rgb_meters(_terrain_rgb(encode(Image.fromarray(rgb, mode="RGB"))))
+    meters = terrain_rgb_meters(terrain_rgb(encode(Image.fromarray(rgb, mode="RGB"))))
 
     np.testing.assert_allclose(meters, [[0.0]], atol=1e-6)

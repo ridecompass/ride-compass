@@ -11,6 +11,7 @@ import numpy as np
 from pydantic import PlainSerializer
 
 from app.domain.geo import COORDINATE_DECIMALS
+from app.domain.region import BoundingBox
 from app.domain.strict_model import StrictModel
 from app.domain.time_zone import jst_local_text
 
@@ -18,6 +19,7 @@ from app.domain.time_zone import jst_local_text
 MSM_GRID_MAX_POINTS = 600
 #: 1回に読む矩形の広さの上限[平方度]。読む量は、間引く前の矩形の中の格子点の数に比例する。
 MSM_GRID_MAX_AREA_SQ_DEG = 100.0
+
 #: 地図がこのズーム未満の間は格子点を取らない。
 MSM_GRID_MIN_ZOOM = 8
 
@@ -28,6 +30,12 @@ TEMPERATURE_C_DECIMALS = 1
 
 #: 予報の時刻の欄の形。JSTのローカル時刻を分までのISO文字列（タイムゾーン指定なし）で出す。画面の時刻の読み方と揃える。
 ForecastTime = Annotated[datetime, PlainSerializer(jst_local_text, return_type=str)]
+
+
+def within_msm_grid_area(bbox: BoundingBox) -> bool:
+    """`bbox`の広さ[平方度]が、1回に読む矩形の上限に収まるか。"""
+    width = bbox.max_longitude - bbox.min_longitude
+    return (bbox.max_latitude - bbox.min_latitude) * width <= MSM_GRID_MAX_AREA_SQ_DEG
 
 
 def rounded_rows(values: np.ndarray, digits: int) -> list[list[float | None]]:

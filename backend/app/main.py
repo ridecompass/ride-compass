@@ -16,6 +16,7 @@ from app.api.dependencies import get_amedas_service, get_jma_tile_prewarm
 from app.api.routers import api_router
 from app.config import settings
 from app.infrastructure.database import get_session_factory
+from app.infrastructure.debug_log import log_window_summary
 from app.infrastructure.debug_control import install_ring_buffer_handler
 from app.infrastructure.http_client import get_http_client
 from app.infrastructure import region_tile_cache, road_network_store
@@ -24,9 +25,8 @@ from app.infrastructure.process_resources import close_process_resources
 from app.infrastructure.request_log import format_log_lines, request_log_middleware
 from app.infrastructure.response_compression import ContentTypeGZipMiddleware
 from app.infrastructure.jma_amedas_client import AMEDAS_REFRESH_INTERVAL_MINUTES
-from app.domain.model_settings import current_model_settings
 from app.services.definitions_loading import refresh_definitions
-from app.services.graph_service import network_burden_fills
+from app.services.graph_service import warm_road_network
 
 logging.basicConfig(level=logging.DEBUG if settings.debug_mode else logging.INFO)
 for _handler in logging.getLogger().handlers:
@@ -84,10 +84,8 @@ async def _sync_msm_job() -> None:
 
 
 async def _warm_road_network_job() -> None:
-    """道路網の置き場が入れ替わっていれば読み直し、取込範囲全体の区分の列と道のストレスの軸の欠けを埋める平均を求めておく。
-    派生を作り直した直後の最初の要求（ルート生成・地図のレンズ）が、取込範囲全体を数える時間を待たない。"""
-    network = await asyncio.to_thread(road_network_store.current)
-    await asyncio.to_thread(network_burden_fills, network, current_model_settings().cost_axes)
+    """派生を作り直した直後の最初の要求（ルート生成・地図のレンズ）が、取込範囲全体を数える時間を待たない。"""
+    await asyncio.to_thread(warm_road_network)
 
 
 async def _prune_stale_disk_generations_job() -> None:
@@ -158,10 +156,14 @@ async def lifespan(app: FastAPI):
         run_date=datetime.now(),
         id="prune_stale_disk_generations",
     )
+    # 時計の10分ちょうどで区切り、本番のログの行が同じ区切りで並ぶようにする。
+    scheduler.add_job(log_window_summary, trigger="cron", minute="*/10", id="log_window_summary")
     scheduler.start()
     yield
     # 先に定期ジョブを止める。逆にすると、閉じたあとに走り出したジョブが閉じたクライアントで外部を呼ぶ。
     scheduler.shutdown(wait=False)
+    # デプロイで入れ替わる直前の区切りの分も、前後の比べに残す。
+    log_window_summary()
     await close_process_resources()
     # lifespanは1プロセスで何度も通りうる（テスト等）。凍らせたものを戻し、通るたびに循環のゴミが溜まらないようにする。
     gc.unfreeze()

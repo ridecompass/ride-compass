@@ -5,9 +5,10 @@
 """
 
 from collections import Counter
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from typing import Literal, NamedTuple, get_args
 
+from app.domain.geo import COORDINATE_DECIMALS
 from app.domain.landcover import LANDCOVER_TILE_MIN_ZOOM
 from app.domain.msm_grid import MSM_GRID_MIN_ZOOM
 from app.domain.place_search import ADDRESS_AREA_ATTRIBUTIONS
@@ -27,6 +28,8 @@ from app.domain.weather_elements import (
 class OverlayGroup(NamedTuple):
     key: str
     label: str
+    #: 「表示」の一覧に、並びの先頭から最初に並べる項目の数。残りは利用者がこの群で選んで足す。
+    initial_items: int
 
 
 class LayerCategory(NamedTuple):
@@ -35,15 +38,15 @@ class LayerCategory(NamedTuple):
     group: str
 
 
+#: 道路のまとまり。
+ROAD_OVERLAY_GROUP = OverlayGroup("road", "道路", initial_items=3)
+
 #: 並びがそのまま「表示」の一覧の群の並び順になる。
 MAP_OVERLAY_GROUPS: tuple[OverlayGroup, ...] = (
-    OverlayGroup("road", "道路"),
-    OverlayGroup("environment", "天気と地形"),
-    OverlayGroup("spot", "スポット"),
+    ROAD_OVERLAY_GROUP,
+    OverlayGroup("environment", "天気と地形", initial_items=2),
+    OverlayGroup("spot", "スポット", initial_items=3),
 )
-
-#: 「表示」の一覧に、どの群も並びの先頭から最初に並べる項目の数。残りは利用者が群ごとに選んで足す。
-OVERLAY_GROUP_INITIAL_ITEMS = 3
 
 
 class _LegendSharedRow(NamedTuple):
@@ -111,7 +114,7 @@ MapLayerDataNature = Literal["raw", "dynamic"]
 MAP_LAYER_DATA_NATURES: tuple[str, ...] = get_args(MapLayerDataNature)
 
 #: レイヤーの種別と、属するグループ。**種別を1つ足すときは必ず所属も決まる**。並びが群の中の並びで、よく使う種別を先に
-#: 置く（群の先頭から`OVERLAY_GROUP_INITIAL_ITEMS`件が最初に一覧へ並ぶ）。
+#: 置く（群の先頭から`OverlayGroup.initial_items`件が最初に一覧へ並ぶ）。
 MAP_LAYER_CATEGORIES: tuple[LayerCategory, ...] = (
     LayerCategory("roadCondition", "road"),
     LayerCategory("weather", "environment"),
@@ -410,7 +413,7 @@ _LAYER_SPECS: dict[str, MapLayerSpec] = {
         description=("雨の降っている所と、この先の雨雲を、時刻を動かして見られます",),
         panel_hint=(
             f"・{_NOWCAST_REACH}先までは実況に近い予測、{_SHORT_RANGE_REACH}先までは短時間予報、"
-            f"{_MSM_REACH}先までは数値予報モデルの値で、赤は線状降水帯です。\n・{MODEL_VALUE_DISCLAIMER}\n"
+            f"{_MSM_REACH}先までは数値予報モデルの値です。\n・{MODEL_VALUE_DISCLAIMER}\n"
             "・取得に失敗することがあります。",
         ),
     ),
@@ -420,7 +423,7 @@ _LAYER_SPECS: dict[str, MapLayerSpec] = {
         "weather",
         data_nature="dynamic",
         label="風",
-        description=("風の向きと強さを、約5kmごとの矢印で見られます",),
+        description=("風の向きと強さを、矢印で見られます",),
         panel_hint=(
             "・矢印は風の吹いていく向きで、長く太いほど強い風です。\n"
             f"・{_MSM_REACH}先まで時刻で切り替えられます。\n・{MODEL_VALUE_DISCLAIMER}",
@@ -571,9 +574,15 @@ ROUTE_ARROW_HALO_SCALE = 1.5
 ROUTE_ARROW_SIZE_BY_ZOOM = zoom_curve((10, 0.6), (13, 0.8), (16, 1.2), (19, 1.6))
 
 
-#: 面の濃さ。下限は「最も薄い階級が背景に対してΔE（CIE76）15以上」、上限は面の下にある
-#: 土地の塗りが潰れない範囲。**上下から挟まれている**ので片側だけを見て動かさない。
-AREA_OPACITY = 0.55
+#: 面の濃さ（雨・色別標高図）。下限は最も薄い段が地からΔE（CIE76）15以上、上限は面の下の土地の塗り（水面・公園・建物）が
+#: 見分けられる範囲。**上下から挟まれている**ので片側だけを見て動かさない。
+AREA_OPACITY = 0.35
+#: 土地被覆の面の濃さ。分類を色で読む層なので、ほかの面より濃い。
+LANDCOVER_OPACITY = 0.55
+#: 段で塗る災害の面の濃さ。すぐ身を守る行動を求める段だけを塗る層なので、ほかの面より濃い。
+HAZARD_OPACITY = 0.55
+#: 色別標高図の彩度の下げ（MapLibreの`raster-saturation`。-1で灰）。配信元の色は彩度が高く、濃さだけでは道と地名より目立つ。
+ELEVATION_SATURATION = -0.4
 
 #: 陰影。北西からの斜め光（真上からだと起伏が出ない）。`igor`は傾きのarctanに比例する
 #: ——既定の`standard`はsinに比例し、平野部の数度では実効の濃さが0.03を下回って見えない。
@@ -583,8 +592,9 @@ HILLSHADE_METHOD = "igor"
 HILLSHADE_EXAGGERATION = 1
 #: 陰影の濃さは影・光の色のalphaで渡す（hillshadeは不透明度のプロパティを持たない）。傾きが0の画素は
 #: 影も光も出ないため、上げても平地は濁らない。
-HILLSHADE_SHADOW_COLOR = f"rgba(60, 50, 40, {AREA_OPACITY})"
-HILLSHADE_HIGHLIGHT_COLOR = f"rgba(255, 252, 245, {AREA_OPACITY})"
+_HILLSHADE_ALPHA = 0.55
+HILLSHADE_SHADOW_COLOR = f"rgba(60, 50, 40, {_HILLSHADE_ALPHA})"
+HILLSHADE_HIGHLIGHT_COLOR = f"rgba(255, 252, 245, {_HILLSHADE_ALPHA})"
 #: 標高の強調。**タイルの値は実際の標高のままで、読み方（復元式の係数）へ掛ける**
 #: ——タイル側を書き換えると、同じタイルを別の倍率で読み直せなくなる。
 #: 上げるほど緩い斜面が読めるが、上げすぎると急斜面との差が潰れる。
@@ -650,6 +660,54 @@ POINT_MEMBERS_PROPERTY = "members"
 #: 区間を選んでいる間、地図の点のうち区間の近くに数える、区間の線からの地上の距離（m）。
 SEGMENT_NEARBY_POINT_MAX_DISTANCE_M = 100.0
 
+
+
+def point_cluster_sql(points: str, envelope: str, cells: str, rows: tuple[str, ...], properties: tuple[str, ...],
+                      preference: str, place: Callable[[str], str]) -> str:
+    """タイルの中の点を、凡例の行ごと・升目ごとに1つの代表点へ束ねた行を返すSQL。
+
+    `points`はタイルの中の点の行を返すSQLで、列`geom`（経度・緯度の点）・`name`（名前。無ければNULL）と、`rows`
+    （凡例の行を決める列）・`properties`（代表点が出す列）・`preference`（代表点の選び順の式。列は`celled.`で読む）が読む列を持つ。
+    升目はタイル`envelope`（EPSG:3857の矩形の式）の一辺を`cells`（式）等分したもの。返す行は、列`geom`（代表点の EPSG:3857 の
+    点の式を`place`へ通したもの）・`properties`・`name`と、束ねた点の数`POINT_COUNT_PROPERTY`・束ねた点`POINT_MEMBERS_PROPERTY`を持つ。
+
+    行をまたいで束ねない——凡例で行を隠したときに、代表点ごと消えたり件数が合わなくなったりする。代表点は束ねた点の1つで、
+    重心へ動かさない（名前と位置で外の地図を開く）。選び順が同じ点は、経度・緯度の小さい方を選ぶ。
+    """
+    row_columns = ", ".join(f"celled.{c}" for c in rows)
+    selected = ", ".join(f"celled.{c} AS {c}" for c in properties)
+    return f"""
+        WITH points AS ({points}),
+        grid AS (
+            SELECT {envelope} AS env, {cells} AS cells
+        ),
+        celled AS (
+            SELECT points.*, m.geom AS geom_3857,
+                   floor((ST_X(m.geom) - ST_XMin(grid.env)) * grid.cells
+                         / (ST_XMax(grid.env) - ST_XMin(grid.env))) AS cell_x,
+                   floor((ST_Y(m.geom) - ST_YMin(grid.env)) * grid.cells
+                         / (ST_YMax(grid.env) - ST_YMin(grid.env))) AS cell_y
+            FROM points CROSS JOIN grid CROSS JOIN LATERAL (SELECT ST_Transform(points.geom, 3857) AS geom) m
+        )
+        -- 升ごとの件数と中身は、升の点の行へ窓関数で載せる。升の集計と点を結び付け直すと、凡例の行（NULLを含みうる）を
+        -- IS NOT DISTINCT FROM で比べることになり、PostgreSQL は総当たりでしか結べず、点の密なタイルで時間切れになる。
+        SELECT DISTINCT ON ({row_columns}, celled.cell_x, celled.cell_y)
+            {place("celled.geom_3857")} AS geom,
+            {selected},
+            celled.name AS name,
+            count(*) OVER cell AS {POINT_COUNT_PROPERTY},
+            CASE WHEN count(*) OVER cell > 1 THEN
+                (json_agg(json_build_array(celled.name, round(ST_X(celled.geom)::numeric, {COORDINATE_DECIMALS}),
+                                           round(ST_Y(celled.geom)::numeric, {COORDINATE_DECIMALS})))
+                     FILTER (WHERE celled.name IS NOT NULL) OVER members)::text
+            END AS {POINT_MEMBERS_PROPERTY}
+        FROM celled
+        WINDOW cell AS (PARTITION BY {row_columns}, celled.cell_x, celled.cell_y),
+               members AS (cell ORDER BY celled.name, ST_X(celled.geom), ST_Y(celled.geom)
+                           ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING)
+        ORDER BY {row_columns}, celled.cell_x, celled.cell_y,
+                 {preference}, ST_X(celled.geom), ST_Y(celled.geom)
+"""
 
 def _point_opacities() -> dict[str, float]:
     """地図に点で出す一次属性（点の幾何・行の定義・タイルの系統を持つもの）ごとの不透明度。行が宣言しなければ既定。"""

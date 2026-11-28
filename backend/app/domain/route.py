@@ -24,8 +24,6 @@ ELEVATION_M_DECIMALS = 1
 COST_SECONDS_DECIMALS = 1
 #: 応答の止まる回数の見込みの桁。
 STOP_COUNT_DECIMALS = 1
-#: 応答の風の速さ（m/s）の桁。
-WIND_MS_DECIMALS = 1
 #: 応答の道の向き（度）の桁。
 ROAD_BEARING_DEG_DECIMALS = 0
 
@@ -196,6 +194,10 @@ class RouteSegmentDetail(StrictModel):
     # 避け方の倍率が所要時間から足し引きした道を、倍率を決めた行ごとに（区間の中で最初に通る順）。秒の和は`penalty`の
     # `preferred_seconds`と`avoided_seconds`の和。地図のルートの両脇の線の理由として、区間の小窓が出す。
     avoidance_stretches: list[AvoidanceStretch]
+    # 区間の道のどれかで、時刻で変わる交通規制を効くとみなしたか。ルートは通る見込みの時間帯を較正値
+    # `regulation.margin_minutes`だけ広げて規制を見込むので、地図（選んだ出発の時刻そのもので塗る）では規制の外に見える道でも、
+    # 規制の道として避け方を当てたことがある。区間の小窓がその理由を添える。
+    regulation_margin: bool
 
 
 @dataclass(frozen=True, slots=True)
@@ -222,6 +224,8 @@ class EdgeSegment:
     deciding_row: tuple[str, AvoidanceLevel] | None
     # 層のid→この道の区分の鍵（区分に入らない道はNone）。道1本の中で区分は変わらない。
     road_classes: dict[str, str | None]
+    # 通ったレグの判定が、この道で時刻で変わる交通規制の組を効くとみなしたか（`domain/timed_regulations.py`）。
+    regulation_margin: bool
 
 
 #: 候補の種類。周回（出発地へ戻る経路。経由地の有無を問わない）・目的地（目的地で終わる経路。経由地の有無を問わない）・
@@ -286,7 +290,7 @@ class EvaluatedRoute(StrictModel):
         return None if per_km is None else round(per_km, COST_SECONDS_DECIMALS)
 
     facts: RouteFacts
-    # 所要時間の見積もりで、取込の範囲全体の平均で埋めた長さの、距離に対する割合（0〜1。数え方は
+    # 所要時間の見積もりで、値が欠けて埋めた長さの、距離に対する割合（0〜1。数え方は
     # `domain/leg_costs.py: LegCostComposer.missing_travel_data_share`）。画面が利用者へ知らせる。区間が無ければNone。
     missing_travel_data_share: float | None
     # 経路を構成するEdge idの列（起点から順）。フロントは候補どうしの共通部分を集合演算で
@@ -327,7 +331,7 @@ class RouteCandidate(EvaluatedRoute):
     # 終点が出発地なら`loop`、ほかの所なら`destination`、区間を乗り換えて作った経路は`spliced`。
     kind: RouteKind
     # 返す候補のうち見積もりの所要時間がいちばん短い1本。所要時間のある候補が2本以上あるときだけ1本に付く
-    # （`services/route_generator.py: _quickest`）。
+    # （`domain/route_search.py: quickest_route`）。
     is_fastest: bool
     # 探索が区間を切り出した道路網の世代（`RoadNetwork.revision`）。`edge_ids`がどの版の道路網の区間かを、後から照らすときに
     # 分ける。候補を組み立てる途中はNoneで、候補を返す生成の入口が付ける。
@@ -488,6 +492,7 @@ BIN_FIELD_MERGERS: dict[str, Callable[[list[EdgeSegment]], object]] = {
     "estimated_arrival_time": lambda segments: segments[0].estimated_arrival_time,
     "road_classes": _merge_road_classes,
     "avoidance_stretches": _merge_avoidance_stretches,
+    "regulation_margin": lambda segments: any(segment.regulation_margin for segment in segments),
     # 区間は道の分で、曲がる所の罰を持たない。
     "penalty": lambda segments: merge_penalty_breakdowns(segments, 0.0),
 }
@@ -534,12 +539,7 @@ def _shape_positions(edges: list[LeanEdge]) -> list[list[float]]:
     first_at = np.minimum(first, len(along) - 1)
     last_at = np.minimum(np.maximum(first + counts - 1, first), len(along) - 1)
     total = np.repeat(along[last_at] - along[first_at], counts)
-    within = np.arange(counts.sum()) - np.repeat(first, counts)
-    even = within / np.repeat(np.maximum(counts - 1, 1), counts)  # 長さ0のEdgeは等しい間隔
-    with np.errstate(divide="ignore", invalid="ignore"):
-        at = np.where(total > 0, (along - np.repeat(along[first_at], counts)) / total, even)
-    at[np.repeat(counts > 0, counts) & (within == 0)] = 0.0
-    at[within == np.repeat(counts - 1, counts)] = 1.0
+    at = (along - np.repeat(along[first_at], counts)) / total
     flat = at.tolist()
     return [flat[start:start + count] for start, count in zip(first.tolist(), counts.tolist())]
 

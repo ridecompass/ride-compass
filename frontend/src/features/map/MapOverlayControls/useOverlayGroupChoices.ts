@@ -1,8 +1,11 @@
 "use client";
 
 import { useStoredState } from "@/hooks/useStoredState";
-import type { MapLayerId, MapOverlayGroup } from "@/features/map/layers/mapLayers";
-import { mapDisplay } from "@/types/generated/mapDisplay";
+import {
+  MAP_OVERLAY_GROUP_INITIAL_ITEMS,
+  type MapLayerId,
+  type MapOverlayGroup,
+} from "@/features/map/layers/mapLayers";
 import type { OverlayLayerChip } from "./OverlayLayerRow";
 
 // たたんだ群と、群ごとに一覧から外した項目は次の訪問でも保つ。ⓘ・▶の開閉は一時の確かめなので保たない。
@@ -36,7 +39,7 @@ export function useOverlayGroupChoices(onToggle: (id: MapLayerId, on: boolean) =
   }
 
   function hiddenIn(group: MapOverlayGroup, members: readonly OverlayLayerChip[]): readonly MapLayerId[] {
-    return hiddenByGroup[group] ?? members.slice(mapDisplay.overlayGroupInitialItems).map((member) => member.id);
+    return hiddenByGroup[group] ?? members.slice(MAP_OVERLAY_GROUP_INITIAL_ITEMS[group]).map((member) => member.id);
   }
 
   /** 一覧に並べるか。地図に出している項目は、外していても並べる（並べないと消す手段が無くなる）。 */

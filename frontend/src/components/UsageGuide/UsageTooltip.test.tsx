@@ -4,7 +4,7 @@
  *
  * 見るもの: タッチの長押しで出ることと、そのあとの押し操作が部品へ届かないこと（キーで押したものは届くこと）、短く押す・動かすと出さず押した扱いのままなこと、
  * 文字を出す部品・つまみは出さないこと（件数の札のように読み上げから隠した文字はアイコンだけに数える）、使い方の文が無ければ名前だけ、
- * タッチで出したものはほかを押すまで残ること、マウスを重ねると出て外す・押すと消えること。
+ * タッチで出したものはほかを押すまで残ること、マウスを重ねると出て外す・押すと消えること、出している間に名前が変わると今の名前を出すこと。
  *
  * ここで見ないもの:
  * - 吹き出しの置き方 → Radixの位置取りに任せている
@@ -168,5 +168,24 @@ describe("UsageTooltip", () => {
     wait(LONG_PRESS_MS);
     fireEvent.pointerDown(generate, { pointerType: "mouse", button: 0 });
     expect(tooltip()).toBeNull();
+  });
+
+  it("出している間に部品の名前が変わると、今の名前を出す", async () => {
+    const screenWith = (label: string) => (
+      <div>
+        <Button size="panelIcon" aria-label={label} usage="いまの条件で候補を作ります。">
+          <svg aria-hidden="true" />
+        </Button>
+        <UsageTooltip />
+      </div>
+    );
+    const { rerender } = render(screenWith("生成中…(0秒経過)"));
+    fireEvent.pointerOver(button("生成中…(0秒経過)"), { pointerType: "mouse" });
+    wait(LONG_PRESS_MS);
+
+    // 名前の変化は MutationObserver が後の小タスクで知らせる。
+    await act(async () => rerender(screenWith("ルート生成")));
+
+    expect(tooltip()).toHaveTextContent(/^ルート生成いまの条件で候補を作ります。$/);
   });
 });

@@ -10,6 +10,10 @@ globalThis.CompressionStream ??= CompressionStream as unknown as typeof globalTh
 globalThis.DecompressionStream ??= DecompressionStream as unknown as typeof globalThis.DecompressionStream;
 const { backendServer, closeHeldReplies } = await import("@/testing/backendServer");
 
+// jsdom は`wbr`の表示の種類を持たず（ブラウザの既定は行の中）、読み上げの名前と説明を組む部品が、折り返しの印（`GuideText`の
+// `wbr`）の前後に空白を足す。ブラウザの既定と同じ決まりを置き、読み上げの文をブラウザと同じに組ませる。
+if (typeof document !== "undefined") document.head.insertAdjacentHTML("beforeend", "<style>wbr { display: inline; }</style>");
+
 // node の環境のテスト（DOM を使わない）にも、端末の保存値の口を置く。デバッグの記録の表示など、保存値を読む処理を通るテストが
 // あるため（本番では画面の中でしか動かない）。
 if (typeof window === "undefined") {

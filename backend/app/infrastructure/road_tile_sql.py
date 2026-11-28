@@ -1,71 +1,24 @@
-"""地図のタイル（路面のMVT）と、タイルと同じフィーチャーごとに名前・形を読むSQL。
-
-どの読み出しも、フィーチャーの並びを`_TILE_FEATURE_SOURCE_SQL`から引き、鍵は路面のタイルが焼く`feature_key`と同じものになる。
-"""
+"""地図の路面タイル（MVT）を焼くSQLと、道の名前を引くSQL。焼くフィーチャーとその形は引数で受け、ここではフィーチャーを選ばない。"""
 
 from sqlalchemy import text
 
-from app.domain.graph import edge_feature_key_sql
-from app.domain.region import EDGE_UNIT_MIN_ZOOM, ROAD_TILE_MIN_ZOOM
+from app.domain.region import ROAD_TILE_MIN_ZOOM
 from app.infrastructure.cache_identity import shape_digest
-from app.infrastructure.source_models import COVERAGE_SQL, WAYS_SOURCE_SQL, ways_lookup_sql
+from app.infrastructure.source_models import COVERAGE_SQL, ways_lookup_sql
 from app.infrastructure.vector_tile import ROAD_FEATURE_PROPERTIES, TILE_BUFFER
-
-def edgeless_way_sql(way: str) -> str:
-    """道の表の別名`way`の行が、区間を1本も持たない道（同じ位置に点が重なり長さ0の区間しか作れない道等）である条件。"""
-    return f"NOT EXISTS (SELECT 1 FROM road_edges re_of_way WHERE re_of_way.osm_way_id = {way}.osm_way_id)"
-
-
-#: どちらの単位も`feature_key`という同じ名前で出し、受け取る側は中身がway_idか区間の鍵かを知らなくてよい。
-#:
-#: 空間フィルタは各枝の中に置く。外へ出すとroad_edges全件に対して走り、タイルの中身に
-#: 依存しない固定コストになる。
-_TILE_FEATURE_SOURCE_SQL = f"""
-    SELECT
-        w2.geom AS geom,
-        w2.osm_way_id AS osm_way_id,
-        NULL::smallint AS segment_index,
-        w2.osm_way_id::text AS feature_key,
-        NULL::double precision AS length_m
-    FROM {WAYS_SOURCE_SQL} w2
-    WHERE :z < {EDGE_UNIT_MIN_ZOOM}
-      AND ST_Intersects(w2.geom, ST_MakeEnvelope(:xmin, :ymin, :xmax, :ymax, 4326))
-    UNION ALL
-    SELECT
-        re.geom,
-        re.osm_way_id,
-        re.segment_index,
-        {edge_feature_key_sql("re.osm_way_id", "re.segment_index")},
-        -- 密度（件/km）の分母。way全体ではなくこの区間の長さで割る。
-        re.distance_m
-    FROM road_edges re
-    WHERE :z >= {EDGE_UNIT_MIN_ZOOM}
-      AND ST_Intersects(re.geom, ST_MakeEnvelope(:xmin, :ymin, :xmax, :ymax, 4326))
-    UNION ALL
-    -- 区間を1本も持たないway（同じ位置に点が重なり長さ0の区間しか作れないway等）は、区間単位の
-    -- ズームでもway丸ごとで出す。**落とすと、その道はズームを上げたときだけ地図から
-    -- 消える**——引いた表示には出ているのに拡大すると無くなる見え方は、データが無いこと
-    -- よりも壊れて見える。
-    SELECT
-        w3.geom, w3.osm_way_id, NULL::smallint, w3.osm_way_id::text, NULL::double precision
-    FROM {WAYS_SOURCE_SQL} w3
-    WHERE :z >= {EDGE_UNIT_MIN_ZOOM}
-      AND ST_Intersects(w3.geom, ST_MakeEnvelope(:xmin, :ymin, :xmax, :ymax, 4326))
-      AND {edgeless_way_sql("w3")}
-"""
-
 
 #: 道路名・路線番号の生値（OSM の`name`・`ref`）。空は値が無いものとして出す。
 _NAME_SQL = "NULLIF(btrim(w.tags->>'name'), '')"
 _REF_SQL = "NULLIF(btrim(w.tags->>'ref'), '')"
 
-# 路面タイル（MVT）をPostGIS側で丸ごと生成する。転送は完成済みタイル1個で済み、エンコードはPostGISのC実装が担う。
-# bbox内の全way行をPythonへ転送してshapelyでdecode→encodeする構成だと、行転送とGILを握るCPU処理で数秒かかる。
+# 路面タイル（MVT）をPostGIS側で丸ごと生成する。転送は完成済みタイル1個で済み、枠で切るのとエンコードはPostGISのC実装が担う
+# （Pythonで地物を1つずつ切って焼くと、引いたズームで数倍遅い）。
 #
-# 焼くのは地図が塗るものだけ: 線の形と、地図の線の層の値と当たる0次ハードフィルタ（`:layer_values`。`feature_key`→層のid→値の
-# JSON。値の無い道は載らない）。層の値はjsonbの列のまま渡し、ST_AsMVTが層のidごとのプロパティに広げる。`ROAD_TILE_MIN_ZOOM`以上は道ごとの
-# 鍵（`feature_key`。地図が道ごとの値を置く）も焼き、それより引いたズームは層の値が同じ道を1つにつなぐ（道ごとの鍵が要らず、
-# 線の本数と点が減る）。つなぐのはタイルの座標へ写した後の形で、タイルの外へ出た所は切れたまま。
+# フィーチャーは鍵（`:keys`）と線の形（`:shapes`。経度・緯度の WKB）を同じ並びの配列で受ける。焼くのは地図が塗るものだけ: 線の形と、
+# 地図の線の層の値と当たる0次ハードフィルタ（`:layer_values`。`feature_key`→層のid→値のJSON。値の無い道は載らない）。層の値は
+# jsonbの列のまま渡し、ST_AsMVTが層のidごとのプロパティに広げる。`ROAD_TILE_MIN_ZOOM`以上は道ごとの鍵（`feature_key`。地図が道ごとの
+# 値を置く）も焼き、それより引いたズームは層の値が同じ道を1つにつなぐ（道ごとの鍵が要らず、線の本数と点が減る）。つなぐのはタイルの
+# 座標へ写した後の形で、タイルの外へ出た所は切れたまま。
 #
 # カバレッジ判定も同じクエリへ畳み込み、1タイルあたりのDB往復を1回にする。CASE式は条件が
 # falseの分岐を評価しないため、カバレッジ外ではMVT生成のサブクエリ自体が実行されない。
@@ -76,11 +29,11 @@ ROAD_SURFACE_TILE_MVT_SQL = text(
     features AS NOT MATERIALIZED (
         SELECT
             ST_AsMVTGeom(
-                ST_Transform(src.geom, 3857), ST_TileEnvelope(:z, :x, :y), :extent, {TILE_BUFFER}, true
+                ST_Transform(ST_GeomFromWKB(src.shape, 4326), 3857), ST_TileEnvelope(:z, :x, :y), :extent, {TILE_BUFFER}, true
             ) AS geom,
             src.feature_key,
             layer_values.layers
-        FROM ({_TILE_FEATURE_SOURCE_SQL}) src
+        FROM unnest(CAST(:keys AS text[]), CAST(:shapes AS bytea[])) AS src(feature_key, shape)
         LEFT JOIN layer_values ON layer_values.feature_key = src.feature_key
     )
     SELECT
@@ -102,64 +55,15 @@ ROAD_SURFACE_TILE_MVT_SQL = text(
 )
 
 
-#: 路面タイルが焼くフィーチャーの鍵と、道・区間の番号（道1本のフィーチャーの区間の番号はNULL）。地図の線の層の値は、この鍵で道路網の
-#: 配列から引いて路面タイルへ渡す（`ROAD_SURFACE_TILE_MVT_SQL`の`:layer_values`）——タイルに入るフィーチャーは、ここと路面タイルの
-#: 同じ選び方（`_TILE_FEATURE_SOURCE_SQL`）で決まる。取込範囲の外のタイルは路面タイルが焼かないので、行を返さない。
-TILE_FEATURES_SQL = text(f"""
-    WITH coverage AS ({COVERAGE_SQL})
-    SELECT src.feature_key, src.osm_way_id, src.segment_index
-    FROM ({_TILE_FEATURE_SOURCE_SQL}) src
-    WHERE (SELECT covered FROM coverage)
-""")
-
-
-# 押した所（`:lon`, `:lat`）から`:radius_m`以内の道のフィーチャーを、近い順に`:limit`本。フィーチャーの並び・単位
-# （ズーム`:z`で区間か道1本か）は路面タイルと同じものを使う——地図が塗る線と押して開く小窓が、同じ鍵を指す（材料は道路網の配列から
-# 鍵で引く）。`:xmin`〜`:ymax`は半径を覆う箱（空間の索引で絞るための前置フィルタ）で、距離そのものは地面の m で測る。
-# 形はタイルで切らない、そのフィーチャーの線の全体（押した物を強調し、小窓をかぶらない側に置くのに使う）。
-ROADS_AT_SQL = text(
+#: 道の番号（`:ids`）ごとの道路名・路線番号。**第三者が編集できる生値で対訳表を持たない**ため、表示に埋め込む側は必ずエスケープする。
+#: 道の生データに無い道は行を返さない。
+WAY_NAMES_SQL = text(
     f"""
-    SELECT
-        ST_AsGeoJSON(src.geom) AS shape,
-        src.segment_index,
-        src.feature_key AS {ROAD_FEATURE_PROPERTIES['feature_key']},
-        -- 道の窓が、ポップアップに出た値と同じ行を曖昧さ無く引き直すための識別子。空間マッチ（半径内最近傍）だと交差点付近で
-        -- 別の道路を拾いうる。
-        src.osm_way_id AS {ROAD_FEATURE_PROPERTIES['way_id']},
-        -- 道路名・路線番号（表示専用）。**第三者が編集できる生値で対訳表を持たない**ため、埋め込む側は必ずエスケープする。
-        {_NAME_SQL} AS {ROAD_FEATURE_PROPERTIES['name']},
-        {_REF_SQL} AS {ROAD_FEATURE_PROPERTIES['ref']}
-    FROM (
-        SELECT near.*, ST_Distance(near.geom::geography, pressed.geog) AS pressed_distance_m
-        FROM ({_TILE_FEATURE_SOURCE_SQL}) near
-        CROSS JOIN (SELECT ST_SetSRID(ST_MakePoint(:lon, :lat), 4326)::geography AS geog) pressed
-        WHERE ST_DWithin(near.geom::geography, pressed.geog, :radius_m)
-        ORDER BY pressed_distance_m, near.feature_key
-        LIMIT :limit
-    ) src
-    JOIN LATERAL {ways_lookup_sql('src.osm_way_id')} w ON true
-    ORDER BY src.pressed_distance_m, src.feature_key
+    SELECT ids.osm_way_id, {_NAME_SQL} AS name, {_REF_SQL} AS ref
+    FROM unnest(CAST(:ids AS bigint[])) AS ids(osm_way_id)
+    JOIN LATERAL {ways_lookup_sql('ids.osm_way_id')} w ON true
     """
 )
-
-
-#: 派生データベースの書き出し（`infrastructure/derived_database_export.py`）の行。取込範囲全体の、区間単位のズームの
-#: タイルと同じフィーチャー（区間と、区間を持たない道）を1行ずつ、長さ・名前・形を付けて読む（材料は道路網の配列から鍵で引く）。
-#: 範囲とズームはタイルの読み出しの引数で与え、フィーチャーの選び方を別に書かない。並べない——全件を並べ替えると、DBが
-#: 書き出しと同じ規模の一時ファイルをDBのディスクへ書く。座標の桁はOSMが持つ桁（小数7桁）で、丸めで形を変えない。
-DERIVED_DATABASE_ROWS_SQL = text(
-    f"""
-    SELECT
-        src.osm_way_id,
-        src.segment_index,
-        COALESCE(src.length_m, NULLIF(ST_Length(w.geom::geography), 0)) AS length_m,
-        {_NAME_SQL} AS name,
-        {_REF_SQL} AS ref,
-        ST_AsText(src.geom, :coordinate_decimals) AS geometry_wkt
-    FROM ({_TILE_FEATURE_SOURCE_SQL}) src
-    JOIN LATERAL {ways_lookup_sql('src.osm_way_id')} w ON true
-    """
-).bindparams(z=EDGE_UNIT_MIN_ZOOM, xmin=-180.0, ymin=-90.0, xmax=180.0, ymax=90.0, coordinate_decimals=7)
 
 
 #: タイルのディスク／Redisキャッシュの鍵に入る**形の署名**。焼き込むSQLから導出するため、

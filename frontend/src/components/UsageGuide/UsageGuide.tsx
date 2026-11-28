@@ -8,7 +8,7 @@ import { textVariants } from "@/components/ui/Text/Text";
 import FloatingPanel from "@/components/FloatingPanel/FloatingPanel";
 import { cn } from "@/lib/cn";
 import { TAP_SLOP_PX } from "@/lib/tapSlop";
-import { USAGE_GUIDE_ATTRIBUTE, isInUsageGuide, isUnselectedTab, usageTargetOf, type UsageTarget } from "./usageTarget";
+import { USAGE_GUIDE_ATTRIBUTE, isInUsageGuide, isUnselectedTab, usageTargetOf, useLiveTarget } from "./usageTarget";
 
 /** 値を動かすキー。説明を見る状態では、フォーカスのある部品の値を変えさせない。 */
 const VALUE_KEYS = new Set(["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Home", "End", "PageUp", "PageDown"]);
@@ -41,7 +41,7 @@ function pressThrough(element: Element, passing: RefObject<boolean>) {
  * 案内は画面の上の中央に浮かべ、つまみで動かせる。説明の面は部品の下に出し、置き方はRadixの位置取りに任せる。
  */
 export default function UsageGuide({ onEnd }: UsageGuideProps) {
-  const [target, setTarget] = useState<UsageTarget | null>(null);
+  const [target, setTarget] = useLiveTarget(usageTargetOf);
   // 枠は測った部品と組で持ち、説明する部品が替わったら前の部品の位置には描かない。
   const [highlight, setHighlight] = useState<{ element: Element; rect: DOMRect } | null>(null);
   /** 自分で押す click を止めずに届ける間か。 */
@@ -112,7 +112,7 @@ export default function UsageGuide({ onEnd }: UsageGuideProps) {
     for (const type of MOUSE_EVENTS) window.addEventListener(type, stopMouse, options);
     for (const type of TOUCH_EVENTS) window.addEventListener(type, stopTouch, options);
     return () => listening.abort();
-  }, []);
+  }, [setTarget]);
 
   // 説明している部品を枠で示す。下部シートの中をスクロールしても部品に付いていくよう、測り直す。描く前に測る。
   useLayoutEffect(() => {

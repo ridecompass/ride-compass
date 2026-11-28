@@ -63,7 +63,7 @@ describe("RoadInspectorPopup", () => {
           { axis_id: "headwind", seconds: 0.6 },
           { axis_id: "vibration", seconds: 0 },
         ],
-        // 区分の事実は値を持たず、区分の名前だけを出す。求められない事実（風を読めないときの向かい風）は届かない。
+        // 区分の事実は値を持たず、区分の名前だけを出す。事実の無い軸（向かい風）は届かない。
         facts: {
           ascent: { label: "登り", value: climb, unit: "m" },
           friction: { label: "砂利", value: null, unit: "" },
@@ -128,6 +128,25 @@ describe("負担を取れなかったとき", () => {
     await user.click(await screen.findByRole("button", { name: "再試行" }));
 
     expect(await screen.findByRole("group", { name: "負担の内訳" })).toHaveTextContent("+12秒");
+  });
+});
+
+describe("風の予報を読めないとき", () => {
+  it("出発時刻の風の予報が無ければ、今の風で求めずに風を読まないで取り、風に依らない負担だけを合計なしで出す", async () => {
+    const calm = lensDirection(null, { axes: [{ axis_id: "ascent", seconds: 4 }] });
+    const sent = serveInspector(inspectorResult({ along: calm, against: calm }));
+    render(
+      <RoadInspectorPopup
+        properties={SURFACED_ROAD}
+        track={null}
+        costPreference={RIDE.costPreference}
+        conditions={{ ...RIDE.conditions, lensFrame: null }}
+      />,
+    );
+
+    expect(await screen.findByText("風の予報を読めないため、風に依る負担と合計は出せません。")).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole("group", { name: "負担の内訳" })).toHaveTextContent(/^登坂\+4秒$/));
+    expect(sent.map(({ body }) => body)).toEqual([expect.objectContaining({ wind: false })]);
   });
 });
 

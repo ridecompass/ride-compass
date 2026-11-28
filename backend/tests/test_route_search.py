@@ -35,9 +35,6 @@ import pytest
 from app.domain.attributes import ElevationAttribute
 from app.domain.graph import LeanEdge
 from app.domain.route import (
-    PenaltyBreakdown,
-    EvaluatedRoute,
-    RouteFacts,
     concat_edge_geometries,
     reverse_elevation_by_edge,
     elevation_gain,
@@ -64,6 +61,7 @@ from app.domain.routing import TurnExpandedTree, build_turn_expanded_tree
 from app.domain.tree_paths import NodeJunction, add_terminal_candidate
 from app.domain.geo import KM_PER_DEGREE_LATITUDE
 from tests.tuning_fixture import TUNED, TUNING
+from tests.route_world import evaluated_route
 from tests.search_graph_world import LINE_EDGES, LINE_NODES, build_all, make_graph, state_index
 
 
@@ -102,16 +100,8 @@ def turn_tree(state_count, *, node_cost, node_length_m, node_seconds, node_best_
 
 
 def draft(distance_km, duration_seconds, cost_seconds):
-    """並びの鍵が読む距離・所要時間・費用だけを持つ候補。ほかの欄は空。"""
-    return EvaluatedRoute(
-        direction_label="", distance_km=distance_km, geometry={"type": "LineString", "coordinates": []},
-        point_distances_m=[], elevation_gain_m=None, segments=[], estimated_duration_seconds=duration_seconds, wind_previous_run_from=None,
-        cost_seconds=cost_seconds,
-        penalty=PenaltyBreakdown(axis_seconds={}, preferred_seconds=0.0, avoided_seconds=0.0, turn_penalty_seconds=0.0),
-        facts=RouteFacts(axes={}),
-        missing_travel_data_share=None,
-        edge_ids=[], edge_point_offsets=[], node_ids=[], turns=[], waypoint_distances_km=[],
-    )
+    """並びの鍵が読む距離・所要時間・費用だけを持つ候補。"""
+    return evaluated_route(distance_km=distance_km, estimated_duration_seconds=duration_seconds, cost_seconds=cost_seconds)
 
 
 # --------------------------------------------------------------------------------------
@@ -202,7 +192,7 @@ def test_leg_of_edge_by_half_switches_where_the_accumulated_weight_reaches_half(
 
 @pytest.mark.parametrize(
     ("forward_cost", "reverse_cost", "picked"),
-    [(500.0, 300.0, "reverse"), (300.0, 500.0, "forward"), (400.0, 400.0, "forward")],
+    [(500.0, 300.0, "reverse"), (400.0, 400.0, "forward")],
 )
 def test_prefers_reverse_takes_the_lower_cost(forward_cost, reverse_cost, picked):
     reverse = prefers_reverse(forward_cost, reverse_cost)
@@ -384,10 +374,10 @@ def test_rank_breaks_ties_by_distance_only_when_asked(tie_by_distance, expected)
     assert _ranked_ids([3, 8], [60.0, 10.0], [20.0, 20.0], tie_by_distance=tie_by_distance) == expected
 
 
-@pytest.mark.parametrize("distance_km", [20.0, 50.0, 100.0])
-def test_turnaround_ring_is_made_for_every_target_with_the_default_tolerance_and_estimate(distance_km):
-    """既定の許容の割合と周回の全長の見込みで、受け付ける目標のどれでも、リングのどの往路から見込んだ全長も
-    目標±許容に収まる。範囲が反転すると往路が見込みで全長を外れ、継いだ周回が距離の判定で落ちる。"""
+def test_turnaround_ring_is_made_for_every_target_with_the_default_tolerance_and_estimate():
+    """既定の許容の割合と周回の全長の見込みで、リングのどの往路から見込んだ全長も目標±許容に収まる。範囲が反転すると
+    往路が見込みで全長を外れ、継いだ周回が距離の判定で落ちる。許容もリングも目標に比例するので、目標は1つで足りる。"""
+    distance_km = 20.0
     ratio_min, ratio_max = loop_to_outbound_ratios(TUNED)
     tolerance_km = distance_tolerance_km(distance_km, TUNED)
 

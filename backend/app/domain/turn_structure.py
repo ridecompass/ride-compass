@@ -143,11 +143,9 @@ def build_turn_expanded_structure(
     end_bearing_deg: np.ndarray,
     edge_rank: np.ndarray,
     spec: TurnCostSpec,
-    node_has_signal: np.ndarray,
+    node_signal_place: np.ndarray,
     node_rank: np.ndarray,
     node_branch_count: np.ndarray,
-    edge_distance_m: np.ndarray,
-    same_place_m: float,
 ) -> TurnExpandedStructure:
     """`CsrGraphStructure`から、状態＝有向Edgeの遷移構造を組む。
 
@@ -163,10 +161,10 @@ def build_turn_expanded_structure(
     （向こうから来る一方通行）も、部分グラフの外へ出る道も数える。進める道だけで数えると、進めない道のある交差点の
     曲がりが継ぎ目に見え、待ちも案内も消える。
 
-    待ちの表は、信号のある交差点では1つの交差点で1回だけ引く。入る区間の始点も信号のある分かれ道で、区間が`same_place_m`
-    （停止の点を1つの場所にまとめる距離。`edge_distance_m`は区間の番号順の長さ）より短ければ、同じ交差点の中を進む区間とみなして
-    表を引かない——上下線の分かれた道を渡ると、信号の頂点を2つ続けて通る。始点が分かれ道でない（道のデータの継ぎ目）なら、
-    そこは交差点ではないので数える。曲がりの減速は、曲がった頂点で数える。
+    待ちの表は、信号のある交差点では1つの交差点で1回だけ引く。`node_signal_place`は頂点が入る信号の交差点の番号（入らなければ
+    負）。入る区間の始点も同じ信号の交差点の分かれ道なら、同じ交差点の中を進む区間とみなして表を引かない——上下線の分かれた道を
+    渡ると、信号の頂点を2つ続けて通る。始点が分かれ道でない（道のデータの継ぎ目。信号の交差点は半径で点を入れるので、継ぎ目も
+    入る）なら、そこは交差点ではないので数える。曲がりの減速は、曲がった頂点で数える。
 
     ターンの費用に要る入力はすべて引数で受け取り、**`None`を受け取らない**。既定を持たせても
     実行時に`None`を許しても、渡し忘れた呼び出しが「待ちの表の升が引かれない」構造を
@@ -196,13 +194,14 @@ def build_turn_expanded_structure(
     via_node = edge_to[source]
     target_node_rank = node_rank[via_node]
     # 交差点の事実（地図だけで決まる）と、通り方の事実（入る区間で決まる）。
-    signal = node_has_signal[via_node]
+    place = np.asarray(node_signal_place)[via_node]
+    signal = place >= 0
     large = target_node_rank >= MAJOR_CROSSING_MIN_RANK
     below = branch & ~is_uturn & (target_node_rank > edge_rank[source])
-    # 同じ信号の交差点の中を進む遷移: 入る区間の始点も信号のある分かれ道で、区間がまとめる距離より短い。
+    # 同じ信号の交差点の中を進む遷移: 入る区間の始点も同じ信号の交差点の分かれ道。
     from_node = edge_from[source]
-    in_place = (signal & node_has_signal[from_node] & (node_branch_count[from_node] >= INTERSECTION_DEGREE_THRESHOLD)
-                & (np.asarray(edge_distance_m, dtype=np.float64)[source] < same_place_m))
+    in_place = (signal & (np.asarray(node_signal_place)[from_node] == place)
+                & (node_branch_count[from_node] >= INTERSECTION_DEGREE_THRESHOLD))
     group = np.ravel_multi_index(
         (np.where(signal, _SIGNAL_KEYS.index("signal"), _SIGNAL_KEYS.index("unsignalized")),
          np.where(large, _SIZE_KEYS.index("large"), _SIZE_KEYS.index("small")),

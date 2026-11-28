@@ -46,8 +46,9 @@ describe("押した道の内訳（fetchAxisInspector）", () => {
     x: 29100,
     y: 12900,
     bearingDeg: 270,
-    at: new Date("2026-10-01T00:30:00Z"),
+    lensFrame: "v1-2026100110",
     speedKmh: 22,
+    paintedLensId: null,
   };
 
   it.each([{ ...STANDARD_COST_PREFERENCE, strength: 2, multipliers: { vibration: 0.5 }, disabled_axes: ["ascent"] }])(
@@ -71,12 +72,26 @@ describe("押した道の内訳（fetchAxisInspector）", () => {
           x: 29100,
           y: 12900,
           bearing_deg: 270,
-          at: "2026-10-01T00:30:00.000Z",
+          frame: "v1-2026100110",
+          wind: true,
           speed_kmh: 22,
         },
       ]);
     },
   );
+
+  it("塗っているレンズを送り、出発時刻の風のコマが無ければ風を読まずに求めさせる", async () => {
+    const sent = onBackend("POST", "/api/region/road-inspector", () => Response.json(null));
+
+    await api.fetchRoadInspection(
+      123,
+      "123:4",
+      { ...CONDITIONS, paintedLensId: "ascent", lensFrame: null },
+      STANDARD_COST_PREFERENCE,
+    );
+
+    expect(sent.map(({ body }) => body)).toEqual([expect.objectContaining({ lens_id: "ascent", wind: false })]);
+  });
 });
 
 describe("地図が塗るレンズの道ごとの材料（fetchLensMaterials）", () => {
@@ -86,7 +101,7 @@ describe("地図が塗るレンズの道ごとの材料（fetchLensMaterials）"
     );
 
     const result = await api.fetchLensMaterials("ascent", 15, 29100, 12900, {
-      at: "2026-10-01T00:00:00.000Z",
+      frame: "v1-2026100109",
       speed_kmh: 25,
     });
 
@@ -95,7 +110,7 @@ describe("地図が塗るレンズの道ごとの材料（fetchLensMaterials）"
       {
         method: "GET",
         path: "/api/region/lens/ascent/15/29100/12900",
-        query: { at: "2026-10-01T00:00:00.000Z", speed_kmh: "25" },
+        query: { frame: "v1-2026100109", speed_kmh: "25" },
       },
     ]);
   });

@@ -31,6 +31,9 @@ numpy==2.5.2
 # （Oracle Cloud ARM）でもそのまま入る。
 numba==0.67.0
 redis==8.1.0
+# 交通規制の曜日の「休日」（国民の祝日に関する法律の休日）を求める（domain/traffic_regulation.py）。
+# 国立天文台が翌年の春分・秋分を公表したら（毎年2月）、版を上げる。
+holidays==0.108
 apscheduler==3.11.3
 # リクエストIDの引き継ぎ・発行・応答ヘッダとログ行への付与（main.py・infrastructure/request_log.py）。
 asgi-correlation-id==5.0.1
