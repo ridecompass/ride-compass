@@ -12,6 +12,9 @@
 - 確からしさ（`confidence`）が宣言（`rows.min_confidence`）より低い。閉じた地点は0になる
 - 名前が無い（地図にも検索にも出せない）
 
+出どころ（`sources[].dataset`）が出典の表（`domain/map_display.py: OVERTURE_PLACE_SOURCES`）に無い地点を見たら、取込を失敗にする
+（出典に表示できない出どころの地点を入れない）。
+
 残した地点の列は、位置（`geometry`・`bbox`）を除いて全部`attrs`へ入れる。
 """
 
@@ -28,9 +31,13 @@ import httpx
 from app.batch.common import fetch_timeout, place_file, read_fetch_record, write_fetch_record
 from app.batch.ingest import AdapterInputs, Fetcher, SourceRecord, register_adapter
 from app.batch.source_profile import SourceProfile, SourceSpec
+from app.domain.map_display import OVERTURE_PLACE_SOURCES
 from app.infrastructure import data_paths
 
 DATA_DIR = data_paths.DATA_DIR / "overture"
+#: Overture 自身の出どころ（`Overture-signals`は確からしさ等を補う signal）。出典の文書は出どころに挙げず、
+#: 出典の行の頭の Overture Maps Foundation の表示が覆うので、出典の表に無くても通す。
+_OVERTURE_OWN_DATASETS = frozenset({"Overture", "Overture-signals"})
 
 logger = logging.getLogger("ridecompass.ingest.overture_places")
 
@@ -111,4 +118,12 @@ async def read_overture_places(spec: SourceSpec, profile: SourceProfile, inputs:
         conn.execute(_SELECT_SQL, [str(path), min_lon, max_lon, min_lat, max_lat, rows.min_confidence])
         while batch := conn.fetchmany(_FETCH_ROWS):
             for place_id, wkb, attrs in batch:
-                yield SourceRecord(natural_key=place_id, geom_wkb=bytes(wkb), attrs=json.loads(attrs))
+                place = json.loads(attrs)
+                _check_sources(place)
+                yield SourceRecord(natural_key=place_id, geom_wkb=bytes(wkb), attrs=place)
+
+
+def _check_sources(place: dict[str, Any]) -> None:
+    unknown = {source["dataset"] for source in place["sources"]} - OVERTURE_PLACE_SOURCES.keys() - _OVERTURE_OWN_DATASETS
+    if unknown:
+        raise ValueError(f"出典の表（OVERTURE_PLACE_SOURCES）に無い出どころ: {sorted(unknown)}")
