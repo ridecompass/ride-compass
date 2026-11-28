@@ -57,7 +57,7 @@ export default function RoadInspectorPopup({ properties, track, conditions, cost
       queryKey: ["road-inspector", wayId, featureKey, opened, costPreference],
       queryFn: async () => {
         const value = await withFreshFrames(fetchRoadInspection(wayId!, featureKey!, opened, costPreference));
-        if (value === null) throw new Error("ロスが返りませんでした");
+        if (value === null) throw new Error("この道の値が返りませんでした");
         return value;
       },
       // コマの一覧が届くまでは取らない。
@@ -84,12 +84,12 @@ export default function RoadInspectorPopup({ properties, track, conditions, cost
           {summary.length > 0 && <span className={cn(hintClass, "ml-1.5")}>{summary.join("・")}</span>}
         </span>
       </PopupHeader>
-      {inspectable && inspector.isPending && <p className={hintClass}>ロスを読み込んでいます</p>}
+      {inspectable && inspector.isPending && <p className={hintClass}>この道の値を読み込んでいます</p>}
       {inspector.isError && (
         <p className={cn(hintClass, "flex items-center gap-1.5")}>
-          ロスを取得できませんでした。
+          この道の値を取得できませんでした。
           <Button
-            usage="取得できなかったこの道のロスを、もう一度取得します。"
+            usage="取得できなかったこの道の値を、もう一度取得します。"
             variant="ghost"
             size="panelIcon"
             aria-label="再試行"

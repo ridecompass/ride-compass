@@ -88,7 +88,7 @@ export function SaveConditionsButton({
         aria-label="いまの設定を保存"
         aria-haspopup="dialog"
         aria-expanded={saving}
-        usage={`いまの設定[基本・出発地・要因・${ROAD_SETTINGS_TAB_NAME}]を開いて確かめ、名前を付けてこの端末に保存します。\n・保存した設定は、「保存」タブの「設定」から呼び出せます。`}
+        usage={`いまの設定[基本・出発地・難所・${ROAD_SETTINGS_TAB_NAME}]を開いて確かめ、名前を付けてこの端末に保存します。\n・保存した設定は、「保存」タブの「設定」から呼び出せます。`}
         onClick={() => setSaving(true)}
       >
         <SaveConditionsIcon size={18} />
@@ -120,7 +120,7 @@ export function SaveConditionsButton({
                     </ToggleGroupItem>
                   </ToggleGroup>,
                 ],
-                ["要因", currentDescription.costPreference],
+                ["難所", currentDescription.costPreference],
                 [ROAD_SETTINGS_TAB_NAME, currentDescription.exclusions],
               ]}
             />
@@ -180,7 +180,7 @@ export default function SavedConditionsPanel({ saved, onRecall, onRemove }: Save
       <SavedList
         items={saved}
         noun="設定"
-        howToSave={`右上の「いまの設定を保存」で、いまの設定[基本・出発地・要因・${ROAD_SETTINGS_TAB_NAME}]に名前を付けて保存します。\n・保存した設定は、行の「呼び出す」を押すと各タブに戻せます。`}
+        howToSave={`右上の「いまの設定を保存」で、いまの設定[基本・出発地・難所・${ROAD_SETTINGS_TAB_NAME}]に名前を付けて保存します。\n・保存した設定は、行の「呼び出す」を押すと各タブに戻せます。`}
         renderMain={(entry) => <span className="min-w-0 flex-auto truncate font-semibold">{entry.name}</span>}
         renderActions={(entry) => (
           <Button
@@ -211,7 +211,7 @@ export default function SavedConditionsPanel({ saved, onRecall, onRemove }: Save
               rows={[
                 ["基本", recallingDescription.route],
                 ["出発地", originDescription(recalling.origin !== null)],
-                ["要因", recallingDescription.costPreference],
+                ["難所", recallingDescription.costPreference],
                 [ROAD_SETTINGS_TAB_NAME, recallingDescription.exclusions],
               ]}
             />

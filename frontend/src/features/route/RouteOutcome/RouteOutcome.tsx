@@ -208,7 +208,7 @@ export default function RouteOutcome({ results, generation, splice, profileLayer
                       <span className="text-[length:var(--font-size-xs)] font-normal">km</span>
                     </span>
                   </span>{" "}
-                  <span className="flex items-baseline justify-between gap-1 font-normal text-[var(--color-muted-strong)]">
+                  <span className="flex items-center justify-between gap-1 font-normal text-[var(--color-muted-strong)]">
                     <span>
                       {route.estimated_duration_seconds === null
                         ? "—"
