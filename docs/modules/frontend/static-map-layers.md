@@ -148,8 +148,8 @@ JSONや落雷の地点のGeoJSONのようにアプリのfetch()で読む小さ�
 
 コードの宣言にある事実（凡例の行の名前・順序の色の両端の呼び名・点の大きさ・予測が届く先）も文に写さず、源泉が文を組むときに
 宣言から引く（`map_display.py: _size_text`・`_row_label`、`weather_elements.py: forecast_reach`）。道の線の層の説明と行の説明は、
-管理DBの区分の名前と条件から組む（`domain/road_class_catalog.py: road_class_catalog`）。点の凡例の行の説明の元のタグは、
-タグ→種別の表（`domain/traffic.py: TAG_KIND_RULES`）と信号の読み替え（`kinds_shown_as`）から組む（`primary_attributes.py: _kind_row`）。凡例の見本が示す見た目（色の灰・破線）と、画面の部品の名前・位置は文に書かない。
+管理DBの区分の名前と条件から組む（`domain/road_class_catalog.py: road_class_catalog`）。凡例の行の説明に、元のデータの名前
+（OSM のタグ・Overture Maps の分類等）は書かない（使う人の判断に要らないため）。凡例の見本が示す見た目（色の灰・破線）と、画面の部品の名前・位置は文に書かない。
 
 ## 表示専用の凡例（`MapLayerDescriptor.readOnlyLegend`）
 

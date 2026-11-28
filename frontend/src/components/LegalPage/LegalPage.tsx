@@ -1,4 +1,5 @@
 import { AppPage } from "@/components/AppPage/AppPage";
+import { GuideText } from "@/components/ui/GuideText/GuideText";
 import { textVariants } from "@/components/ui/Text/Text";
 import { cn } from "@/lib/cn";
 import { APP_NAME } from "@/lib/screenNames";
@@ -17,12 +18,12 @@ export function LegalSection({ title, children }: { title: string; children: Rea
   );
 }
 
-/** 箇条書き。 */
+/** 箇条書き。文だけの行は、iPhone の Safari でも句の切れ目で折る（GuideText）。 */
 export function LegalList({ items }: { items: React.ReactNode[] }) {
   return (
     <ul className="m-0 flex list-disc flex-col gap-1 pl-5">
       {items.map((item, index) => (
-        <li key={index}>{item}</li>
+        <li key={index}>{typeof item === "string" ? <GuideText text={item} /> : item}</li>
       ))}
     </ul>
   );
