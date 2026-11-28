@@ -1,15 +1,17 @@
 import type { Metadata } from "next";
+import { useTranslations } from "next-intl";
 
 import { ContactSection, LegalList, LegalPage, LegalSection, OPERATOR } from "@/components/LegalPage/LegalPage";
-import { APP_NAME } from "@/lib/screenNames";
+import { translate } from "@/i18n/config";
 
-export const metadata: Metadata = { title: `プライバシーポリシー | ${APP_NAME}` };
+export const metadata: Metadata = { title: `プライバシーポリシー | ${translate("common.appName")}` };
 
 export default function PrivacyPage() {
+  const t = useTranslations("common");
   return (
     <LegalPage title="プライバシーポリシー" revised="2026-11-28">
       <p className="m-0">
-        {OPERATOR}（以下「運営者」）は、{APP_NAME}
+        {OPERATOR}（以下「運営者」）は、{t("appName")}
         で、次のとおり情報を扱います。アプリを使うには、Google
         でログインしてもらい、ログインすることがこのポリシーと利用規約への同意になります。アプリを使うことは、走行モードで走った走りを送って走行ログに残すことへの同意になります。
       </p>

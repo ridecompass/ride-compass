@@ -1,6 +1,7 @@
 "use client";
 
 import { useMutation, useQuery } from "@tanstack/react-query";
+import { useTranslations } from "next-intl";
 import { useState } from "react";
 import { Button } from "@/components/ui/Button/Button";
 import { Card } from "@/components/ui/Card/Card";
@@ -30,10 +31,11 @@ function TuningRow({
   edited: boolean;
   onChange: (value: number) => void;
 }) {
+  const t = useTranslations("admin");
   return (
     <li className="flex items-center gap-2 border-b border-[var(--color-border)] py-1">
       <InfoPopover
-        triggerAriaLabel={`${parameter.label}の説明`}
+        triggerAriaLabel={t("infoLabel", { name: parameter.label })}
         label={parameter.label}
         labelClassName={cn(textVariants({ variant: "body" }), "min-w-0 flex-auto [overflow-wrap:anywhere]")}
       >
@@ -67,6 +69,7 @@ function TuningRow({
  * いないと、桁の途中の値が一瞬効く）。値の正本はDBで、画面に既定は無い。
  */
 export default function TuningPanel() {
+  const t = useTranslations("admin");
   const client = getQueryClient();
   const query = useQuery({ queryKey: TUNING_QUERY_KEY, queryFn: listTuningParameters }, client);
   const parameters = query.data ?? null;
@@ -103,7 +106,7 @@ export default function TuningPanel() {
     },
     client,
   );
-  const error = save.isError ? errorMessage(save.error, "保存に失敗しました") : (query.error?.message ?? null);
+  const error = save.isError ? errorMessage(save.error, t("saveFailed")) : (query.error?.message ?? null);
 
   // 効き方ごとにまとめる。**効き方の一覧も見出しも持たない**——どちらもbackendの宣言
   // （`TuningEffect`）が持ち、APIが値（`effect`）と見出し（`effect_title`）を各項目へ
@@ -125,9 +128,9 @@ export default function TuningPanel() {
           時点で「変えたらここで保存する」が目に入る位置に要る。 */}
       <div className="flex flex-wrap items-center gap-2">
         <span className="flex items-center gap-1">
-          <h2 className={textVariants({ variant: "heading" })}>較正値</h2>
-          <InfoPopover triggerAriaLabel="較正値の説明">
-            <p>実走の結果を見て調整する値です。変更して保存すると、デプロイせずに反映されます。</p>
+          <h2 className={textVariants({ variant: "heading" })}>{t("tabs.tuning")}</h2>
+          <InfoPopover triggerAriaLabel={t("infoLabel", { name: t("tabs.tuning") })}>
+            <p>{t("tuning.info")}</p>
           </InfoPopover>
         </span>
         {parameters && (
@@ -137,11 +140,15 @@ export default function TuningPanel() {
             onClick={() => save.mutate(edited.map((parameter) => ({ parameter, next: drafts[parameter.id]! })))}
             disabled={edited.length === 0}
           >
-            {save.isPending ? "保存中…" : "DBへ保存"}
+            {save.isPending ? t("saving") : t("saveToDb")}
           </Button>
         )}
-        {edited.length > 0 && <span className={textVariants({ variant: "note" })}>{edited.length}件が未保存</span>}
-        {query.isFetching && <span className={textVariants({ variant: "note" })}>読み込み中…</span>}
+        {edited.length > 0 && (
+          <span className={textVariants({ variant: "note" })}>
+            {t("tuning.unsavedCount", { count: String(edited.length) })}
+          </span>
+        )}
+        {query.isFetching && <span className={textVariants({ variant: "note" })}>{t("loading")}</span>}
       </div>
 
       {error && (
@@ -149,7 +156,7 @@ export default function TuningPanel() {
           {error}
           {parameters === null && (
             <Button usage={null} className="flex-none" size="sm" onClick={() => void query.refetch()}>
-              読み込み直す
+              {t("reload")}
             </Button>
           )}
         </p>

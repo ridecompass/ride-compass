@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import { useState } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/Tabs/Tabs";
 import BackendStatus from "@/features/admin/BackendStatus/BackendStatus";
@@ -14,7 +15,7 @@ import RouteSettingsPanel from "@/features/route/RouteSettingsPanel/RouteSetting
 import HardFilterPanel from "@/features/route/RouteSettingsPanel/HardFilterPanel";
 import { STANDARD_PROFILE_SETTINGS } from "@/features/route/routeProfiles";
 import { useClientConfig } from "@/hooks/useClientConfig";
-import { ROAD_SETTINGS_TAB_NAME } from "@/lib/screenNames";
+import { MAP_OVERLAY_GROUP_LABELS } from "@/lib/mapDisplay/overlayGroups";
 import { useDebugEnabled } from "@/hooks/useDebugLog";
 import { buttonVariants } from "@/components/ui/Button/Button";
 import { Toggle } from "@/components/ui/Toggle/Toggle";
@@ -32,15 +33,16 @@ function RouteProfileSettingsEditor({
   settings: RouteProfileSettings;
   onChange: (next: RouteProfileSettings) => void;
 }) {
+  const t = useTranslations("admin");
   const avoidance = useClientConfig().roadClasses.avoidance;
   return (
     <Tabs defaultValue="weights">
       <TabsList>
         <TabsTrigger usage={null} value="weights">
-          難所
+          {t("routeProfiles.weights")}
         </TabsTrigger>
         <TabsTrigger usage={null} value="exclusions">
-          {ROAD_SETTINGS_TAB_NAME}
+          {MAP_OVERLAY_GROUP_LABELS.road}
         </TabsTrigger>
       </TabsList>
       <TabsContent value="weights" className="pt-2">
@@ -62,29 +64,30 @@ function RouteProfileSettingsEditor({
 
 // 管理（材料・較正値・ひな形・データ保守）と開発者向け機能をまとめた画面。認証はこのページの外（URLの境界）が持つ。
 export default function AdminPage() {
+  const t = useTranslations("admin");
   const debugEnabled = useDebugEnabled();
   const [systemStatusOpen, setSystemStatusOpen] = useState(false);
 
   return (
     <div className="mx-auto flex w-full min-w-0 max-w-3xl flex-col gap-4 p-4">
-      <h1 className={textVariants({ variant: "title" })}>管理・開発者ツール</h1>
+      <h1 className={textVariants({ variant: "title" })}>{t("title")}</h1>
 
       <Tabs className="flex flex-col gap-3" defaultValue="materials">
         <TabsList>
           <TabsTrigger usage={null} value="materials">
-            材料
+            {t("tabs.materials")}
           </TabsTrigger>
           <TabsTrigger usage={null} value="tuning">
-            較正値
+            {t("tabs.tuning")}
           </TabsTrigger>
           <TabsTrigger usage={null} value="routeProfiles">
-            ひな形
+            {t("tabs.routeProfiles")}
           </TabsTrigger>
           <TabsTrigger usage={null} value="maintenance">
-            データ保守
+            {t("tabs.maintenance")}
           </TabsTrigger>
           <TabsTrigger usage={null} value="developer">
-            開発者
+            {t("tabs.developer")}
           </TabsTrigger>
         </TabsList>
 
@@ -120,16 +123,14 @@ export default function AdminPage() {
                 pressed={systemStatusOpen}
                 onClick={() => setSystemStatusOpen((v) => !v)}
               >
-                {systemStatusOpen ? "システム状況を隠す" : "システム状況を表示"}
+                {systemStatusOpen ? t("developer.hideSystemStatus") : t("developer.showSystemStatus")}
               </Toggle>
             </div>
             <BackendStatus />
           </div>
           {debugEnabled && (
             // ログは地図を操作しながら見るもので、地図の無いこのページには出さない。
-            <p className={textVariants({ variant: "hint" })}>
-              デバッグログはトップページ（/）のヘッダーアイコンから表示できます。
-            </p>
+            <p className={textVariants({ variant: "hint" })}>{t("developer.debugLogWhere")}</p>
           )}
           <SystemStatusPanel open={systemStatusOpen} onClose={() => setSystemStatusOpen(false)} />
           <BackendLogsPanel />

@@ -13,6 +13,7 @@ Tailwindのユーティリティで書く。CSS Modulesは使わない（CSSの�
 |---|---|
 | components/ui（部品） | `Button/Button.tsx`（押すと1回動く。`Button/Button.tsx: variant`が役割、`Button/Button.tsx: size`が大きさ。`type`未指定時は`"button"`）・`Toggle/Toggle.tsx`（押して切り替える。押下状態は呼び出し側が持つ）・`ToggleGroup/ToggleGroup.tsx`（並んだ選択肢から1つを選ぶ。選んでいるものは外れない）・`Tabs/Tabs.tsx`（タブの列とタブの見た目。Root・ContentはRadixのものを出す）・`Popover/Popover.tsx`（押すと開く浮きパネル。中身はdocument.body直下へ描く。開くボタン`Popover/Popover.tsx: PopoverTrigger`は印`data-usage-opens`を付け、説明を見る状態がその説明に「中を見る」を出す。中身は、説明を見る状態の案内・説明の面を押すこと・そこへフォーカスが移ることでは閉じない。画面の端へ寄せて開くときに端と空ける幅は、どの浮きパネルも`Popover/Popover.tsx: POPOVER_COLLISION_PADDING_PX`）・`Input/Input.tsx`（1行・複数行・選択の入力欄。3つとも同じ枠）・`NumberInput/NumberInput.tsx`（入力途中の文字を部品が持つ数値欄。打つたびに渡すか、欄を離れたとき・Enterで渡すかを選ぶ）・`Text/Text.tsx`（文字の役割ごとの大きさ・太さ・色）・`Table/Table.tsx`（一覧表）・`Card/Card.tsx`（ひとまとまりの面）・`Callout/Callout.tsx`（本文の中の注意の1かたまり）・`Badge/Badge.tsx`（名前の横に添える札）・`MarkLegend/MarkLegend.tsx`（一覧に出る印の読み方を、一覧の上に1行で並べる）・`GuideText/GuideText.tsx`（案内の文。アイコンだけの操作の名前をアイコンにして描き（5-1）、言葉のまとまりの間でだけ折り返す。画面全体は`app/globals.css`の`word-break: auto-phrase`で句の切れ目で折るが、iPhone の Safari は対応しないので、Safari でも句で折りたい文はこれで描く）・`Dot/Dot.tsx`（状態の小さな丸）・`Spinner/Spinner.tsx`（待っている間に回る輪。アイコンと同じ`svg`で、色は文字の色）・`LogLine/LogLine.tsx`（ログの1行）・`Dialog/Dialog.tsx`（`Dialog/Dialog.tsx: title`必須でアクセシブル名を型で強制。消す前の確認の窓`Dialog/Dialog.tsx: ConfirmDialog`も持つ）・`Checkbox/Checkbox.tsx`・`Ruler/Ruler.tsx`（目盛りを横に滑らせ、左端の目印に合わせたコマを選ぶ。目印より右だけを見せ、残りは滑らせて出す。ドラッグ・ホイール・吸着はEmbla、キー操作と`role="slider"`の読み上げは部品が持つ） |
 | lib | `cn.ts`（`cn.ts: clsx`で条件付きclassNameをまとめ、`tailwind-merge`で同じプロパティを指すクラスの後勝ちを解決する）・`paletteCssVariables.ts`（backendが配る色のうちCSSから参照するものを、CSS変数として流す） |
+| 画面の文の辞書 | `frontend/messages/ja.json`（画面の文を名前空間ごとの ID で持つ。部品は`next-intl`の`useTranslations`、非同期の Server の部品は`getTranslations`で引く。backend が配る文は写さない）・`i18n/config.ts`（辞書と言語の設定。部品の外で引く口`i18n/config.ts: translate`）・`i18n/request.ts`（Server の部品へ辞書を渡す`next-intl`の口）・`i18n/appConfig.d.ts`（辞書の形を`next-intl`の型へ渡し、誤った ID・足りない差し込みの値を型で止める）。差し込みの値の型の宣言`messages/ja.d.json.ts`は`next dev`・`next build`・`next typegen`が書き出す生成物で、リポジトリに持たない |
 | app | `globals.css`（デザイントークン・`@theme`登録・リセット・レスポンシブレイアウト・MapLibreのDOM上書き。下記8節） |
 
 部品はいずれも`class-variance-authority`（variant管理）＋`cn()`を使うshadcn/ui方式
@@ -174,6 +175,7 @@ Tailwindのユーティリティで書く。CSS Modulesは使わない（CSSの�
 frontendの文言（管理画面を除く）と、backendが配る文（`domain/map_display.py`の説明の文・画面に出るエラーの`detail`）と、
 backendのdomainの宣言が持つ名前（ハードフィルタ・凡例の行・材料と材料の値の名前等）のどれにも効く。宣言をまたいで
 同じ語は同じ集合を指し、違う集合には違う語を付ける。表に無い概念を画面に足すときは、行を足してから書く。
+いくつもの画面に出る名前は辞書（`frontend/messages/ja.json`の`common`）に1つ置き、どの画面もその ID で引く。
 
 | 概念 | 画面の語 | 使わない語 |
 |---|---|---|
@@ -182,11 +184,11 @@ backendのdomainの宣言が持つ名前（ハードフィルタ・凡例の行�
 | 総合の難所に掛ける数（「難所」タブの一番上の行。絵は地図の総合と同じ） | 総合（段の名前は難所を数える割合「50%」） | 全体・難所の強さ・重み |
 | 難所の要因ごとに掛ける数（「難所」タブの総合の下の行） | 割合（段の名前は難所を数える割合「50%」「200%」。道の区分の倍率と同じ「×」の書き方にしない） | 重み・配分 |
 | 難所の要因を数えないこと（「難所」タブで倍率の段と並べて選ぶ。総合の無効は、全部の要因を数えない） | 無効 | ×0・無視・未使用 |
-| 道の区分ごとに費用に掛ける数（「道路」タブ。好む・少し好む・通る・少し避ける・なるべく避ける・通らない。タブの名前は`lib/screenNames.ts: ROAD_SETTINGS_TAB_NAME`） | 段の名前は掛ける数そのもの（「×0.5」「×1」「×2」「×∞」等）。段の凡例（「地図で見る」の下）は、倍率に向きの名前（好む・少し好む・少し避ける・なるべく避ける・通らない。`backend/app/domain/road_avoidance.py: AVOIDANCE_LEVEL_NAMES`）を添える。行ごとの選ぶ口は1本の目盛り（`components/ui/ToggleGroup/ToggleGroup.tsx`の`scale`）で、真ん中の長い目盛りが×1。ルートの線では好む・避けるの道を通った区間の両脇の線（好む＝実線・避ける＝破線）。道路タブを出している間（タブの上の「地図で見る」がON）は、地図の道を段の色（好む＝緑・避ける＝橙・通らない＝赤、「少し」の段は同じ色相の薄い色）で塗り分ける | 回避・回避指定 |
+| 道の区分ごとに費用に掛ける数（「道路」タブ。好む・少し好む・通る・少し避ける・なるべく避ける・通らない。タブの名前は地図の道路のまとまりの名前（`lib/mapDisplay/overlayGroups.ts: MAP_OVERLAY_GROUP_LABELS`の`road`）） | 段の名前は掛ける数そのもの（「×0.5」「×1」「×2」「×∞」等）。段の凡例（「地図で見る」の下）は、倍率に向きの名前（好む・少し好む・少し避ける・なるべく避ける・通らない。`backend/app/domain/road_avoidance.py: AVOIDANCE_LEVEL_NAMES`）を添える。行ごとの選ぶ口は1本の目盛り（`components/ui/ToggleGroup/ToggleGroup.tsx`の`scale`）で、真ん中の長い目盛りが×1。ルートの線では好む・避けるの道を通った区間の両脇の線（好む＝実線・避ける＝破線）。道路タブを出している間（タブの上の「地図で見る」がON）は、地図の道を段の色（好む＝緑・避ける＝橙・通らない＝赤、「少し」の段は同じ色相の薄い色）で塗り分ける | 回避・回避指定 |
 | 全部の要因の難所を合わせたもの（ルートの後に何も選んでいないときの塗り） | 総合の難所 | 合計・合成 |
-| 1つの要因の難所か総合の難所で、地図の道・ルートの線・道のりのグラフに色を付けること（地図の上の入口と、道のりのグラフのタブの名前。`lib/screenNames.ts: BURDEN_PAINT_NAME`） | 難所を色で見る（色を付けることは「塗る」。選ぶものは「塗る要因」。地図の上の入口は、何も塗っていない間は短い形「色で見る」〔`lib/screenNames.ts: BURDEN_PAINT_SHORT_NAME`〕を出し、読み上げはこの名前） | 色分け・レンズ |
+| 1つの要因の難所か総合の難所で、地図の道・ルートの線・道のりのグラフに色を付けること（地図の上の入口と、道のりのグラフのタブの名前。辞書`frontend/messages/ja.json`の`common.burdenPaint`） | 難所を色で見る（色を付けることは「塗る」。選ぶものは「塗る要因」。地図の上の入口は、何も塗っていない間は短い形「色で見る」〔辞書の`common.burdenPaintShort`〕を出し、読み上げはこの名前） | 色分け・レンズ |
 | 走行モードで地図をどれだけ広く見せるかの段（地図の右上のボタンで中・遠・近と回す） | 縮尺 | 倍率 |
-| 場所の事実（標高・道路の種類・スポット等）を地図・道のりのグラフに重ねること（地図の左上の入口と、道のりのグラフのタブの名前。`lib/screenNames.ts: FACT_DISPLAY_NAME`） | 表示（重ねる1つずつは「情報」） | レイヤ |
+| 場所の事実（標高・道路の種類・スポット等）を地図・道のりのグラフに重ねること（地図の左上の入口と、道のりのグラフのタブの名前。辞書の`common.factDisplay`） | 表示（重ねる1つずつは「情報」） | レイヤ |
 | 候補の区間をほかの候補の道へ乗り換えて作ったルート | 合成ルート（作る操作は「ルートを合成」） | 難所を合わせる意味では「合成」を使わない |
 | 出発地へ戻って終わるルート（目的地を置かない・目的地が出発地と同じ） | 周回（ルート設定の2択の名前。周回の間の地点の一覧の終点は「出発地へ戻る」） | ループ |
 | ルート全体の長さと、生成で合わせるその目標（「ルート設定」の入り切り・ルーラー・候補のカード） | 距離（目標は「距離の目標」） | 全長 |
@@ -194,7 +196,7 @@ backendのdomainの宣言が持つ名前（ハードフィルタ・凡例の行�
 | 一度に作る候補の数と、出てきた候補の数 | 件（「8件」「候補 8件」） | 本 |
 | 地図に点で出す場所（停止要因・補給・事故） | スポット | POI |
 | 利用者が変えていないときに使う値 | 既定（既定値。総合と要因ごとの段では「標準」） | デフォルト・サーバー既定 |
-| ルートを作り、データを配る側 | アプリ（主語に要るときだけ。名前は`lib/screenNames.ts: APP_NAME`） | サーバー・ジョブ |
+| ルートを作り、データを配る側 | アプリ（主語に要るときだけ。名前は辞書の`common.appName`） | サーバー・ジョブ |
 | 各タブの値をまとめて名前を付けて保存したもの（「保存」タブの「いまの設定を保存」で作り、同じタブで呼び出す） | 設定（保存したものは「保存した設定」） | プリセット・条件セット |
 | OSM の highway=primary とその連絡路の道（番号が2桁以下の県道・市道） | 主要地方道 | 主要道・主要幹線道路 |
 | OSM の highway=secondary・tertiary とその連絡路の道（主要地方道でない県道と、2車線以上の道） | 一般県道・2車線の道 | 主要道・地方主要道 |

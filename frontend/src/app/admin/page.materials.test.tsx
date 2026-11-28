@@ -3,6 +3,7 @@
  */
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { translate } from "@/i18n/config";
 import { describe, expect, it } from "vitest";
 
 import { onSameOrigin } from "@/testing/backendServer";
@@ -37,7 +38,7 @@ describe("AdminPage 材料", () => {
     onSameOrigin("GET", "/admin/api/material-catalog/coverage", () => Response.json(report));
     const user = userEvent.setup();
     render(<AdminPage />);
-    await user.click(screen.getByRole("button", { name: "集計する" }));
+    await user.click(screen.getByRole("button", { name: translate("admin.report.run") }));
 
     const high = (await screen.findByText("高")).closest("tr")!;
     expect(high).toHaveTextContent("61.7%");

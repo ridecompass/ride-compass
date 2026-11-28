@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import { vocabulary } from "@/types/generated/vocabulary";
 import { getMaterialCoverage } from "@/features/admin/adminApi";
 import { formatCount, ReportCard } from "./ReportCard";
@@ -40,13 +41,14 @@ const GROUP_BY_SEMANTICS = Object.fromEntries(
 const GROUPED_SEMANTICS = new Set<string>(Object.keys(GROUP_BY_SEMANTICS));
 
 function CoverageTable({ entries }: { entries: readonly CountedEntry[] }) {
+  const t = useTranslations("admin.materials");
   return (
     <Table>
       <TableHead>
         <TableRow>
-          <TableHeader scope="col">材料</TableHeader>
-          <TableHeader scope="col">母集団</TableHeader>
-          <TableHeader scope="col">欠損割合</TableHeader>
+          <TableHeader scope="col">{t("material")}</TableHeader>
+          <TableHeader scope="col">{t("population")}</TableHeader>
+          <TableHeader scope="col">{t("missingRatio")}</TableHeader>
         </TableRow>
       </TableHead>
       <tbody>
@@ -75,7 +77,7 @@ function CoverageTable({ entries }: { entries: readonly CountedEntry[] }) {
                   />
                 </div>
                 <span className={cn(textVariants({ variant: "note" }), "whitespace-nowrap tabular-nums")}>
-                  {formatCount(entry.missing)} / {formatCount(entry.total)}
+                  {t("missingOfTotal", { missing: formatCount(entry.missing), total: formatCount(entry.total) })}
                 </span>
               </div>
             </TableCell>
@@ -89,24 +91,24 @@ function CoverageTable({ entries }: { entries: readonly CountedEntry[] }) {
 // 「材料」タブ（/admin）から、材料ごとの欠損割合（backend GET /api/admin/material-catalog/
 // coverage）を見るパネル。欠損データを取込側で推測して埋めずに、欠損の実態を見えるようにする。
 export default function MaterialCoveragePanel() {
+  const t = useTranslations("admin.materials");
+  const populations = { way: POPULATION_LABELS.way, edge: POPULATION_LABELS.edge };
   return (
     <ReportCard
-      title="材料ごとの欠損割合"
+      title={t("title")}
       info={
         <>
-          <p className="m-0 [&+&]:mt-2">
-            材料の元データ（OSMタグ、または区間単位の派生テーブルの行）を持たない区間の割合。母集団は
-            {POPULATION_LABELS.way}=取り込んだOSMのway全件、{POPULATION_LABELS.edge}
-            =道路グラフの区間全件で、件数で数える（距離で重みを付けない）。
-          </p>
-          <p className="m-0 [&+&]:mt-2">
-            材料名の下に、欠損の判定根拠（参照しているタグ・テーブル）を出す。集計はDB全体を走査するため手動実行。
-          </p>
+          <p className="m-0 [&+&]:mt-2">{t("info", populations)}</p>
+          <p className="m-0 [&+&]:mt-2">{t("infoSource")}</p>
         </>
       }
       load={getMaterialCoverage}
       summary={(report) =>
-        `${POPULATION_LABELS.way} ${formatCount(report.way_total)}件 ・ ${POPULATION_LABELS.edge} ${formatCount(report.edge_total)}件`
+        t("summary", {
+          ...populations,
+          wayTotal: formatCount(report.way_total),
+          edgeTotal: formatCount(report.edge_total),
+        })
       }
     >
       {(report) => <CoverageReport report={report} />}
@@ -125,6 +127,7 @@ function CoverageSection({ title, hint, entries }: { title: string; hint: string
 }
 
 function CoverageReport({ report }: { report: MaterialCoverageResponse }) {
+  const t = useTranslations("admin.materials");
   const covered = sortByMissingRatioDesc(report.materials.filter((m): m is CountedEntry => m.kind === "counted"));
   const excluded = report.materials.filter((m): m is ExcludedEntry => m.kind === "excluded");
   // 集計対象なのにmissing_semanticsがどのグループにも該当しない材料。黙って表から消えると
@@ -139,11 +142,7 @@ function CoverageReport({ report }: { report: MaterialCoverageResponse }) {
         return <CoverageSection key={group.key} title={group.title} hint={group.hint} entries={entries} />;
       })}
       {ungrouped.length > 0 && (
-        <CoverageSection
-          title="欠損時の扱いが不明な材料"
-          hint="集計の対象ですが、欠損の扱い（missing_semantics）が画面の想定に無い値です。画面の更新が遅れている可能性があります。"
-          entries={ungrouped}
-        />
+        <CoverageSection title={t("ungroupedTitle")} hint={t("ungroupedHint")} entries={ungrouped} />
       )}
       {excluded.length > 0 && (
         <details
@@ -152,11 +151,15 @@ function CoverageReport({ report }: { report: MaterialCoverageResponse }) {
             "[&_summary]:cursor-pointer [&_ul]:mt-1 [&_ul]:mb-0 [&_ul]:pl-5",
           )}
         >
-          <summary>集計対象外の材料（{excluded.length}件）</summary>
+          <summary>{t("excluded", { count: String(excluded.length) })}</summary>
           <ul>
             {excluded.map((entry) => (
               <li key={entry.material_id}>
-                <span className="text-[var(--foreground)]">{entry.label}</span>: {entry.excluded_reason}
+                {t.rich("excludedEntry", {
+                  label: entry.label,
+                  reason: entry.excluded_reason,
+                  name: (chunks) => <span className="text-[var(--foreground)]">{chunks}</span>,
+                })}
               </li>
             ))}
           </ul>

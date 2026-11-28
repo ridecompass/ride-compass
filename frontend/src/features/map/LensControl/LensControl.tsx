@@ -1,6 +1,7 @@
 "use client";
 
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/Popover/Popover";
+import { useTranslations } from "next-intl";
 import { useState } from "react";
 import { LEGEND_SWATCH_RING_CLASS, legendSwatchBackground, type LegendEntry } from "@/lib/mapDisplay/legendFilter";
 import { LAYER_DATA_STATUS_LABELS, layerDataStatusNotice, type LayerDataStatus } from "@/features/map/layers/mapLayers";
@@ -12,7 +13,6 @@ import { ClearLensIcon } from "@/components/ui/icons/icons";
 import { BurdenPaintIcon } from "@/components/ui/icons/lucideIcons";
 import { cn } from "@/lib/cn";
 import { textVariants } from "@/components/ui/Text/Text";
-import { BURDEN_PAINT_NAME, BURDEN_PAINT_SHORT_NAME } from "@/lib/screenNames";
 import { LENS_QUANTITY_LABEL } from "@/lib/mapDisplay/costLensPaint";
 import { useShownDataStatus } from "@/features/map/useShownDataStatus";
 import { LensRow, type LensOption } from "./LensRow";
@@ -36,9 +36,6 @@ interface LensControlProps {
   dataStatus?: LayerDataStatus;
 }
 
-/** 画面の名前。コードの「レンズ」は画面には出さない（利用者が見る名前はこれだけ）。 */
-const LENS_SCREEN_NAME = BURDEN_PAINT_NAME;
-
 /**
  * レンズ（地図を何で塗るか）の唯一の入口。地図の上のピルが今のレンズを示し、押すと一覧を開く。置き場は呼び出し側が決める。
  * 一覧は選んでも閉じず、選んでいる行をもう一度押すと外れる。
@@ -54,6 +51,9 @@ export default function LensControl({
   catalogNotice,
   dataStatus: givenStatus,
 }: LensControlProps) {
+  const t = useTranslations("common");
+  // 画面の名前。コードの「レンズ」は画面には出さない（利用者が見る名前はこれだけ）。
+  const lensScreenName = t("burdenPaint");
   const [open, setOpen] = useState(false);
   const dataStatus = useShownDataStatus(givenStatus);
   const statusLabel = dataStatus ? LAYER_DATA_STATUS_LABELS[dataStatus] : undefined;
@@ -63,7 +63,7 @@ export default function LensControl({
   const selected = axisOptions.find((option) => option.id === lens);
   // ルートの後に選んでいなければ総合の名前を出す。ルートの前に選んでいなければ（道路を塗らない）、画面の名前の短い形を出す。
   const totalPill = unselected && hasDetail ? totalLabel : null;
-  const pillLabel = unselected ? (totalPill ?? BURDEN_PAINT_SHORT_NAME) : (selected?.label ?? lens);
+  const pillLabel = unselected ? (totalPill ?? t("burdenPaintShort")) : (selected?.label ?? lens);
   const namesLensOnly = unselected && totalPill === null;
   const pillColor = selected?.color ?? LENS_NEUTRAL_COLOR;
   // 帯は色の段だけを並べ（受け皿の「データなし」等は除く）、右端の段の名前（一番濃い色の値）を帯の右に添える。
@@ -80,7 +80,7 @@ export default function LensControl({
             size="bare"
             shape="pill"
             className="max-w-full flex-row items-center gap-1 border-0 px-2.5 py-1 text-[length:var(--font-size-sm)] whitespace-nowrap focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-accent-strong)]"
-            aria-label={`${namesLensOnly ? LENS_SCREEN_NAME : `${LENS_SCREEN_NAME}: ${pillLabel}`}（タップで変更）`}
+            aria-label={`${namesLensOnly ? lensScreenName : `${lensScreenName}: ${pillLabel}`}（タップで変更）`}
             title={statusLabel}
             usage={`選んだ要因の${LENS_QUANTITY_LABEL}で、地図の道路[ルートを作った後はルートの線]を塗ります。\n・横の帯は左ほど小さく、右ほど大きい難所です（右に値があれば、その値から一番濃い色）。\n・道を押すと、その道の値が出ます。`}
           >
@@ -117,7 +117,7 @@ export default function LensControl({
           side="bottom"
           align="start"
         >
-          <p className="mb-1.5 font-semibold">{LENS_SCREEN_NAME}</p>
+          <p className="mb-1.5 font-semibold">{lensScreenName}</p>
           {/* ピルの状態ドットの意味。titleはスマホでは出ないため、開いた先で文として読ませる。 */}
           {statusNotice && (
             <p className="mb-1.5 text-[length:var(--font-size-sm)]" role="status">
@@ -136,7 +136,7 @@ export default function LensControl({
             deselectable
             value={unselected ? "" : lens}
             onValueChange={(id) => onLensChange(id === "" ? UNSELECTED_LENS_ID : id)}
-            aria-label={LENS_SCREEN_NAME}
+            aria-label={lensScreenName}
             usage={`押した要因の${LENS_QUANTITY_LABEL}で、地図の道路[ルートを作った後はルートの線]を塗ります。選んでいる行をもう一度押すと外れます。`}
           >
             {axisOptions.map((option) => (

@@ -1,29 +1,34 @@
+import { translate } from "@/i18n/config";
 import { adminApiClient, backendApi, getOptions, requestApi } from "@/lib/apiClient";
 import type { components, paths } from "@/types/generated/api";
 
 type Schemas = components["schemas"];
 
-/** 管理APIの呼び出しの骨格の設定。`label`は失敗の文言の主語（例: "DB状態の取得"→「DB状態の取得に失敗しました」）。
+type AdminCallLabel =
+  "materialCoverage" | "dbStatus" | "tuningList" | "tuningSave" | "routeProfilesList" | "routeProfilesSave" | "logs";
+
+/** 管理APIの呼び出しの骨格の設定。`call`は失敗の文言の主語の辞書の ID（例: DB状態の取得→「DB状態の取得に失敗しました」）。
  * 本文を送る呼び出しは`body`を渡すと開始のログに載る。 */
-function adminOptions(label: string, { body }: { body?: unknown } = {}) {
+function adminOptions(call: AdminCallLabel, { body }: { body?: unknown } = {}) {
+  const label = translate(`admin.api.${call}`);
   return {
     category: "api:admin",
-    messages: { failure: `${label}に失敗しました`, parseFailure: `${label}の結果を解析できませんでした` },
+    messages: {
+      failure: translate("admin.api.failure", { label }),
+      parseFailure: translate("admin.api.parseFailure", { label }),
+    },
     ...(body !== undefined ? { requestMeta: { body } } : {}),
   };
 }
 
 export function getMaterialCoverage() {
-  return requestApi(
-    (init) => adminApiClient.GET("/material-catalog/coverage", init),
-    adminOptions("材料の欠損割合の取得"),
-  );
+  return requestApi((init) => adminApiClient.GET("/material-catalog/coverage", init), adminOptions("materialCoverage"));
 }
 
 // データ保守
 
 export function getDbStatus() {
-  return requestApi((init) => adminApiClient.GET("/db-status", init), adminOptions("DB状態の取得"));
+  return requestApi((init) => adminApiClient.GET("/db-status", init), adminOptions("dbStatus"));
 }
 
 // 較正値
@@ -32,7 +37,7 @@ export function getDbStatus() {
 export type TuningParameter = Schemas["TuningParameterView"];
 
 export function listTuningParameters() {
-  return requestApi((init) => adminApiClient.GET("/tuning", init), adminOptions("較正値の取得"));
+  return requestApi((init) => adminApiClient.GET("/tuning", init), adminOptions("tuningList"));
 }
 
 /** 1件を書き換える。 */
@@ -40,7 +45,7 @@ export function updateTuningParameter(paramId: string, value: number) {
   const body = { value };
   return requestApi(
     (init) => adminApiClient.PUT("/tuning/{param_id}", { params: { path: { param_id: paramId } }, body, ...init }),
-    adminOptions("較正値の保存", { body }),
+    adminOptions("tuningSave", { body }),
   );
 }
 
@@ -51,14 +56,14 @@ export type RouteProfiles = Schemas["RouteProfiles-Output"];
 export type RouteProfile = RouteProfiles["profiles"][number];
 
 export function getRouteProfiles() {
-  return requestApi((init) => adminApiClient.GET("/route-profiles", init), adminOptions("ひな形の取得"));
+  return requestApi((init) => adminApiClient.GET("/route-profiles", init), adminOptions("routeProfilesList"));
 }
 
 /** 全体を入れ替える。今の費用の軸・道の段の行に無い名を指すと、backendが名指して断る。 */
 export function replaceRouteProfiles(body: RouteProfiles) {
   return requestApi(
     (init) => adminApiClient.PUT("/route-profiles", { body, ...init }),
-    adminOptions("ひな形の保存", { body }),
+    adminOptions("routeProfilesSave", { body }),
   );
 }
 
@@ -71,10 +76,7 @@ export type LogLevelName = NonNullable<LogsQuery["min_level"]>;
 
 /** 直近のログ行（プロセス内リングバッファ）。debug_modeがOFFの間もWARNING以上は常に含まれる。 */
 export function getRecentLogs(query: LogsQuery) {
-  return requestApi(
-    (init) => adminApiClient.GET("/debug/logs", { params: { query }, ...init }),
-    adminOptions("ログの取得"),
-  );
+  return requestApi((init) => adminApiClient.GET("/debug/logs", { params: { query }, ...init }), adminOptions("logs"));
 }
 
 // 稼働状況（認証の要らない口）
@@ -82,13 +84,13 @@ export function getRecentLogs(query: LogsQuery) {
 export function getDebugStats() {
   return requestApi(
     (init) => backendApi.GET("/api/debug/stats", init),
-    getOptions({ category: "api:debug-stats", errorLabel: "システム状況" }),
+    getOptions({ category: "api:debug-stats", errorLabel: translate("admin.api.debugStats") }),
   );
 }
 
 /** backendの疎通を確かめ、`/health`の応答を返す。疎通できなければ投げる。 */
 export function checkBackendHealth() {
-  const failure = "バックエンドへの疎通確認に失敗しました";
+  const failure = translate("admin.api.healthFailure");
   return requestApi((init) => backendApi.GET("/health", init), {
     category: "api:health",
     messages: { failure, parseFailure: failure },

@@ -3,6 +3,7 @@
 import { useMutation } from "@tanstack/react-query";
 import Image from "next/image";
 import Link from "next/link";
+import { useTranslations } from "next-intl";
 import { useEffect, type ReactNode } from "react";
 
 import GoogleSignInButton from "@/components/GoogleSignInButton/GoogleSignInButton";
@@ -17,7 +18,6 @@ import { cn } from "@/lib/cn";
 import { rememberConsent } from "@/lib/consentMark";
 import { getQueryClient } from "@/lib/queryClient";
 import { endedRideIds, removeRideTrack } from "@/lib/rideTrackStore";
-import { APP_NAME } from "@/lib/screenNames";
 import { consentToTerms, signInWithGoogle, type AccountStatus } from "@/services/accountApi";
 
 /**
@@ -63,6 +63,7 @@ function Welcome({
   status: AccountStatus | undefined;
   account: ReturnType<typeof useAccountStatus>;
 }) {
+  const t = useTranslations("common");
   const client = getQueryClient();
   // ログインは同意を兼ねる。ログインした応答の版に、その場で同意を残す（済んでいれば残さない）。
   const signIn = useMutation(
@@ -86,7 +87,7 @@ function Welcome({
     <section aria-labelledby="welcome-title" className={CARD_CLASS}>
       <h1 id="welcome-title" className={cn(textVariants({ variant: "title" }), "m-0 flex items-center gap-2")}>
         <Image src="/icon.svg" alt="" width={36} height={36} unoptimized />
-        {APP_NAME}
+        {t("appName")}
       </h1>
       <p className={cn(textVariants({ variant: "body" }), "m-0")}>
         <GuideText text="ロードバイクで走りやすいルートを作るアプリです。" />
@@ -150,6 +151,7 @@ function Welcome({
 }
 
 function ConsentCard({ status }: { status: AccountStatus }) {
+  const t = useTranslations("common");
   const client = getQueryClient();
   const consent = useMutation(
     {
@@ -173,7 +175,8 @@ function ConsentCard({ status }: { status: AccountStatus }) {
         走りの記録への同意
       </h1>
       <p className={cn(textVariants({ variant: "body" }), "m-0")}>
-        {APP_NAME} を使うと、走行モードで走った走りを毎回送り、走行ログに残します。同意すると、地図の画面へ進みます。
+        {t("appName")}{" "}
+        を使うと、走行モードで走った走りを毎回送り、走行ログに残します。同意すると、地図の画面へ進みます。
       </p>
       <ul className={cn(textVariants({ variant: "body" }), "m-0 flex list-disc flex-col gap-1 pl-5")}>
         <li>走りの位置と時刻・推したルート・生成の条件・見せた予報・端末とブラウザの名前を残します。</li>

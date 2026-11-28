@@ -14,6 +14,7 @@
 | Frontendのデータ取得 | TanStack Query（`@tanstack/react-query`） | 取得の共有・取り直し・状態の骨格。MIT（依存の`@tanstack/query-core`も同じ）で、商用で使える。対応するReactは18・19（パッケージの`peerDependencies`）。使い方は[page-composition.md](../modules/frontend/page-composition.md)「データ取得の骨格」 |
 | FrontendのAPIの呼び出し | openapi-fetch（`openapi-typescript`の生成物からパス・問い合わせ・本文・応答の型を推論する） | MIT（依存の`openapi-typescript-helpers`も同じ）で、商用で使える。版の制約は下記。使い方は[page-composition.md](../modules/frontend/page-composition.md) |
 | Frontendの日本語の折り返し | BudouX（`budoux`。文を言葉のまとまりに分ける） | Apache-2.0（依存の`linkedom`等はISC・MIT・BSD-2-Clause）で、商用で使える。CSSの`word-break: auto-phrase`はiPhoneのSafariとFirefoxが対応しない（MDNの互換表の元データ）ため、Chromeがその中で使うBudouXで分ける。使うのは文を分ける部品（`Parser`と日本語のモデル）だけ。依存の`linkedom`は、ブラウザ向けの組み立てではブラウザ用の部品に置き換わる（パッケージの`browser`の欄）。使い所は`frontend/src/components/ui/GuideText/GuideText.tsx` |
+| Frontendの画面の文 | next-intl（`frontend/messages/ja.json`の辞書を ID で引き、ID の誤りを型で止める） | MIT（依存は`use-intl`・`@formatjs/*`等がMIT、辞書の抜き出しが使う`@swc/core`がApache-2.0）で、商用で使える。URL に言語を入れない1言語の使い方で入れている（言語の切り替えは持たない）。置き場と引き方は[frontend-design-system.md](../modules/frontend/frontend-design-system.md)の対象ファイル表 |
 | Frontendアイコン | lucide-react（汎用の形）＋自前のSVG（このアプリ固有の概念の形） | 振り分けと線の太さのそろえ方は`frontend/src/components/ui/icons/icons.tsx`（土台と自前の形）・`frontend/src/components/ui/icons/lucideIcons.tsx`（lucideの包み）。lucideはISC（一部のアイコンはFeather由来でMIT）で、商用で使える |
 | Backend | Python + FastAPI | バージョンの正本は`backend/requirements.txt` |
 | DB | PostgreSQL + PostGIS | 生データ層・派生層・MVT生成（`ST_AsMVT`）の唯一の系統。**取込範囲外は「データ未整備」として扱い、外部APIへのフォールバックを持たない**。ルート生成には`DATABASE_URL`への実接続が必須 |
