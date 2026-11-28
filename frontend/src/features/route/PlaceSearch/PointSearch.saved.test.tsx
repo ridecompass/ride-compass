@@ -2,8 +2,8 @@
  * `PlaceSearch/PointSearch.tsx`——地点を探す小窓の、打つ前に出す保存した地点と検索の履歴と、候補の☆での保存。開くと保存した地点を出し、
  * 打った文字を名前に含むものに絞り、選んだ地点を置く。住所・施設の候補か履歴を選ぶと履歴に残し、次に開くと保存した地点の下に
  * 新しい順に出し、打った文字で絞り、1件ずつ消せる。保存した地点も行の ✕ でその場で保存をやめられる。候補の☆はその候補を名前のまま保存し、もう一度押すと保存をやめる。置いている地点の
- * 保存のチップは、探して置いた地点をその候補のまま、地図で置いた地点を辺りを名前にして保存する。地点の行の☆は、欄を出さずに保存した地点だけの
- * 小窓を開き、保存が無ければ押せない。
+ * 保存のチップは、探して置いた地点をその候補のまま、地図で置いた地点を辺りを名前にして保存する。地点の行の☆は、欄を出さずに保存した地点と
+ * いまの地点の保存のチップだけの小窓を開き、保存が無く地点も置いていなければ押せない。
  *
  * ここで見ないもの:
  * - 打つ欄で引く・候補を並べる・選ぶこと → `PlaceSearch/PointSearch.test.tsx`
@@ -99,10 +99,31 @@ describe("PointSearch 保存した地点", () => {
     expect(star).toHaveFocus();
   });
 
-  it("保存した地点が無ければ、地点の行の☆は押せない", () => {
+  it("保存した地点が無く、地点も置いていない行の☆は押せない", () => {
     renderForm();
 
     expect(screen.getByRole("button", { name: "目的地を保存した地点から選ぶ" })).toBeDisabled();
+  });
+
+  it("地点を置いた行の☆は保存した地点が無くても押せ、開いた小窓の☆と名前でその地点を保存し、もう一度押すと保存をやめる", async () => {
+    renderForm({
+      destination: FACILITY,
+      foundAt: (point) => (point?.latitude === FACILITY.latitude ? FACILITY : null),
+    });
+    await screen.findByRole("button", { name: `目的地 ${FACILITY.name}` });
+
+    await userEvent.click(screen.getByRole("button", { name: "目的地を保存した地点から選ぶ" }));
+    const picker = screen.getByRole("dialog", { name: "目的地を保存した地点から選ぶ" });
+    const save = within(picker).getByRole("button", { name: `「${FACILITY.name}」を保存` });
+    await userEvent.click(save);
+
+    expect(save).toHaveAttribute("aria-pressed", "true");
+    expect(JSON.parse(window.localStorage.getItem(SAVED_PLACES_STORAGE_KEY) ?? "[]")).toEqual([FACILITY]);
+    expect(within(picker).getByRole("list", { name: "保存した地点" })).toBeInTheDocument();
+
+    await userEvent.click(save);
+    expect(save).toHaveAttribute("aria-pressed", "false");
+    expect(JSON.parse(window.localStorage.getItem(SAVED_PLACES_STORAGE_KEY) ?? "[]")).toEqual([]);
   });
 
   it("候補の☆でその候補を名前のまま保存し、もう一度押すと保存をやめる", async () => {

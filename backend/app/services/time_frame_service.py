@@ -9,6 +9,7 @@ from datetime import datetime
 
 from cachetools import LRUCache
 
+from app.domain.road_network import RoadNetwork
 from app.domain.strict_model import StrictModel
 from app.domain.time_frames import TimeFrame, frame_range, frame_start
 from app.domain.time_zone import JST
@@ -50,7 +51,7 @@ class TimeFrameService:
         # 取れなくしない）。空の種類の要求は印を載せず、路面タイルは時刻で変わらない規制だけで、レンズは今の風で求まる。
         with log_external_call("region:time-frames") as fields:
             try:
-                road_surface = await self._road_surface(start, end)
+                road_surface = await self._road_surface(await asyncio.to_thread(road_network_store.current), start, end)
             except (OSError, ValueError) as exc:
                 mark_failed(fields, exc)
                 road_surface = []
@@ -62,11 +63,11 @@ class TimeFrameService:
             fields["road_surface"], fields["lens"] = len(road_surface), len(lens)
         return TimeFrames(road_surface=road_surface, lens=lens)
 
-    async def road_surface_at(self, key: str | None) -> datetime | None:
-        """路面タイルのコマの印`key`の判定の時刻。Noneは時刻で変わらない規制だけで焼くこと。"""
+    async def road_surface_at(self, key: str | None, network: RoadNetwork) -> datetime | None:
+        """道路網`network`の路面タイルのコマの印`key`の判定の時刻。Noneは時刻で変わらない規制だけで焼くこと。"""
         if key is None:
             return None
-        return frame_start(await self._road_surface(*frame_range(datetime.now(JST))), key)
+        return frame_start(await self._road_surface(network, *frame_range(datetime.now(JST))), key)
 
     async def lens_at(self, key: str | None) -> datetime | None:
         """レンズのコマの印`key`の判定の時刻。Noneは今。"""
@@ -74,13 +75,12 @@ class TimeFrameService:
             return None
         return frame_start(await self._lens(*frame_range(datetime.now(JST))), key)
 
-    async def _road_surface(self, start: datetime, end: datetime) -> list[TimeFrame]:
-        cache_key = ("road_surface", road_network_store.current_generation(), start)
+    async def _road_surface(self, network: RoadNetwork, start: datetime, end: datetime) -> list[TimeFrame]:
+        cache_key = ("road_surface", road_network_store.directory_name(network.revision), start)
         frames = self._cache.get(cache_key)
         if frames is None:
-            # 道路網を読むのと、全部の組の効き方を時刻ごとに求めるのは、イベントループの外で行う。
-            frames = self._cache[cache_key] = await asyncio.to_thread(
-                lambda: regulation_frames(road_network_store.current(), start, end))
+            # 全部の組の効き方を時刻ごとに求めるのは、イベントループの外で行う。
+            frames = self._cache[cache_key] = await asyncio.to_thread(regulation_frames, network, start, end)
         return frames
 
     async def _lens(self, start: datetime, end: datetime) -> list[TimeFrame]:

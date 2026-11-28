@@ -131,9 +131,12 @@ describe("走りにくさを取れなかったとき", () => {
 
     expect(await screen.findByRole("group", { name: "走りにくさの内訳" })).toHaveTextContent("+12秒");
   });
+});
 
-  it("出発時刻の風の予報が無ければ、今の風で求めずに取れなかったと出す（地図のレンズと同じ）", async () => {
-    const sent = onBackend("POST", "/api/region/road-inspector", () => Response.json(inspectorResult()));
+describe("風の予報を読めないとき", () => {
+  it("出発時刻の風の予報が無ければ、今の風で求めずに風を読まないで取り、風に依らない走りにくさだけを合計なしで出す", async () => {
+    const calm = lensDirection(null, { axes: [{ axis_id: "ascent", seconds: 4 }] });
+    const sent = serveInspector(inspectorResult({ along: calm, against: calm }));
     render(
       <RoadInspectorPopup
         properties={SURFACED_ROAD}
@@ -143,8 +146,13 @@ describe("走りにくさを取れなかったとき", () => {
       />,
     );
 
-    expect(await screen.findByText(/走りにくさを取得できませんでした/)).toBeInTheDocument();
-    expect(sent).toEqual([]);
+    expect(
+      await screen.findByText("風の予報を読めないため、風に依る走りにくさと合計は出せません。"),
+    ).toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.getByRole("group", { name: "走りにくさの内訳" })).toHaveTextContent(/^登坂\+4秒$/),
+    );
+    expect(sent.map(({ body }) => body)).toEqual([expect.objectContaining({ wind: false })]);
   });
 });
 

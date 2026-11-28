@@ -12,9 +12,9 @@ from app.api.dependencies import (
     get_route_generation_setup_opener,
 )
 from app.api.failure_replies import failure_reply
+from app.api.routers.cost_axis_catalog import CostPreferenceRequest
 from app.api.rate_limit import client_id, enforce_rate_limit
 from app.config import settings
-from app.domain.cost_preference import CostPreference, RequestedCostPreference
 from app.domain.route_request import (
     MAX_ROUTE_DISTANCE_KM,
     MAX_ROUTES,
@@ -49,15 +49,12 @@ from app.domain.strict_model import StrictModel
 router = APIRouter()
 
 
-class RouteGenerateRequest(StrictModel):
+class RouteGenerateRequest(CostPreferenceRequest):
     latitude: Latitude
     longitude: Longitude
     # 全長の目標距離（±目標に較正値`search.distance_tolerance_ratio`を掛けた長さ）。経由地・目的地を置いても同じ意味で、省略すると全長の目標を置かない
     # （置いた点へ良い道で向かう）。
     distance_km: float | None = Field(default=None, gt=0, le=MAX_ROUTE_DISTANCE_KM)
-    # 代償の全体に掛けるつまみと、費用の軸ごとの倍率（書いていない軸は標準）。省略は標準。実際に適用された値は
-    # レスポンスのconditionsへエコーされる。
-    cost_preference: RequestedCostPreference = Field(default_factory=CostPreference)
     # 道の区分ごとの避け方。
     road_avoidance: RoadAvoidanceOverride
     # 返す候補の上限件数。距離があれば距離フィルタ合格の候補を試した順にこの件数、距離が無ければ
@@ -178,6 +175,7 @@ async def generate_routes(
             cost_preference=request.cost_preference,
             road_avoidance=dict(request.road_avoidance.root),
             assumed_speed_kmh=request.assumed_speed_kmh,
+            settings=request.settings,
         ),
         origin=Coordinates(latitude=request.latitude, longitude=request.longitude),
         target=request.target,

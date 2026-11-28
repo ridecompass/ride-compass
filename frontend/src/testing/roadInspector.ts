@@ -22,14 +22,15 @@ export const RIDE = {
     bearingDeg: 0,
     lensFrame: "v1-2026092409",
     speedKmh: 20,
+    paintedLensId: null,
     z: 14,
     x: 1,
     y: 2,
   },
 };
 
-/** 1つの向きの走りにくさ。軸ごとの秒と元の事実は、見たい呼び出し側が書く。 */
-export function lensDirection(totalSeconds: number, overrides: Partial<LensDirection> = {}): LensDirection {
+/** 1つの向きの走りにくさ。軸ごとの秒と元の事実は、見たい呼び出し側が書く。合計がnullなら風を読めずに求めた走りにくさ。 */
+export function lensDirection(totalSeconds: number | null, overrides: Partial<LensDirection> = {}): LensDirection {
   return { total_seconds: totalSeconds, axes: [], facts: {}, ...overrides };
 }
 

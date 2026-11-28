@@ -13,6 +13,8 @@ import MapOverview from "@/features/map/MapOverview/MapOverview";
 import { anyWeatherShown, overviewShown } from "@/features/map/MapOverview/overview";
 import MapView from "@/features/map/MapView/MapView";
 import type { MapTapMode } from "@/features/map/MapView/mapTapHits";
+import { initialAim } from "@/features/map/StreetViewAim/streetViewAim";
+import { StreetViewAimBar, StreetViewAimButton } from "@/features/map/StreetViewAim/StreetViewAimControls";
 import type { useMapView } from "@/features/map/view/useMapView";
 import RideBottom from "@/features/ride/RideBottom/RideBottom";
 import RideDarkScreen, { RideDarkScreenButton } from "@/features/ride/RideDarkScreen/RideDarkScreen";
@@ -30,6 +32,7 @@ import { useCostAxisCatalog } from "@/hooks/useCostAxisCatalog";
 import type { useLocation } from "@/hooks/useLocation";
 import { cn } from "@/lib/cn";
 import { mapOverlayEdge } from "@/lib/mapOverlayEdges";
+import type { StreetViewAim } from "@/lib/streetViewUrl";
 import type { Coordinates } from "@/types/route";
 import type { useRideGuidance } from "./useRideGuidance";
 
@@ -87,6 +90,9 @@ export default function HomeMapPane({
   const [dark, setDark] = useState(false);
   const [rideNoticeHost, setRideNoticeHost] = useState<HTMLDivElement | null>(null);
   if (!navigating && dark) setDark(false);
+  // Street View を開く地点と向きの矢印。走り出したらしまう（右の列の出すボタンは、走っていない間だけ出す）。
+  const [streetViewAim, setStreetViewAim] = useState<StreetViewAim | null>(null);
+  if (navigating && streetViewAim !== null) setStreetViewAim(null);
   const selected = results.selectedCandidate;
   const selection = results.selectedRouteSegment;
   // 走行中の道のりのグラフ（候補が無ければ出さない。結果の図と同じくなぞると地点を選び、地図にその区間の小窓を出す）。
@@ -143,6 +149,8 @@ export default function HomeMapPane({
         ride={riding.map}
         travelledKm={progress.km}
         turnPoint={upcomingTurn}
+        streetViewAim={streetViewAim}
+        onStreetViewAimChange={setStreetViewAim}
       />
 
       {/* 上端の段の左に「表示」（重ねる情報の一覧）と、走行中は次に曲がる所のカードと走行モードの知らせを縦に積む。どちらも走行中も出す
@@ -152,6 +160,7 @@ export default function HomeMapPane({
         className="pointer-events-none absolute top-3 left-3 z-[var(--z-map-control)] flex flex-col items-start gap-2"
       >
         <MapOverlayControls {...mapView.overlayControls} />
+        {streetViewAim !== null && <StreetViewAimBar aim={streetViewAim} onEnd={() => setStreetViewAim(null)} />}
         {upcomingTurn !== null && (
           <TurnCard direction={upcomingTurn.direction} distanceM={upcomingTurn.distanceM} shape={upcomingTurn.shape} />
         )}
@@ -215,6 +224,17 @@ export default function HomeMapPane({
               locating={place.locating}
               error={place.locateError}
               onLocate={() => place.locateMe(onFocusPoint)}
+            />
+            <StreetViewAimButton
+              aiming={streetViewAim !== null}
+              disabled={viewport === null}
+              onToggle={() =>
+                setStreetViewAim((shown) =>
+                  shown !== null || viewport === null
+                    ? null
+                    : initialAim(viewport, (selected?.geometry.coordinates as [number, number][] | undefined) ?? null),
+                )
+              }
             />
           </>
         )}

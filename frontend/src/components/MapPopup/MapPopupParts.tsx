@@ -23,8 +23,8 @@ const hintClass = cn(textVariants({ variant: "hint" }), "m-0");
 export const POPUP_HANDLE_ATTRIBUTE = "data-popup-handle";
 
 /**
- * 小窓の上の帯。つまんで小窓をずらす所で、触れても中身をスクロールせず文字を選ばない。右端は、小窓の器の右上に重なる Street View・
- * 寄せるアイコンと×（どれも幅32px・高さ44px）の幅だけ空ける。
+ * 小窓の上の帯。つまんで小窓をずらす所で、触れても中身をスクロールせず文字を選ばない。右端は、小窓の器の右上に重なる寄せる
+ * アイコンと×（どれも幅32px・高さ44px）の幅だけ空ける。
  */
 export function PopupHeader({ label, children }: { label: string; children: ReactNode }) {
   return (

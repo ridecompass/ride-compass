@@ -17,7 +17,7 @@ from app.domain.cost_preference import CostPreference
 from app.domain.wind_context import WeatherContext
 from app.domain.gradient import ROAD_BEARING_LEAF
 from app.domain.ledger_costs import ledger_parameters
-from app.domain.model_settings import ModelSettings, current_model_settings
+from app.domain.model_settings import ModelSettings
 from app.domain.lens_values import (
     LensFactInputs,
     LENS_AGAINST_LEAF,
@@ -30,17 +30,19 @@ from app.domain.lens_values import (
     lens_inspection,
     lens_table,
     lens_features,
+    map_lens,
     painted_direction,
 )
+from app.domain.lens_total import TOTAL_LENS_ID
 from app.domain.region import BoundingBox, tile_bounds_lonlat
 from app.domain.road_features import map_features_in
-from app.domain.road_network import MaterialFills, material_arrays_of, slice_rows
+from app.domain.road_network import MaterialFills, RoadNetwork, material_arrays_of, slice_rows
 from app.domain.attributes import EdgeMaterialColumns
 from app.domain.time_zone import JST, as_series_time
 from app.domain.wind import WeatherForecastSeries
 from app.infrastructure import road_network_store
 from app.infrastructure.cache_identity import canonical_json, dynamic_tile_key, model_settings_signature
-from app.infrastructure.debug_log import log_external_call
+from app.infrastructure.debug_log import log_external_call, mark_failed
 from app.infrastructure.msm_client import MsmUnavailableError, forecast_version
 from app.services.graph_service import network_burden_fills, network_classes
 from app.services.weather_service import WeatherService
@@ -74,24 +76,25 @@ class LensService:
         self._time_frames = time_frames
 
     async def way_materials(self, lens_id: str, z: int, x: int, y: int, frame: str | None,
-                            speed_kmh: float, preference: CostPreference) -> bytes | None:
+                            speed_kmh: float, preference: CostPreference, settings: ModelSettings) -> bytes | None:
         """レンズ`lens_id`の、タイルのフィーチャーの、レンズのコマの印`frame`（省略すると今）の風と想定速度`speed_kmh`と利用者の値
         `preference`（つまみと倍率。ルート生成と同じ値で塗る）での道ごとの材料（`LensMaterials`のJSON）。知らないレンズか、
-        利用者が無効にした軸のレンズ（表に無い）ならNone。風を読めない・時刻が予報の範囲の外・今の一覧に無い印なら投げる。"""
-        settings = current_model_settings()
+        利用者が無効にした軸のレンズ（表に無い）ならNone。風を読めない・時刻が予報の範囲の外・今の一覧に無い印なら投げる。
+        較正値・区分・軸の定義は写し`settings`だけを読む。"""
         conditions = lens_conditions(settings.cost_axes).get(lens_id)
         if conditions is None:
             return None
         at = await self._time_frames.lens_at(frame) if "at" in conditions else None
+        # 道路網は鍵と値で同じ世代を使うよう、ここで1回だけ読む（読むのはディスクの置き場なので、イベントループの外で）。
+        network = await asyncio.to_thread(road_network_store.current)
         with log_external_call(_CATEGORY, z=z, x=x, y=y) as fields:
-            key = dynamic_tile_key("lens", road_network_store.current_generation(), model_settings_signature(settings),
+            key = dynamic_tile_key("lens", road_network_store.directory_name(network.revision), model_settings_signature(settings),
                                    lens_id, z, x, y, _response_inputs(conditions, at, speed_kmh, preference))
             cached = self._responses.get(key)
             fields["cache"] = "miss" if cached is None else "hit"
             if cached is not None:
                 return cached
-            tile = await self._tile(settings, z, x, y, at if "at" in conditions else None, speed_kmh, preference,
-                                    fields, wind="at" in conditions)
+            tile = await self._tile(network, settings, z, x, y, at, speed_kmh, preference, fields, wind="at" in conditions)
             assert tile is not None  # フィーチャーを絞らなければ、空のタイルも空の表で返る
             if lens_id not in tile.table.values:
                 return None
@@ -100,25 +103,39 @@ class LensService:
             self._responses[key] = body
             return body
 
-    async def inspect(self, feature_key: str, z: int, x: int, y: int, bearing_deg: float, frame: str | None,
-                      speed_kmh: float, preference: CostPreference) -> LensInspection | None:
+    async def inspect(self, feature_key: str, z: int, x: int, y: int, bearing_deg: float, lens_id: str | None,
+                      frame: str | None, wind: bool, speed_kmh: float, preference: CostPreference,
+                      settings: ModelSettings) -> LensInspection | None:
         """押したフィーチャー（地図がタイル`z/x/y`で塗っている単位）の、レンズのコマの印`frame`（省略すると今）の、地図と同じ秒を
-        区間の長さぶん足したものと、その元の事実。タイルにそのフィーチャーが無ければNone。"""
-        at = await self._time_frames.lens_at(frame)
-        settings = current_model_settings()
+        区間の長さぶん足したものと、その元の事実と、地図がレンズ`lens_id`を塗る向き（塗っていない・知らないレンズなら総合の
+        塗り方）。`wind`が偽か、風を読めない（予報が無い・時刻が予報の範囲の外）なら、風を読まずに求め、風で変わる軸と総合を
+        載せない。タイルにそのフィーチャーが無ければNone。"""
+        network = await asyncio.to_thread(road_network_store.current)
         with log_external_call(_CATEGORY, z=z, x=x, y=y) as fields:
-            tile = await self._tile(settings, z, x, y, at, speed_kmh, preference, fields, only=feature_key)
+            if wind:
+                try:
+                    at = await self._time_frames.lens_at(frame)
+                    tile = await self._tile(network, settings, z, x, y, at, speed_kmh, preference, fields,
+                                            only=feature_key)
+                except MsmUnavailableError as exc:
+                    mark_failed(fields, exc)
+                    wind = False
+            if not wind:
+                tile = await self._tile(network, settings, z, x, y, None, speed_kmh, preference, fields, wind=False,
+                                        only=feature_key)
         if tile is None:
             return None
-        painted = painted_direction(bearing_deg, float(tile.table.features.bearing_deg[0]), settings.tuning)
+        lenses = lens_conditions(settings.cost_axes)
+        lens = map_lens(lenses.get(lens_id or TOTAL_LENS_ID, lenses[TOTAL_LENS_ID]), settings.tuning)
+        painted = painted_direction(lens, bearing_deg, tile.table.features, 0)
         return lens_inspection(tile.table.features, 0, painted, tile.facts)
 
-    async def _tile(self, settings: ModelSettings, z: int, x: int, y: int, at: datetime | None, speed_kmh: float,
+    async def _tile(self, network: RoadNetwork, settings: ModelSettings, z: int, x: int, y: int, at: datetime | None, speed_kmh: float,
                     preference: CostPreference, fields: dict[str, object], *, wind: bool = True,
                     only: str | None = None) -> _TileLens | None:
-        """タイルのレンズの値。`only`を渡すとそのフィーチャーだけで求める（無ければNone）。`wind`が偽なら風を読まずに求める
+        """道路網`network`のタイルのレンズの値。`only`を渡すとそのフィーチャーだけで求める（無ければNone）。`wind`が偽なら風を読まずに求める
         （風に依るレンズの値は無風のものになる）。"""
-        prepared = await asyncio.to_thread(_prepare, z, tile_bounds_lonlat(z, x, y), settings, only)
+        prepared = await asyncio.to_thread(_prepare, network, z, tile_bounds_lonlat(z, x, y), settings, only)
         if prepared is None:
             return None
         features, materials, fills, burden_fills, elevation_gain_m = prepared
@@ -145,20 +162,19 @@ class LensService:
         return series, target
 
 
-def _prepare(z: int, bounds: BoundingBox, settings: ModelSettings, only: str | None
+def _prepare(network: RoadNetwork, z: int, bounds: BoundingBox, settings: ModelSettings, only: str | None
              ) -> tuple[LensFeatures, EdgeMaterialColumns, MaterialFills, Mapping[str, float], np.ndarray] | None:
     """ズーム`z`・範囲`bounds`のタイルのフィーチャー（`map_features_in`）の、風に依らない入力（フィーチャーと行・材料・欠けを
-    埋める材料の平均と道のストレスの重さの平均・行の向きの登り）。道路網を読むのと、道路網ごとの初回に取込範囲全体の区分の列と
-    平均を求めるのを含むので、イベントループの外で呼ぶ。"""
-    network = road_network_store.current()
+    埋める材料の平均と道のストレスの重さの平均・行の向きの登り）。道路網ごとの初回に取込範囲全体の区分の列と平均を求めるのを
+    含むので、イベントループの外で呼ぶ。"""
     tile = map_features_in(network, z, bounds.min_longitude, bounds.min_latitude, bounds.max_longitude, bounds.max_latitude)
     in_tile = lens_features(network, tile.keys, tile.way_ids, tile.segment_indexes)
     features = in_tile if only is None else in_tile.only(only)
     if features is None:
         return None
-    materials = material_arrays_of(slice_rows(network, network_classes(network), features.rows), settings.tuning)
+    materials = material_arrays_of(slice_rows(network, network_classes(network, settings.road_classes), features.rows), settings.tuning)
     return (features, materials, MaterialFills(numeric_means=network.numeric_means),
-            network_burden_fills(network, settings.cost_axes),
+            network_burden_fills(network, settings),
             network.elevation_gain_m[features.rows])
 
 

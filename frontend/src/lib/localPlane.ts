@@ -86,9 +86,3 @@ export function nearestEdge(
   }
   return nearest;
 }
-
-/** 向きの無い線の軸`axisDeg`（とその逆向き）のうち、向き`towardDeg`に近い側（0以上360未満）。直角なら`axisDeg`。 */
-export function nearerSide(axisDeg: number, towardDeg: number): number {
-  const apart = normalizeDeg(towardDeg - axisDeg);
-  return normalizeDeg(apart > 90 && apart < 270 ? axisDeg + 180 : axisDeg);
-}

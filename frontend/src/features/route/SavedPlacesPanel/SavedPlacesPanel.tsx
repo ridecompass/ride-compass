@@ -22,7 +22,7 @@ interface SavedPlacesPanelProps {
   onRemove: (place: SavedPlace) => void;
 }
 
-// 「保存済み」タブの「地点」。保存した地点の一覧と、呼び出す・消すを置く（保存は地点を探す小窓のチップと候補の☆）。行の「呼び出す」は
+// 「保存済み」タブの「地点」。保存した地点の一覧と、呼び出す・消すを置く（保存は地点を探す小窓・地点の行の☆で開く小窓のチップと、候補の☆）。行の「呼び出す」は
 // 「設定」の行と同じアイコンで、押すとどの役割に置くかを選ぶメニューを開く。
 export default function SavedPlacesPanel({ places, waypointsFull, loop, onRecall, onRemove }: SavedPlacesPanelProps) {
   // 「呼び出す」のメニューを開いている地点。
@@ -33,7 +33,7 @@ export default function SavedPlacesPanel({ places, waypointsFull, loop, onRecall
       items={places}
       noun="地点"
       howToSave={
-        "条件タブで地点の行を押して探し、候補の右の☆で保存します。\n・保存した地点は、行の「呼び出す」を押すと出発地・経由地・目的地に使えます。"
+        "条件タブで地点の行の☆を押し、出る☆と名前でいま置いている地点を保存します。行を押して探した候補も、右の☆で保存できます。\n・保存した地点は、行の「呼び出す」を押すと出発地・経由地・目的地に使えます。"
       }
       renderMain={(place) => <PlaceName place={place} className="font-semibold" />}
       renderActions={(place) => (

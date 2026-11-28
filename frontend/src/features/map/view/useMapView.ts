@@ -187,8 +187,8 @@ export function useMapView({
   const speedKmh = riding?.speedKmh ?? ride.speedKmh;
   const frames = useTimeFrames(ride.at);
   const wayConditions = useMemo(
-    () => ({ bearingDeg, lensFrame: frames.lens, speedKmh }),
-    [bearingDeg, frames.lens, speedKmh],
+    () => ({ bearingDeg, lensFrame: frames.lens, speedKmh, paintedLensId: painted }),
+    [bearingDeg, frames.lens, speedKmh, painted],
   );
   const wayMaterials = useWayMaterials(fetchLenses, viewport, wayConditions, costPreference, totalLens?.axisId ?? null);
   const [roadTabOnMap, setRoadTabOnMap] = useStoredState("ridecompass:road-tab-on-map", "道路タブを地図で見るか", true);

@@ -56,8 +56,6 @@ export default function RoadInspectorPopup({ properties, track, conditions, cost
     {
       queryKey: ["road-inspector", wayId, featureKey, opened, costPreference],
       queryFn: async () => {
-        // 地図のレンズと同じく、出発時刻の風のコマが無ければ（予報の範囲の外）今の風で求めない。
-        if (opened.lensFrame === null) throw new Error("出発時刻の風の予報がありません");
         const value = await withFreshFrames(fetchRoadInspection(wayId!, featureKey!, opened, costPreference));
         if (value === null) throw new Error("走りにくさが返りませんでした");
         return value;
@@ -127,6 +125,9 @@ function LensValues({ lens }: { lens: LensInspection }) {
   const factLabels = rows.flatMap((row) => values.facts[row.id]?.label ?? []);
   return (
     <div className="flex flex-col gap-1">
+      {values.total_seconds === null && (
+        <p className={hintClass}>風の予報を読めないため、風に依る走りにくさと合計は出せません。</p>
+      )}
       <div className="flex flex-wrap items-center gap-1.5">
         <p className={hintClass}>
           {slot === "along" ? "道の向き" : "逆向き"}
@@ -150,7 +151,7 @@ function LensValues({ lens }: { lens: LensInspection }) {
       {/* 事実の名前と単位は backend が付ける（ルートの一覧と同じ作り方）。 */}
       {view === "seconds" ? (
         <PenaltyBreakdown
-          total={sectionSeconds(values.total_seconds)}
+          total={values.total_seconds === null ? null : sectionSeconds(values.total_seconds)}
           items={rows.flatMap((row) =>
             Math.round(row.seconds) === 0 ? [] : [{ row, text: sectionSeconds(row.seconds) }],
           )}

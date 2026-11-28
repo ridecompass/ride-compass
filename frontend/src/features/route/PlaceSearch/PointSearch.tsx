@@ -27,7 +27,7 @@ import type { PlaceCandidate } from "@/types/route";
 interface PointSearchProps {
   /** 置く地点の呼び名（見出しと欄の読み上げに出す）。 */
   title: string;
-  /** 保存した地点から選ぶだけの小窓にするか（欄・チップ・履歴を出さず、キーボードも出さない）。 */
+  /** 保存した地点から選ぶ小窓にするか（欄・履歴と保存のほかのチップを出さず、キーボードも出さない）。 */
   savedOnly: boolean;
   /** 見出しの地点の印。 */
   mark: React.ReactNode;
@@ -54,11 +54,11 @@ interface PointSearchProps {
 }
 
 /**
- * 地点の行を押すと開く、その地点を探す小窓（呼ぶ側が `Popover` と目印を持つ）。打つ前は「現在地」「地図で置く」「いまの地点を保存」の
+ * 地点の行を押すと開く、その地点を探す小窓（呼ぶ側が `Popover` と目印を持つ）。打つ前は「現在地」「地図で置く」と、☆と名前でいまの地点を保存する
  * チップを出し、保存した地点・検索の履歴を打った文字で絞って出し、打つと住所・施設の候補を出す（候補の☆でその地点を保存する）。候補を押すと、その地点に置いて
  * 閉じる。保存した地点と履歴は、行のごみ箱でその場で消せる。開いた時点で、スマホは欄へ移ってキーボードを出し、PC は小窓そのものへ
  * フォーカスを移す（Tab で中へ進める）。✕・選ぶ・ブラウザの「戻る」で閉じる（小窓の外と Escape は、呼ぶ側の `Popover` が閉じる）。
- * `savedOnly` なら、欄・チップ・履歴を出さず、保存した地点だけを出す（キーボードは出さない）。
+ * `savedOnly` なら、欄・履歴と保存のほかのチップを出さず、いまの地点の保存と保存した地点だけを出す（キーボードは出さない）。
  */
 export default function PointSearch({
   title,
@@ -174,21 +174,23 @@ export default function PointSearch({
           )}
         </form>
       )}
-      {!typed && !savedOnly && (
+      {!typed && (!savedOnly || placed !== null) && (
         <div className="flex flex-wrap gap-1">
-          <Button
-            size="xs"
-            disabled={onHere === null}
-            onClick={() => {
-              onHere?.();
-              onClose();
-            }}
-            usage={`現在地を${title}にします。`}
-          >
-            <LocateIcon size={14} />
-            現在地
-          </Button>
-          {placing && (
+          {!savedOnly && (
+            <Button
+              size="xs"
+              disabled={onHere === null}
+              onClick={() => {
+                onHere?.();
+                onClose();
+              }}
+              usage={`現在地を${title}にします。`}
+            >
+              <LocateIcon size={14} />
+              現在地
+            </Button>
+          )}
+          {placing && !savedOnly && (
             <Button size="xs" onClick={onClose} usage={`小窓を閉じます。${placeOnMapUsage(title)}`}>
               <SelectedSpotIcon size={14} />
               地図で置く
@@ -197,15 +199,13 @@ export default function PointSearch({
           {placed !== null && (
             <Button
               size="xs"
+              aria-label={`「${placed.name}」を保存`}
               aria-pressed={placedSaved !== null}
               onClick={() => (placedSaved !== null ? savedPlaces.remove(placedSaved) : savedPlaces.save(placed))}
-              usage={`いま${title}に置いている地点を、この端末に保存します。保存した地点は、地点の検索を開くと出ます。`}
+              usage={`いま${title}に置いている地点を、この端末に保存します（塗った☆は保存済みで、押すと保存をやめます）。保存した地点は、地点の行の☆と地点の検索から選べます。`}
             >
               {placedSaved !== null ? <SavedPlaceIcon size={14} /> : <SavePlaceIcon size={14} />}
-              <span className="flex min-w-0">
-                <span className="max-w-[9em] truncate">{placed.name}</span>
-                {placedSaved !== null ? "を保存済み" : "を保存"}
-              </span>
+              <span className="max-w-[12em] truncate">{placed.name}</span>
             </Button>
           )}
         </div>

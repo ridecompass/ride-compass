@@ -217,7 +217,7 @@ class RoadGraphEngine:
         そのまま渡すだけにする。
         """
         stage_started = start_timer()
-        road, tile_set = await self._graph_service.get_search_slice(bbox)
+        road, tile_set = await self._graph_service.get_search_slice(bbox, self._settings.road_classes)
         slice_ms = elapsed_ms(stage_started)
         if road.edge_count == 0:
             return None
@@ -244,8 +244,6 @@ class RoadGraphEngine:
         # 迂回率は同じ探索範囲で前回の往路木から学習した値があればそれを使う（無ければ既定値）。
         learned_detour_ratio = detour_ratio_cache.get_detour_ratio(tile_set)
 
-        cost_axes = self._cost_axes
-
         def compose_outbound() -> tuple[RoadAvoidanceMasks, LegCostComposer, LegCostArrays]:
             search_masks = compute_search_exclusion(materials, self._road_avoidance, self._avoidance_multipliers)
             regulations = TimedRegulations(
@@ -258,7 +256,7 @@ class RoadGraphEngine:
                 weather_series, start, self._assumed_speed_kmh, lazy_graph.edge_rows,
                 detour_ratio=detour_ratio_or_default(learned_detour_ratio),
                 material_fills=MaterialFills(numeric_means=road.network.numeric_means),
-                burden_fills=network_burden_fills(road.network, cost_axes),
+                burden_fills=network_burden_fills(road.network, self._settings),
                 settings=self._settings,
                 parameters=ledger_parameters(self._cost_preference, self._settings.tuning),
                 regulations=regulations,
