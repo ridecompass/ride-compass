@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { AppPage } from "@/components/AppPage/AppPage";
 import { textVariants } from "@/components/ui/Text/Text";
 import { cn } from "@/lib/cn";
 import { APP_NAME } from "@/lib/screenNames";
@@ -46,15 +46,8 @@ export function ContactSection() {
 /** 規約のページの骨組み（見出し・版の日付・トップへ戻るリンク）。 */
 export function LegalPage({ title, revised, children }: { title: string; revised: string; children: React.ReactNode }) {
   return (
-    <main className="mx-auto flex w-full max-w-2xl flex-col gap-6 overflow-y-auto px-4 py-6">
-      <header className="flex flex-col gap-1">
-        <Link href="/" className={cn(textVariants({ variant: "hint" }), "underline")}>
-          {APP_NAME} へ戻る
-        </Link>
-        <h1 className={cn(textVariants({ variant: "title" }), "m-0")}>{title}</h1>
-        <p className={cn(textVariants({ variant: "note" }), "m-0")}>{revised} 制定</p>
-      </header>
+    <AppPage title={title} note={`${revised} 制定`}>
       {children}
-    </main>
+    </AppPage>
   );
 }

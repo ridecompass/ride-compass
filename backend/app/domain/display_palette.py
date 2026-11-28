@@ -134,6 +134,8 @@ SEMANTIC_COLORS: dict[str, str] = {
     "route_splice": "#c2612b",
     "route_arrow": "#ffffff",
     "route_arrow_halo": "#111827",
+    # 走行ログで見返す、実際に走った線。予定の線（参考線・乗り換え・合成）と見分ける。
+    "ride_track": "#1d4ed8",
     # 記号の縁取り。天気の印（風の矢印・落雷）は、線の色の外に白い縁（mark_stroke）、その外に暗い細線（mark_halo）を引く。
     "mark_halo": "rgba(31, 41, 55, 0.85)",
     "mark_stroke": "#ffffff",
