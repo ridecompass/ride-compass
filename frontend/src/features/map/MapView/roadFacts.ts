@@ -19,7 +19,7 @@ function textColumn(properties: RoadSurfacePopupProperties, column: string): str
   return typeof value === "string" && value ? value : null;
 }
 
-/** 道の窓で押した道のロスを引き直すための識別子。 */
+/** 道の窓で押した道の難所を引き直すための識別子。 */
 export function roadWayId(properties: RoadSurfacePopupProperties): number | null {
   const value = properties[COLUMNS.way_id];
   return typeof value === "number" ? value : null;

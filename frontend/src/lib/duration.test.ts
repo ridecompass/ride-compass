@@ -22,7 +22,7 @@ describe("formatDurationShort", () => {
 });
 
 describe("reachesMinute", () => {
-  // 落ちると、区間の小窓が1分に満たないロスを出す・1分のロスを隠す。
+  // 落ちると、区間の小窓が1分に満たない難所を出す・1分の難所を隠す。
   it.each([
     { seconds: 29, expected: false },
     { seconds: 30, expected: true },

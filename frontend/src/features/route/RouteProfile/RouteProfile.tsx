@@ -31,14 +31,14 @@ import { SectionOnMapButton, type SectionOnMap } from "@/features/route/SegmentD
 import { useChosenProfileLayers, type ProfileLayerSelection } from "./useProfileLayers";
 
 const PROFILE_AXES_STORAGE_KEY = "ridecompass:profile-axes";
-/** 選んでいない間に積む軸の数（このルートでロスの大きい順）。全部を積むと色が混ざって、どの軸の難所かが読めない。 */
+/** 選んでいない間に積む軸の数（このルートで難所の大きい順）。全部を積むと色が混ざって、どの軸の難所かが読めない。 */
 const DEFAULT_SHOWN_AXES = 2;
 
 interface RouteProfileProps {
   segments: readonly RouteSegmentDetail[];
-  /** ロスを下から積む費用の軸の並び（一覧の順）と色。 */
+  /** 難所を下から積む費用の軸の並び（一覧の順）と色。 */
   catalog: PenaltyCatalog;
-  /** ルート全体の代償の内訳と、軸ごとの事実（RouteCandidate.penalty・facts.axes）。積むロスの一覧の行に出す。 */
+  /** ルート全体の代償の内訳と、軸ごとの事実（RouteCandidate.penalty・facts.axes）。積む難所の一覧の行に出す。 */
   penalty: PenaltyValues;
   facts: Readonly<Record<string, AxisFact>>;
   /** 横軸の右端の距離。 */
@@ -60,7 +60,7 @@ interface RouteProfileProps {
   riding?: boolean;
 }
 
-/** 道のりのグラフ。地図の2つの入口と同じ名前のタブで、「難所を色で見る」は区間の1kmあたりのロスを、「表示」は選んだ情報（標高の折れ線・道の区分の帯等）を、
+/** 道のりのグラフ。地図の2つの入口と同じ名前のタブで、「難所を色で見る」は区間の1kmあたりの難所を、「表示」は選んだ情報（標高の折れ線・道の区分の帯等）を、
  * 同じ横軸で出す。選んだ地点の中身は地図の区間の小窓が出す。 */
 export default function RouteProfile({
   segments,
@@ -86,7 +86,7 @@ export default function RouteProfile({
     const byAxis = profileBoxes(scale.columns, axisOrder);
     return axes.filter((axis) => (byAxis.get(axis.axisId)?.length ?? 0) > 0);
   }, [scale, axes, axisOrder]);
-  // 積む軸の選び（端末に覚える）。選んでいなければ（null）、このルートでロスの大きい軸から積む。
+  // 積む軸の選び（端末に覚える）。選んでいなければ（null）、このルートで難所の大きい軸から積む。
   const [chosenAxes, setChosenAxes] = useStoredState<readonly string[] | null>(
     PROFILE_AXES_STORAGE_KEY,
     "グラフに積む要因",
@@ -144,12 +144,12 @@ export default function RouteProfile({
         </TabsList>
         {tab === "lens" && (
           <InfoPopover
-            triggerAriaLabel="ロスのグラフの見方"
+            triggerAriaLabel="難所のグラフの見方"
             triggerClassName="rounded-full bg-[color-mix(in_srgb,var(--background)_85%,transparent)]"
           >
             <p>
               <GuideText
-                text={`チェックした種類だけを積み上げます。\n・高さは、区間ごとの${LENS_QUANTITY_LABEL}です。\n・上端は、このルートで最大の区間の値です[曲がる所のロスと、好む道・避ける道の増減は含みません]。\n・色ごとの面積は、その要因のロスの合計です。\n・横軸の右端は、最も長い候補の距離です。`}
+                text={`チェックした種類だけを積み上げます。\n・高さは、区間ごとの${LENS_QUANTITY_LABEL}です。\n・上端は、このルートで最大の区間の値です[曲がる所の難所と、好む道・避ける道の増減は含みません]。\n・色ごとの面積は、その要因の難所の合計です。\n・横軸の右端は、最も長い候補の距離です。`}
               />
             </p>
           </InfoPopover>
@@ -166,7 +166,7 @@ export default function RouteProfile({
               return (
                 <li
                   key={row.id}
-                  data-usage="チェックした要因のロスを、グラフに積みます。選んだ要因はこの端末に保存します。"
+                  data-usage="チェックした要因の難所を、グラフに積みます。選んだ要因はこの端末に保存します。"
                 >
                   <label className="flex cursor-pointer items-center gap-1.5">
                     <Checkbox

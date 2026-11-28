@@ -229,7 +229,7 @@ describe("ルートを作る", () => {
     });
   });
 
-  it("ロスを説明する文の軸の並びと、ルートの後に選ばずに塗る総合の名前は、費用の軸の一覧の名前で出る", async () => {
+  it("難所を説明する文の軸の並びと、ルートの後に選ばずに塗る総合の名前は、費用の軸の一覧の名前で出る", async () => {
     const catalog = costAxisCatalog(costAxisEntry("first", { label: "甲" }), costAxisEntry("second", { label: "乙" }));
     serveCostAxisCatalog({ ...catalog, total_lens: { ...catalog.total_lens, label: "全部" } });
     const { user } = renderHome();
@@ -242,7 +242,7 @@ describe("ルートを作る", () => {
     );
     await user.click(screen.getByRole("tab", { name: "難所" }));
     await user.click(screen.getByRole("button", { name: "総合の説明を表示" }));
-    expect(await screen.findByText(/ロス\[甲・乙\]は、/)).toBeInTheDocument();
+    expect(await screen.findByText(/難所\[甲・乙\]は、/)).toBeInTheDocument();
     await user.keyboard("{Escape}");
 
     jobs.respond([FIRST], LOOP_CONDITIONS);
