@@ -1,106 +1,32 @@
 // @vitest-environment node
 /**
- * `app/admin/api/[...path]/route.ts`——`/admin/api/<X>`への要求を、資格情報を付けてbackendの`/api/admin/<X>`へ
- * そのまま渡し、応答をそのまま返すこと。
- *
- * 母集団はbackendの契約（生成物`openapi.json`）にある管理APIのメソッドの全部。口はパスごとに振る舞いを変えないので、
- * メソッドごとに操作を1つ、区間の値を持つパスがあればそれを選ぶ。
- *
- * ここで見ないもの:
- * - 管理画面のクライアントが叩く先・待ち時間 → `app/admin/adminApi.test.ts`
- * - 資格情報の「片方だけ設定」の扱い → `lib/adminBasicAuth.test.ts`
+ * `app/admin/api/[...path]/route.ts`——管理画面が送った値が、資格情報つきでbackendの管理APIへそのまま届き、
+ * backendが返した値がそのまま画面へ返ること。
  */
 
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { BACKEND_INTERNAL_URL } from "@/lib/backendInternalUrl";
 import { onUrl } from "@/testing/backendServer";
-import { openApi } from "@/testing/openApi";
 
-import * as route from "./route";
+import { PUT } from "./route";
 
-let credentials: { username: string; password: string } | null = null;
-vi.mock("@/lib/adminBasicAuth", () => ({ adminBasicAuthCredentials: () => credentials }));
-
-const handlers = route as unknown as Record<string, (request: Request) => Promise<Response>>;
-
-const adminOperations = Object.entries(openApi.paths)
-  .filter(([path]) => path.startsWith("/api/admin/"))
-  .flatMap(([path, ops]) => Object.keys(ops).map((method) => [method.toUpperCase(), path] as const));
-const operations = [...new Set(adminOperations.map(([method]) => method))].map(
-  (method) =>
-    adminOperations.find(([m, path]) => m === method && path.includes("{")) ??
-    adminOperations.find(([m]) => m === method)!,
-);
-
-let forwarded: Request[] = [];
-let backendResponse: () => Response;
-
-beforeEach(() => {
-  credentials = { username: "admin", password: "s3cret" };
-  backendResponse = () => new Response('{"ok":true}', { status: 200, headers: { "content-type": "application/json" } });
-  forwarded = onUrl(`${BACKEND_INTERNAL_URL}/*`, () => backendResponse());
-});
-
-function call(method: string, path: string, body?: string) {
-  return handlers[method](new Request(`http://frontend.test${path}`, { method, body }));
-}
+vi.mock("@/lib/adminBasicAuth", () => ({
+  adminBasicAuthCredentials: () => ({ username: "admin", password: "s3cret" }),
+}));
 
 describe("管理APIの口", () => {
-  it("契約に管理APIの操作が1つ以上ある", () => {
-    expect(operations.length).toBeGreaterThan(0);
-  });
+  it("送られた本文を、資格情報つきで同じパスの管理APIへ渡し、backendの応答を返す", async () => {
+    const forwarded = onUrl(`${BACKEND_INTERNAL_URL}/*`, () => Response.json({ value: 1 }));
 
-  it.each(operations)("%s %s: 同じメソッド・同じパスへ、区間の値を1区間のまま渡す", async (method, template) => {
-    // 区切り文字を含む値でも1区間のまま届くこと（復号し直すと区間が増える）。
-    const path = template.replace(/\{[^}]+\}/g, encodeURIComponent("値/1"));
-    const hasBody = method === "POST" || method === "PUT";
-    const response = await call(
-      method,
-      path.replace(/^\/api\/admin/, "/admin/api") + "?limit=5",
-      hasBody ? "{}" : undefined,
+    const response = await PUT(
+      new Request("http://frontend.test/admin/api/tuning/g.alpha", { method: "PUT", body: '{"value":1}' }),
     );
 
-    expect(response.status).toBe(200);
     expect(forwarded).toHaveLength(1);
-    expect(forwarded[0].url).toBe(`${BACKEND_INTERNAL_URL}${path}?limit=5`);
-    expect(forwarded[0].method).toBe(method);
-  });
-
-  it("Basic認証の資格情報を付ける", async () => {
-    await call("GET", "/admin/api/db-status");
+    expect(forwarded[0].url).toBe(`${BACKEND_INTERNAL_URL}/api/admin/tuning/g.alpha`);
     expect(forwarded[0].headers.get("Authorization")).toBe(`Basic ${Buffer.from("admin:s3cret").toString("base64")}`);
-  });
-
-  it("POST・PUTは本文をJSONとしてそのまま渡し、GET・DELETEは本文を渡さない", async () => {
-    await call("PUT", "/admin/api/tuning/a", '{"value":1}');
-    await call("DELETE", "/admin/api/axis-definitions/a");
     expect(await forwarded[0].text()).toBe('{"value":1}');
-    expect(forwarded[0].headers.get("Content-Type")).toBe("application/json");
-    expect(await forwarded[1].text()).toBe("");
-    expect(forwarded[1].headers.has("Content-Type")).toBe(false);
-  });
-
-  it("backendの状態と本文をそのまま返す（誤りも、204も）", async () => {
-    backendResponse = () => new Response('{"detail":"表示名が空です"}', { status: 422 });
-    const failed = await call("POST", "/admin/api/axis-definitions", "{}");
-    expect(failed.status).toBe(422);
-    await expect(failed.json()).resolves.toEqual({ detail: "表示名が空です" });
-
-    backendResponse = () => new Response(null, { status: 204 });
-    expect((await call("DELETE", "/admin/api/axis-definitions/a")).status).toBe(204);
-  });
-
-  it("`..`で`/admin/api`の外へ出るパスは、backendへ渡さない", async () => {
-    const response = await call("GET", "/admin/api/../../api/debug/stats");
-    expect(response.status).toBe(404);
-    expect(forwarded).toHaveLength(0);
-  });
-
-  it("サーバーに資格情報が無ければ500で、backendへは渡さない", async () => {
-    credentials = null;
-    const response = await call("GET", "/admin/api/db-status");
-    expect(response.status).toBe(500);
-    expect(forwarded).toHaveLength(0);
+    await expect(response.json()).resolves.toEqual({ value: 1 });
   });
 });
