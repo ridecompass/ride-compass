@@ -78,7 +78,7 @@ describe("LensControl", () => {
       within(list())
         .getAllByRole("radio")
         .map((row) => row.textContent),
-    ).toEqual(["idleの軸", "usedの軸（地図の向きで変わる）（出発時刻で変わる）"]);
+    ).toEqual(["idleの軸", "usedの軸（走行中の進む向きで変わる）（出発時刻で変わる）"]);
   });
 
   it("行を押すとそのレンズを選び、一覧は閉じない。選んでいる行をもう一度押すと外す", async () => {

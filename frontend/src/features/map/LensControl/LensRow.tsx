@@ -23,7 +23,7 @@ export interface LensOption {
 
 /** 走る条件ごとの、地図の右の列のボタンと同じアイコンと名前。 */
 const CONDITION_MARKS: Record<WayValueCondition, { Icon: (props: { size?: number }) => ReactElement; name: string }> = {
-  bearing_deg: { Icon: CompassNeedleIcon, name: "地図の向き" },
+  bearing_deg: { Icon: CompassNeedleIcon, name: "走行中の進む向き" },
   speed_kmh: { Icon: SpeedGaugeIcon, name: "想定速度" },
   at: { Icon: ClockIcon, name: "出発時刻" },
 };

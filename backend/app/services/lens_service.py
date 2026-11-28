@@ -6,6 +6,7 @@
 """
 
 import asyncio
+import math
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -105,13 +106,14 @@ class LensService:
             self._responses[key] = body
             return body
 
-    async def inspect(self, feature_key: str, z: int, x: int, y: int, bearing_deg: float, lens_id: str | None,
+    async def inspect(self, feature_key: str, z: int, x: int, y: int, bearing_deg: float | None, lens_id: str | None,
                       frame: str | None, wind: bool, speed_kmh: float, preference: CostPreference,
                       settings: ModelSettings) -> LensInspection | None:
         """押したフィーチャー（地図がタイル`z/x/y`で塗っている単位）の、レンズのコマの印`frame`（省略すると今）の、地図と同じ秒を
-        区間の長さぶん足したものと、その元の事実と、地図がレンズ`lens_id`を塗る向き（塗っていない・知らないレンズなら総合の
-        塗り方）。`wind`が偽か、風を読めない（予報が無い・時刻が予報の範囲の外）なら、風を読まずに求め、風で変わる軸と総合を
-        載せない。タイルにそのフィーチャーが無ければNone。"""
+        区間の長さぶん足したものと、その元の事実と、地図が走行方位`bearing_deg`（ルートの前の地図はNone）でレンズ`lens_id`を塗る向き
+        （塗っていない・知らないレンズなら総合の塗り方）。`wind`が偽か、風を読めない（予報が無い・時刻が予報の範囲の外）なら、
+        風を読まずに求め、風で変わる軸と総合を載せない。そのときは塗る向きも風を読まない値で選ぶので、地図が風を読んだ値で
+        きつい向きを選んでいれば、向きが入れ替わりうる。タイルにそのフィーチャーが無ければNone。"""
         network = await asyncio.to_thread(road_network_store.current)
         with log_external_call(_CATEGORY, z=z, x=x, y=y) as fields:
             if wind:
@@ -128,8 +130,12 @@ class LensService:
         if tile is None:
             return None
         lenses = lens_conditions(settings.cost_axes)
-        lens = map_lens(lenses.get(lens_id or TOTAL_LENS_ID, lenses[TOTAL_LENS_ID]), settings.tuning)
-        painted = painted_direction(lens, bearing_deg, tile.table.features, 0)
+        # 塗っていない・知らない・無効にした軸のレンズは、総合の塗り方で選ぶ。
+        painted_id = lens_id if lens_id in lenses and lens_id in tile.table.values else TOTAL_LENS_ID
+        along, against = tile.table.values[painted_id][0].tolist()
+        painted = painted_direction(map_lens(lenses[painted_id], settings.tuning),
+                                    math.nan if bearing_deg is None else bearing_deg,
+                                    float(tile.table.features.bearing_deg[0]), along, against)
         return lens_inspection(tile.table.features, 0, painted, tile.facts)
 
     async def _tile(self, network: RoadNetwork, settings: ModelSettings, z: int, x: int, y: int, at: datetime | None, speed_kmh: float,

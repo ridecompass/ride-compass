@@ -10,10 +10,6 @@
             "name": "x"
           },
           "decimals": 1
-        },
-        "undetermined": {
-          "op": "const",
-          "value": 0.0
         }
       },
       "rows": [
@@ -22,102 +18,89 @@
             "x": 0.25
           },
           "conditions": {},
-          "value": 0.2,
-          "undetermined": false
+          "value": 0.2
         },
         {
           "features": {
             "x": 0.35
           },
           "conditions": {},
-          "value": 0.3,
-          "undetermined": false
+          "value": 0.3
         },
         {
           "features": {
             "x": 0.45
           },
           "conditions": {},
-          "value": 0.5,
-          "undetermined": false
+          "value": 0.5
         },
         {
           "features": {
             "x": 1.15
           },
           "conditions": {},
-          "value": 1.1,
-          "undetermined": false
+          "value": 1.1
         },
         {
           "features": {
             "x": 1.25
           },
           "conditions": {},
-          "value": 1.2,
-          "undetermined": false
+          "value": 1.2
         },
         {
           "features": {
             "x": 1.35
           },
           "conditions": {},
-          "value": 1.4,
-          "undetermined": false
+          "value": 1.4
         },
         {
           "features": {
             "x": 11.55
           },
           "conditions": {},
-          "value": 11.6,
-          "undetermined": false
+          "value": 11.6
         },
         {
           "features": {
             "x": -0.25
           },
           "conditions": {},
-          "value": -0.2,
-          "undetermined": false
+          "value": -0.2
         },
         {
           "features": {
             "x": -0.35
           },
           "conditions": {},
-          "value": -0.3,
-          "undetermined": false
+          "value": -0.3
         },
         {
           "features": {
             "x": -1.25
           },
           "conditions": {},
-          "value": -1.2,
-          "undetermined": false
+          "value": -1.2
         },
         {
           "features": {
             "x": 0.04
           },
           "conditions": {},
-          "value": 0.0,
-          "undetermined": false
+          "value": 0.0
         },
         {
           "features": {
             "x": 99.95
           },
           "conditions": {},
-          "value": 100.0,
-          "undetermined": false
+          "value": 100.0
         },
         {
           "features": {},
           "conditions": {},
-          "value": null,
-          "undetermined": false
+          "value": null
         }
       ]
     },
@@ -142,10 +125,6 @@
             },
             "decimals": 0
           }
-        },
-        "undetermined": {
-          "op": "const",
-          "value": 0.0
         }
       },
       "rows": [
@@ -155,8 +134,7 @@
             "y": 0.5
           },
           "conditions": {},
-          "value": 2.675,
-          "undetermined": false
+          "value": 2.675
         },
         {
           "features": {
@@ -164,8 +142,7 @@
             "y": 1.5
           },
           "conditions": {},
-          "value": 2.001,
-          "undetermined": false
+          "value": 2.001
         },
         {
           "features": {
@@ -173,8 +150,7 @@
             "y": 2.5
           },
           "conditions": {},
-          "value": 1.998,
-          "undetermined": false
+          "value": 1.998
         },
         {
           "features": {
@@ -182,8 +158,7 @@
             "y": -0.5
           },
           "conditions": {},
-          "value": 1.0,
-          "undetermined": false
+          "value": 1.0
         },
         {
           "features": {
@@ -191,8 +166,7 @@
             "y": 3.49
           },
           "conditions": {},
-          "value": 3.123,
-          "undetermined": false
+          "value": 3.123
         }
       ]
     },
@@ -230,10 +204,6 @@
             ]
           },
           "decimals": 1
-        },
-        "undetermined": {
-          "op": "const",
-          "value": 0.0
         }
       },
       "rows": [
@@ -243,8 +213,7 @@
             "y": 0.1
           },
           "conditions": {},
-          "value": 8.2,
-          "undetermined": false
+          "value": 8.2
         },
         {
           "features": {
@@ -252,8 +221,7 @@
             "y": 0.0
           },
           "conditions": {},
-          "value": 17.2,
-          "undetermined": false
+          "value": 17.2
         },
         {
           "features": {
@@ -261,8 +229,7 @@
             "y": 0.33
           },
           "conditions": {},
-          "value": 7.7,
-          "undetermined": false
+          "value": 7.7
         },
         {
           "features": {
@@ -270,8 +237,7 @@
             "y": 0.0
           },
           "conditions": {},
-          "value": 0.0,
-          "undetermined": false
+          "value": 0.0
         },
         {
           "features": {
@@ -279,8 +245,7 @@
             "y": 2.0
           },
           "conditions": {},
-          "value": 100.0,
-          "undetermined": false
+          "value": 100.0
         },
         {
           "features": {
@@ -288,16 +253,14 @@
             "y": 0.0
           },
           "conditions": {},
-          "value": 30.0,
-          "undetermined": false
+          "value": 30.0
         },
         {
           "features": {
             "x": 1.0
           },
           "conditions": {},
-          "value": null,
-          "undetermined": false
+          "value": null
         }
       ]
     },
@@ -316,10 +279,6 @@
               7.0
             ]
           ]
-        },
-        "undetermined": {
-          "op": "const",
-          "value": 0.0
         }
       },
       "rows": [
@@ -328,30 +287,26 @@
             "x": -5.0
           },
           "conditions": {},
-          "value": 7.0,
-          "undetermined": false
+          "value": 7.0
         },
         {
           "features": {
             "x": 3.0
           },
           "conditions": {},
-          "value": 7.0,
-          "undetermined": false
+          "value": 7.0
         },
         {
           "features": {
             "x": 8.0
           },
           "conditions": {},
-          "value": 7.0,
-          "undetermined": false
+          "value": 7.0
         },
         {
           "features": {},
           "conditions": {},
-          "value": null,
-          "undetermined": false
+          "value": null
         }
       ]
     },
@@ -433,10 +388,6 @@
               "op": "missing"
             }
           }
-        },
-        "undetermined": {
-          "op": "const",
-          "value": 0.0
         }
       },
       "rows": [
@@ -446,8 +397,7 @@
             "y": -1.0
           },
           "conditions": {},
-          "value": -1.0,
-          "undetermined": false
+          "value": -1.0
         },
         {
           "features": {
@@ -455,8 +405,7 @@
             "y": 12.0
           },
           "conditions": {},
-          "value": 1.5,
-          "undetermined": false
+          "value": 1.5
         },
         {
           "features": {
@@ -464,8 +413,7 @@
             "y": 5.0
           },
           "conditions": {},
-          "value": 5.0,
-          "undetermined": false
+          "value": 5.0
         },
         {
           "features": {
@@ -473,24 +421,21 @@
             "y": 5.0
           },
           "conditions": {},
-          "value": null,
-          "undetermined": false
+          "value": null
         },
         {
           "features": {
             "y": -1.0
           },
           "conditions": {},
-          "value": null,
-          "undetermined": false
+          "value": null
         },
         {
           "features": {
             "x": 1.0
           },
           "conditions": {},
-          "value": null,
-          "undetermined": false
+          "value": null
         },
         {
           "features": {
@@ -498,8 +443,7 @@
             "y": 0.0
           },
           "conditions": {},
-          "value": 0.0,
-          "undetermined": false
+          "value": 0.0
         }
       ]
     },
@@ -522,10 +466,6 @@
               "name": "y"
             }
           }
-        },
-        "undetermined": {
-          "op": "const",
-          "value": 0.0
         }
       },
       "rows": [
@@ -535,8 +475,7 @@
             "y": 4.0
           },
           "conditions": {},
-          "value": -0.3535533905932738,
-          "undetermined": false
+          "value": -0.3535533905932738
         },
         {
           "features": {
@@ -544,8 +483,7 @@
             "y": 1.0
           },
           "conditions": {},
-          "value": null,
-          "undetermined": false
+          "value": null
         },
         {
           "features": {
@@ -553,151 +491,219 @@
             "y": -3.0
           },
           "conditions": {},
-          "value": 1.0,
-          "undetermined": false
+          "value": 1.0
         }
       ]
     },
     {
-      "scene": "走る向きで選ぶ勾配（道の向き寄り・逆向き寄り・直角の付近・向きの無い道）",
+      "scene": "走る向きで選ぶ値（道の向き寄り・逆向き寄り・直角の付近と走る向きの無いときはきつい向き・辿れない向き・向きの無い道）",
       "formula": {
         "value": {
           "op": "case",
           "when": {
-            "op": "ge",
+            "op": "and",
             "left": {
-              "op": "cos",
-              "arg": {
-                "op": "mul",
-                "left": {
-                  "op": "sub",
-                  "left": {
-                    "op": "feature",
-                    "name": "road_bearing_deg"
-                  },
-                  "right": {
+              "op": "and",
+              "left": {
+                "op": "not",
+                "arg": {
+                  "op": "is_missing",
+                  "arg": {
                     "op": "condition",
                     "name": "bearing_deg"
                   }
-                },
-                "right": {
-                  "op": "const",
-                  "value": 0.017453292519943295
+                }
+              },
+              "right": {
+                "op": "not",
+                "arg": {
+                  "op": "is_missing",
+                  "arg": {
+                    "op": "feature",
+                    "name": "road_bearing_deg"
+                  }
                 }
               }
             },
             "right": {
-              "op": "const",
-              "value": 0.0
-            }
-          },
-          "then": {
-            "op": "feature",
-            "name": "forward"
-          },
-          "otherwise": {
-            "op": "feature",
-            "name": "backward"
-          }
-        },
-        "undetermined": {
-          "op": "and",
-          "left": {
-            "op": "not",
-            "arg": {
-              "op": "is_missing",
+              "op": "not",
               "arg": {
-                "op": "feature",
-                "name": "road_bearing_deg"
-              }
-            }
-          },
-          "right": {
-            "op": "le",
-            "left": {
-              "op": "abs",
-              "arg": {
-                "op": "sub",
+                "op": "le",
                 "left": {
-                  "op": "case",
-                  "when": {
-                    "op": "lt",
+                  "op": "abs",
+                  "arg": {
+                    "op": "sub",
                     "left": {
-                      "op": "mod",
-                      "left": {
-                        "op": "sub",
+                      "op": "case",
+                      "when": {
+                        "op": "lt",
                         "left": {
-                          "op": "feature",
-                          "name": "road_bearing_deg"
+                          "op": "mod",
+                          "left": {
+                            "op": "sub",
+                            "left": {
+                              "op": "feature",
+                              "name": "road_bearing_deg"
+                            },
+                            "right": {
+                              "op": "condition",
+                              "name": "bearing_deg"
+                            }
+                          },
+                          "right": {
+                            "op": "const",
+                            "value": 180.0
+                          }
                         },
                         "right": {
-                          "op": "condition",
-                          "name": "bearing_deg"
+                          "op": "const",
+                          "value": 0.0
                         }
                       },
-                      "right": {
-                        "op": "const",
-                        "value": 180.0
-                      }
-                    },
-                    "right": {
-                      "op": "const",
-                      "value": 0.0
-                    }
-                  },
-                  "then": {
-                    "op": "add",
-                    "left": {
-                      "op": "mod",
-                      "left": {
-                        "op": "sub",
+                      "then": {
+                        "op": "add",
                         "left": {
-                          "op": "feature",
-                          "name": "road_bearing_deg"
+                          "op": "mod",
+                          "left": {
+                            "op": "sub",
+                            "left": {
+                              "op": "feature",
+                              "name": "road_bearing_deg"
+                            },
+                            "right": {
+                              "op": "condition",
+                              "name": "bearing_deg"
+                            }
+                          },
+                          "right": {
+                            "op": "const",
+                            "value": 180.0
+                          }
                         },
                         "right": {
-                          "op": "condition",
-                          "name": "bearing_deg"
+                          "op": "const",
+                          "value": 180.0
                         }
                       },
-                      "right": {
-                        "op": "const",
-                        "value": 180.0
+                      "otherwise": {
+                        "op": "mod",
+                        "left": {
+                          "op": "sub",
+                          "left": {
+                            "op": "feature",
+                            "name": "road_bearing_deg"
+                          },
+                          "right": {
+                            "op": "condition",
+                            "name": "bearing_deg"
+                          }
+                        },
+                        "right": {
+                          "op": "const",
+                          "value": 180.0
+                        }
                       }
                     },
                     "right": {
                       "op": "const",
-                      "value": 180.0
-                    }
-                  },
-                  "otherwise": {
-                    "op": "mod",
-                    "left": {
-                      "op": "sub",
-                      "left": {
-                        "op": "feature",
-                        "name": "road_bearing_deg"
-                      },
-                      "right": {
-                        "op": "condition",
-                        "name": "bearing_deg"
-                      }
-                    },
-                    "right": {
-                      "op": "const",
-                      "value": 180.0
+                      "value": 90.0
                     }
                   }
                 },
                 "right": {
                   "op": "const",
-                  "value": 90.0
+                  "value": 15.0
                 }
               }
+            }
+          },
+          "then": {
+            "op": "case",
+            "when": {
+              "op": "ge",
+              "left": {
+                "op": "cos",
+                "arg": {
+                  "op": "mul",
+                  "left": {
+                    "op": "sub",
+                    "left": {
+                      "op": "feature",
+                      "name": "road_bearing_deg"
+                    },
+                    "right": {
+                      "op": "condition",
+                      "name": "bearing_deg"
+                    }
+                  },
+                  "right": {
+                    "op": "const",
+                    "value": 0.017453292519943295
+                  }
+                }
+              },
+              "right": {
+                "op": "const",
+                "value": 0.0
+              }
             },
-            "right": {
-              "op": "const",
-              "value": 15.0
+            "then": {
+              "op": "feature",
+              "name": "forward"
+            },
+            "otherwise": {
+              "op": "feature",
+              "name": "backward"
+            }
+          },
+          "otherwise": {
+            "op": "case",
+            "when": {
+              "op": "is_missing",
+              "arg": {
+                "op": "feature",
+                "name": "forward"
+              }
+            },
+            "then": {
+              "op": "feature",
+              "name": "backward"
+            },
+            "otherwise": {
+              "op": "case",
+              "when": {
+                "op": "is_missing",
+                "arg": {
+                  "op": "feature",
+                  "name": "backward"
+                }
+              },
+              "then": {
+                "op": "feature",
+                "name": "forward"
+              },
+              "otherwise": {
+                "op": "case",
+                "when": {
+                  "op": "ge",
+                  "left": {
+                    "op": "feature",
+                    "name": "forward"
+                  },
+                  "right": {
+                    "op": "feature",
+                    "name": "backward"
+                  }
+                },
+                "then": {
+                  "op": "feature",
+                  "name": "forward"
+                },
+                "otherwise": {
+                  "op": "feature",
+                  "name": "backward"
+                }
+              }
             }
           }
         }
@@ -712,8 +718,18 @@
           "conditions": {
             "bearing_deg": 0.0
           },
-          "value": 3.0,
-          "undetermined": false
+          "value": 3.0
+        },
+        {
+          "features": {
+            "road_bearing_deg": 10.0,
+            "forward": -3.0,
+            "backward": 3.0
+          },
+          "conditions": {
+            "bearing_deg": 0.0
+          },
+          "value": -3.0
         },
         {
           "features": {
@@ -724,8 +740,18 @@
           "conditions": {
             "bearing_deg": 200.0
           },
-          "value": -3.0,
-          "undetermined": false
+          "value": -3.0
+        },
+        {
+          "features": {
+            "road_bearing_deg": 10.0,
+            "forward": -3.0,
+            "backward": 3.0
+          },
+          "conditions": {
+            "bearing_deg": 200.0
+          },
+          "value": 3.0
         },
         {
           "features": {
@@ -736,8 +762,18 @@
           "conditions": {
             "bearing_deg": 5.0
           },
-          "value": 3.0,
-          "undetermined": false
+          "value": 3.0
+        },
+        {
+          "features": {
+            "road_bearing_deg": 350.0,
+            "forward": -3.0,
+            "backward": 3.0
+          },
+          "conditions": {
+            "bearing_deg": 5.0
+          },
+          "value": -3.0
         },
         {
           "features": {
@@ -748,8 +784,18 @@
           "conditions": {
             "bearing_deg": 104.0
           },
-          "value": -3.0,
-          "undetermined": true
+          "value": 3.0
+        },
+        {
+          "features": {
+            "road_bearing_deg": 0.0,
+            "forward": -3.0,
+            "backward": 3.0
+          },
+          "conditions": {
+            "bearing_deg": 104.0
+          },
+          "value": 3.0
         },
         {
           "features": {
@@ -760,8 +806,18 @@
           "conditions": {
             "bearing_deg": 105.0
           },
-          "value": -3.0,
-          "undetermined": true
+          "value": 3.0
+        },
+        {
+          "features": {
+            "road_bearing_deg": 0.0,
+            "forward": -3.0,
+            "backward": 3.0
+          },
+          "conditions": {
+            "bearing_deg": 105.0
+          },
+          "value": 3.0
         },
         {
           "features": {
@@ -772,8 +828,18 @@
           "conditions": {
             "bearing_deg": 106.0
           },
-          "value": -3.0,
-          "undetermined": false
+          "value": -3.0
+        },
+        {
+          "features": {
+            "road_bearing_deg": 0.0,
+            "forward": -3.0,
+            "backward": 3.0
+          },
+          "conditions": {
+            "bearing_deg": 106.0
+          },
+          "value": 3.0
         },
         {
           "features": {
@@ -784,8 +850,18 @@
           "conditions": {
             "bearing_deg": 255.5
           },
-          "value": -3.0,
-          "undetermined": true
+          "value": 3.0
+        },
+        {
+          "features": {
+            "road_bearing_deg": 0.0,
+            "forward": -3.0,
+            "backward": 3.0
+          },
+          "conditions": {
+            "bearing_deg": 255.5
+          },
+          "value": 3.0
         },
         {
           "features": {
@@ -796,8 +872,56 @@
           "conditions": {
             "bearing_deg": 359.75
           },
-          "value": -3.0,
-          "undetermined": false
+          "value": -3.0
+        },
+        {
+          "features": {
+            "road_bearing_deg": 180.0,
+            "forward": -3.0,
+            "backward": 3.0
+          },
+          "conditions": {
+            "bearing_deg": 359.75
+          },
+          "value": 3.0
+        },
+        {
+          "features": {
+            "road_bearing_deg": 10.0,
+            "forward": 3.0,
+            "backward": -3.0
+          },
+          "conditions": {},
+          "value": 3.0
+        },
+        {
+          "features": {
+            "road_bearing_deg": 10.0,
+            "forward": -3.0,
+            "backward": 3.0
+          },
+          "conditions": {},
+          "value": 3.0
+        },
+        {
+          "features": {
+            "road_bearing_deg": 0.0,
+            "backward": -3.0
+          },
+          "conditions": {
+            "bearing_deg": 90.0
+          },
+          "value": -3.0
+        },
+        {
+          "features": {
+            "road_bearing_deg": 0.0,
+            "forward": -3.0
+          },
+          "conditions": {
+            "bearing_deg": 90.0
+          },
+          "value": -3.0
         },
         {
           "features": {
@@ -807,8 +931,7 @@
           "conditions": {
             "bearing_deg": 90.0
           },
-          "value": -3.0,
-          "undetermined": false
+          "value": 3.0
         },
         {
           "features": {
@@ -817,8 +940,7 @@
           "conditions": {
             "bearing_deg": 0.0
           },
-          "value": null,
-          "undetermined": false
+          "value": null
         }
       ]
     }

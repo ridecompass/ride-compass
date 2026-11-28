@@ -13,17 +13,13 @@
  */
 import { describe, expect, it } from "vitest";
 
+import { hexToRgb, rgbToHsl } from "@/lib/rgbHsl";
 import { evaluateExpression } from "@/testing/mapExpressions";
 import palette from "@/types/generated/palette.json";
 
 import { bandAt, bandCondition, bandStep, valueBands, type MapPaintDeclaration } from "./valueScale";
 
-const {
-  evaluation_good: GOOD,
-  evaluation_mid: MID,
-  evaluation_bad: BAD,
-  evaluation_extreme: EXTREME,
-} = palette.semantic;
+const { evaluation_good: GOOD, evaluation_mid: MID, evaluation_extreme: EXTREME } = palette.semantic;
 
 /** 明るい地の上で`boundaries`の境界で塗る宣言。 */
 const paint = (boundaries: readonly number[], bandLabels: readonly string[] = []): MapPaintDeclaration => ({
@@ -36,11 +32,20 @@ const paint = (boundaries: readonly number[], bandLabels: readonly string[] = []
 const colorsOf = (n: number) =>
   valueBands(paint(Array.from({ length: n }, (_, i) => i * 10))).map((band) => band.color);
 
+/** 色相（度）。 */
+const hueOf = (color: string) => rgbToHsl(hexToRgb(color))[0];
+
 describe("段の配色", () => {
-  it("段は境界の数＋1で、中継点は段の上へ均等に置かれ、段が中継点と同じ数なら中継点そのものを並べる", () => {
-    expect(colorsOf(3)).toEqual([GOOD, MID, BAD, EXTREME]);
-    const seven = colorsOf(6);
-    expect([seven[0], seven[2], seven[4], seven[6]]).toEqual([GOOD, MID, BAD, EXTREME]);
+  it.each([1, 3, 10])("境界%i本でも、段は境界の数＋1で、一番下は良い色・一番上は最も悪い色", (n) => {
+    const colors = colorsOf(n);
+    expect(colors).toHaveLength(n + 1);
+    expect([colors[0], colors[n]]).toEqual([GOOD, EXTREME]);
+  });
+
+  it.each([3, 10])("境界%i本でも、良い色の段は一番下の1つだけで、2段目は良い色と中の色の間の色相になる", (n) => {
+    const second = hueOf(colorsOf(n)[1]);
+    expect(second).toBeLessThan(hueOf(GOOD));
+    expect(second).toBeGreaterThan(hueOf(MID));
   });
 
   it("段を増やしても、隣り合う段は違う色になる", () => {

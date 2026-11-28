@@ -16,7 +16,7 @@ import { UNSELECTED_LENS_ID } from "@/lib/mapDisplay/routeStyleModes";
 import { MAP_FETCH_DEBOUNCE_MS } from "@/hooks/useDebouncedValue";
 import { onBackend } from "@/testing/backendServer";
 import { chip, renderMapView, serve, VIEWPORT } from "@/testing/mapViewHook";
-import { costAxisCatalog, costAxisEntry } from "@/testing/costAxes";
+import { BEARING_FORMULA, costAxisCatalog, costAxisEntry } from "@/testing/costAxes";
 
 import type { useMapView } from "./useMapView";
 import { STANDARD_COST_PREFERENCE } from "@/lib/costPreference";
@@ -143,30 +143,38 @@ describe("useMapView", () => {
     },
   );
 
-  it("走る向きは地図の上の向きを [0, 360) の10°刻みへ丸めて地図へ渡し、材料の要求へ向きを載せないので向きを変えても取り直さない。走行中は実際に走る向きと速度を渡す", async () => {
-    serve();
+  it("走っていない間は地図を回しても走る向きを渡さず、取り直さない。走行中は実際に走る向きを10°刻みへ丸めて速度と渡し、方位磁針の印の条件に向きが入る", async () => {
+    serve(
+      undefined,
+      costAxisCatalog(
+        costAxisEntry("ascent", { map_lens: { formula: BEARING_FORMULA, material_conditions: ["at", "speed_kmh"] } }),
+      ),
+    );
     const sent = onBackend("GET", "/api/region/lens/ascent/:z/:x/:y", () =>
       Response.json({ materials: { way_1: { lens_along: 12 } }, wind_previous_run_from: null }),
     );
     const { result, rerender } = renderMapView();
-    await waitFor(() => expect(result.current.lensControl.axisOptions).toHaveLength(LENS_COUNT));
+    // 総合と登坂。
+    await waitFor(() => expect(result.current.lensControl.axisOptions).toHaveLength(2));
     act(() => result.current.lensControl.onLensChange("ascent"));
 
     act(() => result.current.look.onViewportChange({ ...VIEWPORT, bearing: 30 }));
     await waitFor(() => expect(result.current.look.wayMaterials.get("ascent")?.materials.size).toBe(1), {
       timeout: 3000,
     });
-    expect(result.current.look.wayConditions).toEqual({ bearing_deg: 30, speed_kmh: 20 });
+    expect(result.current.look.wayConditions).toEqual({ speed_kmh: 20 });
     const fetched = sent.length;
 
     act(() => result.current.look.onViewportChange({ ...VIEWPORT, bearing: -42.5 }));
-    expect(result.current.look.wayConditions).toEqual({ bearing_deg: 320, speed_kmh: 20 });
+    expect(result.current.look.wayConditions).toEqual({ speed_kmh: 20 });
     // 間引きの待ちを越えてから、要求が増えていないことを見る。
     await new Promise((resolve) => setTimeout(resolve, MAP_FETCH_DEBOUNCE_MS + 100));
     expect(sent).toHaveLength(fetched);
 
-    rerender({ riding: { bearingDeg: 180, speedKmh: 15 } });
+    expect(result.current.lensConditions).not.toContain("bearing_deg");
+    rerender({ riding: { bearingDeg: 183, speedKmh: 15 } });
     expect(result.current.look.wayConditions).toEqual({ bearing_deg: 180, speed_kmh: 15 });
+    expect(result.current.lensConditions).toContain("bearing_deg");
   });
 
   it("「絞り込みをすべて解除」が押せるのは地図に出しているものの凡例で隠している間だけで、出していないレイヤーの最初に隠す行は数えない", async () => {

@@ -28,23 +28,14 @@ export function costAxisEntry(axisId: string, overrides: Partial<CostAxisEntry> 
 /** 道の向きの値をそのまま塗る式の木（向きの選び方は backend の木が持ち、ここでは見ない）。 */
 export const ALONG_FORMULA: CostAxisEntry["map_lens"]["formula"] = {
   value: { op: "feature", name: "lens_along" },
-  undetermined: { op: "const", value: 0 },
 };
-/** 走行方位で、道の向きの値を読むか逆向きの値を読むかを選び、直角に近い向きでは決まらない木（走行方位で値が変わるレンズ）。 */
+/** 走行方位で、道の向きの値を読むか逆向きの値を読むかを選ぶ木（走行方位で値が変わるレンズ）。 */
 export const BEARING_FORMULA: CostAxisEntry["map_lens"]["formula"] = {
   value: {
     op: "case",
     when: { op: "lt", left: { op: "condition", name: "bearing_deg" }, right: { op: "const", value: 180 } },
     then: { op: "feature", name: "lens_along" },
     otherwise: { op: "feature", name: "lens_against" },
-  },
-  undetermined: {
-    op: "lt",
-    left: {
-      op: "abs",
-      arg: { op: "sub", left: { op: "condition", name: "bearing_deg" }, right: { op: "const", value: 90 } },
-    },
-    right: { op: "const", value: 5 },
   },
 };
 /** 出発時刻と想定速度を材料の要求へ載せるレンズの塗る決まり（雛形の既定）。 */

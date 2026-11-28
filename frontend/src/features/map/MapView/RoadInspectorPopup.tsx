@@ -114,11 +114,11 @@ function sectionSeconds(seconds: number): string {
 }
 
 /** 押したフィーチャーの、地図が塗っている向きの区間の代償の秒（総合と軸ごと）。「換算前」に切り替えると、軸ごとに秒の元の事実を
- * 出す（求められない事実の軸は出さない）。直角に近くて向きが決まらない道は、辿れる向きのうち道の向きを先に出す。 */
+ * 出す（求められない事実の軸は出さない）。 */
 function LensValues({ lens }: { lens: LensInspection }) {
   const costCatalog = useCostAxisCatalog();
   const [view, setView] = useState("seconds");
-  const slot = lens.painted ?? (lens.along !== null ? "along" : "against");
+  const slot = lens.painted;
   const values = lens[slot];
   if (values === null) return <p className={hintClass}>この向きには走れません。</p>;
   const rows = penaltyRows(Object.fromEntries(values.axes.map((axis) => [axis.axis_id, axis.seconds])), costCatalog);
@@ -129,10 +129,7 @@ function LensValues({ lens }: { lens: LensInspection }) {
         <p className={hintClass}>風の予報を読めないため、風に依る走りにくさと合計は出せません。</p>
       )}
       <div className="flex flex-wrap items-center gap-1.5">
-        <p className={hintClass}>
-          {slot === "along" ? "道の向き" : "逆向き"}
-          {lens.painted === null ? "[地図の向きに直角に近い道]" : ""}
-        </p>
+        <p className={hintClass}>{slot === "along" ? "道の向き" : "逆向き"}</p>
         <ToggleGroup
           value={view}
           onValueChange={setView}

@@ -176,18 +176,9 @@ const CONVERTERS: { readonly [Op in FormulaOp]: (node: NodeOf<Op>, conversion: C
   round,
 };
 
-/** 木を、地図の道1本について評価する式へ置き換える。`value` は数（値の無い道は NaN）、`undetermined` は真偽。 */
-export function wayValueExpressions(
-  formula: WayValueFormula,
-  inputs: FormulaInputs,
-): { readonly value: unknown; readonly undetermined: unknown } {
-  const conversion = new Conversion(inputs);
-  return { value: conversion.number(formula.value), undetermined: conversion.truth(formula.undetermined) };
-}
-
-/** 節`node`が、真偽として読むと、どの道でも偽か（値の無いこと・0の定数）。 */
-export function isConstantFalse(node: FormulaNode): boolean {
-  return node.op === "missing" || (node.op === "const" && !node.value);
+/** 木を、地図の道1本について評価する数の式（値の無い道は NaN）へ置き換える。 */
+export function wayValueExpression(formula: WayValueFormula, inputs: FormulaInputs): unknown {
+  return new Conversion(inputs).number(formula.value);
 }
 
 /** 木が読む走る条件の名前（重ねずに、木で先に出た順）。条件の値が変わると、道の値も変わる。 */

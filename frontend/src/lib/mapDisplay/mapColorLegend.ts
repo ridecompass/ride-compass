@@ -33,17 +33,6 @@ export const NO_DATA_LEGEND_BAND: MapColorLegendBand = {
   isFallback: true,
 };
 
-/** 走行方位で値が決まらない地物の段階キー。 */
-export const LEGEND_UNDETERMINED_KEY = "undetermined";
-
-/** 走行方位で値が決まらない地物の行。値が無い行（`NO_DATA_LEGEND_BAND`）とは別の色で、レンズの凡例に出す。 */
-export const UNDETERMINED_LEGEND_BAND: MapColorLegendBand = {
-  key: LEGEND_UNDETERMINED_KEY,
-  ...mapDisplay.legendSharedRows.undetermined,
-  color: palette.semantic.undetermined,
-  isFallback: true,
-};
-
 /** 段の体感ラベルを、その段の数へ添えてよいか。地図の段に合わせてラベルを引き直すのはbackendで、件数が合わない
  * ラベルは**添えずに捨てる**（ずらして添えると、ラベルが実際より広い範囲を指す嘘になる）。 */
 export function bandLabelsForBandCount(
