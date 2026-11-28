@@ -8,6 +8,7 @@
  */
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { translate } from "@/i18n/config";
 import { describe, expect, it } from "vitest";
 
 import type { RouteProfile } from "@/features/admin/adminApi";
@@ -19,6 +20,12 @@ import { MAP_OVERLAY_GROUP_LABELS } from "@/lib/mapDisplay/overlayGroups";
 import AdminPage from "./page";
 
 const PATH = "/admin/api/route-profiles";
+const SAVE = translate("admin.saveToDb");
+
+/** 手元で直して送っていない全体があるか（パネルが出す状態）。 */
+function panelState() {
+  return screen.getByRole("button", { name: SAVE }).closest("[data-state]")?.getAttribute("data-state");
+}
 
 const NIGHT: RouteProfile = {
   name: "夜",
@@ -32,8 +39,8 @@ async function openWith(profiles: RouteProfile[]) {
   onSameOrigin("GET", PATH, () => Response.json({ profiles }));
   const user = userEvent.setup();
   render(<AdminPage />);
-  await user.click(screen.getByRole("tab", { name: "ひな形" }));
-  await screen.findByRole("button", { name: "DBへ保存" });
+  await user.click(screen.getByRole("tab", { name: translate("admin.tabs.routeProfiles") }));
+  await screen.findByRole("button", { name: SAVE });
   return user;
 }
 
@@ -53,13 +60,13 @@ describe("AdminPage ひな形", () => {
     );
     const user = await openWith([NIGHT]);
     const sent = onSameOrigin("PUT", PATH, ({ body }) => Response.json(body));
-    expect(screen.getByRole("button", { name: "DBへ保存" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: SAVE })).toBeDisabled();
 
-    await user.click(screen.getByRole("button", { name: "ひな形を足す" }));
+    await user.click(screen.getByRole("button", { name: translate("admin.routeProfiles.add") }));
     const added = within(screen.getAllByRole("listitem")[1]);
-    await user.clear(added.getByRole("textbox", { name: "名前" }));
-    await user.type(added.getByRole("textbox", { name: "名前" }), "雨");
-    await user.click(added.getByRole("checkbox", { name: "雨を公開" }));
+    await user.clear(added.getByRole("textbox", { name: translate("admin.routeProfiles.name") }));
+    await user.type(added.getByRole("textbox", { name: translate("admin.routeProfiles.name") }), "雨");
+    await user.click(added.getByRole("checkbox", { name: translate("admin.routeProfiles.publish", { name: "雨" }) }));
     await user.click(
       within(await added.findByRole("radiogroup", { name: "振動の割合" })).getByRole("radio", { name: "無効" }),
     );
@@ -68,10 +75,10 @@ describe("AdminPage ひな形", () => {
     await user.click(
       within(added.getByRole("radiogroup", { name: "surface.gravelの避け方" })).getByRole("radio", { name: "×2" }),
     );
-    expect(screen.getByText("未保存")).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "DBへ保存" }));
+    expect(panelState()).toBe("unsaved");
+    await user.click(screen.getByRole("button", { name: SAVE }));
 
-    await waitFor(() => expect(screen.queryByText("未保存")).not.toBeInTheDocument());
+    await waitFor(() => expect(panelState()).toBe("saved"));
     expect(sent.map(({ body }) => body)).toEqual([
       {
         profiles: [
@@ -99,15 +106,19 @@ describe("AdminPage ひな形", () => {
       ),
     );
 
-    await user.click(within(screen.getAllByRole("listitem")[0]).getByRole("button", { name: "消す" }));
-    await user.click(screen.getByRole("button", { name: "DBへ保存" }));
+    await user.click(
+      within(screen.getAllByRole("listitem")[0]).getByRole("button", { name: translate("admin.routeProfiles.remove") }),
+    );
+    await user.click(screen.getByRole("button", { name: SAVE }));
 
     expect(await screen.findByText("ひな形が通りません（夜: 無い軸）")).toBeInTheDocument();
-    expect(screen.getAllByRole("textbox", { name: "名前" }).map((input) => (input as HTMLInputElement).value)).toEqual([
-      "雨",
-    ]);
-    await user.click(screen.getByRole("button", { name: "DBへ保存" }));
-    await waitFor(() => expect(screen.queryByText("未保存")).not.toBeInTheDocument());
+    expect(
+      screen
+        .getAllByRole("textbox", { name: translate("admin.routeProfiles.name") })
+        .map((input) => (input as HTMLInputElement).value),
+    ).toEqual(["雨"]);
+    await user.click(screen.getByRole("button", { name: SAVE }));
+    await waitFor(() => expect(panelState()).toBe("saved"));
     expect(sent.map(({ body }) => body)).toEqual([
       { profiles: [{ ...NIGHT, name: "雨" }] },
       { profiles: [{ ...NIGHT, name: "雨" }] },

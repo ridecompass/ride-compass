@@ -5,6 +5,7 @@
  * 日時の書式はOSの時間帯で変わるため、日時の文字列そのものは見ない（testing.md パターン10）。
  */
 import { render, screen, within } from "@testing-library/react";
+import { translate } from "@/i18n/config";
 import { describe, expect, it } from "vitest";
 
 import type { getDebugStats } from "@/features/admin/adminApi";
@@ -43,13 +44,29 @@ describe("SystemStatusPanel", () => {
 
     expect(await screen.findByText("backend-sha")).toBeInTheDocument();
     expect(await screen.findByText("front-sha")).toBeInTheDocument();
-    expect(screen.getByText("debug_mode ON")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        translate.markup("admin.systemStatus.debugMode", { state: () => translate("admin.systemStatus.on") }),
+      ),
+    ).toBeInTheDocument();
     const row = screen.getByText("jma-tile").closest("tr")!;
     const cells = within(row)
       .getAllByRole("cell")
       .map((cell) => cell.textContent);
-    expect(cells).toEqual(["jma-tile", "12", "3TimeoutError:3", "—", "46%", "30ms", "120ms"]);
-    expect(screen.getByText("429拒否: route-generate 4件")).toBeInTheDocument();
-    expect(screen.getByText("予報（MSM）").parentElement).toHaveTextContent("予報の残り 45時間");
+    expect(cells).toEqual([
+      "jma-tile",
+      "12",
+      "3TimeoutError:3",
+      "—",
+      "46%",
+      translate("admin.systemStatus.milliseconds", { value: "30" }),
+      translate("admin.systemStatus.milliseconds", { value: "120" }),
+    ]);
+    expect(
+      screen.getByText(translate("admin.systemStatus.rejected", { category: "route-generate", count: "4" })),
+    ).toBeInTheDocument();
+    expect(screen.getByText(translate("admin.systemStatus.msm")).parentElement).toHaveTextContent(
+      translate("admin.systemStatus.msmRemaining", { hours: "45" }),
+    );
   });
 });

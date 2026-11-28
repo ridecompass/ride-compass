@@ -4,6 +4,7 @@
 // 口を叩く（ブラウザは同一オリジン・同一realmの後続要求へ認証キャッシュを自動で付ける）。backend宛の資格情報は
 // ここでサーバーの環境変数から組み立てるため、ブラウザへは出ない。route handlerはサーバーでだけ動く。
 
+import { translate } from "@/i18n/config";
 import { BACKEND_INTERNAL_URL } from "@/lib/backendInternalUrl";
 import { adminBasicAuthCredentials } from "@/lib/adminBasicAuth";
 import { ADMIN_PROXY_PREFIX, BACKEND_ADMIN_PREFIX } from "@/lib/adminApiPrefix";
@@ -11,10 +12,7 @@ import { ADMIN_PROXY_PREFIX, BACKEND_ADMIN_PREFIX } from "@/lib/adminApiPrefix";
 async function forward(request: Request): Promise<Response> {
   const credentials = adminBasicAuthCredentials();
   if (credentials === null) {
-    return Response.json(
-      { detail: "サーバー側の管理者資格情報（ADMIN_BASIC_AUTH_USERNAME/PASSWORD）が未設定です" },
-      { status: 500 },
-    );
+    return Response.json({ detail: translate("admin.proxy.credentialsMissing") }, { status: 500 });
   }
 
   // パスは受けたままの符号化で渡す（区間の値に入った区切り文字を復号し直さない）。URLの解析が`..`を

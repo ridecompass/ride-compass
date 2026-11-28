@@ -5,6 +5,7 @@
  */
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { translate } from "@/i18n/config";
 import { describe, expect, it } from "vitest";
 
 import type { TuningParameter } from "@/features/admin/adminApi";
@@ -36,7 +37,7 @@ describe("AdminPage 較正値", () => {
     );
     const user = userEvent.setup();
     render(<AdminPage />);
-    await user.click(screen.getByRole("tab", { name: "較正値" }));
+    await user.click(screen.getByRole("tab", { name: translate("admin.tabs.tuning") }));
 
     const input = await screen.findByRole("spinbutton", { name: "アルファ" });
     expect(input).toHaveValue(10);
@@ -44,7 +45,7 @@ describe("AdminPage 較正値", () => {
 
     await user.clear(input);
     await user.type(input, "0.005");
-    await user.click(screen.getByRole("button", { name: "DBへ保存" }));
+    await user.click(screen.getByRole("button", { name: translate("admin.saveToDb") }));
 
     await waitFor(() => expect(sent).toHaveLength(1));
     expect(sent.map(({ path, body }) => [path, body])).toEqual([["/admin/api/tuning/g.alpha", { value: 0.005 }]]);
