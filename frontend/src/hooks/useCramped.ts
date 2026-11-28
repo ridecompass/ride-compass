@@ -25,14 +25,17 @@ function contentWidth(element: HTMLElement): number {
   return element.clientWidth - (parseFloat(style.paddingLeft) || 0) - (parseFloat(style.paddingRight) || 0);
 }
 
-/** 縮めない本来の幅が、親の中身の幅を越えるか。幅の指定を一時的に外して測り、同じレイアウトの中で戻す。 */
+/** 縮めない本来の幅が、親の中身の幅を越えるか。幅の指定を一時的に外して測り、同じレイアウトの中で戻す（横並びの中の要素は、
+ * 幅を中身なりにしても周りに合わせて縮むので、測る間は縮めない）。 */
 function naturallyOverflows(element: HTMLElement): boolean {
   const parent = element.parentElement;
   if (parent === null) return false;
-  const specified = element.style.width;
+  const { width, flexShrink } = element.style;
   element.style.width = "max-content";
+  element.style.flexShrink = "0";
   const natural = element.getBoundingClientRect().width;
-  element.style.width = specified;
+  element.style.width = width;
+  element.style.flexShrink = flexShrink;
   return natural > contentWidth(parent) + ROUNDING_PX;
 }
 
