@@ -529,6 +529,11 @@ OSMは中央分離帯のある道路の上下線を別々のwayとして持ち�
 `domain/region.py: ROAD_SURFACE_TILE_MIN_ZOOM`からは層の値が同じ道を1つの地物につなぎ、鍵を持たない。道路名・材料の列は焼かない
 （押した道の小窓は`POST /api/region/roads-at`から読む）。
 
+`domain/region.py: ROAD_SURFACE_TILE_HIGHWAYS`に載るズームは、そこに書いた道の種別（材料`highway`）の道だけを描き
+（`domain/road_features.py: map_features`が道1本のフィーチャーを選ぶときに絞る）、表に無いズーム（`domain/region.py: ROAD_SURFACE_ALL_WAYS_MIN_ZOOM`から）は
+全部の道を描く。引いた地図で細い道は見分けられないのに、都心のz10ではフィーチャーの大半（住宅地の道・名の無い道で約4分の3）を占め、
+持ちに当たらないタイルを焼く時間を決める。表は路面タイルの持ちの鍵（`infrastructure/region_tile_cache.py: MVT_TILE_GENERATIONS`）に入り、変えると焼き直す。
+
 **時刻で変わる交通規制の区分は、要求のコマの印`frame`（画面の出発の時刻を含む路面タイルのコマ。設計原則の構造仕様18）の
 始まりの時刻で焼く**（`ROAD_TILE_MIN_ZOOM`以上。コマは取込範囲の全体で、時刻で変わる規制の組の効き方が同じ間で、印は道路網の世代と
 効き方から作る。`domain/timed_regulations.py: regulation_frames`。地図の色・凡例の絞り込み・

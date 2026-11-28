@@ -15,6 +15,7 @@ from types import MappingProxyType
 
 from app.domain import road_features, timed_regulations, traffic_regulation
 from app.domain.hard_filters import HARD_FILTERS, hard_filter_column
+from app.domain.region import ROAD_SURFACE_TILE_HIGHWAYS
 from app.domain.registry import TileKind
 from app.domain.road_classes import class_columns, conditions_match, layer_columns
 from app.domain.search_materials import ColumnsOrEmpty
@@ -40,11 +41,11 @@ from app.infrastructure.road_tile_sql import ROAD_SURFACE_TILE_SHAPE
 LANDCOVER_TILE_KIND = "landcover"
 
 #: DBから焼いて配るタイルの系統と、ディスクの鍵の世代（形の署名）。路面タイルは地図の線の層の値（道路網の配列の材料に道の区分を
-#: 当てたもの）と、当たる0次ハードフィルタを焼くので、配列の形とフィルタの条件と、タイルのフィーチャーと形を配列から選び、値を
-#: 引くコードの全文も入れる。点のレイヤーはそれぞれ自分のSQLだけから署名を持つので、1つのSQLを変えても他のレイヤーの
-#: 鍵は変わらない。
+#: 当てたもの）と、当たる0次ハードフィルタを焼くので、配列の形とフィルタの条件と、ズームごとに描く道の種別の表と、タイルの
+#: フィーチャーと形を配列から選び、値を引くコードの全文も入れる。点のレイヤーはそれぞれ自分のSQLだけから署名を持つので、1つの
+#: SQLを変えても他のレイヤーの鍵は変わらない。
 MVT_TILE_GENERATIONS: Mapping[TileKind, str] = MappingProxyType({
-    "road_surface": shape_digest(ROAD_SURFACE_TILE_SHAPE, NETWORK_SHAPE, HARD_FILTERS, *(
+    "road_surface": shape_digest(ROAD_SURFACE_TILE_SHAPE, NETWORK_SHAPE, HARD_FILTERS, dict(ROAD_SURFACE_TILE_HIGHWAYS), *(
         inspect.getsource(code) for code in (
             road_features, timed_regulations, traffic_regulation, positions_in, edge_key, range_positions, rows_in_bbox,
             edge_feature_key, class_columns, layer_columns, conditions_match, hard_filter_column, ColumnsOrEmpty,

@@ -1,11 +1,13 @@
 import math
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
+from types import MappingProxyType
 from typing import Annotated
 
 from pydantic import Field, model_validator
 from pydantic_core import PydanticCustomError
 
 from app.domain.geo import KM_PER_DEGREE_LATITUDE, Latitude, LatLon, Longitude, km_per_degree_longitude
+from app.domain.material_sql import CYCLEWAY_HIGHWAY
 from app.domain.strict_model import StrictModel
 
 # 路面の地域レイヤーが配信されるXYZズームの範囲。MapLibreはminzoom未満でタイルを
@@ -16,6 +18,18 @@ ROAD_TILE_MAX_ZOOM = 15
 #: `ROAD_TILE_MIN_ZOOM`の手前までは、地図の線の層の値が同じ道をつないで焼き、道ごとの鍵を持たない（道ごとの値を読むレンズ・
 #: 押した所の道・点は`ROAD_TILE_MIN_ZOOM`から）。下限の根拠は docs/modules/backend/static-road-attributes.md「路面タイルが焼くもの」。
 ROAD_SURFACE_TILE_MIN_ZOOM = 10
+_ARTERIAL_HIGHWAYS = (
+    "trunk", "trunk_link", "primary", "primary_link", "secondary", "secondary_link", CYCLEWAY_HIGHWAY)
+#: 路面タイルが、ズームごとに描く道の種別（OSMの`highway`の値）。表に無いズームは全部の道を描く。引いた地図では細い道が
+#: 見分けられない一方、細い道がフィーチャーの大半を占めてタイルを焼く時間を決める。道ごとの鍵を持つ`ROAD_TILE_MIN_ZOOM`からは
+#: 道を押した小窓・レンズが全部の道を読むので、表に置けるのはその手前のズームだけ。
+ROAD_SURFACE_TILE_HIGHWAYS: Mapping[int, tuple[str, ...]] = MappingProxyType({
+    10: _ARTERIAL_HIGHWAYS,
+    11: (*_ARTERIAL_HIGHWAYS, "tertiary", "tertiary_link"),
+})
+assert max(ROAD_SURFACE_TILE_HIGHWAYS) < ROAD_TILE_MIN_ZOOM
+#: 路面タイルが全部の道を描く、いちばん引いたズーム。
+ROAD_SURFACE_ALL_WAYS_MIN_ZOOM = max(ROAD_SURFACE_TILE_HIGHWAYS) + 1
 #: 路面タイルが1フィーチャーとして焼く単位。**区間が読めるズームでは区間、それより引いた
 #: 表示ではway丸ごと**にする。区間で焼くとgzip後の費用はz14で1.48倍・z12で1.81倍へ増える
 #: 一方、z12は1pxが約38mで、交差点で切った区間は数pxにしかならず塗り分けても読めない。

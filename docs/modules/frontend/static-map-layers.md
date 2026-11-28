@@ -558,6 +558,13 @@ ONにしても何も塗られない。「データが無い地域」と区別で
 **暗黙の前提**: レンズの層（レンズの線）も同じ路面タイルを共有し、道ごとの鍵を持つ`features/map/regionApi.ts: ROAD_TILE_MIN_ZOOM`から
 描く（`scene/groups/axisLines.ts`の層の`minzoom`）が、地図上チップを持たないため案内の出し先が無い。
 
+## 「細い道は、拡大すると色が付きます」の案内
+
+路面タイルは、細い道まで全部描くズーム（`features/map/regionApi.ts: ROAD_SURFACE_ALL_WAYS_MIN_ZOOM`。backendの宣言を生成物で受け取る）より
+引いたズームでは、太い道と自転車道だけを描く。地図に出ない細い道を「区分の外」「データなし」と読ませないよう、そのズームの間は
+道の線の層のチップへ、凡例の上の但し書きとして`mapLayers.ts: THIN_ROADS_OMITTED_NOTICE`を出す（`useMapView.ts`）。道は描かれているので、上の「ズームインすると表示されます」と違い凡例を隠さない。
+道路タブで段を地図に塗っている間は、同じ文を道路タブの拡大の案内の置き場（`useMapView.ts`の`roadTabMap.notice`）にも出す。
+
 ## 最上位グルーピング（道路/環境/スポット）
 
 `mapLayers.ts: mapOverlayGroupFor(layer)`がチップを`category`からグループへ分類する。

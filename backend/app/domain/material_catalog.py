@@ -291,6 +291,7 @@ PEDESTRIAN_ROAD = "pedestrian_road"
 #: ずれたときに読む側が材料を見つけられず、黙って欠損として扱う。
 GRADIENT_PERCENT = "gradient_percent"
 ELEVATION_GAIN_PER_KM = "elevation_gain_m_per_km"
+HIGHWAY = "highway"
 
 
 #: 区間の標高の断面から求める材料の欠損（道路網の配列の値が無い区間。断面の点が足りない・急すぎて読み違いとした区間を含む）。
@@ -429,8 +430,8 @@ MATERIAL_CATALOG: dict[str, MaterialSpec] = {
         value_sql=LANES_COUNT_CASE_SQL,
         coverage=_tag_coverage(f"({LANES_COUNT_CASE_SQL})", "lanes（数値として解釈できない値も欠損に含む）", "unknown"),
     ),
-    "highway": MaterialSpec(
-        material_id="highway",
+    HIGHWAY: MaterialSpec(
+        material_id=HIGHWAY,
         label="道路種別",
         description="OSMの道路種別タグ(highway)の生値（例: residential/primary/cycleway等）。道の区分の条件に値ごとに書けます。",
         dtype="categorical",

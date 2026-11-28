@@ -152,6 +152,7 @@ from app.domain.material_coverage_spec import MISSING_SEMANTICS_DISPLAY, POPULAT
 from app.domain.primary_attributes import PRIMARY_ATTRIBUTES
 from app.domain.region import (
     MAX_MERCATOR_LATITUDE,
+    ROAD_SURFACE_ALL_WAYS_MIN_ZOOM,
     ROAD_SURFACE_TILE_MIN_ZOOM,
     ROAD_TILE_MAX_ZOOM,
     ROAD_TILE_MIN_ZOOM,
@@ -328,8 +329,10 @@ def main() -> None:
             # 道のタイルを要求するズーム範囲。frontendのMapLibreソース設定
             # （minzoom/maxzoom）とタイル要求のガードがこの値を使う。手書きで複製すると、
             # backendだけ広げてもfrontendが要求せずレイヤーが黙って消える。路面タイルだけは
-            # `road_surface_tile_min_zoom`から配り、道ごとの鍵は`road_tile_min_zoom`から持つ。
+            # `road_surface_tile_min_zoom`から配り、道ごとの鍵は`road_tile_min_zoom`から持つ。路面タイルが細い道まで全部描くのは
+            # `road_surface_all_ways_min_zoom`から。
             "road_surface_tile_min_zoom": ROAD_SURFACE_TILE_MIN_ZOOM,
+            "road_surface_all_ways_min_zoom": ROAD_SURFACE_ALL_WAYS_MIN_ZOOM,
             "road_tile_min_zoom": ROAD_TILE_MIN_ZOOM,
             "road_tile_max_zoom": ROAD_TILE_MAX_ZOOM,
             # 画面が点からタイル座標を求めるときに緯度を挟む限界（`domain/region.py`と同じ式を使う）。
