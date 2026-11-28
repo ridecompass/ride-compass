@@ -413,11 +413,6 @@ def stop_kind_sql(alias: str, signal_place: str) -> str:
             f" THEN {_quote(SIGNAL_KIND)} ELSE {alias}.kind END)")
 
 
-def kinds_shown_as(kind: str) -> tuple[str, ...]:
-    """地図へ`kind`として出る取込時の種別（`stop_kind_sql`の信号の読み替えで`kind`になるものを含む）。"""
-    return _SIGNAL_READ_KINDS if kind == SIGNAL_KIND else (kind,)
-
-
 def kind_map_sql[K: str](kind_sql: str, mapping: Mapping[K, str], *, otherwise: str = "NULL") -> str:
     """種別の式`kind_sql`を表`mapping`で読み替えるSQL式。表に無い種別は`otherwise`。"""
     whens = " ".join(

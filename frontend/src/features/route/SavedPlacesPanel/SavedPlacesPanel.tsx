@@ -33,7 +33,7 @@ export default function SavedPlacesPanel({ places, waypointsFull, loop, onRecall
       items={places}
       noun="地点"
       howToSave={
-        "条件タブで地点の行の☆を押し、出る☆と名前でいま置いている地点を保存します。行を押して探した候補も、右の☆で保存できます。\n・保存した地点は、行の「呼び出す」を押すと出発地・経由地・目的地に使えます。"
+        "条件タブで地点の行の☆を押すと、名前を付けて保存できます。探した候補も、右の☆で保存できます。\n・保存した地点は、行の「呼び出す」を押すと出発地・経由地・目的地に使えます。"
       }
       renderMain={(place) => <PlaceName place={place} className="font-semibold" />}
       renderActions={(place) => (
