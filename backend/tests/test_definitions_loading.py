@@ -1,9 +1,10 @@
 """`services/definitions_loading.py: refresh_definitions`: DBの区分から作る材料を指す費用の軸の定義が読み込まれ、コードの宣言に無い
-材料・体力の軸を指す定義は、それを名指して起動を止める。
+材料・体力の軸を指す定義と、今の費用の軸・道の段の行に無い名を指すひな形は、それを名指して起動を止める。
 
 ここで見ないもの:
 - 費用の軸の定義の検算（材料・区分の重さ） → `test_cost_axes.py`
 - 較正値の読み込み → `test_tuning_overrides.py`
+- 管理APIが今に無い名を指すひな形を断ること・区分と軸の書き込みがひな形から外すこと → `test_route_profile_admin_routes.py`
 """
 
 import pytest
@@ -15,6 +16,7 @@ from app.domain.road_classes import EMPTY_ROAD_CLASSES, class_material_id
 from app.infrastructure.cost_axis_models import CostAxisDefinitionsRow
 from app.infrastructure.cost_axis_repository import replace_cost_axes_row
 from app.infrastructure.road_class_repository import replace_road_class_rows
+from app.infrastructure.route_profile_models import RouteProfilesRow
 from app.services.definitions_loading import refresh_definitions
 from tests.cost_axes_fixture import cost_axes
 from tests.road_class_fixture import classification, fact_is, replaced_road_classes, road_classes
@@ -55,4 +57,17 @@ async def test_definitions_naming_what_left_the_code_stop_the_start_naming_it(ro
     await road_graph_session.commit()
 
     with pytest.raises((RuntimeError, ValidationError), match=named):
+        await refresh_definitions(road_graph_session)
+
+
+async def test_route_profiles_naming_what_is_not_there_stop_the_start_naming_it(road_graph_session):
+    """管理APIを通らずに入った行（バックアップから戻した等）が今の軸に無い名を指していたら、外さずに名指して止まる
+    （黙って外すと、運営が書いたひな形が知らないうちに変わる）。"""
+    await replace_cost_axes_row(road_graph_session, cost_axes())
+    await road_graph_session.execute(insert(RouteProfilesRow).values(only_one=True, profiles={"profiles": [{
+        "name": "夜", "description": "", "published": True, "road_avoidance": {},
+        "cost_preference": {"strength": 1.0, "multipliers": {"removed_axis": 2.0}, "disabled_axes": []}}]}))
+    await road_graph_session.commit()
+
+    with replaced_road_classes(EMPTY_ROAD_CLASSES), pytest.raises(RuntimeError, match="removed_axis"):
         await refresh_definitions(road_graph_session)

@@ -13,6 +13,7 @@ import {
   lensMapLayerId,
   ROAD_LINE_MIN_ZOOM,
   TILE_ZOOM_TOO_WIDE_NOTICE,
+  THIN_ROADS_OMITTED_NOTICE,
   tileZoomTooWideLayerIds,
   type LayerDataStatusByLayer,
   type MapLayerVisibility,
@@ -33,7 +34,7 @@ import { useStoredState } from "@/hooks/useStoredState";
 import type { Coordinates, RoadAvoidanceOverride } from "@/types/route";
 import { avoidanceChoiceOf, type RoadTabMap } from "@/lib/roadAvoidance";
 import type { MapTheme } from "@/lib/mapTheme";
-import type { RideConditions } from "@/features/map/regionApi";
+import { ROAD_SURFACE_ALL_WAYS_MIN_ZOOM, type RideConditions } from "@/features/map/regionApi";
 import { useTimeFrames } from "@/features/map/useTimeFrames";
 import { snapDeg } from "@/lib/cardinalLabel";
 import { countsAxis, DISABLED_LABEL, STANDARD_COST_FACTOR } from "@/lib/costPreference";
@@ -95,7 +96,7 @@ interface MapViewState {
   costPreference: CostPreference;
 }
 
-/** レンズ`lensId`が数えるロスを塗るか。総合は数える軸が1つでもあるとき（`totalCounted`）、軸はその軸を数えるとき。 */
+/** レンズ`lensId`が数える難所を塗るか。総合は数える軸が1つでもあるとき（`totalCounted`）、軸はその軸を数えるとき。 */
 function lensCounted(
   lensId: string,
   preference: CostPreference,
@@ -127,7 +128,7 @@ export function useMapView({
     NO_STORED_VALUES,
   );
   const totalLens = costCatalog.lenses?.totalLens ?? null;
-  // 数える軸が1つも無い間は総合も数えないので、総合を選べず、総合の名前と凡例を出さず、ルートの線もロスで塗らず、選べるロスが
+  // 数える軸が1つも無い間は総合も数えないので、総合を選べず、総合の名前と凡例を出さず、ルートの線も難所で塗らず、選べる難所が
   // 無いことを添える。
   const totalCounted = useMemo(
     () => costCatalog.axes.some((axis) => countsAxis(costPreference, axis.axisId)),
@@ -195,11 +196,18 @@ export function useMapView({
     () => avoidanceChoiceOf(config.roadClasses.avoidance, roadAvoidance, mapTheme),
     [config.roadClasses.avoidance, roadAvoidance, mapTheme],
   );
-  // 道路タブで塗っている間は、拡大が足りず塗れないことを道路タブに出す（道の層を出していないと、地図の上の行の状態の印が無い）。
+  // 引いた地図では、路面タイルが細い道を描かない（地図に出ない道を「区分の外」と読ませない）。
+  const thinRoadsOmitted = viewport !== null && viewport.zoom < ROAD_SURFACE_ALL_WAYS_MIN_ZOOM;
+  // 道路タブで塗っている間は、拡大が足りず塗れないこと・細い道を塗らないことを道路タブに出す（道の層を出していないと、地図の上の
+  // 行の状態の印が無い）。
   const roadTabMapNotice =
-    roadAvoidanceShown && viewport !== null && ROAD_LINE_MIN_ZOOM !== undefined && viewport.zoom < ROAD_LINE_MIN_ZOOM
-      ? TILE_ZOOM_TOO_WIDE_NOTICE
-      : null;
+    !roadAvoidanceShown || viewport === null
+      ? null
+      : ROAD_LINE_MIN_ZOOM !== undefined && viewport.zoom < ROAD_LINE_MIN_ZOOM
+        ? TILE_ZOOM_TOO_WIDE_NOTICE
+        : thinRoadsOmitted
+          ? THIN_ROADS_OMITTED_NOTICE
+          : null;
   // 式の木の条件の名前（`bearing_deg`・`speed_kmh`）で地図へ渡す。向きが無い・速度が数でない間は値の無いことにする。
   const formulaConditions = useMemo(
     () => ({
@@ -255,7 +263,12 @@ export function useMapView({
     visibility: layerVisibility,
     hidden,
     dataStatus: { ...mapLayerStatus, ...weather.dynamicWeatherDataStatus },
-    caveats: weather.dynamicWeatherNotices,
+    caveats: {
+      ...(thinRoadsOmitted
+        ? Object.fromEntries(mapCatalog.roadLayers.map((layer) => [layer.id, THIN_ROADS_OMITTED_NOTICE]))
+        : {}),
+      ...weather.dynamicWeatherNotices,
+    },
     zoomTooWideLayerIds: viewport ? tileZoomTooWideLayerIds(mapCatalog.layers, viewport.zoom) : [],
   });
   const setShown = (id: string, on: boolean) => setLayerVisibility((prev) => ({ ...prev, [id]: on }));
@@ -276,7 +289,7 @@ export function useMapView({
       hasDetail,
       caveat:
         [
-          // 段の名前の事実は、標準のロスの割合で求めたもの。軸のレンズは割合を変えると同じ事実の道が別の段で塗られる。
+          // 段の名前の事実は、標準の難所の割合で求めたもの。軸のレンズは割合を変えると同じ事実の道が別の段で塗られる。
           painted !== null &&
           painted !== totalLens?.axisId &&
           (costPreference.strength !== STANDARD_COST_FACTOR ||
@@ -293,7 +306,7 @@ export function useMapView({
           : "要因の一覧を読み込んでいます。"
         : totalCounted
           ? null
-          : `「難所」タブの総合か全部の要因が${DISABLED_LABEL}のため、塗れるロスはありません。`,
+          : `「難所」タブの総合か全部の要因が${DISABLED_LABEL}のため、塗れる難所はありません。`,
       // タイルを取れない（出発時刻の風のコマが無い）間は失敗、コマの一覧を待つ間は読み込み中、それ以外は地図のソースの状態。
       dataStatus: paintedLens
         ? lensTileUrl === null

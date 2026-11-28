@@ -82,7 +82,7 @@ export default function LensControl({
             className="max-w-full flex-row items-center gap-1 border-0 px-2.5 py-1 text-[length:var(--font-size-sm)] whitespace-nowrap focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-accent-strong)]"
             aria-label={`${namesLensOnly ? LENS_SCREEN_NAME : `${LENS_SCREEN_NAME}: ${pillLabel}`}（タップで変更）`}
             title={statusLabel}
-            usage={`選んだ要因の${LENS_QUANTITY_LABEL}で、地図の道路[ルートを作った後はルートの線]を塗ります。\n・横の帯は左ほど小さく、右ほど大きいロスです（右に値があれば、その値から一番濃い色）。\n・道を押すと、その道の値が出ます。`}
+            usage={`選んだ要因の${LENS_QUANTITY_LABEL}で、地図の道路[ルートを作った後はルートの線]を塗ります。\n・横の帯は左ほど小さく、右ほど大きい難所です（右に値があれば、その値から一番濃い色）。\n・道を押すと、その道の値が出ます。`}
           >
             {/* 道のりのグラフの「難所を色で見る」の切り替えと同じ絵で、どちらも同じ入口と分かるようにする。 */}
             <BurdenPaintIcon size={14} />

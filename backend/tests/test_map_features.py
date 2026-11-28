@@ -9,7 +9,8 @@
 import pytest
 import shapely
 
-from app.domain.region import EDGE_UNIT_MIN_ZOOM
+from app.domain.material_catalog import HIGHWAY
+from app.domain.region import EDGE_UNIT_MIN_ZOOM, ROAD_SURFACE_ALL_WAYS_MIN_ZOOM
 from app.domain.road_features import feature_lines, map_features_in, map_features_near
 from tests.road_network_fixture import road_network
 
@@ -65,3 +66,21 @@ def test_a_pressed_road_is_the_feature_of_its_zoom_with_its_whole_line():
 
     assert _lines(network, features) == pytest.approx(
         {"1": [(139.000, 35.0), (139.001, 35.0), (139.001, 35.0), (139.002, 35.0)]})
+
+
+def test_a_zoomed_out_map_draws_only_the_main_roads_and_cycleways():
+    """引いた地図は、細い道まで描くと持ちに当たらない1枚に数秒かかる。z10は国道・主な県道と自転車道、z11はそれに地域の道を
+    足した道だけを描き、全部の道を描くズームからは細い道も描く。"""
+    kinds = {1: "primary", 2: "cycleway", 3: "tertiary", 4: "residential"}
+    network = road_network({way * 10 + end: (35.0 + way * 0.001, 139.0 + end * 0.001) for way in kinds for end in (0, 1)},
+                           {(way, 0): (way * 10, way * 10 + 1) for way in kinds},
+                           categorical={HIGHWAY: lambda rows: [kinds[way] for way in rows.way.tolist()]})
+
+    def drawn(z: int) -> set[str]:
+        return {kinds[way] for way in map_features_in(network, z, 138.99, 34.99, 139.01, 35.01).way_ids}
+
+    assert [drawn(z) for z in (10, 11, ROAD_SURFACE_ALL_WAYS_MIN_ZOOM)] == [
+        {"primary", "cycleway"},
+        {"primary", "cycleway", "tertiary"},
+        {"primary", "cycleway", "tertiary", "residential"},
+    ]

@@ -1485,6 +1485,74 @@
         ]
       }
     },
+    "/api/admin/route-profiles": {
+      "get": {
+        "tags": [
+          "route-profile-admin"
+        ],
+        "operationId": "read_route_profiles_api_admin_route_profiles_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RouteProfiles-Output"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "route-profile-admin"
+        ],
+        "operationId": "replace_route_profiles_api_admin_route_profiles_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RouteProfiles-Input"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RouteProfiles-Output"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ]
+      }
+    },
     "/api/client-config": {
       "get": {
         "operationId": "get_client_config_api_client_config_get",
@@ -3011,6 +3079,13 @@
           },
           "road_classes": {
             "$ref": "#/components/schemas/RoadClassCatalog"
+          },
+          "route_profiles": {
+            "items": {
+              "$ref": "#/components/schemas/PublishedRouteProfile"
+            },
+            "type": "array",
+            "title": "Route Profiles"
           }
         },
         "additionalProperties": false,
@@ -3018,7 +3093,8 @@
         "required": [
           "client_tuning",
           "accident_years",
-          "road_classes"
+          "road_classes",
+          "route_profiles"
         ],
         "title": "ClientConfigResponse"
       },
@@ -5058,6 +5134,46 @@
         ],
         "title": "PlaceSearchResult"
       },
+      "PublishedRouteProfile": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Name"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description"
+          },
+          "cost_preference": {
+            "$ref": "#/components/schemas/CostPreference-Output"
+          },
+          "road_avoidance": {
+            "additionalProperties": {
+              "type": "string",
+              "enum": [
+                "pass",
+                "slight_prefer",
+                "prefer",
+                "slight_avoid",
+                "avoid",
+                "exclude"
+              ]
+            },
+            "type": "object",
+            "title": "Road Avoidance"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name",
+          "description",
+          "cost_preference",
+          "road_avoidance"
+        ],
+        "title": "PublishedRouteProfile"
+      },
       "RideDetail": {
         "properties": {
           "id": {
@@ -6407,6 +6523,130 @@
           "no_candidates_reason"
         ],
         "title": "RouteGenerateResponse"
+      },
+      "RouteProfile-Input": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Name"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description"
+          },
+          "cost_preference": {
+            "$ref": "#/components/schemas/CostPreference-Input"
+          },
+          "road_avoidance": {
+            "additionalProperties": {
+              "type": "string",
+              "enum": [
+                "pass",
+                "slight_prefer",
+                "prefer",
+                "slight_avoid",
+                "avoid",
+                "exclude"
+              ]
+            },
+            "type": "object",
+            "title": "Road Avoidance"
+          },
+          "published": {
+            "type": "boolean",
+            "title": "Published"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name",
+          "description",
+          "cost_preference",
+          "road_avoidance",
+          "published"
+        ],
+        "title": "RouteProfile"
+      },
+      "RouteProfile-Output": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Name"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description"
+          },
+          "cost_preference": {
+            "$ref": "#/components/schemas/CostPreference-Output"
+          },
+          "road_avoidance": {
+            "additionalProperties": {
+              "type": "string",
+              "enum": [
+                "pass",
+                "slight_prefer",
+                "prefer",
+                "slight_avoid",
+                "avoid",
+                "exclude"
+              ]
+            },
+            "type": "object",
+            "title": "Road Avoidance"
+          },
+          "published": {
+            "type": "boolean",
+            "title": "Published"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name",
+          "description",
+          "cost_preference",
+          "road_avoidance",
+          "published"
+        ],
+        "title": "RouteProfile"
+      },
+      "RouteProfiles-Input": {
+        "properties": {
+          "profiles": {
+            "items": {
+              "$ref": "#/components/schemas/RouteProfile-Input"
+            },
+            "type": "array",
+            "title": "Profiles"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "profiles"
+        ],
+        "title": "RouteProfiles"
+      },
+      "RouteProfiles-Output": {
+        "properties": {
+          "profiles": {
+            "items": {
+              "$ref": "#/components/schemas/RouteProfile-Output"
+            },
+            "type": "array",
+            "title": "Profiles"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "profiles"
+        ],
+        "title": "RouteProfiles"
       },
       "RouteSegmentDetail": {
         "properties": {

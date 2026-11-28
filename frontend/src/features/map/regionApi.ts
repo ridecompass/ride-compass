@@ -33,6 +33,8 @@ export function landcoverTileUrl(): string {
 // 道のタイルを要求するズーム範囲。正はbackendで、生成物で受け取る。点のタイルとレンズのタイルと押した所の道は
 // `ROAD_TILE_MIN_ZOOM`から、路面タイル（道の線）だけは道ごとの鍵を持たずに`ROAD_SURFACE_TILE_MIN_ZOOM`から。
 export const ROAD_SURFACE_TILE_MIN_ZOOM = regionTileConfig.road_surface_tile_min_zoom;
+/** 路面タイルが細い道まで全部描く、いちばん引いたズーム。 */
+export const ROAD_SURFACE_ALL_WAYS_MIN_ZOOM = regionTileConfig.road_surface_all_ways_min_zoom;
 export const ROAD_TILE_MIN_ZOOM = regionTileConfig.road_tile_min_zoom;
 export const ROAD_TILE_MAX_ZOOM = regionTileConfig.road_tile_max_zoom;
 
@@ -94,7 +96,7 @@ export async function fetchRoadInspection(
     ...(conditions.bearingDeg !== null ? { bearing_deg: conditions.bearingDeg } : {}),
     ...(conditions.paintedLensId !== null ? { lens_id: conditions.paintedLensId } : {}),
     ...(conditions.lensFrame ? { frame: conditions.lensFrame } : {}),
-    // 出発時刻の風のコマが無ければ（予報の範囲の外・予報を読めない）、今の風で求めずに風に依らないロスだけを取る。
+    // 出発時刻の風のコマが無ければ（予報の範囲の外・予報を読めない）、今の風で求めずに風に依らない難所だけを取る。
     wind: conditions.lensFrame !== null,
     speed_kmh: conditions.speedKmh,
   };

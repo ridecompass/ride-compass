@@ -170,6 +170,9 @@ export type MapLayerVisibility = Record<MapLayerId, boolean>;
 /** チップ下に出す、ズーム不足の案内。 */
 export const TILE_ZOOM_TOO_WIDE_NOTICE = "ズームインすると表示されます";
 
+/** 細い道を描かない引いた地図で、道の線の層と道路タブに出す案内。 */
+export const THIN_ROADS_OMITTED_NOTICE = "細い道は、拡大すると色が付きます";
+
 /** そのズームでは描かれず、ONにしても何も出ないレイヤー。軸のレイヤーはチップが無く案内の出し先が無いので含めない。 */
 export function tileZoomTooWideLayerIds(layers: readonly MapLayerDescriptor[], zoom: number): readonly MapLayerId[] {
   return layers

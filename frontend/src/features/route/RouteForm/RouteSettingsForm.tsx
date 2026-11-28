@@ -3,6 +3,7 @@
 import type { RoadTabMap } from "@/lib/roadAvoidance";
 import type { ComponentProps } from "react";
 
+import RouteProfilePicker from "@/features/route/RouteProfilePicker/RouteProfilePicker";
 import RouteSettingsPanel from "@/features/route/RouteSettingsPanel/RouteSettingsPanel";
 import HardFilterPanel from "@/features/route/RouteSettingsPanel/HardFilterPanel";
 import SavedConditionsPanel, { SaveConditionsButton } from "@/features/route/SavedConditionsPanel/SavedConditionsPanel";
@@ -29,22 +30,38 @@ type RouteSettingsFormProps = Omit<
 export default function RouteSettingsForm({ savedConditions, roadTabMap, ...props }: RouteSettingsFormProps) {
   const { conditions, originManual, originLocated } = props;
   const avoidance = useClientConfig().roadClasses.avoidance;
+  // ひな形は負担と道の段の両方を入れ替えるので、どちらのタブの頭にも同じ札を出す。
+  const profilePicker = (
+    <RouteProfilePicker
+      current={{ cost_preference: conditions.costPreference, road_avoidance: conditions.roadAvoidance }}
+      onPick={(settings) => {
+        conditions.setCostPreference(settings.cost_preference);
+        conditions.setRoadAvoidance(settings.road_avoidance);
+      }}
+    />
+  );
   return (
     <RouteForm
       {...props}
       weightsPanel={
-        <RouteSettingsPanel
-          costPreference={conditions.costPreference}
-          onCostPreferenceChange={conditions.setCostPreference}
-        />
+        <>
+          {profilePicker}
+          <RouteSettingsPanel
+            costPreference={conditions.costPreference}
+            onCostPreferenceChange={conditions.setCostPreference}
+          />
+        </>
       }
       exclusionsPanel={
-        <HardFilterPanel
-          avoidance={avoidance}
-          roadAvoidance={conditions.roadAvoidance}
-          onRoadAvoidanceChange={conditions.setRoadAvoidance}
-          roadTabMap={roadTabMap}
-        />
+        <>
+          {profilePicker}
+          <HardFilterPanel
+            avoidance={avoidance}
+            roadAvoidance={conditions.roadAvoidance}
+            onRoadAvoidanceChange={conditions.setRoadAvoidance}
+            roadTabMap={roadTabMap}
+          />
+        </>
       }
       saveConditionsButton={
         <SaveConditionsButton

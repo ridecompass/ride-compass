@@ -9,10 +9,10 @@
 
 | レイヤー | ファイル |
 |---|---|
-| domain | `hard_filters.py`（0次フィルタ）・`road_avoidance.py`（道の行ごとの避け方）・`cost_preference.py`（費用の式の利用者の値: 全体のつまみと費用の軸ごとの倍率と、その範囲）・`cost_axes.py`（費用の軸の定義の型・検証と、プロセス内の定義。体力の費目ごとの決まり［走りの内訳の欄・事実・地図のレンズの物差し・値が変わる走る条件・漕ぎ出し］の1つの表`cost_axes.py: EFFORT_ITEM_RULES`も持ち、費目を足すとそこへ1行足す。道のストレスの軸が材料の列から引く区間ごとの重さ［`cost_axes.py: CategoricalBurden.weights`・`cost_axes.py: LinearBurden.weights`］、画面へ配る軸の一覧［見せ方と識別色を軸の順で］`cost_axes.py: cost_axis_catalog`も持つ）・`axis_catalog.py`（`GET /api/cost-axes`が配る軸の一覧・総合のレンズ・レンズの段を、今の費用の軸の定義から1つに組む`axis_catalog.py: current_cost_axis_catalog`）・`ledger_costs.py`（費目の帳簿の式。代償の秒と、その較正値の束）・`axis_templates.py`（道のストレスの重さを材料から引く折れ線と表引き）・`search_materials.py`（探索の材料の表）・`material_catalog.py`・`material_coverage_spec.py`（材料の欠損率の測り方の型と、欠損率の見出し）・`material_value_labels.py`（材料のタグの値ごとの日本語の対訳表）・`material_sql.py`（材料の値をSQLで導出する式。道・ノードの生データを読む副問い合わせは`infrastructure/source_models.py`。SQLの値の綴り［`material_sql.py: sql_literals`］と、`LIKE`の型の中で文字として当てる式［`material_sql.py: like_escaped_sql`］も持つ）・`road_classes.py`（道の区分の全体の型と、区分に道を振り分ける式）・`road_class_catalog.py`（道の区分を画面の設定で配る形） |
-| services | `material_coverage_service.py`・`cost_axis_service.py`（費用の軸の定義の読み込みと管理APIの入れ替え）・`road_class_service.py`（道の区分の読み込みと管理APIの入れ替え） |
-| infrastructure | `material_coverage.py`（材料ごとの欠損割合の集計。DBの集計クエリと、道路網の配列の値の数え上げ）・`cost_axis_models.py`・`cost_axis_repository.py`・`road_class_models.py`・`road_class_repository.py` |
-| api | `material_catalog.py`（材料の欠損割合のエンドポイント）・`cost_axis_catalog.py`（`GET /api/cost-axes`で費用の軸の見せ方・総合のレンズ・色の物差しから刻んだ段を画面へ配る。地図のレンズの要求の利用者の値の受け口`cost_preference_query`も持つ）・`cost_axis_admin.py`・`road_class_admin.py`（どちらも全体の読みと入れ替えの管理API）・`client_config.py`（`GET /api/client-config`。較正値・事故の収録年・道の区分を画面へ配る） |
+| domain | `hard_filters.py`（0次フィルタ）・`road_avoidance.py`（道の行ごとの避け方）・`cost_preference.py`（費用の式の利用者の値: 全体のつまみと費用の軸ごとの倍率と、その範囲）・`cost_axes.py`（費用の軸の定義の型・検証と、プロセス内の定義。体力の費目ごとの決まり［走りの内訳の欄・事実・地図のレンズの物差し・値が変わる走る条件・漕ぎ出し］の1つの表`cost_axes.py: EFFORT_ITEM_RULES`も持ち、費目を足すとそこへ1行足す。道のストレスの軸が材料の列から引く区間ごとの重さ［`cost_axes.py: CategoricalBurden.weights`・`cost_axes.py: LinearBurden.weights`］、画面へ配る軸の一覧［見せ方と識別色を軸の順で］`cost_axes.py: cost_axis_catalog`も持つ）・`axis_catalog.py`（`GET /api/cost-axes`が配る軸の一覧・総合のレンズ・レンズの段を、今の費用の軸の定義から1つに組む`axis_catalog.py: current_cost_axis_catalog`）・`ledger_costs.py`（費目の帳簿の式。代償の秒と、その較正値の束）・`axis_templates.py`（道のストレスの重さを材料から引く折れ線と表引き）・`search_materials.py`（探索の材料の表）・`material_catalog.py`・`material_coverage_spec.py`（材料の欠損率の測り方の型と、欠損率の見出し）・`material_value_labels.py`（材料のタグの値ごとの日本語の対訳表）・`material_sql.py`（材料の値をSQLで導出する式。道・ノードの生データを読む副問い合わせは`infrastructure/source_models.py`。SQLの値の綴り［`material_sql.py: sql_literals`］と、`LIKE`の型の中で文字として当てる式［`material_sql.py: like_escaped_sql`］も持つ）・`road_classes.py`（道の区分の全体の型と、区分に道を振り分ける式）・`road_class_catalog.py`（道の区分を画面の設定で配る形）・`route_profiles.py`（ひな形の全体の型と、今の軸・道の段の行に無い名指しを見つける・外す式と、プロセス内の全体） |
+| services | `material_coverage_service.py`・`cost_axis_service.py`（費用の軸の定義の読み込みと管理APIの入れ替え）・`road_class_service.py`（道の区分の読み込みと管理APIの入れ替え）・`route_profile_service.py`（ひな形の読み込みと管理APIの入れ替え。軸・区分の入れ替えが同じ取引でひな形から外す口`services/route_profile_service.py: write_pruned_route_profiles`も持つ） |
+| infrastructure | `material_coverage.py`（材料ごとの欠損割合の集計。DBの集計クエリと、道路網の配列の値の数え上げ）・`cost_axis_models.py`・`cost_axis_repository.py`・`road_class_models.py`・`road_class_repository.py`・`route_profile_models.py`・`route_profile_repository.py` |
+| api | `material_catalog.py`（材料の欠損割合のエンドポイント）・`cost_axis_catalog.py`（`GET /api/cost-axes`で費用の軸の見せ方・総合のレンズ・色の物差しから刻んだ段を画面へ配る。地図のレンズの要求の利用者の値の受け口`cost_preference_query`も持つ）・`cost_axis_admin.py`・`road_class_admin.py`・`route_profile_admin.py`（どれも全体の読みと入れ替えの管理API）・`client_config.py`（`GET /api/client-config`。較正値・事故の収録年・道の区分・公開のひな形を画面へ配る） |
 
 `material_sql.py`が**domainにある**のは、材料が何から導かれるかがdomainの知識だから。
 道路網の配列を作る読み出し（`road_graph_repository.py: get_edge_material_arrays`）と本モジュールの
@@ -119,6 +119,13 @@
   書かせるので、区分を足すと先に重さを足すまで区分の入れ替えが断られる。分け方に無い区分の重さは費用に効かないので断らず
   （重さを先に書いてから区分を足す・区分を先に消してから重さを消す順が通る）、どちらの書き込みも確定のあとに残っていれば
   警告のログを出す（`services/cost_axis_service.py: warn_surplus_class_weights`）。
+- **ひな形**は、運営が名前を付けて配る利用者の値（つまみ・軸ごとの倍率と無効・道の段の行ごとの段）の組で、表`route_profiles`
+  （`infrastructure/route_profile_models.py: RouteProfilesRow`。1行のJSONB）に全体を1つで持ち、管理API（`/api/admin/route-profiles`の
+  GET・PUT）で全体を1回で読み書きする。道の段の行の鍵は外部キーにしない（行は道の区分の全体から導く値で、表の行ではない）。
+  書き込みは今の軸と行に無い名指しを断り、起動時に読む全体（区分 → 軸 → ひな形の順）が無い名を指していれば起動を止める。
+  軸や区分を消す書き込みは、同じ取引でひな形からその設定を外し（`domain/route_profiles.py: without_missing_axes`・
+  `domain/route_profiles.py: without_missing_rows`）、外したものを警告のログに出す——消した軸・行を指すひな形が残ると、次の起動が
+  止まる。画面へは公開のものだけを`GET /api/client-config`の`route_profiles`で配り、書いていない軸・行は標準として扱われる。
 - **合成**: `domain/leg_costs.py: LegCostComposer`は、ビンごとの費用を「避け方の倍率 × 所要時間 ＋ 代償の秒」で組む。代償の体力は走行の模型が
   点の間ごとに重みを掛けて返し（`domain/cycling_speed.py: SegmentSpeedModel.ride`）、道のストレスは時刻に依らないのでリクエストに1回
   だけ求める。曲がる所の費用も同じ換算で組み（`LegCostComposer.transition_costs`）、探索へは`RoadGraphContext.transition_cost`
@@ -127,7 +134,7 @@
   強さは交換比α・βの較正値が持ち、つまみはそれに掛ける比で、帳簿の較正値の束（`domain/ledger_costs.py: ledger_parameters`）が
   入口の写した較正値で組む——較正値を変えても利用者の値は標準のまま。倍率は書いていない軸を標準とし、条件のエコーへは
   今の費用の軸を全部書いた形（`CostPreference.resolved`）を返す。
-- **費用を述べる文**: 費用の式とロスが何を数えるかを利用者に言う名詞句（`domain/ledger_costs.py: COST_WORDING`・
+- **費用を述べる文**: 費用の式と難所が何を数えるかを利用者に言う名詞句（`domain/ledger_costs.py: COST_WORDING`・
   `domain/ledger_costs.py: PENALTY_WORDING`）と、避け方の倍率が何に掛かるかの名詞句（`domain/road_avoidance.py: AVOIDANCE_MULTIPLIER_WORDING`）は
   式の横に置き、生成物`route-generate-config.json`で配る。式を変えるときは、同じファイルの文を直す。
 - **組み立ての部品**: 走行の模型の入力（転がり抵抗・止まる出来事の待ちと漕ぎ出し・断面。`domain/leg_costs.py: travel_inputs`）と

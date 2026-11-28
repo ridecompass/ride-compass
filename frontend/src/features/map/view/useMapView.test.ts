@@ -81,7 +81,7 @@ describe("useMapView", () => {
     },
   );
 
-  it("レンズは総合と費用の軸の順に並び、選んだレンズの1kmあたりのロスの秒を想定速度つきで取り、凡例の下に段の境目の目安を出す", async () => {
+  it("レンズは総合と費用の軸の順に並び、選んだレンズの1kmあたりの難所の秒を想定速度つきで取り、凡例の下に段の境目の目安を出す", async () => {
     serve(
       undefined,
       costAxisCatalog(
@@ -116,12 +116,12 @@ describe("useMapView", () => {
   });
 
   it.each([
-    { case: "ロスの全体を無効にした間", costPreference: { ...STANDARD_COST_PREFERENCE, strength: 0 } },
+    { case: "難所の全体を無効にした間", costPreference: { ...STANDARD_COST_PREFERENCE, strength: 0 } },
     {
       case: "全部の軸を個別に無効にした間",
       costPreference: { ...STANDARD_COST_PREFERENCE, disabled_axes: ["ascent", "vibration"] },
     },
-  ])("$case、数える軸が無いので、総合も選べず凡例も出さず、ルートの線をロスで塗らない", async ({ costPreference }) => {
+  ])("$case、数える軸が無いので、総合も選べず凡例も出さず、ルートの線を難所で塗らない", async ({ costPreference }) => {
     serve();
     const { result, rerender } = renderMapView({ hasDetail: true });
     await waitFor(() => expect(result.current.lensControl.axisOptions).toHaveLength(LENS_COUNT));

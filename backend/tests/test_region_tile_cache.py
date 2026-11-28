@@ -9,9 +9,13 @@
 """
 
 
+import importlib
+from types import MappingProxyType
+
 import pytest
 
 
+from app.domain import region
 from app.infrastructure import region_tile_cache, tile_cache
 from app.infrastructure.cache_identity import LANDCOVER_TILE_VERSION, region_tile_key
 from app.infrastructure.landcover_raster import raster_paths
@@ -150,3 +154,17 @@ async def test_discarding_after_a_rebuild_drops_every_region_tile(configure_rast
     removed = region_tile_cache.discard_region_tiles()
 
     assert (removed, _kept(*region_keys, "xyz/dem_png/12/3637/1612.png")) == (len(region_keys), {"xyz/dem_png/12/3637/1612.png"})
+
+
+def test_the_road_surface_generation_changes_when_the_roads_drawn_per_zoom_change():
+    """ズームごとに描く道の種別を変えると、路面タイルの世代が変わる。変わらないと、表を変えたデプロイが前の表で焼いたタイルを
+    配り続ける。"""
+    before = region_tile_cache.MVT_TILE_GENERATIONS["road_surface"]
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(region, "ROAD_SURFACE_TILE_HIGHWAYS", MappingProxyType(
+            {**region.ROAD_SURFACE_TILE_HIGHWAYS, 10: (*region.ROAD_SURFACE_TILE_HIGHWAYS[10], "unclassified")}))
+        changed = importlib.reload(region_tile_cache).MVT_TILE_GENERATIONS["road_surface"]
+    importlib.reload(region_tile_cache)
+
+    assert changed != before
+    assert region_tile_cache.MVT_TILE_GENERATIONS["road_surface"] == before

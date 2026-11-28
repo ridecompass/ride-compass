@@ -152,6 +152,7 @@ from app.domain.material_coverage_spec import MISSING_SEMANTICS_DISPLAY, POPULAT
 from app.domain.primary_attributes import PRIMARY_ATTRIBUTES
 from app.domain.region import (
     MAX_MERCATOR_LATITUDE,
+    ROAD_SURFACE_ALL_WAYS_MIN_ZOOM,
     ROAD_SURFACE_TILE_MIN_ZOOM,
     ROAD_TILE_MAX_ZOOM,
     ROAD_TILE_MIN_ZOOM,
@@ -331,8 +332,10 @@ def main() -> None:
             # 道のタイルを要求するズーム範囲。frontendのMapLibreソース設定
             # （minzoom/maxzoom）とタイル要求のガードがこの値を使う。手書きで複製すると、
             # backendだけ広げてもfrontendが要求せずレイヤーが黙って消える。路面タイルだけは
-            # `road_surface_tile_min_zoom`から配り、道ごとの鍵は`road_tile_min_zoom`から持つ。
+            # `road_surface_tile_min_zoom`から配り、道ごとの鍵は`road_tile_min_zoom`から持つ。路面タイルが細い道まで全部描くのは
+            # `road_surface_all_ways_min_zoom`から。
             "road_surface_tile_min_zoom": ROAD_SURFACE_TILE_MIN_ZOOM,
+            "road_surface_all_ways_min_zoom": ROAD_SURFACE_ALL_WAYS_MIN_ZOOM,
             "road_tile_min_zoom": ROAD_TILE_MIN_ZOOM,
             "road_tile_max_zoom": ROAD_TILE_MAX_ZOOM,
             # 画面が点からタイル座標を求めるときに緯度を挟む限界（`domain/region.py`と同じ式を使う）。
@@ -632,7 +635,7 @@ def main() -> None:
             "standard_cost_factor": STANDARD_COST_FACTOR,
             "cost_strength_levels": [level._asdict() for level in COST_STRENGTH_LEVELS],
             "cost_multiplier_levels": [level._asdict() for level in COST_MULTIPLIER_LEVELS],
-            # ロスを数えないことの名前（費用の軸の無効の段と、全体のつまみの0の段）。
+            # 難所を数えないことの名前（費用の軸の無効の段と、全体のつまみの0の段）。
             "disabled_label": DISABLED_LABEL,
             "min_assumed_speed_kmh": MIN_ASSUMED_SPEED_KMH,
             "max_assumed_speed_kmh": MAX_ASSUMED_SPEED_KMH,
@@ -643,7 +646,7 @@ def main() -> None:
             "travel_model_wording": TRAVEL_MODEL_WORDING,
             "duration_estimate_wording": DURATION_ESTIMATE_WORDING,
             "candidate_order_wording": CANDIDATE_ORDER_WORDING,
-            # ロスが何を数えるかと、費用の式と、道の避け方の倍率が何に掛かるかの文（名詞句）。費用を述べる画面の文が差し込む。
+            # 難所が何を数えるかと、費用の式と、道の避け方の倍率が何に掛かるかの文（名詞句）。費用を述べる画面の文が差し込む。
             "penalty_wording": PENALTY_WORDING,
             "cost_wording": COST_WORDING,
             "avoidance_multiplier_wording": AVOIDANCE_MULTIPLIER_WORDING,

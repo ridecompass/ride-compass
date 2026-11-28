@@ -18,10 +18,10 @@ from app.domain.attributes import CategoricalColumn, MaterialColumn
 from app.domain.feature_materials import FeatureMaterials
 from app.domain.geo import KM_PER_DEGREE_LATITUDE, degrees_covering_m, km_per_degree_longitude
 from app.domain.graph import edge_feature_key
-from app.domain.material_catalog import PEDESTRIAN_ROAD
+from app.domain.material_catalog import HIGHWAY, PEDESTRIAN_ROAD
 from app.domain.hard_filters import HARD_FILTER_PROPERTY, hard_filter_column
 from app.domain.road_classes import RoadClassDefinitions, class_columns, layer_columns
-from app.domain.region import EDGE_UNIT_MIN_ZOOM
+from app.domain.region import EDGE_UNIT_MIN_ZOOM, ROAD_SURFACE_TILE_HIGHWAYS
 from app.domain.search_graph import range_positions
 from app.domain.road_network import RoadNetwork, edge_key, positions_in, rows_in_bbox
 from app.domain.road_network_build import along_way
@@ -57,7 +57,8 @@ class MapFeatures:
 
 def map_features(network: RoadNetwork, z: int, rows: np.ndarray) -> MapFeatures:
     """区間の行`rows`（どちらの向きの行でもよい）の区間を含むフィーチャー（区間の順）。ズーム`z`が`EDGE_UNIT_MIN_ZOOM`以上なら
-    区間、それより引いたズームは道1本（範囲の外の区間も含めた道の全区間。どのタイルから見ても道1本の形と値が同じ）。"""
+    区間、それより引いたズームは道1本（範囲の外の区間も含めた道の全区間。どのタイルから見ても道1本の形と値が同じ）。
+    `ROAD_SURFACE_TILE_HIGHWAYS`に載るズームは、そこに書いた道の種別の道だけ。"""
     first = network.edge_first_rows
     starts = np.unique(first[np.searchsorted(first, np.asarray(rows, dtype=np.int64), side="right") - 1])
     way_of_row = np.asarray(network.edge_way_id)
@@ -66,11 +67,21 @@ def map_features(network: RoadNetwork, z: int, rows: np.ndarray) -> MapFeatures:
         return MapFeatures(tuple(edge_feature_key(way, segment) for way, segment in zip(ways, segments, strict=True)),
                            tuple(ways), tuple(segments), starts, np.arange(len(starts), dtype=np.int64))
     ways = np.unique(way_of_row[starts])
+    if (drawn := ROAD_SURFACE_TILE_HIGHWAYS.get(z)) is not None:
+        ways = ways[_has_highway(network, ways, drawn)]
     # 区間の鍵は道の番号が上の桁なので、道の区間は鍵の`[edge_key(道, 0), edge_key(道 + 1, 0))`に並ぶ。
     start = np.searchsorted(network.edge_keys, edge_key(ways, np.zeros_like(ways)), side="left")
     counts = np.searchsorted(network.edge_keys, edge_key(ways + 1, np.zeros_like(ways)), side="left") - start
     return MapFeatures(tuple(str(way) for way in ways.tolist()), tuple(ways.tolist()), (None,) * len(ways),
                        first[range_positions(start, counts)], np.repeat(np.arange(len(ways), dtype=np.int64), counts))
+
+
+def _has_highway(network: RoadNetwork, ways: np.ndarray, highways: tuple[str, ...]) -> np.ndarray:
+    """道の番号`ways`ごとに、道の種別（材料`highway`）が`highways`のどれかか。道の値の行が無い道は種別が分からないので外す。"""
+    column = network.categorical_ids.index(HIGHWAY)
+    picked = np.isin(np.asarray(network.categorical_vocab[column], dtype=object), highways)
+    rows = positions_in(np.asarray(network.way_osm_id), ways)
+    return (rows >= 0) & picked[network.way_categorical_codes[np.maximum(rows, 0), column]]
 
 
 def map_features_in(network: RoadNetwork, z: int, min_lon: float, min_lat: float, max_lon: float,

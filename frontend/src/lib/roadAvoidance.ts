@@ -9,6 +9,9 @@ export type AvoidanceLevel = RoadAvoidanceOverride[string];
 export type AvoidanceRow = RoadAvoidanceView["rows"][number];
 export type AvoidanceLevelView = RoadAvoidanceView["levels"][number];
 
+/** 標準（どの行も既定の段）。選んだ段だけを書くので、空で表す。 */
+export const STANDARD_ROAD_AVOIDANCE: RoadAvoidanceOverride = {};
+
 /** 道路タブの「地図で見る」（道路タブを出している間、段を地図の道に塗るか。端末に覚える）と、塗っている間に塗れない理由
  * （拡大が足りない・取れない等。無ければnull）。地図の見え方が持ち、道路タブへ渡す。 */
 export interface RoadTabMap {

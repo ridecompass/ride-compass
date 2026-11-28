@@ -69,7 +69,7 @@ describe("選んだ候補の中身", () => {
         selectedRouteSegment: { segment: second, latitude: 35, longitude: 139 },
       }),
     });
-    const graph = screen.getByRole("slider", { name: /^区間ごとのロス/ });
+    const graph = screen.getByRole("slider", { name: /^区間ごとの難所/ });
     expect(graph).toHaveAttribute("aria-valuetext", "1.0 km地点");
     expect(screen.getByText("20.0km")).toBeInTheDocument();
     graph.focus();
