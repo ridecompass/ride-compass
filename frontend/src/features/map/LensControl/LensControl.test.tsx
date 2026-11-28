@@ -1,6 +1,6 @@
 /**
  * `LensControl.tsx`——「走りにくさを色で見る」のピルが今のレンズと色の帯を示して帯の右に一番濃い段の名前を出し、開いた一覧でレンズを1つ選び・外し、
- * 行の印（走る条件）を読ませ、一覧の頭で行の印の意味と但し書きを読ませること。
+ * 一覧の頭で但し書きを読ませること。
  *
  * ここで見ないもの:
  * - 選択肢・凡例の中身を費用の軸の一覧から組むこと → `features/map/view/lens.test.ts`
@@ -21,10 +21,9 @@ const option = (id: string, overrides: Partial<LensOption> = {}): LensOption => 
   label: `${id}の軸`,
   color: "#123456",
   description: `${id}の説明`,
-  conditions: [],
   ...overrides,
 });
-const OPTIONS = [option("idle"), option("used", { conditions: ["bearing_deg", "at"] })];
+const OPTIONS = [option("idle"), option("used")];
 const LEGEND = [
   { key: "step-0", label: "低い", color: "#00ff00", filter: [] },
   { key: "step-1", label: "高い", color: "#ff0000", filter: [] },
@@ -69,16 +68,6 @@ describe("LensControl", () => {
     expect(pill()).toHaveAttribute("title", LAYER_DATA_STATUS_LABELS.error);
     await open();
     expect(screen.getByRole("status")).toHaveTextContent(LAYER_DATA_STATUS_LABELS.error);
-  });
-
-  it("一覧は、値が変わる走る条件を名前に添える", async () => {
-    renderLens();
-    await open();
-    expect(
-      within(list())
-        .getAllByRole("radio")
-        .map((row) => row.textContent),
-    ).toEqual(["idleの軸", "usedの軸（走行中の進む向きで変わる）（出発時刻で変わる）"]);
   });
 
   it("行を押すとそのレンズを選び、一覧は閉じない。選んでいる行をもう一度押すと外す", async () => {

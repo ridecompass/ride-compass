@@ -24,8 +24,8 @@
 | `features/map/layers/webMercatorTile.ts` | Web MercatorのXYZタイルと緯度経度の行き来（点のタイル座標・点を含むタイル（世界の端はタイルの番号の範囲へ寄せる）・タイルが覆う範囲）。backendと同じ式で、一致は表の組`region`で照らす。道路タイルの値を引くタイルと、気象庁のタイルの在否の判定（`jmaTileIndex.ts`）が同じ式を通る |
 | `lib/mapDisplay/mapColorLegend.ts` | 地図上の色分け凡例（`lib/mapDisplay/mapColorLegend.ts: MapColorLegendBand`型・`lib/mapDisplay/mapColorLegend.ts: buildRangeLegendBands`・`lib/mapDisplay/mapColorLegend.ts: rangeStepLabel`）の共通ロジックと、値が無い行（`lib/mapDisplay/mapColorLegend.ts: NO_DATA_LEGEND_BAND`）。凡例を作る関数（`features/map/view/lens.ts`）・道の属性の凡例（`features/map/scene/legends.ts`）が使う |
 | `features/map/view/lens.ts` | レンズの凡例（`features/map/view/lens.ts: lensLegend`。ルート後はルートの線のモードの凡例） |
-| `features/map/LensControl/LensControl.tsx` | レンズ（地図を何で塗るか）の唯一の入口。画面での名前は「走りにくさを色で見る」（見出し・読み上げ名。「レンズ」はコードの中の名前で、画面には出さない）。地図の上のピルが、道のりのグラフの「走りにくさを色で見る」の切り替えと同じ筆の絵（`lucideIcons.tsx: BurdenPaintIcon`）と、選んでいるレンズの名前と色の帯（段の数に依らない固定の幅）と、帯の右に一番濃い段の名前（その値から一番濃い色）を示し、タップで縦の一覧（各行にアイコン・値が変わる走る条件のアイコン・(i) の説明）を開く。一覧は「表示」の一覧（`MapOverlayControls.tsx`）と同じ形と操作にそろえる——選んでも閉じず、選んでいる行をもう一度押すと外れ、一覧の頭に塗りの但し書きを出し、下に「選択を外す」を置く。凡例は持たない（段は事実で細かく刻むので、ピルの帯と右端の値で見せ、道の値は道を押した窓に出す）（選択肢・凡例は`features/map/view/useMapView.ts`が組み立て、`app/HomeMapPane.tsx`はそのまま渡す）。走行中も同じ大きさで出す |
-| `features/map/LensControl/LensRow.tsx` | 一覧の1行（`features/map/LensControl/LensRow.tsx: LensRow`）と選択肢の型（`features/map/LensControl/LensRow.tsx: LensOption`）。行の (i) の開閉は「表示」の一覧の行と同じ部品（`features/map/LegendCheckboxList/LegendRow.tsx: useRowDescription`）を使い、チェックの代わりに1つだけ選ぶ印を出し、(i) で説明を、▶（選んでいる行だけ）で凡例を行のすぐ下に開く。一覧の頭の印の意味の文（`features/map/LensControl/LensRow.tsx: LensMarksNote`）は、どれかの行に出る走る条件の印だけを並べる |
+| `features/map/LensControl/LensControl.tsx` | レンズ（地図を何で塗るか）の唯一の入口。画面での名前は「走りにくさを色で見る」（見出し・読み上げ名。「レンズ」はコードの中の名前で、画面には出さない）。地図の上のピルが、道のりのグラフの「走りにくさを色で見る」の切り替えと同じ筆の絵（`lucideIcons.tsx: BurdenPaintIcon`）と、選んでいるレンズの名前と色の帯（段の数に依らない固定の幅）と、帯の右に一番濃い段の名前（その値から一番濃い色）を示し、タップで縦の一覧（各行にアイコン・(i) の説明）を開く。一覧は「表示」の一覧（`MapOverlayControls.tsx`）と同じ形と操作にそろえる——選んでも閉じず、選んでいる行をもう一度押すと外れ、一覧の頭に塗りの但し書きを出し、下に「選択を外す」を置く。凡例は持たない（段は事実で細かく刻むので、ピルの帯と右端の値で見せ、道の値は道を押した窓に出す）（選択肢・凡例は`features/map/view/useMapView.ts`が組み立て、`app/HomeMapPane.tsx`はそのまま渡す）。走行中も同じ大きさで出す |
+| `features/map/LensControl/LensRow.tsx` | 一覧の1行（`features/map/LensControl/LensRow.tsx: LensRow`）と選択肢の型（`features/map/LensControl/LensRow.tsx: LensOption`）。行の (i) の開閉は「表示」の一覧の行と同じ部品（`features/map/LegendCheckboxList/LegendRow.tsx: useRowDescription`）を使い、チェックの代わりに1つだけ選ぶ印を出し、(i) で説明を、▶（選んでいる行だけ）で凡例を行のすぐ下に開く |
 | `lib/lensLink.ts` | 走る条件のボタン（地図の向きの方位磁針・出発時刻・想定速度）に付ける、いまの周りの道の塗りがその条件で決まっている印（輪と読み上げ）。下記「周りの道の色が拠る走る条件」 |
 | `features/map/layers/mapLayers.ts` | レンズの層（`features/map/layers/mapLayers.ts: isLensLayer`。記述子の印で判定。地図上チップの一覧`overlayChips`が除くのに使う） |
 | `features/map/MapView/MapView.tsx`（レンズの線の箇所のみ） | 画面の状態を宣言の入力へ渡すだけの配線（下記「MapView.tsx側の配線」）。レンズごとの処理は持たない |
@@ -81,7 +81,7 @@
 周りの道を塗っている間、そのレンズが変わる条件（`MapLens.conditions`。材料の要求へ載せる条件と、式の木の条件の節が読む条件）の
 ボタンにだけ付ける。走る向きは走行中の進む向きだけを木へ渡すので、方位磁針の印も走行中だけ付く（ルートの前は木がどの道も
 両向きのきつい向きで塗り、地図を回しても色は変わらない）。走行中の進む向きは保存されない——印が無いと、見えない条件で同じ道の
-色が変わる。一覧の各行には、値が変わる走る条件を同じアイコンで添える。
+色が変わる。
 
 **レンズ状態は1つ**（`features/map/view/useMapView.ts: lens`。localStorageキーは`ridecompass:route-style-mode`。選択肢に無い値は
 `UNSELECTED_LENS_ID`へ戻す——費用の軸の一覧が届いてから読み直す）。ルート前は全道路、ルート後はルート線をこの1つの値から
