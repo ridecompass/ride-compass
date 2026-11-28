@@ -466,6 +466,22 @@ async def test_the_same_frame_of_the_forecast_shares_the_kept_response(
     assert [call.fields["cache"] for call in calls] == ["miss", "hit", "miss"]
 
 
+async def test_a_replaced_forecast_paints_the_wind_anew(
+        client, override_dependency, monkeypatch, cost_axes, road_network_root):
+    """同期が予報を入れ替えたら、風に依るレンズは前の予報で塗った持ちを返さずに求め直す。"""
+    weather = Weather(NORTH_WIND)
+    _serve_weather(override_dependency, weather)
+    serve_road_network(road_network_root, road_network(WAYS, COORDINATES))
+    calls = record_external_calls(monkeypatch, lens_service)
+
+    for version in ("fake", "fake", "replaced"):
+        weather.version = version
+        response = await client.get(f"/api/region/lens/headwind/{Z}/{X}/{Y}", params={"speed_kmh": ASSUMED_SPEED_KMH})
+        assert response.status_code == 200, response.text
+
+    assert [call.fields["cache"] for call in calls] == ["miss", "hit", "miss"]
+
+
 async def test_a_frame_of_a_replaced_forecast_is_refused(client, override_dependency, cost_axes, road_network_root):
     """予報が入れ替わる前のコマの印は断り、画面はコマの一覧を読み直してから求め直す（前の予報の版の風で塗らない）。"""
     _serve_weather(override_dependency, Weather(NORTH_WIND))
