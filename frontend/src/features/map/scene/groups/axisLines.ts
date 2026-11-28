@@ -1,25 +1,19 @@
 /** レンズで道を塗る線。費用の軸は管理APIで増減するため、**レンズごとの分岐・定数を持たない**。
  *
- * 道の値は、backend が配る式の木（費用の軸の一覧の `map_lens.formula`）を地図の式へ置き換えて、地図が道ごとに求める。
- * 木へ入れる道ごとの材料は feature-state で、走る条件（向き・想定速度）は地図全体の global-state で受け取る——向き・
- * 速度を変えても材料は取り直さず、global-state を置き直すだけで色が変わる。**feature-state の値は MapLibre の絞り込み
- * からも `line-dasharray` からも読めない**ため、凡例で隠した段は透明で落とし、値の無い道の破線は、破線だけの線を
- * 重ねて濃さ（feature-state を読める）で出し入れする。
+ * 道の値は、式の木を地図の式へ置き換えて MapLibre と同じ評価器で画面のコードが道ごとに1回ずつ求め、値1つだけを
+ * feature-state で地図へ渡す（理由と値の無い道の描き方は docs/modules/frontend/map-axis-coloring.md「レンズの線」）。
  *
  * ソースは道路の線と同じ路面タイル。宣言は合成（`composeScene`）が1本へ畳む。
  */
+import { createExpression, type StyleExpression } from "@maplibre/maplibre-gl-style-spec";
+
 import { mapDisplay } from "@/types/generated/mapDisplay";
 import palette from "@/types/generated/palette.json";
 
-import type {
-  MapSceneFeatureStates,
-  MapSceneFeatureStateValue,
-  MapSceneGlobalState,
-} from "@/features/map/scene/mapScene";
+import type { MapSceneFeatureStates, MapSceneFeatureStateValue } from "@/features/map/scene/mapScene";
 import { declareGroup, type SceneLayerEntry, type SceneSourceEntry } from "@/features/map/scene/mapSceneGroups";
-import { featureStatesByName } from "@/features/map/scene/sceneBuilders";
 import { LENS_LAYER_MIN_ZOOM } from "@/features/map/layers/mapLayers";
-import { missingExpression, wayValueExpression, type WayValueFormula } from "@/features/map/scene/wayValueFormula";
+import { wayValueExpression, type WayValueFormula } from "@/features/map/scene/wayValueFormula";
 import { NO_DATA_LEGEND_BAND } from "@/lib/mapDisplay/mapColorLegend";
 import { bandStep, type ValueBand } from "@/lib/mapDisplay/valueScale";
 
@@ -29,7 +23,7 @@ import { ROAD_LINE_SOURCE_ID } from "./roadLines";
 export type WayMaterials = ReadonlyMap<string, Readonly<Record<string, number>>>;
 
 /** 式の木が読む走る条件。名前は木の `condition` の名前で、値の無い条件は鍵ごと無い。 */
-export type WayConditions = MapSceneGlobalState;
+export type WayConditions = Readonly<Record<string, number>>;
 
 export type AxisLineState = {
   readonly axes: readonly {
@@ -48,79 +42,96 @@ export type AxisLineState = {
 
 type AxisLine = AxisLineState["axes"][number];
 
-/** 材料の feature-state のキー。同じソースへ複数の軸が材料を載せ、軸ごとに同じ名前の材料が違う値を持ちうるので、
- * 軸idを前に付ける。 */
-function materialStateKey(axisId: string, name: string): string {
-  return `${axisId}:${name}`;
+/** 材料は届いたが値の無い道の印。feature-state の値に NaN を置けないので、文字で持つ。届いていない道は鍵を持たない。 */
+const NO_VALUE = "none";
+
+/** 道の値の feature-state のキー。同じソースへ複数の軸が値を載せるので、軸ごとに分ける。 */
+function valueStateKey(axisId: string): string {
+  return `${axisId}:value`;
 }
 
-/** 材料が届いた道の印の feature-state のキー。取得中かを地図全体の1つの印で持つと、どれか1枚のタイルを取るたびに
- * 画面じゅうの値の無い道が「データなし」と「取得中」の間で切り替わるので、道ごとに持つ。 */
-function fetchedStateKey(axisId: string): string {
-  return `${axisId}#fetched`;
-}
+/** 式を評価するときの地図の状態と地物。道の値は倍率にも地物のプロパティにも依らない（材料と条件だけで決まる）。 */
+const EVALUATION_GLOBALS = { zoom: 0 } as never;
+const EVALUATION_FEATURE = { type: 2, properties: {} } as never;
 
-const fetchedByMaterials = new WeakMap<WayMaterials, ReadonlyMap<string, boolean>>();
+const compiledByFormula = new WeakMap<WayValueFormula, Map<string, StyleExpression>>();
 
-/** 材料が届いた道ごとの印。同じ材料からは同じ参照を返す（当てる側は参照が同じなら道ごとに比べ直さない）。 */
-function fetchedStates(materials: WayMaterials): ReadonlyMap<string, boolean> {
-  let states = fetchedByMaterials.get(materials);
-  if (states === undefined) {
-    states = new Map([...materials.keys()].map((featureId) => [featureId, true]));
-    fetchedByMaterials.set(materials, states);
+/** 式の木を、走る条件を入れて評価器に読ませたもの。木と条件が同じなら同じものを返す（覚えた値を使い回す鍵になる）。 */
+function compiledFor(formula: WayValueFormula, conditions: WayConditions): StyleExpression {
+  const key = JSON.stringify(conditions);
+  let byConditions = compiledByFormula.get(formula);
+  if (byConditions === undefined) compiledByFormula.set(formula, (byConditions = new Map()));
+  let compiled = byConditions.get(key);
+  if (compiled === undefined) {
+    const result = createExpression(wayValueExpression(formula), "paint", null, { ...conditions });
+    if (result.result !== "success") throw new Error(result.value.map((error) => error.message).join("; "));
+    compiled = result.value;
+    byConditions.set(key, compiled);
   }
-  return states;
+  return compiled;
 }
 
-/** 走る条件は地図全体で1つなので、木の条件の名前をそのまま global-state の名前にする。 */
-const conditionStateKey = (name: string): string => name;
+/** 道1本の材料ごとに求めた値（評価器ごと）。タイルの応答の材料は届いたあと変わらないので、材料の参照で覚える。 */
+const valueByMaterial = new WeakMap<
+  StyleExpression,
+  WeakMap<Readonly<Record<string, number>>, number | typeof NO_VALUE>
+>();
 
-/** 道の材料がもう届いたか。 */
-function fetchedExpression(axis: AxisLine): unknown {
-  return ["boolean", ["feature-state", fetchedStateKey(axis.axisId)], false];
+function wayValue(compiled: StyleExpression, material: Readonly<Record<string, number>>): number | typeof NO_VALUE {
+  let values = valueByMaterial.get(compiled);
+  if (values === undefined) valueByMaterial.set(compiled, (values = new WeakMap()));
+  let value = values.get(material);
+  if (value === undefined) {
+    const evaluated: unknown = compiled.evaluateWithoutErrorHandling(EVALUATION_GLOBALS, EVALUATION_FEATURE, material);
+    value = typeof evaluated === "number" && !Number.isNaN(evaluated) ? evaluated : NO_VALUE;
+    values.set(material, value);
+  }
+  return value;
 }
 
-/** 道の値を `let` で束ね、値の無い道とそれ以外に場合分けする。値の無い道を先に分けるので、それ以外の枝（段の選び方）は
- * 値のある道だけを受ける。 */
-function byWayValue(axis: AxisLine, cases: (value: unknown) => { missing: unknown; otherwise: unknown }): unknown {
-  const ref = ["var", "wayValue"];
-  const branches = cases(ref);
-  const value = wayValueExpression(axis.formula, {
-    featureStateKey: (name) => materialStateKey(axis.axisId, name),
-    globalStateKey: conditionStateKey,
-  });
-  return ["let", "wayValue", value, ["case", missingExpression(ref), branches.missing, branches.otherwise]];
+const valuesByMaterials = new WeakMap<
+  WayMaterials,
+  Map<StyleExpression, ReadonlyMap<string, MapSceneFeatureStateValue>>
+>();
+
+/** 軸の道ごとの値。同じ材料と条件からは同じ参照を返す（当てる側は参照が同じなら道ごとに比べ直さない）。 */
+function wayValues(axis: AxisLine, conditions: WayConditions): ReadonlyMap<string, MapSceneFeatureStateValue> {
+  const compiled = compiledFor(axis.formula, conditions);
+  let byCompiled = valuesByMaterials.get(axis.materials);
+  if (byCompiled === undefined) valuesByMaterials.set(axis.materials, (byCompiled = new Map()));
+  let values = byCompiled.get(compiled);
+  if (values === undefined) {
+    values = new Map([...axis.materials].map(([featureId, material]) => [featureId, wayValue(compiled, material)]));
+    byCompiled.set(compiled, values);
+  }
+  return values;
 }
 
-/** 段ごとの色。値が無い道と、まだ来ていない道は別の色にする。 */
+/** 段ごとの色。値が無い道は破線の線が描くので透明にし（重ねると破線が実線に埋もれる）、まだ来ていない道は取得中の色にする。 */
 function colorExpression(axis: AxisLine): unknown {
-  // 値の無い道は破線の線が描くので、実線の側は透明にする（重ねると破線が実線に埋もれる）。
-  return byWayValue(axis, (value) => ({
-    missing: ["case", fetchedExpression(axis), palette.semantic.hidden, palette.semantic.loading],
-    otherwise: bandStep(axis.bands, value, (band) => band.color),
-  }));
+  const value = ["feature-state", valueStateKey(axis.axisId)];
+  return [
+    "case",
+    ["==", ["typeof", value], "number"],
+    bandStep(axis.bands, ["number", value], (band) => band.color),
+    ["==", value, NO_VALUE],
+    palette.semantic.hidden,
+    palette.semantic.loading,
+  ];
 }
 
-/** 値の無い道のうち、材料が届いた道だけを見せる濃さ（まだ来ていない道は取得中の色の実線が描く）。 */
+/** 破線の線の濃さ。値が無いと決まった道だけを見せる（`line-dasharray` は feature-state を読めないので、濃さで出し入れする）。 */
 function noDataOpacityExpression(axis: AxisLine): unknown {
-  return byWayValue(axis, () => ({
-    missing: ["case", fetchedExpression(axis), mapDisplay.road.unknownOpacity, 0],
-    otherwise: 0,
-  }));
+  return ["case", ["==", ["feature-state", valueStateKey(axis.axisId)], NO_VALUE], mapDisplay.road.unknownOpacity, 0];
 }
 
 function featureStatesFor(state: AxisLineState): MapSceneFeatureStates {
-  return new Map(
-    state.axes.flatMap((axis): [string, ReadonlyMap<string, MapSceneFeatureStateValue>][] => [
-      ...featureStatesByName(axis.materials, (name) => materialStateKey(axis.axisId, name)),
-      [fetchedStateKey(axis.axisId), fetchedStates(axis.materials)],
-    ]),
-  );
+  return new Map(state.axes.map((axis) => [valueStateKey(axis.axisId), wayValues(axis, state.conditions)]));
 }
 
 export const axisLineGroup = declareGroup<AxisLineState>((state) => {
   const sources: readonly SceneSourceEntry[] = [
-    // 宣言そのものは道路の線が持つ。ここは材料だけを同じソースへ載せる。
+    // 宣言そのものは道路の線が持つ。ここは道の値だけを同じソースへ載せる。
     {
       id: ROAD_LINE_SOURCE_ID,
       spec: { type: "vector" },
@@ -143,7 +154,6 @@ export const axisLineGroup = declareGroup<AxisLineState>((state) => {
       paint: {
         "line-color": colorExpression(axis),
         "line-width": mapDisplay.road.lineWidthPx,
-        // 取得中は薄くしない——薄くすると「まだ来ていない」と「対象外」が区別できない。
         "line-opacity": mapDisplay.road.knownOpacity,
       },
       visible: axis.visible,
@@ -161,5 +171,5 @@ export const axisLineGroup = declareGroup<AxisLineState>((state) => {
     },
   ]);
 
-  return { sources, layers, globalState: state.conditions };
+  return { sources, layers };
 });

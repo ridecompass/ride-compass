@@ -1,5 +1,5 @@
 /**
- * `features/route/DifficultyProfile/DifficultyProfile.tsx`——候補の中身の先頭に出す、区間ごとのロスのグラフ。
+ * `features/route/DifficultyProfile/DifficultyProfile.tsx`——候補の中身の先頭に出す、区間ごとの難所のグラフ。
  *
  * 見るもの: 長さのある区間が無ければ何も描かないこと、横軸の右端（候補の距離と渡された物差しの長い方）と目盛り、
  * 軸の色、走行中の現在地の印（その距離の柱の上端）と、始点からそこまでの色を抜いた薄め（候補の終わりより先は
@@ -18,7 +18,7 @@ import { mapDisplay } from "@/types/generated/mapDisplay";
 import type { RouteSegmentDetail } from "@/types/route";
 import DifficultyProfile from "./DifficultyProfile";
 
-// 1kmずつの2区間。前の区間の1kmあたりのロス（100秒）が図の上端になる。
+// 1kmずつの2区間。前の区間の1kmあたりの難所（100秒）が図の上端になる。
 const FIRST = makeRouteSegment({
   distance_km: 1,
   ...penaltyFields({ axis_a: 60, axis_b: 40 }, 1),

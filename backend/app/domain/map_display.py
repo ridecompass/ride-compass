@@ -589,7 +589,7 @@ ROUTE_CASING_WIDTHS_PX: dict[str, float] = {
 }
 
 #: 線の濃さ（役割ごと）。候補の参考線は選んだ候補より薄くする。`travelled`は走行中に走り終えた区間で、
-#: 残りの道と見分けられるだけ薄くし、ルートの線と道のりのロスのグラフの両方に当てる。
+#: 残りの道と見分けられるだけ薄くし、ルートの線と道のりの難所のグラフの両方に当てる。
 ROUTE_LINE_OPACITIES: dict[str, float] = {
     "selectedHalo": 0.25,
     "splice": 0.75,

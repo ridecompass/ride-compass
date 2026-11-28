@@ -55,7 +55,7 @@ interface RouteSettingsPanelProps {
   onCostPreferenceChange: (next: CostPreference) => void;
 }
 
-/** 「ルート設定」の「要因」タブ。一番上の「総合」でロスの全部を数える割合を選び、その下で費用の軸ごとに、割合の段か無効（数えない）を選ぶ。 */
+/** 「ルート設定」の「難所」タブ。一番上の「総合」で難所の全部を数える割合を選び、その下で費用の軸ごとに、割合の段か無効（数えない）を選ぶ。 */
 export default function RouteSettingsPanel({ costPreference, onCostPreferenceChange }: RouteSettingsPanelProps) {
   const catalog = useCostAxisCatalog();
   const catalogFailure = costAxisCatalogFetchFailure(catalog);
@@ -99,11 +99,11 @@ export default function RouteSettingsPanel({ costPreference, onCostPreferenceCha
           <InfoPopover triggerAriaLabel="総合の説明">
             <GuideText
               text={[
-                "すべての要因のロスを、どれだけの割合で数えるかを決めます。",
-                `・ロス${costAxisNamesNote(catalog)}は、${routeGenerateConfig.penalty_wording}です。`,
+                "すべての要因の難所を、どれだけの割合で数えるかを決めます。",
+                `・難所${costAxisNamesNote(catalog)}は、${routeGenerateConfig.penalty_wording}です。`,
                 `・道は、${routeGenerateConfig.cost_wording}が小さくなるように選びます。`,
-                `・${STANDARD_LABEL} が標準で、大きくすると所要時間が延びてもロスの小さい道を選びやすくなります。`,
-                `・${DISABLED_LABEL}にするとロスを数えず、所要時間だけで選びます[結果にも地図にもロスを出しません]。`,
+                `・${STANDARD_LABEL} が標準で、大きくすると所要時間が延びても難所の小さい道を選びやすくなります。`,
+                `・${DISABLED_LABEL}にすると難所を数えず、所要時間だけで選びます[結果にも地図にも難所を出しません]。`,
                 "・下の種類ごとの割合は、この割合にさらに掛かります。",
               ].join("\n")}
             />
@@ -111,7 +111,7 @@ export default function RouteSettingsPanel({ costPreference, onCostPreferenceCha
         </span>
         <LevelScale
           aria-label="総合の割合"
-          usage="すべての要因のロスを、どれだけの割合で数えるかを選びます。"
+          usage="すべての要因の難所を、どれだけの割合で数えるかを選びます。"
           levels={STRENGTH_SCALE}
           value={String(costPreference.strength)}
           onChange={(key) => onCostPreferenceChange({ ...costPreference, strength: Number(key) })}
@@ -140,7 +140,7 @@ export default function RouteSettingsPanel({ costPreference, onCostPreferenceCha
               <LevelScale
                 aria-label={`${axis.label}の割合`}
                 usage={
-                  "この要因のロスを、どれだけの割合で数えるかを、目盛りの点を押して選びます。\n・長い目盛りが標準です。\n・左ほどこの要因を軽く見て通りやすくし、右ほど重く見て避けます。\n・左端の「–」はこの要因を数えず、結果にも地図にも出しません。"
+                  "この要因の難所を、どれだけの割合で数えるかを、目盛りの点を押して選びます。\n・長い目盛りが標準です。\n・左ほどこの要因を軽く見て通りやすくし、右ほど重く見て避けます。\n・左端の「–」はこの要因を数えず、結果にも地図にも出しません。"
                 }
                 levels={AXIS_SCALE}
                 value={String(setting)}

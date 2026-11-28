@@ -9,7 +9,7 @@ import type { CostAxisCatalogResponse } from "@/types/route";
 type LensInspection = RoadInspection["lens"];
 type LensDirection = NonNullable<LensInspection["along"]>;
 
-/** 道の窓の応答を返す。ロスの名前は費用の軸の一覧から引くので、一覧（既定は`TWO_COST_AXES`）も返す。 */
+/** 道の窓の応答を返す。難所の名前は費用の軸の一覧から引くので、一覧（既定は`TWO_COST_AXES`）も返す。 */
 export function serveInspector(result: RoadInspection, costAxes: CostAxisCatalogResponse = TWO_COST_AXES) {
   serveCostAxisCatalog(costAxes);
   return onBackend("POST", "/api/region/road-inspector", () => Response.json(result));
@@ -29,7 +29,7 @@ export const RIDE = {
   },
 };
 
-/** 1つの向きのロス。軸ごとの秒と元の事実は、見たい呼び出し側が書く。合計がnullなら風を読めずに求めたロス。 */
+/** 1つの向きの難所。軸ごとの秒と元の事実は、見たい呼び出し側が書く。合計がnullなら風を読めずに求めた難所。 */
 export function lensDirection(totalSeconds: number | null, overrides: Partial<LensDirection> = {}): LensDirection {
   return { total_seconds: totalSeconds, axes: [], facts: {}, ...overrides };
 }

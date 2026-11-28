@@ -8,10 +8,9 @@ import { evaluateExpression as evaluate } from "@/testing/mapExpressions";
 
 import { axisLineGroup, type AxisLineState } from "./axisLines";
 
-// 式をMapLibreと同じ評価器（`testing/mapExpressions.ts: evaluateExpression`）で、地図へ載せる feature-state と
-// global-state を入れて実際に評価し、1本の道がどの色・どの濃さになるかを見る。式の形を見ると、同じ意味の別の書き方で
+// 式をMapLibreと同じ評価器（`testing/mapExpressions.ts: evaluateExpression`）で、地図へ載せる feature-state を
+// 入れて実際に評価し、1本の道がどの色・どの濃さになるかを見る。式の形を見ると、同じ意味の別の書き方で
 // 落ちる。式の木の節ごとの置き換えが backend と同じ値になることは `scene/wayValueFormula.test.ts` が見る。
-const TRANSPARENT = "rgba(0,0,0,0)";
 
 /** 低い段から並べた3段（`valueScale.ts: valueBands`の並び）。 */
 const THREE_BANDS = [
@@ -67,15 +66,14 @@ function featureStateOf(group: ReturnType<typeof groupFor>, featureId: string): 
   );
 }
 
-/** その道の実線の色と、破線の線の濃さ（破線の線を出していなければnull）。 */
+/** その道の実線の色と、破線の線の濃さ。 */
 function lookOf(featureId: string, line: Partial<AxisLine> = {}, conditions?: AxisLineState["conditions"]) {
   const group = groupFor(line, conditions);
   const state = featureStateOf(group, featureId);
-  const globalState = { ...group.globalState };
   const [solid, dashed] = group.layers;
   return {
-    color: evaluate(solid.paint["line-color"], {}, state, globalState),
-    dashOpacity: dashed.visible ? evaluate(dashed.paint["line-opacity"], {}, state, globalState) : null,
+    color: evaluate(solid.paint["line-color"], {}, state),
+    dashOpacity: evaluate(dashed.paint["line-opacity"], {}, state),
   };
 }
 
@@ -84,26 +82,18 @@ describe("段の色", () => {
     expect(lookOf("along").color).toBe("#f59e0b");
   });
 
-  it("走る向きを変えると、地図全体の状態の向きが変わり、その向きで求めた値の段の色になる", () => {
-    const turned = groupFor({}, { bearing_deg: 10 });
-
-    expect(turned.globalState).toEqual({ bearing_deg: 10 });
+  it("走る向きを変えると、その向きで求めた値の段の色になる", () => {
     expect(lookOf("along", {}, { bearing_deg: 10 }).color).toBe("#dc2626");
   });
 });
 
 describe("値の無い道", () => {
   it("届いたタイルにあれば、段の色では塗らず、薄い破線で描く", () => {
-    const noValue = lookOf("noValue");
-
-    expect(noValue.color).toBe(TRANSPARENT);
-    expect(noValue.dashOpacity).toBe(mapDisplay.road.unknownOpacity);
+    expect(lookOf("noValue")).toEqual({ color: palette.semantic.hidden, dashOpacity: mapDisplay.road.unknownOpacity });
     expect(lookOf("along").dashOpacity).toBe(0);
   });
 
-  it("まだ届いていない道は取得中の色で濃く塗り、破線にしない", () => {
-    // 薄くすると「まだ来ていない」と「対象外」が見分けられない。
+  it("まだ届いていない道は取得中の色で塗り、破線にしない", () => {
     expect(lookOf("notYetFetched")).toEqual({ color: palette.semantic.loading, dashOpacity: 0 });
-    expect(groupFor().layers[0].paint["line-opacity"]).toBe(mapDisplay.road.knownOpacity);
   });
 });

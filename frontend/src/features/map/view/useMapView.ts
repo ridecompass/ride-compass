@@ -95,7 +95,7 @@ interface MapViewState {
   costPreference: CostPreference;
 }
 
-/** レンズ`lensId`が数えるロスを塗るか。総合は数える軸が1つでもあるとき（`totalCounted`）、軸はその軸を数えるとき。 */
+/** レンズ`lensId`が数える難所を塗るか。総合は数える軸が1つでもあるとき（`totalCounted`）、軸はその軸を数えるとき。 */
 function lensCounted(
   lensId: string,
   preference: CostPreference,
@@ -127,7 +127,7 @@ export function useMapView({
     NO_STORED_VALUES,
   );
   const totalLens = costCatalog.lenses?.totalLens ?? null;
-  // 数える軸が1つも無い間は総合も数えないので、総合を選べず、総合の名前と凡例を出さず、ルートの線もロスで塗らず、選べるロスが
+  // 数える軸が1つも無い間は総合も数えないので、総合を選べず、総合の名前と凡例を出さず、ルートの線も難所で塗らず、選べる難所が
   // 無いことを添える。
   const totalCounted = useMemo(
     () => costCatalog.axes.some((axis) => countsAxis(costPreference, axis.axisId)),
@@ -277,12 +277,12 @@ export function useMapView({
       hasDetail,
       caveat:
         [
-          // 段の名前の事実は、標準のロスの割合で求めたもの。軸のレンズは割合を変えると同じ事実の道が別の段で塗られる。
+          // 段の名前の事実は、標準の難所の割合で求めたもの。軸のレンズは割合を変えると同じ事実の道が別の段で塗られる。
           painted !== null &&
           painted !== totalLens?.axisId &&
           (costPreference.strength !== STANDARD_COST_FACTOR ||
             (costPreference.multipliers[painted] ?? STANDARD_COST_FACTOR) !== STANDARD_COST_FACTOR)
-            ? "凡例の事実は標準の割合での値です。いまは「要因」タブで割合を変えているので、色はその割合で塗っています。"
+            ? "凡例の事実は標準の割合での値です。いまは「難所」タブで割合を変えているので、色はその割合で塗っています。"
             : null,
           windPreviousRunNotice(lensFetch?.windPreviousRunFrom),
         ]
@@ -294,7 +294,7 @@ export function useMapView({
           : "要因の一覧を読み込んでいます。"
         : totalCounted
           ? null
-          : `「要因」タブの総合か全部の要因が${DISABLED_LABEL}のため、塗れるロスはありません。`,
+          : `「難所」タブの総合か全部の要因が${DISABLED_LABEL}のため、塗れる難所はありません。`,
       dataStatus: lensFetch
         ? deriveFetchLayerStatus(
             lensFetch.loading,

@@ -127,7 +127,7 @@
   強さは交換比α・βの較正値が持ち、つまみはそれに掛ける比で、帳簿の較正値の束（`domain/ledger_costs.py: ledger_parameters`）が
   入口の写した較正値で組む——較正値を変えても利用者の値は標準のまま。倍率は書いていない軸を標準とし、条件のエコーへは
   今の費用の軸を全部書いた形（`CostPreference.resolved`）を返す。
-- **費用を述べる文**: 費用の式とロスが何を数えるかを利用者に言う名詞句（`domain/ledger_costs.py: COST_WORDING`・
+- **費用を述べる文**: 費用の式と難所が何を数えるかを利用者に言う名詞句（`domain/ledger_costs.py: COST_WORDING`・
   `domain/ledger_costs.py: PENALTY_WORDING`）と、避け方の倍率が何に掛かるかの名詞句（`domain/road_avoidance.py: AVOIDANCE_MULTIPLIER_WORDING`）は
   式の横に置き、生成物`route-generate-config.json`で配る。式を変えるときは、同じファイルの文を直す。
 - **組み立ての部品**: 走行の模型の入力（転がり抵抗・止まる出来事の待ちと漕ぎ出し・断面。`domain/leg_costs.py: travel_inputs`）と

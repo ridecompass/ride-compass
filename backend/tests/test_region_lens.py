@@ -325,7 +325,7 @@ class _NoForecast(Weather):
 async def test_the_inspector_without_the_wind_gives_the_seconds_that_do_not_depend_on_it(
         weather, wind, cost_axes, road_network_root):
     """風を読めない・読まないときも、道の窓は風に依らない軸の秒と事実を、風を読めるときと同じ値で出し、風で変わる向かい風と
-    総合は出さない（窓が開けないと、予報が止まっている間は坂や停止のロスも見られない。無風で埋めると風の日の値とずれる）。"""
+    総合は出さない（窓が開けないと、予報が止まっている間は坂や停止の難所も見られない。無風で埋めると風の日の値とずれる）。"""
     network = road_network(WAYS, COORDINATES, bad_ways=(CLIMBING_WAY,), elevation_of={CLIMBING_WAY: (10.0, 70.0)})
     serve_road_network(road_network_root, network)
 
