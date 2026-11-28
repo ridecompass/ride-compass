@@ -31,10 +31,13 @@ import httpx
 from app.batch.common import fetch_timeout, place_file, read_fetch_record, write_fetch_record
 from app.batch.ingest import AdapterInputs, Fetcher, SourceRecord, register_adapter
 from app.batch.source_profile import SourceProfile, SourceSpec
-from app.domain.map_display import OVERTURE_OWN_DATASET, OVERTURE_PLACE_SOURCES
+from app.domain.map_display import OVERTURE_PLACE_SOURCES
 from app.infrastructure import data_paths
 
 DATA_DIR = data_paths.DATA_DIR / "overture"
+#: Overture 自身の出どころ（`Overture-signals`は確からしさ等を補う signal）。出典の文書は出どころに挙げず、
+#: 出典の行の頭の Overture Maps Foundation の表示が覆うので、出典の表に無くても通す。
+_OVERTURE_OWN_DATASETS = frozenset({"Overture", "Overture-signals"})
 
 logger = logging.getLogger("ridecompass.ingest.overture_places")
 
@@ -121,6 +124,6 @@ async def read_overture_places(spec: SourceSpec, profile: SourceProfile, inputs:
 
 
 def _check_sources(place: dict[str, Any]) -> None:
-    unknown = {source["dataset"] for source in place["sources"]} - OVERTURE_PLACE_SOURCES.keys() - {OVERTURE_OWN_DATASET}
+    unknown = {source["dataset"] for source in place["sources"]} - OVERTURE_PLACE_SOURCES.keys() - _OVERTURE_OWN_DATASETS
     if unknown:
         raise ValueError(f"出典の表（OVERTURE_PLACE_SOURCES）に無い出どころ: {sorted(unknown)}")

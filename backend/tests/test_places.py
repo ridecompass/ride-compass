@@ -128,10 +128,17 @@ async def test_places_less_confident_than_the_declared_bound_are_not_taken(deriv
     assert await _places(derive_conn, places) == {"at_bound": "eat_drink"}
 
 
+async def test_places_from_attributed_sources_and_from_overture_itself_are_taken(derive_conn, overture_dir):
+    """Overture 自身の出どころ（確からしさ等を補う`Overture-signals`も）で止めると、週1回の取り直しが本番の版を入れられない。"""
+    places = [_place("listed", LON, FOOD, datasets=("Foursquare",)),
+              _place("own", LON + APART, FOOD, datasets=("meta", "Overture", "Overture-signals"))]
+
+    assert await _places(derive_conn, places) == {"listed": "eat_drink", "own": "eat_drink"}
+
+
 async def test_a_place_from_a_source_without_an_attribution_stops_the_import(derive_conn, overture_dir):
     """表示の文言とライセンスが決まらない出どころの地点を入れると、地図の出典に出ない出どころのデータを配ることになる。"""
-    places = [_place("known", LON, FOOD, datasets=("Foursquare", "Overture")),
-              _place("unknown", LON + APART, FOOD, datasets=("meta", "NewProvider"))]
+    places = [_place("known", LON, FOOD), _place("unknown", LON + APART, FOOD, datasets=("meta", "NewProvider"))]
 
     with pytest.raises(ValueError, match="NewProvider"):
         await _places(derive_conn, places)

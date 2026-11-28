@@ -182,8 +182,6 @@ OVERTURE_PLACE_SOURCES: dict[str, OverturePlaceSource] = {
                       '<a href="{foursquare_notice}" target="_blank" rel="noreferrer">NOTICE</a>'),
     "AllThePlaces": OverturePlaceSource("AllThePlaces", _CC0),
 }
-#: Overture 自身が出どころの地点。出典の行の頭の Overture Maps Foundation が表示する。
-OVERTURE_OWN_DATASET = "Overture"
 
 
 def overture_places_attribution(sources: Iterable[OverturePlaceSource]) -> str:
