@@ -11,7 +11,7 @@
 import { render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { FACT_DISPLAY_NAME } from "@/lib/screenNames";
+import { translate } from "@/i18n/config";
 import { chip, LIST_NAME, propsOf, setup } from "@/testing/mapOverlayControls";
 import MapOverlayControls from "./MapOverlayControls";
 import type { LegendFilterSummaryAxis } from "./LegendDetails";
@@ -160,14 +160,14 @@ describe("行の印", () => {
   it("「表示」のボタンは、地図に出している件数と、どれかの行が凡例を絞り込んでいれば「絞り込み中」を説明に添える", () => {
     const { rerender } = render(<MapOverlayControls {...propsOf([chip("on", { on: true }), chip("off")])} />);
     expect(screen.getByRole("button", { name: LIST_NAME })).toHaveAccessibleDescription(
-      `${FACT_DISPLAY_NAME}[${LIST_NAME}][1件を表示中]`,
+      `${translate("common.factDisplay")}[${LIST_NAME}][1件を表示中]`,
     );
 
     rerender(
       <MapOverlayControls {...propsOf([chip("filtered", { on: true, legendDetails: [legend("a", ["1"], ["1"])] })])} />,
     );
     expect(screen.getByRole("button", { name: LIST_NAME })).toHaveAccessibleDescription(
-      `${FACT_DISPLAY_NAME}[${LIST_NAME}][1件を表示中]・絞り込み中`,
+      `${translate("common.factDisplay")}[${LIST_NAME}][1件を表示中]・絞り込み中`,
     );
   });
 });

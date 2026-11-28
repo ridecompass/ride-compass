@@ -1,9 +1,9 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import { useState, type CSSProperties, type ReactElement } from "react";
 import {
   MAP_LAYER_CATEGORY_ORDER,
-  MAP_OVERLAY_GROUP_LABELS,
   MAP_OVERLAY_GROUP_ORDER,
   mapOverlayGroupFor,
   type MapLayerId,
@@ -21,7 +21,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/Tabs/T
 import { Button } from "@/components/ui/Button/Button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/Popover/Popover";
 import { cn } from "@/lib/cn";
-import { FACT_DISPLAY_NAME } from "@/lib/screenNames";
+import { MAP_OVERLAY_GROUP_LABELS } from "@/lib/mapDisplay/overlayGroups";
 import { cardVariants } from "@/components/ui/Card/Card";
 import { RowMarksNote } from "@/features/map/LegendCheckboxList/LegendRow";
 import OverlayLayerRow, {
@@ -86,6 +86,7 @@ export default function MapOverlayControls({
   anyLegendHidden,
   onShowAllLegendRows,
 }: MapOverlayControlsProps) {
+  const t = useTranslations("common");
   const handlers = { onLegendEntryToggle, onLegendAxisSetHidden };
   const shownCount = layers.filter((layer) => layer.on).length;
   const anyFiltered = layers.some(isLegendFiltered);
@@ -173,7 +174,7 @@ export default function MapOverlayControls({
           className="pointer-events-auto relative w-[var(--map-ctrl-column-width)] flex-none justify-center border-0 py-1 text-[length:var(--font-size-sm)]"
           aria-label={LIST_SCREEN_NAME}
           aria-description={[
-            `${FACT_DISPLAY_NAME}[${LIST_SCREEN_NAME}][${shownCount}件を表示中]`,
+            `${t("factDisplay")}[${LIST_SCREEN_NAME}][${shownCount}件を表示中]`,
             anyFiltered ? FILTERED_LABEL : undefined,
           ]
             .filter(Boolean)

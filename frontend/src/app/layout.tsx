@@ -1,9 +1,10 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import { NextIntlClientProvider } from "next-intl";
 import "./globals.css";
 import { CONSENT_MARK_SCRIPT } from "@/lib/consentMark";
 import { paletteCssText } from "@/lib/paletteCssVariables";
-import { APP_NAME } from "@/lib/screenNames";
+import { translate } from "@/i18n/config";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -16,7 +17,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: APP_NAME,
+  title: translate("common.appName"),
   description: "ロードバイク向け周回ルート生成アプリ[プロトタイプ]",
 };
 
@@ -28,7 +29,9 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         <script dangerouslySetInnerHTML={{ __html: CONSENT_MARK_SCRIPT }} />
         <style>{paletteCssText()}</style>
       </head>
-      <body>{children}</body>
+      <body>
+        <NextIntlClientProvider>{children}</NextIntlClientProvider>
+      </body>
     </html>
   );
 }

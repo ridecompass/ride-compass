@@ -1,12 +1,12 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import { useEffect, useRef } from "react";
 import { Button } from "@/components/ui/Button/Button";
 import { GuideText } from "@/components/ui/GuideText/GuideText";
 import InfoPopover from "@/components/ui/InfoPopover/InfoPopover";
 import { CompassNeedleIcon } from "@/components/ui/icons/icons";
 import { normalizeDeg } from "@/lib/cardinalLabel";
-import { BURDEN_PAINT_NAME } from "@/lib/screenNames";
 
 import { HEADING_LABELS } from "../mapHeading";
 
@@ -41,6 +41,7 @@ interface HeadingDialProps {
 
 /** 地図と一緒に回る方位の輪。輪をなぞると地図が回り、真ん中の針を押すと北が上に戻る。 */
 export default function HeadingDial({ bearing, heading, onBearingChange, onResetNorth }: HeadingDialProps) {
+  const t = useTranslations("common");
   const dialRef = useRef<HTMLDivElement>(null);
   // なぞっている間にwindowへ付けた受け手を外す。なぞる途中でダイヤルを閉じても（Escape等）外す。
   const endDragRef = useRef<(() => void) | null>(null);
@@ -90,7 +91,7 @@ export default function HeadingDial({ bearing, heading, onBearingChange, onReset
       <div className="flex items-center justify-between">
         <InfoPopover triggerAriaLabel="地図の向きの使い方">
           <GuideText
-            text={`輪をなぞると地図が回ります。真ん中の針を押すと、北が上に戻ります。\n・「${BURDEN_PAINT_NAME}」の周りの道の色と道の小窓は、地図を回しても変わりません。坂や風のように向きで変わる難所は、きつい向きの値で示します[走行中は進む向きの値]。\n・ルートの難所は、実際に走る向きで決まります。`}
+            text={`輪をなぞると地図が回ります。真ん中の針を押すと、北が上に戻ります。\n・「${t("burdenPaint")}」の周りの道の色と道の小窓は、地図を回しても変わりません。坂や風のように向きで変わる難所は、きつい向きの値で示します[走行中は進む向きの値]。\n・ルートの難所は、実際に走る向きで決まります。`}
           />
         </InfoPopover>
         <span className="tabular-nums">

@@ -10,11 +10,8 @@ import { screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { categoriesOf, chip, LIST_NAME, ROAD, rowNames, setup } from "@/testing/mapOverlayControls";
-import {
-  MAP_OVERLAY_GROUP_INITIAL_ITEMS,
-  MAP_OVERLAY_GROUP_LABELS,
-  MAP_OVERLAY_GROUP_ORDER,
-} from "@/features/map/layers/mapLayers";
+import { MAP_OVERLAY_GROUP_INITIAL_ITEMS, MAP_OVERLAY_GROUP_ORDER } from "@/features/map/layers/mapLayers";
+import { MAP_OVERLAY_GROUP_LABELS } from "@/lib/mapDisplay/overlayGroups";
 
 const ROAD_LABEL = MAP_OVERLAY_GROUP_LABELS[ROAD];
 const INITIAL = MAP_OVERLAY_GROUP_INITIAL_ITEMS[ROAD];

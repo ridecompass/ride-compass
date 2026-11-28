@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useTranslations } from "next-intl";
 import { useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/Popover/Popover";
@@ -14,7 +15,6 @@ import { cn } from "@/lib/cn";
 import { getQueryClient } from "@/lib/queryClient";
 import { readRideMetrics } from "@/lib/rideMetrics";
 import { formatRideMetrics } from "@/lib/rideMetricsFormat";
-import { APP_NAME } from "@/lib/screenNames";
 import { frontendVersionQuery } from "@/services/versionApi";
 
 interface HeaderMenuProps {
@@ -157,11 +157,12 @@ const SHORT_COMMIT_LENGTH = 8;
 
 /** メニューの頭の、アプリの名前と動いている版。版はメニューを開いたときに取る（このメニューは開いている間だけ中身を描く）。 */
 function AppIdentity() {
+  const t = useTranslations("common");
   const { data, error } = useQuery(frontendVersionQuery, getQueryClient());
 
   return (
     <div className="flex flex-col px-2 pt-1 pb-1.5">
-      <p className={cn(textVariants({ variant: "heading" }), "m-0")}>{APP_NAME}</p>
+      <p className={cn(textVariants({ variant: "heading" }), "m-0")}>{t("appName")}</p>
       {error && <p className={cn(textVariants({ variant: "error" }), "m-0")}>{error.message}</p>}
       {!data && !error && <p className={cn(textVariants({ variant: "hint" }), "m-0")}>バージョンを読み込み中…</p>}
       {data &&

@@ -43,6 +43,21 @@ paths:
 代役は受け取ったpropsを記録し、`children`を描くだけにする。子の振る舞いを真似ない。差し替えたものと、それで見えなくなるものは、ファイル冒頭の
 「ここで見ないもの」に書く。
 
+## 画面の文と状態の見方
+
+**画面の文は書き写さず、辞書の ID から引く。** 部品が辞書（`frontend/messages/ja.json`）から引く文を名前や文言で探すときは、
+`i18n/config.ts: translate`で同じ ID を引いた値を使う（`getByRole("tab", { name: translate("common.burdenPaint") })`）。
+語を直しても辞書の1か所で済み、テストを書き換えない。backend が配る文（`mapDisplay`の名前等）は、その生成物から引く。
+辞書の包みは`vitest.setup.ts`が Testing Library の`render`・`renderHook`へ被せる（本番の`app/layout.tsx`と同じに置くもので、
+覆いではない。testing-scaffold.md「覆いではないもの」）ので、テストは包みを書かない。
+
+**状態は文言で見ない。** 押した・選んだ・待っている・誤りがある、を表示の文の有無で確かめない（文を直すとテストが落ち、
+同じ文が別の状態に出ても通る）。次の順で見る。
+
+1. 標準の役割と属性: `role="status"`・`role="alert"`・`aria-busy`・`aria-pressed`・`aria-checked`・`aria-selected`・
+   `aria-expanded`・`aria-invalid`等。読み上げにも効くので、部品は先にこれで状態を出す
+2. 標準に無い状態だけ、状態を出す要素に`data-state="<値>"`を付けて見る（値は状態の名前で、文言を入れない）
+
 ## パターン3: フロントエンドのテスト環境 → DOM不要ならnode環境
 
 DOM（render/renderHook/window/document等）を使わない純ロジックのテストファイルは、

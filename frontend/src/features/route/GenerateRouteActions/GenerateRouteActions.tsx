@@ -11,7 +11,7 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/ToggleGroup/Toggle
 import type { GenerationConditionsState } from "@/features/route/useGenerationConditions";
 import { CONDITIONS_DIRTY_TEXT, type useRouteGeneration } from "@/features/route/useRouteGeneration";
 import { cn } from "@/lib/cn";
-import { ROAD_SETTINGS_TAB_NAME } from "@/lib/screenNames";
+import { MAP_OVERLAY_GROUP_LABELS } from "@/lib/mapDisplay/overlayGroups";
 import routeGenerateConfig from "@/types/generated/route-generate-config.json";
 
 const ROUTE_COUNTS = Array.from(
@@ -87,7 +87,7 @@ export default function GenerateRouteActions({ generation, routeCount, labeled }
               ? `ルート生成（${CONDITIONS_DIRTY_TEXT}）`
               : "ルート生成"
         }
-        usage={`${showDirty ? `${CONDITIONS_DIRTY_TEXT}。表示中の候補は変更前の条件で作ったものです。\n` : ""}いまの条件・難所の要因・${ROAD_SETTINGS_TAB_NAME}でルートの候補を作ります。候補は「ルート結果」に並び、地図に線が出ます。`}
+        usage={`${showDirty ? `${CONDITIONS_DIRTY_TEXT}。表示中の候補は変更前の条件で作ったものです。\n` : ""}いまの条件・難所の要因・${MAP_OVERLAY_GROUP_LABELS.road}でルートの候補を作ります。候補は「ルート結果」に並び、地図に線が出ます。`}
       >
         {showDirty && (
           <span

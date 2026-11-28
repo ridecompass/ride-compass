@@ -22,7 +22,7 @@ import { heldReplies, onBackend, serveClientConfig, serveCostAxisCatalog } from 
 import { AVOIDANCE_LEVELS, avoidanceRow, clientConfigResponse, roadClassCatalog } from "@/testing/clientConfig";
 import { ROAD_AVOIDANCE_ROLE, ROAD_LINE_SOURCE_ID } from "@/features/map/scene/groups/roadLines";
 import { sceneLayerId } from "@/features/map/scene/sceneBuilders";
-import { ROAD_SETTINGS_TAB_NAME } from "@/lib/screenNames";
+import { MAP_OVERLAY_GROUP_LABELS } from "@/lib/mapDisplay/overlayGroups";
 import {
   FIRST,
   HERE,
@@ -333,7 +333,7 @@ describe("ルートを作る", () => {
       mapOnScreen().visibleLayerIds().includes(sceneLayerId(ROAD_LINE_SOURCE_ID, ROAD_AVOIDANCE_ROLE));
     const onMap = () => screen.getByRole("checkbox", { name: "地図で見る" });
 
-    await user.click(screen.getByRole("tab", { name: ROAD_SETTINGS_TAB_NAME }));
+    await user.click(screen.getByRole("tab", { name: MAP_OVERLAY_GROUP_LABELS.road }));
     await waitFor(() => expect(painted()).toBe(true));
     await user.click(onMap());
     expect(painted()).toBe(false);

@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import { useId, useState } from "react";
 import { Button } from "@/components/ui/Button/Button";
 import { GuideText } from "@/components/ui/GuideText/GuideText";
@@ -11,7 +12,6 @@ import { HOW_TO_PLACE_ORIGIN } from "@/hooks/useLocation";
 import { useStoredState } from "@/hooks/useStoredState";
 import { useIsomorphicLayoutEffect } from "@/hooks/useIsomorphicLayoutEffect";
 import { cn } from "@/lib/cn";
-import { APP_NAME } from "@/lib/screenNames";
 
 const FIRST_VISIT_INTRO_STORAGE_KEY = "ridecompass:first-visit-intro-closed";
 
@@ -41,6 +41,7 @@ interface FirstVisitIntroProps {
  * 保存値の復元はマウント後なので、マウントするまで出さない（出すとSSRのHTMLに載り、閉じた人にも一瞬見える）。
  */
 export default function FirstVisitIntro({ shown, onClose, originLocateFailed }: FirstVisitIntroProps) {
+  const t = useTranslations("common");
   const [mounted, setMounted] = useState(false);
   const titleId = useId();
   useIsomorphicLayoutEffect(() => setMounted(true), []);
@@ -51,7 +52,7 @@ export default function FirstVisitIntro({ shown, onClose, originLocateFailed }: 
     <section aria-labelledby={titleId} className={MAP_TOP_CARD_CLASS}>
       <div className="flex items-start justify-between gap-2">
         <h2 id={titleId} className={cn(textVariants({ variant: "heading" }), "m-0")}>
-          {APP_NAME}
+          {t("appName")}
         </h2>
         <Button
           usage="案内を閉じます。"

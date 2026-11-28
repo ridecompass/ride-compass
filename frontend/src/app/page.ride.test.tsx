@@ -16,7 +16,7 @@
  * 差し替えたもの: backend の応答（網の層）、位置情報の取得、iPhone の向きを読む許しを求める口（`DeviceOrientationEvent.requestPermission`）と
  * 向きの出来事、地図の描画（`maplibre-gl`）。子の部品は本物を描く。
  */
-import { FACT_DISPLAY_NAME } from "@/lib/screenNames";
+import { translate } from "@/i18n/config";
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -77,7 +77,7 @@ describe("走行モード", () => {
     clickMap(HERE);
     expect(selectedSectionOnMap()).toEqual([]);
     // グラフに出す情報は、ページが持つ1つの選択（はじめは標高）を走行中の図にも渡す。
-    await user.click(within(rideProfile()!).getByRole("tab", { name: FACT_DISPLAY_NAME }));
+    await user.click(within(rideProfile()!).getByRole("tab", { name: translate("common.factDisplay") }));
     await user.click(within(rideProfile()!).getByRole("button", { name: "グラフに出す情報" }));
     expect(within(screen.getByRole("dialog")).getByRole("checkbox", { name: "標高" })).toBeChecked();
     await user.keyboard("{Escape}");

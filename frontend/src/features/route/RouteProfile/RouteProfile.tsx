@@ -1,6 +1,6 @@
 "use client";
 
-import { BURDEN_PAINT_NAME, FACT_DISPLAY_NAME } from "@/lib/screenNames";
+import { useTranslations } from "next-intl";
 import { useMemo, useState } from "react";
 import { useStoredState } from "@/hooks/useStoredState";
 
@@ -77,6 +77,7 @@ export default function RouteProfile({
   layers,
   riding = false,
 }: RouteProfileProps) {
+  const t = useTranslations("common");
   const [tab, setTab] = useState("lens");
   const { axes } = catalog;
   const axisOrder = useMemo(() => axes.map((axis) => axis.axisId), [axes]);
@@ -132,14 +133,14 @@ export default function RouteProfile({
         <TabsList aria-label="道のりのグラフ" variant="overlay">
           <TabsTrigger value="layer" usage="選んだ情報[標高・道の区分等]を、道のりに沿って出します。">
             <LayersStackIcon size={14} />
-            <span className="sr-only">{FACT_DISPLAY_NAME}</span>
+            <span className="sr-only">{t("factDisplay")}</span>
           </TabsTrigger>
           <TabsTrigger
             value="lens"
             usage={`区間ごとの${LENS_QUANTITY_LABEL}を、要因の色で積んで道のりに沿って出します。`}
           >
             <BurdenPaintIcon size={14} />
-            <span className="sr-only">{BURDEN_PAINT_NAME}</span>
+            <span className="sr-only">{t("burdenPaint")}</span>
           </TabsTrigger>
         </TabsList>
         {tab === "lens" && (

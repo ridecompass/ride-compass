@@ -14,7 +14,7 @@ import type { RouteProfile } from "@/features/admin/adminApi";
 import { STANDARD_COST_PREFERENCE } from "@/lib/costPreference";
 import { onSameOrigin, inTurn, serveClientConfig, serveCostAxisCatalog } from "@/testing/backendServer";
 import { AVOIDANCE_LEVELS, avoidanceRow, clientConfigResponse, roadClassCatalog } from "@/testing/clientConfig";
-import { ROAD_SETTINGS_TAB_NAME } from "@/lib/screenNames";
+import { MAP_OVERLAY_GROUP_LABELS } from "@/lib/mapDisplay/overlayGroups";
 
 import AdminPage from "./page";
 
@@ -63,7 +63,7 @@ describe("AdminPage ひな形", () => {
     await user.click(
       within(await added.findByRole("radiogroup", { name: "振動の割合" })).getByRole("radio", { name: "無効" }),
     );
-    await user.click(added.getByRole("tab", { name: ROAD_SETTINGS_TAB_NAME }));
+    await user.click(added.getByRole("tab", { name: MAP_OVERLAY_GROUP_LABELS.road }));
     await user.click(added.getByRole("button", { name: /^路面/ }));
     await user.click(
       within(added.getByRole("radiogroup", { name: "surface.gravelの避け方" })).getByRole("radio", { name: "×2" }),

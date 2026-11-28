@@ -1,16 +1,18 @@
 import Link from "next/link";
 import type { Metadata } from "next";
+import { useTranslations } from "next-intl";
 
 import { ContactSection, LegalList, LegalPage, LegalSection, OPERATOR } from "@/components/LegalPage/LegalPage";
-import { APP_NAME } from "@/lib/screenNames";
+import { translate } from "@/i18n/config";
 
-export const metadata: Metadata = { title: `利用規約 | ${APP_NAME}` };
+export const metadata: Metadata = { title: `利用規約 | ${translate("common.appName")}` };
 
 export default function TermsPage() {
+  const t = useTranslations("common");
   return (
     <LegalPage title="利用規約" revised="2026-11-28">
       <p className="m-0">
-        この規約は、{OPERATOR}（以下「運営者」）が提供する {APP_NAME}
+        この規約は、{OPERATOR}（以下「運営者」）が提供する {t("appName")}
         （自転車で走るルートを作るアプリ）の使い方を決めます。アプリを使うには、Google でログインし、この規約と
         <Link href="/privacy" className="underline">
           プライバシーポリシー
