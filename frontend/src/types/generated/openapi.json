@@ -4270,17 +4270,10 @@
       "LensInspection": {
         "properties": {
           "painted": {
-            "anyOf": [
-              {
-                "type": "string",
-                "enum": [
-                  "along",
-                  "against"
-                ]
-              },
-              {
-                "type": "null"
-              }
+            "type": "string",
+            "enum": [
+              "along",
+              "against"
             ],
             "title": "Painted"
           },
@@ -5691,9 +5684,16 @@
             "title": "Y"
           },
           "bearing_deg": {
-            "type": "number",
-            "exclusiveMaximum": 360.0,
-            "minimum": 0.0,
+            "anyOf": [
+              {
+                "type": "number",
+                "exclusiveMaximum": 360.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Bearing Deg"
           },
           "lens_id": {
@@ -5741,7 +5741,6 @@
           "z",
           "x",
           "y",
-          "bearing_deg",
           "speed_kmh"
         ],
         "title": "RoadInspectorRequest"
@@ -7188,75 +7187,12 @@
                 "sub": "#/components/schemas/Binary"
               }
             }
-          },
-          "undetermined": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/Constant"
-              },
-              {
-                "$ref": "#/components/schemas/Missing"
-              },
-              {
-                "$ref": "#/components/schemas/FeatureValue"
-              },
-              {
-                "$ref": "#/components/schemas/Condition"
-              },
-              {
-                "$ref": "#/components/schemas/Unary"
-              },
-              {
-                "$ref": "#/components/schemas/Binary"
-              },
-              {
-                "$ref": "#/components/schemas/Case"
-              },
-              {
-                "$ref": "#/components/schemas/Interpolate"
-              },
-              {
-                "$ref": "#/components/schemas/Round"
-              }
-            ],
-            "title": "Undetermined",
-            "discriminator": {
-              "propertyName": "op",
-              "mapping": {
-                "abs": "#/components/schemas/Unary",
-                "add": "#/components/schemas/Binary",
-                "and": "#/components/schemas/Binary",
-                "case": "#/components/schemas/Case",
-                "condition": "#/components/schemas/Condition",
-                "const": "#/components/schemas/Constant",
-                "cos": "#/components/schemas/Unary",
-                "div": "#/components/schemas/Binary",
-                "feature": "#/components/schemas/FeatureValue",
-                "ge": "#/components/schemas/Binary",
-                "gt": "#/components/schemas/Binary",
-                "interpolate": "#/components/schemas/Interpolate",
-                "is_missing": "#/components/schemas/Unary",
-                "le": "#/components/schemas/Binary",
-                "lt": "#/components/schemas/Binary",
-                "missing": "#/components/schemas/Missing",
-                "mod": "#/components/schemas/Binary",
-                "mul": "#/components/schemas/Binary",
-                "neg": "#/components/schemas/Unary",
-                "not": "#/components/schemas/Unary",
-                "or": "#/components/schemas/Binary",
-                "round": "#/components/schemas/Round",
-                "sin": "#/components/schemas/Unary",
-                "sqrt": "#/components/schemas/Unary",
-                "sub": "#/components/schemas/Binary"
-              }
-            }
           }
         },
         "additionalProperties": false,
         "type": "object",
         "required": [
-          "value",
-          "undetermined"
+          "value"
         ],
         "title": "WayValueFormula"
       },

@@ -72,13 +72,22 @@ function mixColors(colorLow: string, colorHigh: string, t: number): string {
   return rgbToHex(hslToRgb(h1 + dh * t, s1 + (s2 - s1) * t, l1 + (l2 - l1) * t));
 }
 
-/** 中継点を並べた配色の上をcount色に均等に補間する。 */
+/** 2段目を置く、中継点の並びの上の位置（最初の2つの中継点の中間）。 */
+const SECOND_BAND_POSITION = 0.5;
+
+/** 中継点を並べた配色の上にcount色を置く。一番下の段だけを最初の中継点（良い色）にし、2段目から上は最初の2つの中継点の中間から
+ * 最後の中継点までを均等に分ける——全部の段を均等に置くと、段が細かいほど下の数段がどれも良い側の色に見え、「楽」に見える道が増える。 */
 function interpolateColorStops(anchors: readonly string[], count: number): string[] {
   if (count <= 1) return [anchors[0]];
-  const segments = anchors.length - 1;
+  const last = anchors.length - 1;
   return Array.from({ length: count }, (_, index) => {
-    const position = (index / (count - 1)) * segments;
-    const segment = Math.min(Math.floor(position), segments - 1);
+    const position =
+      index === 0
+        ? 0
+        : count === 2
+          ? last
+          : SECOND_BAND_POSITION + ((index - 1) / (count - 2)) * (last - SECOND_BAND_POSITION);
+    const segment = Math.min(Math.floor(position), last - 1);
     return mixColors(anchors[segment], anchors[segment + 1], position - segment);
   });
 }

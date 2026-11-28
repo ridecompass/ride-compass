@@ -1,7 +1,7 @@
 """登りの量の材料（`elevation_gain_m_per_km`）が、派生した区間の標高から、進行方向に登った量として道路網の配列に届くこと。
 
 区間は道路網の形の導出（`batch/derive_topology.py`）が切り、標高は派生の段（`batch/derive_elevation.py`）が出したものを、道路網の
-配列を組むとき（`infrastructure/road_network_store.py: build`）に区間の断面から1kmあたりの登りにする。道は東へ登って下る1本で、
+配列を組むとき（`infrastructure/road_network_assembly.py: build`）に区間の断面から1kmあたりの登りにする。道は東へ登って下る1本で、
 途中の頂点に別の道を付けると、そこで2区間に切れる。
 
 ここで見ないもの:
@@ -17,7 +17,7 @@ from app.batch import derive_topology
 from app.domain.gsi_tiles import PRODUCT_PRIORITY
 from app.batch.ingest import SourceRecord
 from app.domain.region import BoundingBox
-from app.infrastructure import derived_data_meta, road_network_store
+from app.infrastructure import derived_data_meta, road_network_assembly
 from app.infrastructure.road_graph_repository import NETWORK_TUNING, RoadGraphRepository
 from tests.conftest import raw_connection
 from tests.source_ingest import (
@@ -77,7 +77,7 @@ async def _climb_of_way_1(session, *, cut_at_the_peak: bool, forward: bool) -> t
         segments = [row["segment_index"] for row in await conn.fetch(
             "SELECT segment_index FROM road_edges WHERE osm_way_id = 1 ORDER BY segment_index")]
     assert len(segments) == (2 if cut_at_the_peak else 1)
-    network = await road_network_store.build(RoadGraphRepository(session), revision=0)
+    network = await road_network_assembly.build(RoadGraphRepository(session), revision=0)
     await session.rollback()
     rows = np.flatnonzero((network.edge_way_id == 1) & (network.edge_forward == forward))
     return network.numeric_values[rows, network.numeric_ids.index(CLIMB)], network.distance_m[rows]

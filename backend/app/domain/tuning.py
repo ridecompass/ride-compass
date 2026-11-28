@@ -384,13 +384,13 @@ TUNING_PARAMETERS: tuple[TuningParameter, ...] = (
         "cost.effort_alpha",
         "体力の換算", "倍", TuningEffect.IMMEDIATE,
         "平地の出力を超えて使った体力を、平地を何秒走る分に当たるかに換算し、その秒に掛ける倍率（費用の式のα）。"
-        "標準の人が、体力の1秒分を何秒の所要時間と引き換えにするかの交換比。体力の負担のすべての種類に共通。"
+        "標準の人が、体力の1秒分を何秒の所要時間と引き換えにするかの交換比。体力の軸のすべてに共通。"
         + _PREFERENCE_DEFINITION,
     ),
     TuningParameter(
         "cost.burden_seconds_per_km",
         "道のストレスの換算", "秒/km", TuningEffect.IMMEDIATE,
-        "道のストレスの基準の重さ（1）の道を1km走ることを、何秒の負担とみなすか（費用の式のβ）。標準の人が、その1kmを何秒の"
+        "道のストレスの基準の重さ（1）の道を1km走ることを、何秒の走りにくさとみなすか（費用の式のβ）。標準の人が、その1kmを何秒の"
         "所要時間と引き換えにするかの交換比。道のストレスのすべての種類に共通。" + _PREFERENCE_DEFINITION,
     ),
     TuningParameter(
@@ -508,13 +508,13 @@ TUNING_PARAMETERS: tuple[TuningParameter, ...] = (
     # 地図に効くのは、画面が一覧を取り直した（読み込み直した）とき。
     TuningParameter(
         "gradient.perpendicular_band_deg",
-        "勾配を示さない直角からの幅", "度", TuningEffect.IMMEDIATE,
-        "走る向きに対して直角からこの角度以内の道は、どちら向きに辿るか決まらないため、その向きでの勾配を示さない"
-        "（地図では勾配の段で塗らない）。広げるほど勾配を示さない道が増える。",
+        "きつい向きで塗る直角からの幅", "度", TuningEffect.IMMEDIATE,
+        "走る向きに対して直角からこの角度以内の道は、どちら向きに辿るか決まらないため、地図では両向きのうちきつい向きの値で"
+        "塗る。広げるほどきつい向きで塗る道が増える。",
     ),
     TuningParameter(
         LENS_SCALE_STEPS_ID, "色の物差しを刻む数", "段", TuningEffect.IMMEDIATE,
-        "負担で塗る色を、緑の端から赤の端までこの数に刻む。",
+        "地図の「走りにくさを色で見る」の色を、緑の端から赤の端までこの数に刻む。",
     ),
     # --- 画面が使う値（カタログ取得でフロントへ配る） ---
     TuningParameter(

@@ -325,7 +325,7 @@ class _NoForecast(Weather):
 async def test_the_inspector_without_the_wind_gives_the_seconds_that_do_not_depend_on_it(
         weather, wind, cost_axes, road_network_root):
     """風を読めない・読まないときも、道の窓は風に依らない軸の秒と事実を、風を読めるときと同じ値で出し、風で変わる向かい風と
-    総合は出さない（窓が開けないと、予報が止まっている間は坂や停止の負担も見られない。無風で埋めると風の日の値とずれる）。"""
+    総合は出さない（窓が開けないと、予報が止まっている間は坂や停止の走りにくさも見られない。無風で埋めると風の日の値とずれる）。"""
     network = road_network(WAYS, COORDINATES, bad_ways=(CLIMBING_WAY,), elevation_of={CLIMBING_WAY: (10.0, 70.0)})
     serve_road_network(road_network_root, network)
 
@@ -342,14 +342,18 @@ async def test_the_inspector_without_the_wind_gives_the_seconds_that_do_not_depe
     assert windless.along.facts == {axis_id: fact for axis_id, fact in windy.along.facts.items() if axis_id != "headwind"}
 
 
-@pytest.mark.parametrize(("lens_id", "painted"), [(None, None), ("stopping", "along")], ids=["総合", "停止"])
+@pytest.mark.parametrize(("elevation", "bearing_deg", "lens_id", "painted"), [
+    ((70.0, 10.0), None, None, "against"), ((70.0, 10.0), 0.0, None, "along"), ((70.0, 10.0), 90.0, None, "against"),
+    ((70.0, 10.0), 0.0, "stopping", "along"), ((10.0, 10.0), 180.0, None, "against")],
+    ids=["ルートの前", "北へ走る", "東へ走る", "停止", "平らな道を南へ走る"])
 async def test_the_inspector_tells_the_direction_the_map_paints_with_the_painted_lens(
-        lens_id, painted, cost_axes, road_network_root):
-    """道の窓の向きは、地図が塗っているレンズの木で選ぶ。走行方位で選ぶレンズ（総合）は東へ走る地図で南北の道を向きで決めず、
-    選ばないレンズ（停止）は道の向きで塗る（「地図の向きに直角に近い道」は、塗っている色と合わない注記になる）。"""
-    serve_road_network(road_network_root, road_network(WAYS, COORDINATES))
+        elevation, bearing_deg, lens_id, painted, cost_axes, road_network_root):
+    """道の窓の向きは、地図が塗っているレンズの木で選ぶ。南から北へ向いて下る道を、走行方位で選ぶレンズ（総合）は、走行方位が
+    無ければ（ルートの前）と直角（東へ走る）ならきつい向き（登る逆向き）で、北へ走るなら道の向きで塗る。選ばないレンズ（停止）は
+    道の向きで塗る。両向きが同じ値の平らな道も、南へ走れば逆向き（値で向きを見分けない）。"""
+    serve_road_network(road_network_root, road_network(WAYS, COORDINATES, elevation_of={CLIMBING_WAY: elevation}))
 
-    inspection = await _lens_service(Weather()).inspect(str(CLIMBING_WAY), Z, X, Y, 90.0, lens_id, None, True,
+    inspection = await _lens_service(Weather()).inspect(str(CLIMBING_WAY), Z, X, Y, bearing_deg, lens_id, None, True,
                                                         ASSUMED_SPEED_KMH, CostPreference(), current_model_settings())
 
     assert inspection is not None and inspection.painted == painted
@@ -461,6 +465,22 @@ async def test_the_same_frame_of_the_forecast_shares_the_kept_response(
     for frame in frames:
         response = await client.get(f"/api/region/lens/headwind/{Z}/{X}/{Y}",
                                     params={"speed_kmh": ASSUMED_SPEED_KMH, "frame": frame})
+        assert response.status_code == 200, response.text
+
+    assert [call.fields["cache"] for call in calls] == ["miss", "hit", "miss"]
+
+
+async def test_a_replaced_forecast_paints_the_wind_anew(
+        client, override_dependency, monkeypatch, cost_axes, road_network_root):
+    """同期が予報を入れ替えたら、風に依るレンズは前の予報で塗った持ちを返さずに求め直す。"""
+    weather = Weather(NORTH_WIND)
+    _serve_weather(override_dependency, weather)
+    serve_road_network(road_network_root, road_network(WAYS, COORDINATES))
+    calls = record_external_calls(monkeypatch, lens_service)
+
+    for version in ("fake", "fake", "replaced"):
+        weather.version = version
+        response = await client.get(f"/api/region/lens/headwind/{Z}/{X}/{Y}", params={"speed_kmh": ASSUMED_SPEED_KMH})
         assert response.status_code == 200, response.text
 
     assert [call.fields["cache"] for call in calls] == ["miss", "hit", "miss"]

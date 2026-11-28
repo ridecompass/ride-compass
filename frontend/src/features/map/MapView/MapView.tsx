@@ -101,7 +101,7 @@ interface MapViewProps {
   travelledKm: number | null;
   /** 走行中に次に曲がる所の地点と向き。印を出す。無ければnull。 */
   turnPoint: TurnMarkPoint | null;
-  /** いまの「負担で塗る」の周りの道の塗りが地図の向きで決まる（方位磁針のボタンに印を付ける）。 */
+  /** いまの「走りにくさを色で見る」の周りの道の塗りが走行中の進む向きで決まる（方位磁針のボタンに印を付ける）。 */
   compassLinked: boolean;
   /** Street View を開く地点と向きの矢印。出さなければnull。 */
   streetViewAim: StreetViewAim | null;

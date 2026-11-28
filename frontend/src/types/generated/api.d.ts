@@ -1294,8 +1294,11 @@ export interface components {
         };
         /** LensInspection */
         LensInspection: {
-            /** Painted */
-            painted: ("along" | "against") | null;
+            /**
+             * Painted
+             * @enum {string}
+             */
+            painted: "along" | "against";
             along: components["schemas"]["LensDirection"] | null;
             against: components["schemas"]["LensDirection"] | null;
         };
@@ -1757,7 +1760,7 @@ export interface components {
             /** Y */
             y: number;
             /** Bearing Deg */
-            bearing_deg: number;
+            bearing_deg?: number | null;
             /** Lens Id */
             lens_id?: string | null;
             /** Frame */
@@ -2182,8 +2185,6 @@ export interface components {
         WayValueFormula: {
             /** Value */
             value: components["schemas"]["Constant"] | components["schemas"]["Missing"] | components["schemas"]["FeatureValue"] | components["schemas"]["Condition"] | components["schemas"]["Unary"] | components["schemas"]["Binary"] | components["schemas"]["Case"] | components["schemas"]["Interpolate"] | components["schemas"]["Round"];
-            /** Undetermined */
-            undetermined: components["schemas"]["Constant"] | components["schemas"]["Missing"] | components["schemas"]["FeatureValue"] | components["schemas"]["Condition"] | components["schemas"]["Unary"] | components["schemas"]["Binary"] | components["schemas"]["Case"] | components["schemas"]["Interpolate"] | components["schemas"]["Round"];
         };
         /** WbgtReading */
         WbgtReading: {

@@ -228,8 +228,8 @@ curl -X POST http://localhost:8000/api/routes/generate -H "Content-Type: applica
 
 対象エリアが取込範囲の外なら候補0件になる。範囲内でも、道路網全体の配列の置き場
 （`backend/data/road_network/`）が今のコードの形で無いと生成は失敗する。置き場はDBを書くバッチ
-（取込・派生・`scripts/bootstrap_database.py`）の最後に作られ、材料の式を変えたコードへ
-切り替えたときは`python scripts/build_road_network.py`で作り直す（DBから数分）。
+（取込・派生・`scripts/bootstrap_database.py`）の最後に作られ、形の署名（`road_network_store.py: NETWORK_SHAPE`）に
+入るコードを変えたコードへ切り替えたときは`python scripts/build_road_network.py`で作り直す（DBから数分）。
 レート制限・同時実行数の上限に達すると429が返る。
 
 **`.env`を変えたらプロセスを止めて起動し直す。** `uvicorn --reload`はPythonファイルの変更は

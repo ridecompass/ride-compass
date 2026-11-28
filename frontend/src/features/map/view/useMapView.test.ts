@@ -16,7 +16,7 @@ import { UNSELECTED_LENS_ID } from "@/lib/mapDisplay/routeStyleModes";
 import { MAP_FETCH_DEBOUNCE_MS } from "@/hooks/useDebouncedValue";
 import { onBackend } from "@/testing/backendServer";
 import { chip, renderMapView, serve, VIEWPORT } from "@/testing/mapViewHook";
-import { costAxisCatalog, costAxisEntry } from "@/testing/costAxes";
+import { BEARING_FORMULA, costAxisCatalog, costAxisEntry } from "@/testing/costAxes";
 
 import type { useMapView } from "./useMapView";
 import { STANDARD_COST_PREFERENCE } from "@/lib/costPreference";
@@ -76,7 +76,7 @@ describe("useMapView", () => {
     else expect(result.current.lensControl.caveat).toContain(notice);
   });
 
-  it("レンズは総合と費用の軸の順に並び、選んだレンズの1kmあたりの負担の秒を想定速度つきで取り、凡例の下に段の境目の目安を出す", async () => {
+  it("レンズは総合と費用の軸の順に並び、選んだレンズの1kmあたりの走りにくさの秒を想定速度つきで取り、凡例の下に段の境目の目安を出す", async () => {
     serve(
       undefined,
       costAxisCatalog(
@@ -116,54 +116,65 @@ describe("useMapView", () => {
   });
 
   it.each([
-    { case: "負担の全体を無効にした間", costPreference: { ...STANDARD_COST_PREFERENCE, strength: 0 } },
+    { case: "走りにくさの全体を無効にした間", costPreference: { ...STANDARD_COST_PREFERENCE, strength: 0 } },
     {
       case: "全部の軸を個別に無効にした間",
       costPreference: { ...STANDARD_COST_PREFERENCE, disabled_axes: ["ascent", "vibration"] },
     },
-  ])("$case、数える軸が無いので、総合も選べず凡例も出さず、ルートの線を負担で塗らない", async ({ costPreference }) => {
-    serve();
-    const { result, rerender } = renderMapView({ hasDetail: true });
-    await waitFor(() => expect(result.current.lensControl.axisOptions).toHaveLength(LENS_COUNT));
-    act(() => result.current.lensControl.onLensChange("total"));
-    expect(result.current.lensControl.totalLabel).not.toBeNull();
+  ])(
+    "$case、数える軸が無いので、総合も選べず凡例も出さず、ルートの線を走りにくさで塗らない",
+    async ({ costPreference }) => {
+      serve();
+      const { result, rerender } = renderMapView({ hasDetail: true });
+      await waitFor(() => expect(result.current.lensControl.axisOptions).toHaveLength(LENS_COUNT));
+      act(() => result.current.lensControl.onLensChange("total"));
+      expect(result.current.lensControl.totalLabel).not.toBeNull();
 
-    rerender({ costPreference });
+      rerender({ costPreference });
 
-    expect(result.current.lensControl).toMatchObject({
-      lens: UNSELECTED_LENS_ID,
-      totalLabel: null,
-      legend: [],
-      axisOptions: [],
-    });
-    expect(result.current.lensControl.catalogNotice).toContain("塗れる負担はありません");
-    expect(result.current.look).toMatchObject({ lens: UNSELECTED_LENS_ID, costsCounted: false });
-  });
+      expect(result.current.lensControl).toMatchObject({
+        lens: UNSELECTED_LENS_ID,
+        totalLabel: null,
+        legend: [],
+        axisOptions: [],
+      });
+      expect(result.current.lensControl.catalogNotice).toContain("塗れる走りにくさはありません");
+      expect(result.current.look).toMatchObject({ lens: UNSELECTED_LENS_ID, costsCounted: false });
+    },
+  );
 
-  it("走る向きは地図の上の向きを [0, 360) の10°刻みへ丸めて地図へ渡し、材料の要求へ向きを載せないので向きを変えても取り直さない。走行中は実際に走る向きと速度を渡す", async () => {
-    serve();
+  it("走っていない間は地図を回しても走る向きを渡さず、取り直さない。走行中は実際に走る向きを10°刻みへ丸めて速度と渡し、方位磁針の印の条件に向きが入る", async () => {
+    serve(
+      undefined,
+      costAxisCatalog(
+        costAxisEntry("ascent", { map_lens: { formula: BEARING_FORMULA, material_conditions: ["at", "speed_kmh"] } }),
+      ),
+    );
     const sent = onBackend("GET", "/api/region/lens/ascent/:z/:x/:y", () =>
       Response.json({ materials: { way_1: { lens_along: 12 } }, wind_previous_run_from: null }),
     );
     const { result, rerender } = renderMapView();
-    await waitFor(() => expect(result.current.lensControl.axisOptions).toHaveLength(LENS_COUNT));
+    // 総合と登坂。
+    await waitFor(() => expect(result.current.lensControl.axisOptions).toHaveLength(2));
     act(() => result.current.lensControl.onLensChange("ascent"));
 
     act(() => result.current.look.onViewportChange({ ...VIEWPORT, bearing: 30 }));
     await waitFor(() => expect(result.current.look.wayMaterials.get("ascent")?.materials.size).toBe(1), {
       timeout: 3000,
     });
-    expect(result.current.look.wayConditions).toEqual({ bearing_deg: 30, speed_kmh: 20 });
+    expect(result.current.look.wayConditions).toEqual({ speed_kmh: 20 });
     const fetched = sent.length;
 
     act(() => result.current.look.onViewportChange({ ...VIEWPORT, bearing: -42.5 }));
-    expect(result.current.look.wayConditions).toEqual({ bearing_deg: 320, speed_kmh: 20 });
+    expect(result.current.look.wayConditions).toEqual({ speed_kmh: 20 });
     // 間引きの待ちを越えてから、要求が増えていないことを見る。
     await new Promise((resolve) => setTimeout(resolve, MAP_FETCH_DEBOUNCE_MS + 100));
     expect(sent).toHaveLength(fetched);
 
-    rerender({ riding: { bearingDeg: 180, speedKmh: 15 } });
+    expect(result.current.lensConditions).not.toContain("bearing_deg");
+    rerender({ riding: { bearingDeg: 183, speedKmh: 15 } });
     expect(result.current.look.wayConditions).toEqual({ bearing_deg: 180, speed_kmh: 15 });
+    expect(result.current.lensConditions).toContain("bearing_deg");
   });
 
   it("「絞り込みをすべて解除」が押せるのは地図に出しているものの凡例で隠している間だけで、出していないレイヤーの最初に隠す行は数えない", async () => {
