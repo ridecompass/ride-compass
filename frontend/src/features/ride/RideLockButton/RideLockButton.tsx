@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import { useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/Button/Button";
@@ -21,6 +22,7 @@ interface RideLockButtonProps {
  * ロックの間は面の色と鍵の絵だけで示し、横に札を出さない（ロックの間ずっと地図を覆うため）。ロックの間に押すと横に「ロックを外す」を
  * 出し、それを押すと外す——離れた2か所を順に押させ、雨粒が続けて当たっても外れないようにする。選ばなければ時間で閉じる。 */
 export default function RideLockButton({ locked, onLock, onUnlock }: RideLockButtonProps) {
+  const t = useTranslations("ride.lock");
   const [choosing, setChoosing] = useState(false);
   if (!locked && choosing) setChoosing(false);
   useEffect(() => {
@@ -36,19 +38,17 @@ export default function RideLockButton({ locked, onLock, onUnlock }: RideLockBut
           variant="mapCtrl"
           size="mapCtrl"
           onClick={() => (locked ? setChoosing((open) => !open) : onLock())}
-          aria-label="ロック"
+          aria-label={t("label")}
           aria-pressed={locked}
           aria-haspopup={locked ? "dialog" : undefined}
           aria-expanded={locked ? choosing : undefined}
-          usage={
-            "押すと地図をロックし、雨粒が画面に当たっても地図が動かないようにします。\n・ロック中も現在地を追い続け、右の列のボタンと地図の下のボタンは使えます。\n・ロック中に押すと「ロックを外す」が出ます。"
-          }
+          usage={t("usage", { unlock: t("unlock") })}
           className={cn(locked && "bg-[var(--color-accent)] text-white")}
         >
           {locked ? <MapLockedIcon /> : <MapUnlockedIcon />}
         </Button>
       </PopoverAnchor>
-      <PopoverContent side="left" align="start" aria-label="ロックの外し方" className="flex flex-col gap-1.5">
+      <PopoverContent side="left" align="start" aria-label={t("unlockChoice")} className="flex flex-col gap-1.5">
         <Button
           variant="primary"
           size="md"
@@ -56,11 +56,13 @@ export default function RideLockButton({ locked, onLock, onUnlock }: RideLockBut
             setChoosing(false);
             onUnlock();
           }}
-          usage="ロックを外し、地図を指で動かせるようにします。"
+          usage={t("unlockUsage")}
         >
-          ロックを外す
+          {t("unlock")}
         </Button>
-        <p className={cn(textVariants({ variant: "hint" }), "text-center")}>{UNLOCK_CHOICE_MS / 1000}秒で閉じます</p>
+        <p className={cn(textVariants({ variant: "hint" }), "text-center")}>
+          {t("closesIn", { seconds: String(UNLOCK_CHOICE_MS / 1000) })}
+        </p>
       </PopoverContent>
     </Popover>
   );

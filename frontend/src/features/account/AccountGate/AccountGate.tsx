@@ -53,6 +53,8 @@ export default function AccountGate({ children }: { children: (open: boolean) =>
   );
 }
 
+const WELCOME_POINTS = ["loopOrGoal", "roads", "rideMode", "rideLog"] as const;
+
 const CARD_CLASS = cn(cardVariants({ variant: "float" }), "flex w-full max-w-md flex-col gap-3 p-4");
 
 // 自分の状態を読むまでも、アプリの説明と規約へのリンクは出す（ログインしなくても読めるホームページとして、Google のブランドの確認が求める）。
@@ -63,7 +65,7 @@ function Welcome({
   status: AccountStatus | undefined;
   account: ReturnType<typeof useAccountStatus>;
 }) {
-  const t = useTranslations("common");
+  const t = useTranslations();
   const client = getQueryClient();
   // ログインは同意を兼ねる。ログインした応答の版に、その場で同意を残す（済んでいれば残さない）。
   const signIn = useMutation(
@@ -87,33 +89,21 @@ function Welcome({
     <section aria-labelledby="welcome-title" className={CARD_CLASS}>
       <h1 id="welcome-title" className={cn(textVariants({ variant: "title" }), "m-0 flex items-center gap-2")}>
         <Image src="/icon.svg" alt="" width={36} height={36} unoptimized />
-        {t("appName")}
+        {t("common.appName")}
       </h1>
       <p className={cn(textVariants({ variant: "body" }), "m-0")}>
-        <GuideText text="ロードバイクで走りやすいルートを作るアプリです。" />
+        <GuideText text={t("account.welcome.lead")} />
       </p>
       <ul className={cn(textVariants({ variant: "body" }), "m-0 flex list-disc flex-col gap-1 pl-5")}>
-        {[
-          "出発地へ戻る周回も、目的地へ向かうルートも作れます。",
-          "坂・路面・車の多さを見て、走りやすい道を選びます。",
-          "走行モードでは、次に曲がる所・残りの道のり・天気を案内します。",
-          "走行モードで走った記録は送られ、あなたの走行ログに残ります。走行ログでは、自分の走りを見返したり消したりできます。",
-        ].map((point) => (
-          <li key={point}>
-            <GuideText text={point} />
+        {WELCOME_POINTS.map((key) => (
+          <li key={key}>
+            <GuideText text={t(`account.welcome.points.${key}`)} />
           </li>
         ))}
       </ul>
       <p className={cn(textVariants({ variant: "body" }), "m-0 break-keep wrap-anywhere")}>
         {/* 折り返すのは句の間だけにする（ほかの文は GuideText が同じことをする）。 */}
-        Google でログインすると、
-        <wbr />
-        <LegalLinks />
-        に
-        <wbr />
-        同意したことに
-        <wbr />
-        なります。
+        {t.rich("account.welcome.signInConsents", { wbr: () => <wbr />, legal: () => <LegalLinks /> })}
       </p>
       {account.error ? (
         <>
@@ -121,20 +111,20 @@ function Welcome({
             {errorMessage(account.error)}
           </p>
           <Button
-            usage="ログインの状態をもう一度読みます。"
+            usage={t("account.welcome.retryUsage")}
             variant="primary"
             size="sm"
             className="self-start"
             disabled={account.isFetching}
             onClick={() => void account.refetch()}
           >
-            もう一度読む
+            {t("account.welcome.retry")}
           </Button>
         </>
       ) : status === undefined ? (
-        <p className={cn(textVariants({ variant: "hint" }), "m-0")}>読み込み中…</p>
+        <p className={cn(textVariants({ variant: "hint" }), "m-0")}>{t("common.loading")}</p>
       ) : status.google_client_id === null ? (
-        <p className={cn(textVariants({ variant: "hint" }), "m-0")}>この環境ではログインできません。</p>
+        <p className={cn(textVariants({ variant: "hint" }), "m-0")}>{t("account.signInUnavailable")}</p>
       ) : (
         <GoogleSignInButton
           clientId={status.google_client_id}
@@ -151,7 +141,7 @@ function Welcome({
 }
 
 function ConsentCard({ status }: { status: AccountStatus }) {
-  const t = useTranslations("common");
+  const t = useTranslations();
   const client = getQueryClient();
   const consent = useMutation(
     {
@@ -172,31 +162,28 @@ function ConsentCard({ status }: { status: AccountStatus }) {
   return (
     <section aria-labelledby="consent-title" className={CARD_CLASS}>
       <h1 id="consent-title" className={cn(textVariants({ variant: "heading" }), "m-0")}>
-        走りの記録への同意
+        {t("account.consent.title")}
       </h1>
       <p className={cn(textVariants({ variant: "body" }), "m-0")}>
-        {t("appName")}{" "}
-        を使うと、走行モードで走った走りを毎回送り、走行ログに残します。同意すると、地図の画面へ進みます。
+        {t("account.consent.lead", { appName: t("common.appName") })}
       </p>
       <ul className={cn(textVariants({ variant: "body" }), "m-0 flex list-disc flex-col gap-1 pl-5")}>
-        <li>走りの位置と時刻・推したルート・生成の条件・見せた予報・端末とブラウザの名前を残します。</li>
-        <li>あなたが走行ログで見返すことと、ルート生成の精度を上げる分析に使います。</li>
-        <li>名前・メール・IP は持たず、あなたの走りを外へ出しません。</li>
+        <li>{t("account.consent.points.kept")}</li>
+        <li>{t("account.consent.points.use")}</li>
+        <li>{t("account.consent.points.notKept")}</li>
       </ul>
       <p className={cn(textVariants({ variant: "hint" }), "m-0")}>
-        詳しくは
-        <LegalLinks />
-        を読んでください。
+        {t.rich("account.consent.readLegal", { legal: () => <LegalLinks /> })}
       </p>
       <Button
-        usage="利用規約とプライバシーポリシーに同意して、アプリを使い始めます。"
+        usage={t("account.consent.agreeUsage", { terms: t("common.terms"), privacy: t("common.privacy") })}
         variant="primary"
         size="sm"
         className="self-end"
         disabled={consent.isPending}
         onClick={() => consent.mutate()}
       >
-        同意してはじめる
+        {t("account.consent.agree")}
       </Button>
       {consent.error && (
         <p role="alert" className={cn(textVariants({ variant: "error" }), "m-0")}>
@@ -213,15 +200,17 @@ function clearRidesBeforeConsent() {
 }
 
 function LegalLinks() {
-  return (
-    <>
+  const t = useTranslations();
+  return t.rich("account.legalLinks", {
+    terms: () => (
       <Link href="/terms" className="underline">
-        利用規約
+        {t("common.terms")}
       </Link>
-      と
+    ),
+    privacy: () => (
       <Link href="/privacy" className="underline">
-        プライバシーポリシー
+        {t("common.privacy")}
       </Link>
-    </>
-  );
+    ),
+  });
 }

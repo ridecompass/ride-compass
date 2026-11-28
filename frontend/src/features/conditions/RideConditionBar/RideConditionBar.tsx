@@ -3,6 +3,7 @@
 import { cn } from "@/lib/cn";
 import { LENS_LINK_CLASS, LENS_LINK_DESCRIPTION } from "@/lib/lensLink";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/Popover/Popover";
+import { useTranslations } from "next-intl";
 import { useMemo, useState, useSyncExternalStore, type ComponentProps, type ReactNode } from "react";
 import routeGenerateConfig from "@/types/generated/route-generate-config.json";
 import { departureLabelParts } from "@/features/conditions/rideConditions";
@@ -59,6 +60,7 @@ function ConditionTrigger({
   linked,
   ...buttonProps
 }: { name: string; icon: ReactNode; linked: boolean } & ComponentProps<typeof Button>) {
+  const t = useTranslations("conditions.bar");
   return (
     <Button
       {...buttonProps}
@@ -66,7 +68,7 @@ function ConditionTrigger({
       size="mapCtrl"
       className={cn("h-auto min-h-[var(--map-ctrl-button-size)] flex-col gap-px py-[3px]", linked && LENS_LINK_CLASS)}
       aria-description={linked ? LENS_LINK_DESCRIPTION : undefined}
-      aria-label={`${name}（タップで変更）`}
+      aria-label={t("trigger", { name })}
       title={name}
     >
       {icon}
@@ -86,8 +88,9 @@ function DepartureRuler({
   onDepartureTimeChange,
   onDepartureNow,
 }: Pick<RideConditionBarProps, "departureTime" | "onDepartureTimeChange" | "onDepartureNow">) {
+  const t = useTranslations("conditions.departure");
   const [anchor] = useState(() => new Date());
-  const [step, setStep] = useStoredState<DepartureStep>(DEPARTURE_STEP_STORAGE_KEY, "出発時刻の刻み", "hour");
+  const [step, setStep] = useStoredState<DepartureStep>(DEPARTURE_STEP_STORAGE_KEY, t("stepName"), "hour");
   const { timeline, frames } = useMemo(() => {
     const timeline = buildDepartureTimeline(anchor, step);
     return { timeline, frames: buildDepartureFrames(timeline, step) };
@@ -103,7 +106,7 @@ function DepartureRuler({
       onIndexChange={(index) => (index === nowIndex ? onDepartureNow() : onDepartureTimeChange(timeline[index]))}
       currentIndex={nowIndex}
       onNow={onDepartureNow}
-      ariaLabel="出発時刻"
+      ariaLabel={t("name")}
       steps={DEPARTURE_STEPS}
       step={step}
       onStepChange={(next) => {
@@ -126,6 +129,7 @@ export default function RideConditionBar({
   linkedDeparture,
   linkedSpeed,
 }: RideConditionBarProps) {
+  const t = useTranslations("conditions");
   // 出発時刻の文言は描いた時刻で決まる。ページはビルド時に描かれるので、サーバーとハイドレーションの描画では
   // 出さず、ハイドレーションのあとに出す（出すとビルドの時刻の文言とずれ、ハイドレーションが不一致で失敗する）。
   const hydrated = useSyncExternalStore(
@@ -134,14 +138,16 @@ export default function RideConditionBar({
     () => false,
   );
   const departureLabel = hydrated ? departureLabelParts(departureTime, new Date()) : null;
-  const departureName = departureLabel ? `出発時刻: ${departureLabel.join(" ")}` : "出発時刻";
+  const departureName = departureLabel
+    ? t("bar.withValue", { name: t("departure.name"), value: departureLabel.join(" ") })
+    : t("departure.name");
   const speedLabel = `${speedKmh}km/h`;
 
   return (
     <div
       className="pointer-events-auto flex flex-col gap-[var(--map-ctrl-stack-gap)]"
       role="group"
-      aria-label="走行条件"
+      aria-label={t("bar.label")}
     >
       <Popover>
         <PopoverTrigger asChild>
@@ -149,12 +155,12 @@ export default function RideConditionBar({
             name={departureName}
             icon={<ClockIcon />}
             linked={linkedDeparture}
-            usage="出発する日時を決めます。地図に出す気象と周りの道の難所[風]の時刻と、ルートの到達予想の時刻に使います。"
+            usage={t("departure.usage")}
           >
             {/* 別の日は日付も付くため、列の幅に収まるよう日付と時刻を2行に分ける。時刻には「発」を添え、何の時刻かを文字で示す。 */}
             {departureLabel?.map((part, i) => (
               <span key={part} className="block">
-                {i === departureLabel.length - 1 ? `${part}発` : part}
+                {i === departureLabel.length - 1 ? t("departure.at", { time: part }) : part}
               </span>
             ))}
           </ConditionTrigger>
@@ -173,12 +179,12 @@ export default function RideConditionBar({
                 "rounded-sm bg-[var(--color-surface)] px-2 py-1 shadow-float",
               )}
             >
-              出発の時刻
+              {t("departure.heading")}
             </h2>
             <Input
               type="datetime-local"
-              aria-label="出発日時を直接指定"
-              data-usage="出発する日時を、日付と時刻で直接入れます。"
+              aria-label={t("departure.input")}
+              data-usage={t("departure.inputUsage")}
               value={toJstLocalValue(departureTime)}
               onChange={(e) => {
                 const next = parseJstLocalValue(e.target.value);
@@ -198,19 +204,19 @@ export default function RideConditionBar({
       <Popover>
         <PopoverTrigger asChild>
           <ConditionTrigger
-            name={`想定速度: ${speedLabel}`}
+            name={t("bar.withValue", { name: t("speed.name"), value: speedLabel })}
             icon={<SpeedGaugeIcon />}
             linked={linkedSpeed}
-            usage={`${CRUISE_SPEED_LABEL}を決めます。所要時間と、区間ごとの到達予想の時刻に使います。`}
+            usage={t("speed.usage", { cruise: CRUISE_SPEED_LABEL })}
           >
             {speedLabel}
           </ConditionTrigger>
         </PopoverTrigger>
         <PopoverContent className="flex flex-col gap-2 px-2 py-1.5" side="bottom" align="end">
-          <div className="flex items-center gap-2" data-usage={`${CRUISE_SPEED_LABEL}を、つまみか数値で決めます。`}>
+          <div className="flex items-center gap-2" data-usage={t("speed.inputUsage", { cruise: CRUISE_SPEED_LABEL })}>
             <input
               type="range"
-              aria-label="想定速度スライダー"
+              aria-label={t("speed.slider")}
               min={MIN_SPEED_KMH}
               max={MAX_SPEED_KMH}
               step={1}
@@ -220,7 +226,7 @@ export default function RideConditionBar({
             />
             <NumberInput
               commitOn="commit"
-              aria-label="想定速度（km/h）"
+              aria-label={t("speed.input")}
               inputMode="numeric"
               min={MIN_SPEED_KMH}
               max={MAX_SPEED_KMH}
@@ -233,9 +239,9 @@ export default function RideConditionBar({
           </div>
           <div className="flex items-center gap-1">
             <p className={textVariants({ variant: "hint" })}>{CRUISE_SPEED_LABEL}</p>
-            <InfoPopover triggerAriaLabel="想定速度の説明">
+            <InfoPopover triggerAriaLabel={t("speed.info")}>
               <p>
-                <GuideText text={`${CRUISE_SPEED_LABEL}です。信号待ちや坂を含めた普段の平均速度ではありません。`} />
+                <GuideText text={t("speed.notAverage", { cruise: CRUISE_SPEED_LABEL })} />
               </p>
               <p>
                 <GuideText text={TRAVEL_MODEL_WORDING} />

@@ -9,6 +9,7 @@
  */
 import { describe, expect, it } from "vitest";
 
+import { translate } from "@/i18n/config";
 import { HOUR_MS } from "@/lib/duration";
 import type { components } from "@/types/generated/api";
 
@@ -19,6 +20,15 @@ type RouteWarningTimeline = components["schemas"]["RouteWarningTimeline"];
 // 2026-10-21 18:00（日本時間）から3時間のコマ。
 const FIRST_SLOT_AT = Date.parse("2026-10-21T18:00:00+09:00");
 const iso = (ms: number) => new Date(ms).toISOString();
+
+const listed = (items: string[]) => items.join(translate("common.listSeparator"));
+/** 通る時間帯の文。付加事項があれば添える。 */
+function passing(range: string, additions: string[] = []): string {
+  const text = translate("conditions.warning.passing", { range });
+  if (additions.length === 0) return text;
+  const note = translate("conditions.warning.additions", { additions: listed(additions) });
+  return translate("conditions.warning.passingWithAdditions", { passing: text, additions: note });
+}
 
 /** 段の並び（"20"以上が注意報級）を、18時からの3時間のコマにする。 */
 function levels(codes: string[], additions: string[] = [], advisoryLabel = "雷[注意報級]") {
@@ -69,7 +79,7 @@ describe("routeWarningTimelineItems", () => {
       expect.objectContaining({
         label: "雷[注意報級]区域1",
         level: "advisory",
-        title: "10/21 21:00〜10/22 00:00に通る見込み。付加事項: 突風・ひょう",
+        title: passing("10/21 21:00〜10/22 00:00", ["突風", "ひょう"]),
       }),
     ]);
   });
@@ -91,7 +101,7 @@ describe("routeWarningTimelineItems", () => {
   ])("$case", ({ codes, end, titles }) => {
     const items = routeWarningTimelineItems(timeline({ start: 0, end, codes }), POINT_KMS, clock, 0);
 
-    expect(items.map((item) => item.title)).toEqual(titles.map((range) => `${range}に通る見込み`));
+    expect(items.map((item) => item.title)).toEqual(titles.map((range) => passing(range)));
   });
 
   it("走行中は、もう走った所の通過を見ず、走っている区域はこの先だけを見る", () => {
@@ -104,7 +114,7 @@ describe("routeWarningTimelineItems", () => {
     );
 
     expect(items.map((item) => [item.label, item.title])).toEqual([
-      ["雷[注意報級]区域1", "10/22 00:00〜03:00に通る見込み"],
+      ["雷[注意報級]区域1", passing("10/22 00:00〜03:00")],
     ]);
   });
 

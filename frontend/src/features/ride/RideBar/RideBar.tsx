@@ -4,6 +4,7 @@ import { HeaderStat, StatValue, WindValue, type HeaderWind } from "@/components/
 import { GoalFlagIcon, OffRouteIcon } from "@/components/ui/icons/icons";
 import { BicycleIcon, ClockIcon } from "@/components/ui/icons/lucideIcons";
 import { formatJstHourMinute } from "@/lib/time";
+import { useTranslations } from "next-intl";
 
 import type { RideRemaining } from "../rideRemaining";
 
@@ -20,15 +21,16 @@ interface RideBarProps {
 
 /** 走行モードの間、画面の上の1行（ふだんは天気の帯）に出す走りの数字（ルートの残り・到着予想・今の速さ・風）。 */
 export default function RideBar({ remaining, offRoute, mapBearingDeg, speedKmh, wind }: RideBarProps) {
+  const t = useTranslations("ride");
   return (
-    <div role="group" aria-label="走りの数字" className="flex min-w-0 items-center gap-3">
+    <div role="group" aria-label={t("bar.label")} className="flex min-w-0 items-center gap-3">
       {remaining !== null && (
         <>
           {offRoute && (
             <span
               role="status"
-              aria-label="ルートを外れています"
-              title="ルートを外れています"
+              aria-label={t("offRoute")}
+              title={t("offRoute")}
               className="inline-flex flex-shrink-0 items-center text-[var(--color-warning-strong)]"
             >
               <OffRouteIcon size={18} />
@@ -36,19 +38,19 @@ export default function RideBar({ remaining, offRoute, mapBearingDeg, speedKmh, 
           )}
           <HeaderStat>
             <GoalFlagIcon size={16} />
-            <span className="sr-only">残り: </span>
+            <span className="sr-only">{t("bar.remaining")}</span>
             <StatValue unit="km">{remaining.remainingKm === null ? "—" : remaining.remainingKm.toFixed(1)}</StatValue>
           </HeaderStat>
           <HeaderStat>
             <ClockIcon size={16} />
-            <span className="sr-only">到着予想: </span>
+            <span className="sr-only">{t("bar.arrival")}</span>
             <span>{remaining.arrivalAt === null ? "—" : formatJstHourMinute(remaining.arrivalAt)}</span>
           </HeaderStat>
         </>
       )}
       <HeaderStat>
         <BicycleIcon size={16} />
-        <span className="sr-only">今の速さ: </span>
+        <span className="sr-only">{t("bar.speed")}</span>
         <StatValue unit="km/h">{speedKmh === null ? "—" : Math.round(speedKmh)}</StatValue>
       </HeaderStat>
       {wind !== null && (

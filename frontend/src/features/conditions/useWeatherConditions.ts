@@ -1,6 +1,7 @@
 "use client";
 
 import { keepPreviousData, useQuery, type UseQueryResult } from "@tanstack/react-query";
+import { useTranslations } from "next-intl";
 import { useEffect, useMemo, useState } from "react";
 import { getQueryClient } from "@/lib/queryClient";
 import { noteRideTrackForecast } from "@/lib/rideTrack";
@@ -15,7 +16,7 @@ import {
   getWeatherWarnings,
 } from "@/services/weatherApi";
 import { routePointsEvery, type RouteSegmentShape } from "@/lib/routeDistance";
-import { routeWarningTimelineItems } from "@/features/conditions/routeWarningTimeline";
+import { additionsNote, routeWarningTimelineItems } from "@/features/conditions/routeWarningTimeline";
 import refreshIntervals from "@/types/generated/refresh-intervals.json";
 import type { Coordinates } from "@/types/route";
 import type { AmedasObservation, GridPointToday, ValidArea } from "@/types/weather";
@@ -151,6 +152,7 @@ export function useWeatherConditions(
   following: Coordinates | null,
   route: WarningRoute | null,
 ): UseWeatherConditionsResult {
+  const t = useTranslations();
   const amedas = useLocationFetch("amedas", getAmedasObservation, location, originLocated, following, validArea);
   const gridPointToday = useLocationFetch("gridPointToday", getGridPointToday, location, originLocated, following);
 
@@ -179,7 +181,7 @@ export function useWeatherConditions(
           label: warning.name,
           level: warning.level,
           source: "jma",
-          title: warning.additions.length > 0 ? `付加事項: ${warning.additions.join("・")}` : undefined,
+          title: additionsNote(warning.additions),
         }))
       : [];
     // 暑さ指数は段が無い間（値の無い提供期間外・「ほぼ安全」等）は出さない。
@@ -188,10 +190,16 @@ export function useWeatherConditions(
       ? [
           {
             id: "wbgt",
-            label: `暑さ指数${wbgtReading.label}`,
+            label: t("conditions.warning.wbgtLabel", {
+              name: t("conditions.warning.source.wbgt"),
+              level: wbgtReading.label,
+            }),
             level: wbgtReading.level,
             source: "wbgt",
-            title: `暑さ指数 ${wbgtReading.value.toFixed(1)}`,
+            title: t("conditions.warning.wbgtValue", {
+              name: t("conditions.warning.source.wbgt"),
+              value: wbgtReading.value.toFixed(1),
+            }),
           },
         ]
       : [];
@@ -203,19 +211,30 @@ export function useWeatherConditions(
       title: forecast.condition,
     }));
     return [...jmaItems, ...wbgtItem, ...floodItems, ...routeTimeline.items];
-  }, [weatherWarnings, wbgtStatus, floodForecasts, routeTimeline.items]);
+  }, [weatherWarnings, wbgtStatus, floodForecasts, routeTimeline.items, t]);
 
   const warningFetchFailures = useMemo<FetchFailure[]>(
     () =>
-      [
-        { id: "jma", label: "警報・注意報", error: warnings.error },
-        { id: "wbgt", label: "暑さ指数", error: wbgt.error },
-        { id: "flood", label: "河川氾濫予報", error: flood.error },
-        { id: "route-timeline", label: "ルートの注意報級の見込み", error: routeTimeline.error },
-      ].flatMap(({ id, label, error }) =>
-        error ? [{ id, label, detail: error, effect: "出ていてもバッジは表示されません。" }] : [],
+      (
+        [
+          { id: "jma", error: warnings.error },
+          { id: "wbgt", error: wbgt.error },
+          { id: "flood", error: flood.error },
+          { id: "route-timeline", error: routeTimeline.error },
+        ] as const
+      ).flatMap(({ id, error }) =>
+        error
+          ? [
+              {
+                id,
+                label: t(`conditions.warning.source.${id}`),
+                detail: error,
+                effect: t("conditions.warning.badgeHidden"),
+              },
+            ]
+          : [],
       ),
-    [warnings.error, wbgt.error, flood.error, routeTimeline.error],
+    [warnings.error, wbgt.error, flood.error, routeTimeline.error, t],
   );
 
   return {

@@ -9,9 +9,9 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
-import RideModeButton from "./RideModeButton";
+import { translate } from "@/i18n/config";
 
-const WAKE_LOCK_NOTICE = /画面を点けたままにできません/;
+import RideModeButton from "./RideModeButton";
 
 type Props = Parameters<typeof RideModeButton>[0];
 
@@ -33,38 +33,38 @@ describe("RideModeButton", () => {
   it("休んでいる間は、押すと「続きから走る」か案内を終えるかを選ばせ、選んだ方だけを知らせて閉じる", async () => {
     const handlers = { onPress: vi.fn(), onRest: vi.fn(), onResume: vi.fn() };
     render(<RideModeButton {...props({ status: "resting", ...handlers })} />);
-    const button = screen.getByRole("button", { name: "走行モード" });
+    const button = screen.getByRole("button", { name: translate("ride.mode.label") });
 
     await userEvent.click(button);
     expect(button).toHaveAttribute("aria-expanded", "true");
-    await userEvent.click(screen.getByRole("button", { name: "続きから走る" }));
+    await userEvent.click(screen.getByRole("button", { name: translate("ride.resume") }));
     expect(handlers.onResume).toHaveBeenCalledTimes(1);
     expect(handlers.onPress).not.toHaveBeenCalled();
     expect(handlers.onRest).not.toHaveBeenCalled();
-    expect(screen.queryByRole("button", { name: "案内を終える" })).toBeNull();
+    expect(screen.queryByRole("button", { name: translate("ride.mode.end") })).toBeNull();
 
     await userEvent.click(button);
-    await userEvent.click(screen.getByRole("button", { name: "案内を終える" }));
+    await userEvent.click(screen.getByRole("button", { name: translate("ride.mode.end") }));
     expect(handlers.onPress).toHaveBeenCalledTimes(1);
     expect(handlers.onResume).toHaveBeenCalledTimes(1);
-    expect(screen.queryByRole("button", { name: "続きから走る" })).toBeNull();
+    expect(screen.queryByRole("button", { name: translate("ride.resume") })).toBeNull();
   });
 
   it("画面を点けたままにできない端末では、文を出し、閉じても印と読み上げの説明は残す。頼めていれば何も出さない", async () => {
     const { rerender } = render(<RideModeButton {...props({ screenWakeLock: "held" })} />);
-    const button = screen.getByRole("button", { name: "走行モード" });
-    expect(screen.queryByText(WAKE_LOCK_NOTICE)).toBeNull();
+    const button = screen.getByRole("button", { name: translate("ride.mode.label") });
+    expect(screen.queryByRole("status")).toBeNull();
     expect(button).not.toHaveAttribute("aria-description");
 
     rerender(<RideModeButton {...props({ screenWakeLock: "unavailable" })} />);
-    expect(screen.getByText(WAKE_LOCK_NOTICE)).toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: "閉じる" }));
-    expect(screen.queryByText(WAKE_LOCK_NOTICE)).toBeNull();
-    expect(button).toHaveAttribute("aria-description", expect.stringMatching(WAKE_LOCK_NOTICE));
+    expect(screen.getByRole("status")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: translate("common.close") }));
+    expect(screen.queryByRole("status")).toBeNull();
+    expect(button).toHaveAttribute("aria-description", translate("ride.mode.wakeLockUnavailable"));
 
     // 止めて始め直すと、また文を出す。
     rerender(<RideModeButton {...props({ status: "off" })} />);
     rerender(<RideModeButton {...props({ screenWakeLock: "unavailable" })} />);
-    expect(screen.getByText(WAKE_LOCK_NOTICE)).toBeInTheDocument();
+    expect(screen.getByRole("status")).toBeInTheDocument();
   });
 });

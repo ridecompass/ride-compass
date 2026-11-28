@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import { useMemo } from "react";
 
 import { useStoredState } from "@/hooks/useStoredState";
@@ -11,10 +12,11 @@ const ASSUMED_SPEED_STORAGE_KEY = "ridecompass:assumed-speed-kmh";
 
 /** 走行条件（出発時刻・想定速度）。`ride`はどちらも変わらない間は同じ値を返す。 */
 export function useRideConditions() {
+  const t = useTranslations("conditions.speed");
   const departure = useDepartureTime();
   const [speedKmh, setSpeedKmh] = useStoredState<number>(
     ASSUMED_SPEED_STORAGE_KEY,
-    "想定速度",
+    t("name"),
     routeGenerateConfig.default_assumed_speed_kmh,
   );
   const ride = useMemo(() => ({ at: departure.at, speedKmh }), [departure.at, speedKmh]);

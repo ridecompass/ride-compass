@@ -1,6 +1,7 @@
 "use client";
 
 import { useMutation, useQuery } from "@tanstack/react-query";
+import { useTranslations } from "next-intl";
 import { useState, type ReactNode } from "react";
 
 import { Button } from "@/components/ui/Button/Button";
@@ -35,6 +36,7 @@ interface RideLogProps {
 
 /** 走行ログのページの中身。自分の走りの一覧と1件の走った線を見せて1件ずつ消し、ログアウトと記録をやめる操作を置く。 */
 export default function RideLog({ trackMap }: RideLogProps) {
+  const t = useTranslations();
   const account = useAccountStatus();
   const signIn = useGoogleSignIn();
   const status = account.data;
@@ -44,11 +46,9 @@ export default function RideLog({ trackMap }: RideLogProps) {
   if (!status.signed_in)
     return (
       <section className="flex flex-col gap-3">
-        <p className={cn(textVariants({ variant: "body" }), "m-0")}>
-          Google でログインすると、残した走りを見返せます。
-        </p>
+        <p className={cn(textVariants({ variant: "body" }), "m-0")}>{t("ride.log.signInPrompt")}</p>
         {status.google_client_id === null ? (
-          <p className={cn(textVariants({ variant: "hint" }), "m-0")}>この環境ではログインできません。</p>
+          <p className={cn(textVariants({ variant: "hint" }), "m-0")}>{t("account.signInUnavailable")}</p>
         ) : (
           <GoogleSignInButton
             clientId={status.google_client_id}
@@ -67,20 +67,16 @@ export default function RideLog({ trackMap }: RideLogProps) {
 }
 
 function RideList({ trackMap }: RideLogProps) {
+  const t = useTranslations("ride.log");
   const client = getQueryClient();
   const rides = useQuery({ queryKey: RIDES_KEY, queryFn: listMyRides }, client);
   const [openId, setOpenId] = useState<string | null>(null);
 
   if (rides.error) return <ErrorText error={rides.error} />;
   if (rides.data === undefined) return <Loading />;
-  if (rides.data.length === 0)
-    return (
-      <p className={cn(textVariants({ variant: "hint" }), "m-0")}>
-        まだ走りがありません。走行モードで案内を終えると、ここに残ります。
-      </p>
-    );
+  if (rides.data.length === 0) return <p className={cn(textVariants({ variant: "hint" }), "m-0")}>{t("empty")}</p>;
   return (
-    <ul aria-label="走りの一覧" className="m-0 flex list-none flex-col gap-2 p-0">
+    <ul aria-label={t("list")} className="m-0 flex list-none flex-col gap-2 p-0">
       {rides.data.map((ride) => (
         <li key={ride.id} className="flex flex-col gap-2">
           <Button
@@ -123,6 +119,7 @@ function RideOpened({
   trackMap: RideLogProps["trackMap"];
   onDeleted: () => void;
 }) {
+  const t = useTranslations("ride.log");
   const client = getQueryClient();
   const ride = useQuery({ queryKey: ["my-ride", rideId], queryFn: () => getMyRide(rideId) }, client);
   const [confirming, setConfirming] = useState(false);
@@ -145,23 +142,23 @@ function RideOpened({
       ) : ride.data === undefined ? (
         <Loading />
       ) : ride.data.track.coordinates.length === 0 ? (
-        <p className={cn(textVariants({ variant: "hint" }), "m-0")}>この走りには位置が残っていません。</p>
+        <p className={cn(textVariants({ variant: "hint" }), "m-0")}>{t("noTrack")}</p>
       ) : (
         trackMap(ride.data.track.coordinates)
       )}
       {confirming ? (
         <div className="flex items-center justify-end gap-2">
-          <span className={textVariants({ variant: "body" })}>消すと戻せません。</span>
+          <span className={textVariants({ variant: "body" })}>{t("deleteWarning")}</span>
           <Button usage={null} variant="ghost" size="sm" onClick={() => setConfirming(false)}>
-            やめる
+            {t("deleteCancel")}
           </Button>
           <Button usage={null} variant="danger" size="sm" disabled={remove.isPending} onClick={() => remove.mutate()}>
-            消す
+            {t("deleteConfirm")}
           </Button>
         </div>
       ) : (
         <Button usage={null} variant="ghost" size="sm" className="self-end" onClick={() => setConfirming(true)}>
-          この走りを消す
+          {t("delete")}
         </Button>
       )}
       {remove.error && <ErrorText error={remove.error} />}
@@ -170,6 +167,7 @@ function RideOpened({
 }
 
 function AccountSection({ consented }: { consented: boolean }) {
+  const t = useTranslations("ride.log");
   const client = getQueryClient();
   const refresh = () => {
     client.removeQueries({ queryKey: RIDES_KEY });
@@ -182,9 +180,7 @@ function AccountSection({ consented }: { consented: boolean }) {
     <section className="flex flex-col gap-3 border-t border-[var(--color-border)] pt-4">
       {consented ? (
         <div className="flex flex-col gap-2">
-          <p className={cn(textVariants({ variant: "hint" }), "m-0")}>
-            記録をやめると、アプリを使えなくなります（地図の画面を開くと最初の画面に戻り、同意をもう一度聞きます）。残した走りは消えず、ここで見返せます。
-          </p>
+          <p className={cn(textVariants({ variant: "hint" }), "m-0")}>{t("withdrawWarning")}</p>
           <Button
             usage={null}
             variant="ghost"
@@ -193,13 +189,11 @@ function AccountSection({ consented }: { consented: boolean }) {
             disabled={withdraw.isPending}
             onClick={() => withdraw.mutate()}
           >
-            記録をやめる
+            {t("withdraw")}
           </Button>
         </div>
       ) : (
-        <p className={cn(textVariants({ variant: "hint" }), "m-0")}>
-          記録をやめています。地図の画面を開くと、同意をもう一度聞きます。
-        </p>
+        <p className={cn(textVariants({ variant: "hint" }), "m-0")}>{t("withdrawn")}</p>
       )}
       <Button
         usage={null}
@@ -209,7 +203,7 @@ function AccountSection({ consented }: { consented: boolean }) {
         disabled={logout.isPending}
         onClick={() => logout.mutate()}
       >
-        ログアウト
+        {t("signOut")}
       </Button>
       {withdraw.error && <ErrorText error={withdraw.error} />}
       {logout.error && <ErrorText error={logout.error} />}
@@ -226,5 +220,6 @@ function ErrorText({ error }: { error: unknown }) {
 }
 
 function Loading() {
-  return <p className={cn(textVariants({ variant: "hint" }), "m-0")}>読み込み中…</p>;
+  const t = useTranslations("common");
+  return <p className={cn(textVariants({ variant: "hint" }), "m-0")}>{t("loading")}</p>;
 }

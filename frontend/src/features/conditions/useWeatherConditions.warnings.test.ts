@@ -4,12 +4,16 @@ import { act, renderHook } from "@testing-library/react";
 import { HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { translate } from "@/i18n/config";
 import { HOUR_MS } from "@/lib/duration";
 import { heldReplies, onBackend } from "@/testing/backendServer";
 import { makeRouteSegment } from "@/testing/routeFixtures";
 import { FLOOD, TOKYO, WARNINGS, WBGT, fetched, json, render, serveQuietWeather } from "@/testing/weatherConditions";
 
+import { additionsNote, passingTitle } from "./routeWarningTimeline";
 import { useWeatherConditions } from "./useWeatherConditions";
+
+const WBGT_NAME = translate("conditions.warning.source.wbgt");
 
 const ROUTE_TIMELINE = "/api/weather/route-warning-timeline";
 const failure = (detail: string) => () => Response.json({ detail }, { status: 502 });
@@ -50,10 +54,16 @@ describe("useWeatherConditions 警報のバッジ", () => {
           label: "大雨警報",
           level: "warning",
           source: "jma",
-          title: "付加事項: 土砂災害・浸水害",
+          title: additionsNote(["土砂災害", "浸水害"]),
         },
         { id: "10", label: "雷注意報", level: "advisory", source: "jma" },
-        { id: "wbgt", label: "暑さ指数厳重警戒", level: "warning", source: "wbgt", title: "暑さ指数 29.0" },
+        {
+          id: "wbgt",
+          label: translate("conditions.warning.wbgtLabel", { name: WBGT_NAME, level: "厳重警戒" }),
+          level: "warning",
+          source: "wbgt",
+          title: translate("conditions.warning.wbgtValue", { name: WBGT_NAME, value: "29.0" }),
+        },
         { id: "flood-r1", label: "多摩川氾濫警戒", level: "warning", source: "flood", title: "氾濫警戒情報" },
       ]),
     );
@@ -72,11 +82,15 @@ describe("useWeatherConditions 警報のバッジ", () => {
       expect(result.current.warningFetchFailures).toMatchObject([
         {
           id: "jma",
-          label: "警報・注意報",
+          label: translate("conditions.warning.source.jma"),
           detail: "取得できませんでした。",
-          effect: "出ていてもバッジは表示されません。",
+          effect: translate("conditions.warning.badgeHidden"),
         },
-        { id: "flood", label: "河川氾濫予報", detail: "河川氾濫予報の取得に失敗しました[通信エラー]" },
+        {
+          id: "flood",
+          label: translate("conditions.warning.source.flood"),
+          detail: "河川氾濫予報の取得に失敗しました[通信エラー]",
+        },
       ]),
     );
     expect(result.current.warningBadgeItems).toEqual([]);
@@ -139,7 +153,7 @@ describe("useWeatherConditions ルートの警報級の時系列", () => {
         expect.objectContaining({
           label: "雷[注意報級]千代田区",
           level: "advisory",
-          title: "10/22 00:00〜03:00に通る見込み。付加事項: 突風",
+          title: passingTitle("10/22 00:00〜03:00", ["突風"]),
         }),
       ]),
     );
@@ -149,7 +163,11 @@ describe("useWeatherConditions ルートの警報級の時系列", () => {
     onBackend("POST", ROUTE_TIMELINE, failure("取得できませんでした。"));
     const { result } = renderWithRoute();
     const timelineFailure = [
-      { id: "route-timeline", label: "ルートの注意報級の見込み", detail: "取得できませんでした。" },
+      {
+        id: "route-timeline",
+        label: translate("conditions.warning.source.route-timeline"),
+        detail: "取得できませんでした。",
+      },
     ];
 
     await vi.waitFor(() => expect(result.current.warningFetchFailures).toMatchObject(timelineFailure));

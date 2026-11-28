@@ -1,3 +1,4 @@
+import { translate } from "@/i18n/config";
 import { HOUR_MS } from "@/lib/duration";
 import { readStored, removeStoredValue, writeStored } from "@/lib/safeStorage";
 import type { RouteCandidate } from "@/types/route";
@@ -10,7 +11,7 @@ import type { RouteCandidate } from "@/types/route";
 
 const RIDE_ROUTE_STORAGE_KEY = "ridecompass:riding-session";
 const RIDE_PROGRESS_STORAGE_KEY = "ridecompass:riding-progress";
-const LABEL = "走行中のルート";
+const LABEL = translate("ride.storedSession");
 
 /** 最後に保存してから、この時間を過ぎた保存は使わない（1日の長い走行と休憩を覆い、翌朝は前日のルートを出さない）。 */
 export const RIDE_SESSION_TTL_MS = 12 * HOUR_MS;

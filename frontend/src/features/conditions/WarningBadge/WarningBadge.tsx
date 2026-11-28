@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/Button/Button";
 import { GuideText } from "@/components/ui/GuideText/GuideText";
 import { vocabulary } from "@/types/generated/vocabulary";
 import { cn } from "@/lib/cn";
+import { useTranslations } from "next-intl";
 import { textVariants } from "@/components/ui/Text/Text";
 import type { FetchFailure } from "@/types/fetchFailure";
 
@@ -67,22 +68,23 @@ export default function WarningBadgeList({ items, failures }: WarningBadgeListPr
 // 画面（地図・生成）を正常と読ませないためのもので、成功している間は何も出さない。常時は小さな印だけにし、
 // 何が取れていないか・何が起きているか・再試行はタップで開く。
 function WarningFetchFailureMark({ failures }: { failures: readonly FetchFailure[] }) {
-  const labels = failures.map((failure) => failure.label).join("・");
+  const t = useTranslations();
+  const labels = failures.map((failure) => failure.label).join(t("common.listSeparator"));
   return (
     <Popover>
       <PopoverTrigger asChild>
         <Button
           variant="ghost"
           size="headerIcon"
-          aria-label={`${labels}を取得できていません。押すと詳細を表示`}
-          usage="取得できていない情報と、その影響で画面に出ないものを開きます。そこから取得し直せます。"
+          aria-label={t("conditions.warning.notFetchedLabel", { labels })}
+          usage={t("conditions.warning.notFetchedUsage")}
         >
           <NotFetchedIcon size={18} />
         </Button>
       </PopoverTrigger>
       <PopoverContent {...DETAIL_PANEL_PROPS}>
         <p className={cn(textVariants({ variant: "heading" }), "mb-1 text-[length:var(--font-size-sm)]")}>
-          {labels}を取得できていません
+          {t("conditions.warning.notFetched", { labels })}
         </p>
         <ul className="mt-1 mb-0 flex flex-col gap-1 pl-4">
           {failures.map((failure) => (
@@ -96,9 +98,9 @@ function WarningFetchFailureMark({ failures }: { failures: readonly FetchFailure
                   variant="warning"
                   size="panelIcon"
                   className="mt-0.5"
-                  aria-label="再試行"
+                  aria-label={t("conditions.warning.retry")}
                   onClick={failure.onRetry}
-                  usage="この情報を取得し直します。"
+                  usage={t("conditions.warning.retryUsage")}
                 >
                   <RetryIcon />
                 </Button>
@@ -112,8 +114,9 @@ function WarningFetchFailureMark({ failures }: { failures: readonly FetchFailure
 }
 
 function WarningSummary({ items }: { items: WarningBadgeItem[] }) {
+  const t = useTranslations("conditions.warning");
   const top = levelDisplay(highestLevelItem(items));
-  const summaryLabel = items.length > 1 ? `${top.label}${items.length}件` : top.label;
+  const summaryLabel = items.length > 1 ? t("count", { label: top.label, count: String(items.length) }) : top.label;
 
   return (
     <Popover>
@@ -122,14 +125,14 @@ function WarningSummary({ items }: { items: WarningBadgeItem[] }) {
           variant="ghost"
           size="headerIcon"
           style={{ color: top.color }}
-          aria-label={`気象警報・注意報あり: ${summaryLabel}。押すと詳細を表示`}
-          usage="いまいる場所に出ている気象警報・注意報の詳細を開きます。"
+          aria-label={t("summaryLabel", { summary: summaryLabel })}
+          usage={t("summaryUsage")}
         >
           <WarningTriangleIcon size={18} />
         </Button>
       </PopoverTrigger>
       <PopoverContent {...DETAIL_PANEL_PROPS}>
-        <div role="list" aria-label="気象警報・注意報の詳細" className="flex flex-col gap-2">
+        <div role="list" aria-label={t("details")} className="flex flex-col gap-2">
           {items.map((item) => (
             <div key={item.id} role="listitem" className="flex flex-col gap-1">
               <span

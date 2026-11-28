@@ -1,6 +1,7 @@
 // 出発時刻ピッカー（RideConditionBar）のドラッグタイムライン用の目盛り生成。気象レイヤーの
 // 取得結果に依存しない理由と刻みの粒度はdocs/modules/frontend/dynamic-weather-layers.md
 // 「共有タイムラインのラベル」節が持つ。
+import { translate } from "@/i18n/config";
 import { HOUR_MS, MINUTE_MS, MINUTE_UNIT } from "@/lib/duration";
 import { formatJstDateTime, formatJstHourMinute, formatJstMinute, jstParts } from "@/lib/time";
 import type { RulerFrame } from "@/components/ui/Ruler/Ruler";
@@ -17,7 +18,13 @@ export const DEPARTURE_STEPS: readonly { value: DepartureStep; label: string }[]
   Object.keys(STEP_MS) as DepartureStep[]
 ).map((value) => {
   const ms = STEP_MS[value];
-  return { value, label: ms % HOUR_MS === 0 ? `${ms / HOUR_MS}時間` : `${ms / MINUTE_MS}${MINUTE_UNIT}` };
+  return {
+    value,
+    label:
+      ms % HOUR_MS === 0
+        ? translate("conditions.departure.hours", { hours: String(ms / HOUR_MS) })
+        : `${ms / MINUTE_MS}${MINUTE_UNIT}`,
+  };
 });
 
 export function isDepartureStep(value: string): value is DepartureStep {
