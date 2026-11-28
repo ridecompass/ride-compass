@@ -5,6 +5,8 @@ import { useCallback, useMemo, useState } from "react";
 import { samePosition } from "@/lib/geoDistance";
 import { useStoredState } from "@/hooks/useStoredState";
 import { STANDARD_COST_PREFERENCE } from "@/lib/costPreference";
+import { useCostAxisCatalog } from "@/hooks/useCostAxisCatalog";
+import { costPreferenceForAxes } from "@/features/route/costPreference";
 import { type GenerationConditionsSnapshot } from "@/features/route/savedConditions";
 import type {
   Coordinates,
@@ -180,11 +182,17 @@ export function useGenerationConditions({ onOriginPlace }: GenerationConditionsI
     String(routeGenerateConfig.default_max_routes),
   );
 
-  // 代償の全体に掛けるつまみと、費用の軸ごとの倍率。選んだまま送る（標準のままでも、標準として送る）。
-  const [costPreference, setCostPreference] = useStoredState<CostPreference>(
+  // 代償の全体に掛けるつまみと、費用の軸ごとの倍率。選んだまま送る（標準のままでも、標準として送る）。返すのは、今の軸の一覧に
+  // 無い軸を捨てた値。
+  const [storedCostPreference, setCostPreference] = useStoredState<CostPreference>(
     COST_PREFERENCE_STORAGE_KEY,
     "走りにくさの好み",
     STANDARD_COST_PREFERENCE,
+  );
+  const costAxisCatalog = useCostAxisCatalog();
+  const costPreference = useMemo(
+    () => costPreferenceForAxes(storedCostPreference, costAxisCatalog),
+    [storedCostPreference, costAxisCatalog],
   );
   // 道の区分の行ごとに選んだ避け方。選んだ段だけを覚え、常に送る。
   const [roadAvoidance, setRoadAvoidance] = useStoredState<RoadAvoidanceOverride>(

@@ -26,7 +26,7 @@
 | `components/PinMark/PointMark.tsx` | 地点の一覧・探す小窓・道のりのグラフの経由地の印に出す、地図のピンと同じ図形の丸（`components/PinMark/PinMark.tsx`の中身に背景色を付けたもの。ルートの機能と地図の機能の両方が描くので共有の層に置く） |
 | `features/route/RouteForm/useRouteFormSubmit.ts` | 上記の検証（`{error, check}`。`features/route/RouteForm/useRouteFormSubmit.ts: check`は通ったかを返す）。「ルート生成」ボタン自体は`RouteForm`の外（`GenerateRouteActions.tsx`。見出し行）にあるため分離している（下記参照） |
 | `features/route/RouteSettingsPanel/RouteSettingsPanel.tsx` | 「走りにくさ」タブの中身: 一番上の「全体」で全体のつまみの段を、その下で費用の軸ごとに倍率の段か無効を選ぶ（下記参照）。無効の軸も行として残す（無効から戻す所） |
-| `features/route/costPreference.ts` | つまみと倍率の値の扱い: 段（値と名前）・説明の文 |
+| `features/route/costPreference.ts` | つまみと倍率の値の扱い: 段（値と名前）・説明の文・今の軸の一覧に無い軸を捨てる |
 | `hooks/useCostAxisCatalog.ts` | `GET /api/cost-axes`の取得。費用の軸（名前・説明・アイコン・地図のレンズ）を`hooks/useCostAxisCatalog.ts: useCostAxisCatalog`が返す（届くまで・失敗の間は軸0件。レンズの読み方は[地図: レンズ・ルート色分け](map-axis-coloring.md)）。軸ごとの色（`hooks/useCostAxisCatalog.ts: CostAxisCatalog.axisColors`）と、取れていないことの項目（`hooks/useCostAxisCatalog.ts: costAxisCatalogFetchFailure`。常設ヘッダーの印と走りにくさタブの告知）もここが持つ |
 | `hooks/useSharedCatalog.ts` | 画面の全体が読む一覧（画面の設定・費用の軸の一覧）の取得の共通の形: 読み手の間で1つの取得を共有し、マウントのたびに取り直し、届いた応答を後の失敗で巻き戻さない（`hooks/useSharedCatalog.ts: useSharedCatalog`）。まだ届いていないときだけ取り直す再試行（`hooks/useSharedCatalog.ts: retrySharedCatalogFetch`） |
 | `services/costAxisCatalogApi.ts` | 上記フックが叩くbackend APIの薄いラッパー |

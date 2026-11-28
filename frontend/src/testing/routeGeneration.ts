@@ -5,6 +5,7 @@ import { vi } from "vitest";
 
 import { useGenerationConditions } from "@/features/route/useGenerationConditions";
 import { useRouteGeneration } from "@/features/route/useRouteGeneration";
+import { serveCostAxisCatalog } from "@/testing/backendServer";
 import { serveGenerationJobs } from "@/testing/generationJobs";
 import { makeGenerationConditions, makeRouteCandidate } from "@/testing/routeFixtures";
 import routeGenerateConfig from "@/types/generated/route-generate-config.json";
@@ -82,8 +83,9 @@ export function used(overrides: Partial<GenerationConditions> = {}): GenerationC
   });
 }
 
-/** 生成のジョブの代役。 */
+/** 生成のジョブの代役と、費用の軸の一覧（条件が送る倍率を今の軸で絞る）。 */
 export function serveRouteGeneration() {
+  serveCostAxisCatalog();
   const jobs = serveGenerationJobs();
   return {
     jobs,
