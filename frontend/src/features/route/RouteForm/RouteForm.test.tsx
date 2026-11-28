@@ -131,13 +131,13 @@ describe("RouteForm タブの中身", () => {
   it("「要因」「道路」と「保存」の「設定」に受け取った中身を置き、タブを切り替えても外さない", async () => {
     const { showTab } = renderForm(
       {
-        weightsPanel: <Draft name="ロスの中身" />,
+        weightsPanel: <Draft name="難所の中身" />,
         exclusionsPanel: <Draft name="除外の中身" />,
         savedConditionsPanel: <Draft name="保存の中身" />,
       },
       "weights",
     );
-    await userEvent.type(screen.getByRole("textbox", { name: "ロスの中身" }), "動かした配分");
+    await userEvent.type(screen.getByRole("textbox", { name: "難所の中身" }), "動かした配分");
     showTab("exclusions");
     await userEvent.type(screen.getByRole("textbox", { name: "除外の中身" }), "外した種類");
     showTab("saved");
@@ -146,7 +146,7 @@ describe("RouteForm タブの中身", () => {
     showTab("generate");
     showTab("weights");
 
-    expect(screen.getByRole("textbox", { name: "ロスの中身" })).toHaveValue("動かした配分");
+    expect(screen.getByRole("textbox", { name: "難所の中身" })).toHaveValue("動かした配分");
     expect(screen.getByRole("textbox", { name: "除外の中身" })).toHaveValue("外した種類");
     expect(screen.getByRole("textbox", { name: "保存の中身" })).toHaveValue("書きかけの名前");
   });

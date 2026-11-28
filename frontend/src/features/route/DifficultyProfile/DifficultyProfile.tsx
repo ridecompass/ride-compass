@@ -33,7 +33,7 @@ function boxesPath(boxes: readonly ProfileBox[], xOf: (km: number) => number): s
     .join("");
 }
 
-/** 区間ごとのロス。横が距離、縦が区間ごとの1kmあたりの道のロスで、塗った面積がロスの要因ごとの和になる。 */
+/** 区間ごとの難所。横が距離、縦が区間ごとの1kmあたりの道の難所で、塗った面積が難所の要因ごとの和になる。 */
 export default function DifficultyProfile({
   scale,
   axisOrder,
@@ -65,8 +65,8 @@ export default function DifficultyProfile({
   return (
     <ProfileChart
       scale={scale}
-      label="区間ごとのロス"
-      usage={`横は道のり、縦はその区間の${LENS_QUANTITY_LABEL}です。色ごとの面積は、その要因のロスをルート全体で合計した値を表します。`}
+      label="区間ごとの難所"
+      usage={`横は道のり、縦はその区間の${LENS_QUANTITY_LABEL}です。色ごとの面積は、その要因の難所をルート全体で合計した値を表します。`}
       selected={selected}
       onSelect={onSelect}
       progressKm={progressKm}

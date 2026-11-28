@@ -9,7 +9,7 @@ export const APP_NAME = "RideCompass";
 /** 場所の事実（標高・道路の種類・スポット等）を重ねる所。 */
 export const FACT_DISPLAY_NAME = "表示";
 
-/** 選んだレンズのロスで、道・ルートの線・道のりのグラフを塗る所。 */
+/** 選んだレンズの難所で、道・ルートの線・道のりのグラフを塗る所。 */
 export const BURDEN_PAINT_NAME = "難所を色で見る";
 
 /** 地図の上のピルで、レンズを選んでいないときに出す短い名前（狭い幅でも地図の上の部品と1行に収める。読み上げは`BURDEN_PAINT_NAME`）。 */

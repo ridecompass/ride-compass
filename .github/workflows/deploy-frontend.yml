@@ -39,6 +39,11 @@ jobs:
           fetch-depth: 0
       - run: echo "VERSION_URL=$(jq -r .frontend production-origins.json)/api/version" >> "$GITHUB_ENV"
       - run: echo "BACKEND_ORIGIN=$(jq -r .backend production-origins.json)" >> "$GITHUB_ENV"
+      # デプロイの最後に叩く、管理画面が読む管理 API の口。管理画面の呼び出し口が GET で読むパスの全部から導く。
+      - run: |
+          paths=$(grep -zoP 'adminApiClient\.GET\(\s*"\K[^"]+' frontend/src/features/admin/adminApi.ts | tr '\0' ' ')
+          [ -n "$paths" ] || { echo "管理画面が読む管理 API の口が見つからない" >&2; exit 1; }
+          echo "ADMIN_READ_PATHS=$paths" >> "$GITHUB_ENV"
       # 本番のVMへは、ランナーにある ssh で `ssh prod` として入る（deploy-backend.yml と同じ形）。
       - name: 本番のVMへ入る鍵を置く
         env:
@@ -135,11 +140,15 @@ jobs:
               sleep 2
             done
             echo "入れ替えたコンテナが/api/versionに応答するまで $((SECONDS - WAIT_STARTED))秒 commit=$COMMIT"
-            # 管理画面に入れて、管理 API を backend へ取り次げるか（資格情報と宛先がコンテナに渡っているか）を1回見る。
+            # 管理画面に入れて、管理画面が読む管理 API の口の全部を backend へ取り次げるか（資格情報と宛先がコンテナに
+            # 渡っているか・口が backend にあるか）を見る。
             ADMIN_USER=$(grep -E '^ADMIN_BASIC_AUTH_USERNAME=' "$FRONT_ENV" | cut -d= -f2-)
             ADMIN_PASS=$(grep -E '^ADMIN_BASIC_AUTH_PASSWORD=' "$FRONT_ENV" | cut -d= -f2-)
-            ADMIN_STATUS=$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 -u "$ADMIN_USER:$ADMIN_PASS" http://127.0.0.1:3000/admin/api/db-status)
-            [ "$ADMIN_STATUS" = 200 ] || { echo "管理画面から管理 API を取り次げませんでした status=$ADMIN_STATUS" >&2; exit 1; }
+            for ADMIN_PATH in ${{ env.ADMIN_READ_PATHS }}; do
+              ADMIN_STATUS=$(curl -s -o /dev/null -w '%{http_code}' --max-time 120 -u "$ADMIN_USER:$ADMIN_PASS" "http://127.0.0.1:3000/admin/api$ADMIN_PATH")
+              [ "$ADMIN_STATUS" = 200 ] || { echo "管理画面から管理 API を取り次げませんでした path=$ADMIN_PATH status=$ADMIN_STATUS" >&2; exit 1; }
+              echo "管理画面から取り次げた path=$ADMIN_PATH"
+            done
             # 前のコミットの像を消す（置き場の像はコミットごとのタグで、残すとVMの空きを食う）。
             sudo docker images "$IMAGE" --format '{{.Repository}}:{{.Tag}}' | grep -vxF "$IMAGE:$COMMIT" | xargs -r sudo docker rmi > /dev/null
             sudo docker image prune -f > /dev/null

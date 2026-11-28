@@ -1,7 +1,7 @@
 /**
- * `lib/routePenalty.ts`——内訳の行とロスの書き方。
+ * `lib/routePenalty.ts`——内訳の行と難所の書き方。
  *
- * 見るもの: 一覧が届くまで・取れない間の行の名前と軸の色。好む道で下げた分が上回ったロスを「−」で書くこと。
+ * 見るもの: 一覧が届くまで・取れない間の行の名前と軸の色。好む道で下げた分が上回った難所を「−」で書くこと。
  *
  * ここで見ないもの: 軸の行の並びと事実 → `features/route/RouteProfile/RouteProfile.test.tsx`。
  */
@@ -26,7 +26,7 @@ describe("penaltyRows", () => {
     expect(penaltyRows(AXIS_SECONDS, { ...NOT_LOADED, failed }).map((row) => row.label)).toEqual([label]);
   });
 
-  it("好む道で下げた分が上乗せを上回ったロスは「−」で書く", () => {
+  it("好む道で下げた分が上乗せを上回った難所は「−」で書く", () => {
     expect([formatPenalty(-180), formatPenaltyMinutes(-180)]).toEqual(["−3分", "−3"]);
   });
 });

@@ -185,7 +185,7 @@ EVALUATION_COLORS = [SEMANTIC_COLORS[k] for k in ("evaluation_good", "evaluation
 @given(st.integers(min_value=1, max_value=200))
 @example(len(display_palette.COST_SERIES_COLORS) + 1)
 def test_cost_axis_colors_keep_neighbours_apart_however_many_axes(count):
-    """軸を管理APIで足しても、どの軸も色を持ち、積み上げのグラフと差の棒で隣り合う軸が見分けられ、地図のロスの塗り
+    """軸を管理APIで足しても、どの軸も色を持ち、積み上げのグラフと差の棒で隣り合う軸が見分けられ、地図の難所の塗り
     （緑→赤）と取り違えない。灰色で埋めると、増えた軸どうしと値の無い所が見分けられない。"""
     colors = cost_series_colors(count)
 
