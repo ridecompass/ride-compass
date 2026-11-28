@@ -791,7 +791,7 @@ ON/OFFで入れ替わる）。
 「データなし」）は分類ではなく、どの属性・レンズでも同じ意味なので、線を重ねても混ざらない——これは
 細かい刻みの破線（`mapDisplay.noDataDash`、`sceneBuilders.ts: noDataDashExpression`）で示し、乗り換え帯の
 破線（`mapDisplay.route.spliceDash`）と刻みで見分ける。取得中（まだ値が来ていない）は値が無いと決まって
-いないので破線にしない。配信値（feature-state）で塗るレンズの線は`line-dasharray`を値で切り替えられないので、値の無い道の破線を別の線として重ねる（[地図: レンズ・ルート色分け](map-axis-coloring.md)「レンズの線」）。
+いないので破線にしない。配信値（feature-state）で塗るレンズの線は`line-dasharray`を値で切り替えられないので、値の無い道を破線にせず薄い灰色の実線にする（[地図: レンズ・ルート色分け](map-axis-coloring.md)「レンズの線」）。
 分類を線種で表し始めたら、この区別が崩れている。
 
 ## MapLibreの式を組むときの前提
